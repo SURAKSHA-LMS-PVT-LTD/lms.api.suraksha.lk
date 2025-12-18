@@ -40,13 +40,11 @@ export class ApiKeyOrJwtGuard extends AuthGuard('jwt') {
       throw new UnauthorizedException('Invalid authorization header format. Use: Bearer <token>');
     }
 
-    // Default fallback API key for external backend integrations
-    const DEFAULT_API_KEY = 'wvIcy1X3xreEL9CkT6KzFGqbsaHUZPVBYN0oiSDQR5pM2tudOl84gnjW7mJfhA';
+    // Get special API key from environment (no fallback for security)
+    const specialApiKey = this.configService.get<string>('SPECIAL_API_KEY');
     
-    // Check if token matches the special API key (from environment or default fallback)
-    const specialApiKey = this.configService.get<string>('SPECIAL_API_KEY') || DEFAULT_API_KEY;
-    
-    if (token === specialApiKey) {
+    // Check if token matches the special API key
+    if (specialApiKey && token === specialApiKey) {
       // API Key authentication successful
       // Set user on request and mark as API key authenticated
       request.user = {

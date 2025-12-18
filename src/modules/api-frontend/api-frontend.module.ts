@@ -29,18 +29,27 @@ import { RequestFilterMiddleware } from './middleware/request-filter.middleware'
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'your-super-secret-jwt-key',
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION') || '24h',
-          issuer: 'LaaS-API',
-          audience: 'LaaS-Users'
-        },
-        verifyOptions: {
-          issuer: 'LaaS-API',
-          audience: 'LaaS-Users'
+      useFactory: (configService: ConfigService) => {
+        const jwtSecret = configService.get<string>('JWT_SECRET');
+        if (!jwtSecret) {
+          throw new Error(
+            '❌ CRITICAL SECURITY ERROR: JWT_SECRET is not configured!\n' +
+            'Add it to your .env file: JWT_SECRET=your_generated_secret'
+          );
         }
-      }),
+        return {
+          secret: jwtSecret,
+          signOptions: {
+            expiresIn: configService.get<string>('JWT_EXPIRATION') || '24h',
+            issuer: 'LaaS-API',
+            audience: 'LaaS-Users'
+          },
+          verifyOptions: {
+            issuer: 'LaaS-API',
+            audience: 'LaaS-Users'
+          }
+        };
+      },
     }),
     ConfigModule,
   ],
