@@ -1,0 +1,56 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SubjectType } from '../entities/subject.entity';
+import { InstituteType } from '../../institute/enums/institute.enums';
+
+export class SubjectResponseDto {
+  @ApiProperty({ description: 'Subject ID', example: '1' })
+  id: string;
+
+  @ApiProperty({ description: 'Subject code', example: 'MATH101' })
+  code: string;
+
+  @ApiProperty({ description: 'Subject name', example: 'Mathematics' })
+  name: string;
+
+  @ApiPropertyOptional({ description: 'Subject description', example: 'Basic mathematics course' })
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Subject category', example: 'Science' })
+  category?: string;
+
+  @ApiPropertyOptional({ description: 'Credit hours', example: 3 })
+  creditHours?: number;
+
+  @ApiProperty({ description: 'Active status', example: true })
+  isActive: boolean;
+
+  @ApiProperty({ description: 'Subject type', enum: SubjectType, example: SubjectType.MAIN })
+  subjectType: SubjectType;
+
+  @ApiPropertyOptional({ description: 'Basket category', example: 'G003' })
+  basketCategory?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Institute type this subject applies to (null means all institute types)',
+    enum: InstituteType,
+    example: InstituteType.SCHOOL,
+    nullable: true
+  })
+  instituteType?: InstituteType;
+
+  @ApiPropertyOptional({ 
+    description: 'Subject image URL', 
+    example: 'https://storage.googleapis.com/laas-file-storage/subject-images/subject-123-1609459200000.jpg' 
+  })
+  imgUrl?: string;
+
+  @ApiProperty({ description: 'Creation date', example: '2025-09-12T10:00:00Z' })
+  createdAt: Date;
+
+  @ApiProperty({ description: 'Last update date', example: '2025-09-12T10:00:00Z' })
+  updatedAt: Date;
+
+  constructor(subject: Partial<SubjectResponseDto>) {
+    Object.assign(this, subject);
+  }
+}

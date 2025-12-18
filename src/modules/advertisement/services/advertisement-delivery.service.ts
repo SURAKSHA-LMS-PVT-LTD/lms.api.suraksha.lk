@@ -1,0 +1,503 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AdvertisementEntity } from '../entities/advertisement.entity';
+import { AdvertisementMatchingService, UserProfile } from '../advertisement-matching.service';
+import { AttendanceNotificationService, AttendanceNotificationData } from '../../attendance/services/attendance-notification.service';
+import { UserEntity } from '../../user/entities/user.entity';
+import { StudentEntity } from '../../student/entities/student.entity';
+import { ParentEntity } from '../../parent/entities/parent.entity';
+
+export interface AdvertisementDeliveryResult {
+  success: boolean;
+  advertisementId?: string;
+  advertisementTitle?: string;
+  advertisementUrl?: string;
+  matchScore?: number;
+  deliveryMethod: 'database' | 'default' | 'none';
+  reason?: string;
+  timestamp: Date;
+}
+
+export interface AttendanceWithAdvertisement {
+  attendanceNotified: boolean;
+  advertisementDelivered: boolean;
+  notificationChannels: string[];
+  advertisement?: {
+    id: string;
+    title: string;
+    mediaUrl: string;
+    mediaType: string;
+    matchScore?: number;
+  };
+  deliveryTimestamp: Date;
+}
+
+/**
+ * Advertisement Delivery Service
+ * 
+ * Handles the selection, matching, and delivery of advertisements
+ * alongside attendance notifications. This service is separated from
+ * attendance logic to maintain single responsibility principle.
+ * 
+ * Features:
+ * - Smart advertisement matching based on user profiles
+ * - Database-driven ad selection with scoring algorithm
+ * - Fallback to default environment-based ads
+ * - Impression and click tracking
+ * - Analytics and performance monitoring
+ */
+@Injectable()
+export class AdvertisementDeliveryService {
+  private readonly logger = new Logger(AdvertisementDeliveryService.name);
+  private readonly isAdsFromDatabase: boolean;
+  private readonly defaultAdTitle: string;
+  private readonly defaultAdContent: string;
+  private readonly defaultAdMediaUrl: string;
+
+  constructor(
+    @InjectRepository(AdvertisementEntity)
+    private advertisementRepository: Repository<AdvertisementEntity>,
+    @InjectRepository(UserEntity)
+    private userRepository: Repository<UserEntity>,
+    @InjectRepository(StudentEntity)
+    private studentRepository: Repository<StudentEntity>,
+    @InjectRepository(ParentEntity)
+    private parentRepository: Repository<ParentEntity>,
+    private readonly advertisementMatchingService: AdvertisementMatchingService,
+    private readonly attendanceNotificationService: AttendanceNotificationService,
+  ) {
+    // Load configuration from environment
+    this.isAdsFromDatabase = process.env.IS_ADS_FROM_DB === 'true';
+    this.defaultAdTitle = process.env.DEFAULT_AD_TITLE || 'LaaS Platform';
+    this.defaultAdContent = process.env.DEFAULT_AD_CONTENT || 'Quality Education Management System';
+    this.defaultAdMediaUrl = process.env.DEFAULT_AD_MEDIA_URL || 'https://example.com/ad.jpg';
+
+    this.logger.log(`🎯 Advertisement Delivery Service initialized`);
+    this.logger.log(`   Mode: ${this.isAdsFromDatabase ? 'DATABASE (queries from DB)' : 'DEFAULT (environment variables)'}`);
+    this.logger.log(`   IS_ADS_FROM_DB: ${process.env.IS_ADS_FROM_DB}`);
+    if (!this.isAdsFromDatabase) {
+      this.logger.log(`   Default Ad: ${this.defaultAdTitle}`);
+    } else {
+      this.logger.log(`   Database Mode: Will NOT fall back to default ads`);
+    }
+  }
+
+  /**
+   * Send attendance notification with matched advertisement
+   * This is the main entry point for attendance + advertisement delivery
+   * 
+   * @param studentId Student ID for whom attendance is marked
+   * @param attendanceData Complete attendance notification data
+   * @returns Result including both notification and advertisement delivery status
+   */
+  async sendAttendanceWithAdvertisement(
+    studentId: string,
+    attendanceData: AttendanceNotificationData
+  ): Promise<AttendanceWithAdvertisement> {
+    const startTime = Date.now();
+    
+    try {
+      this.logger.log(`Processing attendance notification with ad for student: ${studentId}`);
+
+      // Step 1: Select and attach advertisement
+      const advertisementResult = await this.selectAdvertisementForUser(studentId, attendanceData.subscriptionPlan);
+      
+      // Step 2: Attach advertisement to notification data
+      if (advertisementResult.success && advertisementResult.advertisementId) {
+        attendanceData.advertisementData = {
+          id: advertisementResult.advertisementId,
+          mediaUrl: advertisementResult.advertisementUrl || this.defaultAdMediaUrl,
+          mediaType: 'IMAGE',
+          title: advertisementResult.advertisementTitle || this.defaultAdTitle,
+          content: this.defaultAdContent
+        };
+      }
+
+      // Step 3: Send notification with advertisement
+      const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(attendanceData);
+
+      // Step 4: Record impression if advertisement was delivered successfully
+      if (advertisementResult.success && advertisementResult.advertisementId && notificationResult.successfulChannels > 0) {
+        await this.recordAdvertisementImpression(advertisementResult.advertisementId, studentId);
+      }
+
+      const duration = Date.now() - startTime;
+      this.logger.log(`Attendance notification with ad completed for ${studentId} in ${duration}ms`);
+
+      return {
+        attendanceNotified: notificationResult.successfulChannels > 0,
+        advertisementDelivered: advertisementResult.success && notificationResult.successfulChannels > 0,
+        notificationChannels: notificationResult.results.filter(r => r.success).map(r => r.channel),
+        advertisement: advertisementResult.success ? {
+          id: advertisementResult.advertisementId!,
+          title: advertisementResult.advertisementTitle!,
+          mediaUrl: advertisementResult.advertisementUrl!,
+          mediaType: 'IMAGE',
+          matchScore: advertisementResult.matchScore
+        } : undefined,
+        deliveryTimestamp: new Date()
+      };
+
+    } catch (error) {
+      this.logger.error(`Error sending attendance with advertisement for student ${studentId}`, error);
+      
+      // Fallback: Try sending notification without advertisement
+      try {
+        const fallbackResult = await this.attendanceNotificationService.sendAttendanceNotification(attendanceData);
+        return {
+          attendanceNotified: fallbackResult.successfulChannels > 0,
+          advertisementDelivered: false,
+          notificationChannels: fallbackResult.results.filter(r => r.success).map(r => r.channel),
+          deliveryTimestamp: new Date()
+        };
+      } catch (fallbackError) {
+        this.logger.error(`Fallback notification also failed for student ${studentId}`, fallbackError);
+        return {
+          attendanceNotified: false,
+          advertisementDelivered: false,
+          notificationChannels: [],
+          deliveryTimestamp: new Date()
+        };
+      }
+    }
+  }
+
+  /**
+   * Select most appropriate advertisement for a user
+   * Uses database matching service if enabled, falls back to default ad
+   * 
+   * @param studentId Student ID to build user profile
+   * @param subscriptionPlan User's subscription plan
+   * @returns Advertisement delivery result
+   */
+  async selectAdvertisementForUser(
+    studentId: string,
+    subscriptionPlan: string
+  ): Promise<AdvertisementDeliveryResult> {
+    try {
+      // Check if advertisements are enabled for this subscription plan
+      if (!this.isAdvertisementEnabled(subscriptionPlan)) {
+        return {
+          success: false,
+          deliveryMethod: 'none',
+          reason: 'Advertisements disabled for subscription plan',
+          timestamp: new Date()
+        };
+      }
+
+      // Database-driven advertisement selection
+      if (this.isAdsFromDatabase) {
+        return await this.selectDatabaseAdvertisement(studentId, subscriptionPlan);
+      }
+
+      // Default environment-based advertisement
+      return this.selectDefaultAdvertisement();
+
+    } catch (error) {
+      this.logger.error(`Error selecting advertisement for student ${studentId}`, error);
+      return {
+        success: false,
+        deliveryMethod: 'none',
+        reason: `Error: ${error.message}`,
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
+   * Select advertisement from database using matching algorithm
+   */
+  private async selectDatabaseAdvertisement(
+    studentId: string,
+    subscriptionPlan: string
+  ): Promise<AdvertisementDeliveryResult> {
+    try {
+      // Build user profile for matching
+      const userProfile = await this.buildUserProfile(studentId, subscriptionPlan);
+      
+      if (!userProfile) {
+        this.logger.warn(`Could not build user profile for student ${studentId}, cannot query database (IS_ADS_FROM_DB=true)`);
+        return {
+          success: false,
+          deliveryMethod: 'database',
+          reason: 'Could not build user profile for database query',
+          timestamp: new Date()
+        };
+      }
+
+      // Find matching advertisements
+      const matches = await this.advertisementMatchingService.findMostMatchingAdvertisements(userProfile, 3);
+      
+      if (matches.length === 0) {
+        this.logger.warn(`No matching advertisements found in database for student ${studentId}, not using default (IS_ADS_FROM_DB=true)`);
+        return {
+          success: false,
+          deliveryMethod: 'database',
+          reason: 'No matching advertisements in database',
+          timestamp: new Date()
+        };
+      }
+
+      // Select the best match
+      const bestMatch = matches[0];
+      
+      this.logger.log(`Selected database ad "${bestMatch.advertisement.title}" (score: ${bestMatch.matchScore}) for student ${studentId}`);
+      
+      return {
+        success: true,
+        advertisementId: bestMatch.advertisement.id,
+        advertisementTitle: bestMatch.advertisement.title,
+        advertisementUrl: bestMatch.advertisement.mediaUrl,
+        matchScore: bestMatch.matchScore,
+        deliveryMethod: 'database',
+        timestamp: new Date()
+      };
+
+    } catch (error) {
+      this.logger.error(`Error selecting database advertisement for student ${studentId}`, error);
+      return {
+        success: false,
+        deliveryMethod: 'database',
+        reason: `Database query error: ${error.message}`,
+        timestamp: new Date()
+      };
+    }
+  }
+
+  /**
+   * Select default advertisement from environment variables
+   */
+  private selectDefaultAdvertisement(): AdvertisementDeliveryResult {
+    return {
+      success: true,
+      advertisementTitle: this.defaultAdTitle,
+      advertisementUrl: this.defaultAdMediaUrl,
+      deliveryMethod: 'default',
+      timestamp: new Date()
+    };
+  }
+
+  /**
+   * Build user profile for advertisement matching
+   */
+  private async buildUserProfile(studentId: string, subscriptionPlan: string): Promise<UserProfile | null> {
+    try {
+      // Fetch student with related user and parent data
+      const student = await this.studentRepository.findOne({
+        where: { userId: studentId },
+        relations: ['user', 'father', 'mother', 'guardian', 'father.user', 'mother.user', 'guardian.user'],
+        select: {
+          userId: true,
+          user: {
+            id: true,
+            city: true,
+            province: true,
+            district: true,
+            dateOfBirth: true,
+            gender: true,
+            userType: true
+          },
+          father: {
+            userId: true,
+            occupation: true,
+            user: {
+              id: true,
+              city: true,
+              province: true
+            }
+          },
+          mother: {
+            userId: true,
+            occupation: true
+          },
+          guardian: {
+            userId: true,
+            occupation: true
+          }
+        }
+      });
+
+      if (!student || !student.user) {
+        this.logger.warn(`Student ${studentId} not found or missing user data`);
+        return null;
+      }
+
+      // Extract birth year from dateOfBirth
+      const birthYear = student.user.dateOfBirth 
+        ? new Date(student.user.dateOfBirth).getFullYear() 
+        : undefined;
+
+      // Use parent data if available, otherwise use student data
+      const parentData = student.father || student.mother || student.guardian;
+      
+      // Map UserType enum to match expected type
+      const userTypeMapping = {
+        'SUPER_ADMIN': 'SUPERADMIN',
+        'INSTITUTE_ADMIN': 'INSTITUTE_ADMIN',
+        'ATTENDANCE_MARKER': 'ATTENDANCE_MARKER',
+        'TEACHER': 'TEACHER',
+        'STUDENT': 'STUDENT',
+        'PARENT': 'PARENT',
+        'OWNER': 'OWNER'
+      };
+      
+      return {
+        userId: studentId,
+        userType: (userTypeMapping[student.user.userType] || student.user.userType) as any,
+        subscriptionPlan: subscriptionPlan as any,
+        instituteId: undefined, // StudentEntity doesn't have instituteId, need to get from institute_users
+        city: student.user.city || parentData?.user?.city,
+        province: student.user.province || parentData?.user?.province,
+        district: student.user.district,
+        birthYear: birthYear,
+        gender: student.user.gender,
+        occupation: parentData?.occupation
+      };
+
+    } catch (error) {
+      this.logger.error(`Error building user profile for student ${studentId}`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if advertisements are enabled for subscription plan
+   */
+  private isAdvertisementEnabled(subscriptionPlan: string): boolean {
+    // Import notification config to check if ads are enabled
+    const NOTIFICATION_PACKAGES_CONFIG = {
+      FREE: { isAds: true },
+      BASIC: { isAds: true },
+      STANDARD: { isAds: true },
+      PREMIUM: { isAds: false },
+      ENTERPRISE: { isAds: false }
+    };
+
+    const config = NOTIFICATION_PACKAGES_CONFIG[subscriptionPlan?.toUpperCase()];
+    return config?.isAds !== false;
+  }
+
+  /**
+   * Record advertisement impression (view)
+   */
+  private async recordAdvertisementImpression(advertisementId: string, studentId: string): Promise<void> {
+    try {
+      const advertisement = await this.advertisementRepository.findOne({
+        where: { id: advertisementId },
+        select: ['id', 'currentSendings', 'maxSendings', 'impressionCount']
+      });
+
+      if (advertisement && advertisement.currentSendings < advertisement.maxSendings) {
+        advertisement.incrementImpression();
+        await this.advertisementRepository.save(advertisement);
+        
+        this.logger.log(`Recorded impression for ad ${advertisementId} (student: ${studentId})`);
+      }
+    } catch (error) {
+      this.logger.error(`Error recording impression for ad ${advertisementId}`, error);
+    }
+  }
+
+  /**
+   * Record advertisement click (when user interacts)
+   */
+  async recordAdvertisementClick(advertisementId: string, studentId: string): Promise<boolean> {
+    try {
+      const advertisement = await this.advertisementRepository.findOne({
+        where: { id: advertisementId },
+        select: ['id', 'clickCount']
+      });
+
+      if (advertisement) {
+        advertisement.incrementClick();
+        await this.advertisementRepository.save(advertisement);
+        
+        this.logger.log(`Recorded click for ad ${advertisementId} (student: ${studentId})`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      this.logger.error(`Error recording click for ad ${advertisementId}`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get advertisement delivery statistics
+   */
+  async getDeliveryStatistics(startDate?: Date, endDate?: Date): Promise<any> {
+    try {
+      const queryBuilder = this.advertisementRepository
+        .createQueryBuilder('ad')
+        .select([
+          'ad.id',
+          'ad.title',
+          'ad.currentSendings',
+          'ad.maxSendings',
+          'ad.impressionCount',
+          'ad.clickCount',
+          'ad.priority',
+          'ad.isActive'
+        ]);
+
+      if (startDate) {
+        queryBuilder.andWhere('ad.createdAt >= :startDate', { startDate });
+      }
+
+      if (endDate) {
+        queryBuilder.andWhere('ad.createdAt <= :endDate', { endDate });
+      }
+
+      const advertisements = await queryBuilder.getMany();
+
+      const totalImpressions = advertisements.reduce((sum, ad) => sum + ad.impressionCount, 0);
+      const totalClicks = advertisements.reduce((sum, ad) => sum + ad.clickCount, 0);
+      const totalSendings = advertisements.reduce((sum, ad) => sum + ad.currentSendings, 0);
+
+      return {
+        totalAdvertisements: advertisements.length,
+        activeAdvertisements: advertisements.filter(ad => ad.isActive).length,
+        totalImpressions,
+        totalClicks,
+        totalSendings,
+        averageCTR: totalImpressions > 0 ? (totalClicks / totalImpressions * 100).toFixed(2) : 0,
+        deliveryMode: this.isAdsFromDatabase ? 'database' : 'default',
+        advertisements: advertisements.map(ad => ({
+          id: ad.id,
+          title: ad.title,
+          impressions: ad.impressionCount,
+          clicks: ad.clickCount,
+          sendings: ad.currentSendings,
+          maxSendings: ad.maxSendings,
+          ctr: ad.impressionCount > 0 ? ((ad.clickCount / ad.impressionCount) * 100).toFixed(2) : 0,
+          completionRate: ad.maxSendings > 0 ? ((ad.currentSendings / ad.maxSendings) * 100).toFixed(2) : 0
+        }))
+      };
+
+    } catch (error) {
+      this.logger.error('Error getting delivery statistics', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get configuration and status information
+   */
+  getConfiguration(): any {
+    return {
+      mode: this.isAdsFromDatabase ? 'database' : 'default',
+      databaseEnabled: this.isAdsFromDatabase,
+      defaultAd: {
+        title: this.defaultAdTitle,
+        content: this.defaultAdContent,
+        mediaUrl: this.defaultAdMediaUrl
+      }
+    };
+  }
+}
+
+
+
+

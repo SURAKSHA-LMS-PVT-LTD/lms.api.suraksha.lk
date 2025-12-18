@@ -1,0 +1,8 @@
+export enum InstituteUserStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  PENDING = 'PENDING',
+  FORMER = 'FORMER',
+  INVITED = 'INVITED'
+}

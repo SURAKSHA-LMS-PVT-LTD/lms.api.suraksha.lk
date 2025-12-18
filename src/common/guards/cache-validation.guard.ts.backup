@@ -1,0 +1,360 @@
+import { Injectable, CanActivate, ExecutionContext, Logger, ForbiddenException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { CacheValidationService } from '../services/cache-validation.service';
+import {
+  VALIDATE_GLOBAL_USER_TYPE_KEY,
+  VALIDATE_HYBRID_ACCESS_KEY,
+  GlobalUserTypeValidation,
+  HybridAccessValidation
+} from '../decorators/cache-validation.decorators';
+
+@Injectable()
+export class CacheValidationGuard implements CanActivate {
+  private readonly logger = new Logger(CacheValidationGuard.name);
+
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly cacheValidationService: CacheValidationService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+
+    if (!user) {
+      this.logger.error('No user found in request - ensure JWT guard is applied first');
+      throw new ForbiddenException('Authentication required');
+    }
+
+    // ✅ Check for @AdminOnly() decorator
+    const isAdminOnly = this.reflector.get<boolean>(ADMIN_ONLY_KEY, context.getHandler());
+    
+    if (isAdminOnly) {
+      return await this.validateAdminAccess(request, user);
+    }
+
+    // Check for global user type validation
+    const globalValidation = this.reflector.get<GlobalUserTypeValidation>(
+      VALIDATE_GLOBAL_USER_TYPE_KEY,
+      context.getHandler()
+    );
+
+    if (globalValidation) {
+      return await this.validateGlobalUserType(user, globalValidation);
+    }
+
+    // Check for institute user type validation
+    const instituteValidation = this.reflector.get<InstituteUserTypeValidation>(
+      VALIDATE_INSTITUTE_USER_TYPE_KEY,
+      context.getHandler()
+    );
+
+    if (instituteValidation) {
+      return await this.validateInstituteUserType(request, user, instituteValidation);
+    }
+
+    // Check for institute class access validation
+    const classValidation = this.reflector.get<InstituteClassAccessValidation>(
+      VALIDATE_INSTITUTE_CLASS_ACCESS_KEY,
+      context.getHandler()
+    );
+
+    if (classValidation) {
+      return await this.validateInstituteClassAccess(request, user, classValidation);
+    }
+
+    // Check for institute subject access validation
+    const subjectValidation = this.reflector.get<InstituteSubjectAccessValidation>(
+      VALIDATE_INSTITUTE_SUBJECT_ACCESS_KEY,
+      context.getHandler()
+    );
+
+    if (subjectValidation) {
+      return await this.validateInstituteSubjectAccess(request, user, subjectValidation);
+    }
+
+    // Check for hybrid access validation (SUPERADMIN OR INSTITUTE_ADMIN)
+    const hybridValidation = this.reflector.get<HybridAccessValidation>(
+      VALIDATE_HYBRID_ACCESS_KEY,
+      context.getHandler()
+    );
+
+    if (hybridValidation) {
+      return await this.validateHybridAccess(request, user, hybridValidation);
+    }
+
+    // No validation metadata found - allow access
+    return true;
+  }
+
+  private async validateGlobalUserType(
+    user: any,
+    validation: GlobalUserTypeValidation
+  ): Promise<boolean> {
+    try {
+      this.logger.log(`🌐 Validating global user type for user ${user.userId || user.id}`);
+
+      const result = await this.cacheValidationService.validateGlobalUserType(
+        user,
+        validation.allowedUserTypes
+      );
+
+      if (!result.isValid) {
+        this.logger.warn(`❌ Global validation failed: ${result.message}`);
+        throw new ForbiddenException(result.message);
+      }
+
+      this.logger.log(`✅ Global validation passed: ${result.message}`);
+      return true;
+
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error('Global validation error:', error);
+      throw new ForbiddenException('Access validation failed');
+    }
+  }
+
+  private async validateInstituteUserType(
+    request: any,
+    user: any,
+    validation: InstituteUserTypeValidation
+  ): Promise<boolean> {
+    try {
+      const instituteId = this.extractParam(request, validation.instituteIdParam);
+      this.logger.log(`🏫 Validating institute access for user ${user.userId || user.id} in institute ${instituteId}`);
+
+      const result = await this.cacheValidationService.validateInstituteUserType(
+        user,
+        instituteId,
+        validation.allowedUserTypes
+      );
+
+      if (!result.isValid) {
+        this.logger.warn(`❌ Institute validation failed: ${result.message}`);
+        throw new ForbiddenException(result.message);
+      }
+
+      this.logger.log(`✅ Institute validation passed: ${result.message}`);
+      return true;
+
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error('Institute validation error:', error);
+      throw new ForbiddenException('Institute access validation failed');
+    }
+  }
+
+  private async validateInstituteClassAccess(
+    request: any,
+    user: any,
+    validation: InstituteClassAccessValidation
+  ): Promise<boolean> {
+    try {
+      const instituteId = this.extractParam(request, validation.instituteIdParam);
+      const classId = this.extractParam(request, validation.classIdParam);
+      
+      this.logger.log(`📚 Validating class access for user ${user.userId || user.id} in institute ${instituteId}, class ${classId}`);
+
+      const result = await this.cacheValidationService.validateInstituteUserClassAccess(
+        user,
+        instituteId,
+        classId,
+        validation.allowedUserTypes
+      );
+
+      if (!result.isValid) {
+        this.logger.warn(`❌ Class validation failed: ${result.message}`);
+        throw new ForbiddenException(result.message);
+      }
+
+      this.logger.log(`✅ Class validation passed: ${result.message}`);
+      return true;
+
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error('Class validation error:', error);
+      throw new ForbiddenException('Class access validation failed');
+    }
+  }
+
+  private async validateInstituteSubjectAccess(
+    request: any,
+    user: any,
+    validation: InstituteSubjectAccessValidation
+  ): Promise<boolean> {
+    try {
+      const instituteId = this.extractParam(request, validation.instituteIdParam);
+      const classId = this.extractParam(request, validation.classIdParam);
+      const subjectId = this.extractParam(request, validation.subjectIdParam);
+      
+      this.logger.log(`📖 Validating subject access for user ${user.userId || user.id} in institute ${instituteId}, class ${classId}, subject ${subjectId}`);
+
+      const result = await this.cacheValidationService.validateInstituteUserClassSubjectAccess(
+        user,
+        instituteId,
+        classId,
+        subjectId,
+        validation.allowedUserTypes
+      );
+
+      if (!result.isValid) {
+        this.logger.warn(`❌ Subject validation failed: ${result.message}`);
+        throw new ForbiddenException(result.message);
+      }
+
+      this.logger.log(`✅ Subject validation passed: ${result.message}`);
+      return true;
+
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error('Subject validation error:', error);
+      throw new ForbiddenException('Subject access validation failed');
+    }
+  }
+
+  private extractParam(request: any, paramName: string): string {
+    // Try different sources for parameter values
+    const value = request.params?.[paramName] || 
+                  request.query?.[paramName] || 
+                  request.body?.[paramName];
+
+    if (!value) {
+      this.logger.error(`Parameter '${paramName}' not found in request params, query, or body`);
+      throw new ForbiddenException(`Required parameter '${paramName}' not found`);
+    }
+
+    return String(value);
+  }
+
+  /**
+   * ✅ ENHANCED: Validate admin access with environment controls
+   */
+  private async validateAdminAccess(request: any, user: any): Promise<boolean> {
+    try {
+      // Extract request metadata
+      const clientIp = this.extractClientIp(request);
+      const origin = request.headers.origin || 
+                    request.headers.referer?.split('/').slice(0, 3).join('/');
+      const userAgent = request.headers['user-agent'];
+
+      this.logger.log(`🔒 Validating admin access for user ${user.userId || user.id} from ${clientIp}`);
+
+      const result = await this.cacheValidationService.validateAdminAccess(
+        user, 
+        clientIp, 
+        origin, 
+        userAgent
+      );
+
+      if (!result.isValid) {
+        this.logger.warn(`❌ Admin access denied: ${result.message}`);
+        throw new ForbiddenException(result.message);
+      }
+
+      this.logger.log(`✅ Admin access granted: ${result.message}`);
+      
+      // Store validation result in request for later use
+      request.validationResult = result;
+      
+      return true;
+
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error('Admin access validation error:', error);
+      throw new ForbiddenException('Admin access validation failed');
+    }
+  }
+
+  /**
+   * 🔥 HYBRID ACCESS VALIDATION
+   * Validates both global user types (SUPERADMIN) and institute user types (INSTITUTE_ADMIN)
+   */
+  private async validateHybridAccess(
+    request: any,
+    user: any,
+    validation: HybridAccessValidation
+  ): Promise<boolean> {
+    try {
+      this.logger.log(`🔥 Validating hybrid access for user ${user.userId || user.id}`);
+
+      // First, try global user type validation
+      if (validation.allowedGlobalUserTypes.length > 0) {
+        try {
+          const globalResult = await this.cacheValidationService.validateGlobalUserType(
+            user,
+            validation.allowedGlobalUserTypes
+          );
+
+          if (globalResult.isValid) {
+            this.logger.log(`✅ Hybrid validation passed via global access: ${globalResult.message}`);
+            return true;
+          }
+        } catch (error) {
+          // Global validation failed, try institute validation
+          this.logger.debug(`Global validation failed, trying institute validation`);
+        }
+      }
+
+      // If global validation failed or not applicable, try institute validation
+      if (validation.allowedInstituteUserTypes.length > 0 && validation.instituteIdParam) {
+        try {
+          const instituteId = this.extractParam(request, validation.instituteIdParam);
+          
+          const instituteResult = await this.cacheValidationService.validateInstituteUserType(
+            user,
+            instituteId,
+            validation.allowedInstituteUserTypes
+          );
+
+          if (instituteResult.isValid) {
+            this.logger.log(`✅ Hybrid validation passed via institute access: ${instituteResult.message}`);
+            return true;
+          }
+        } catch (error) {
+          this.logger.debug(`Institute validation also failed`);
+        }
+      }
+
+      // Both validations failed
+      const globalTypes = validation.allowedGlobalUserTypes.join(', ');
+      const instituteTypes = validation.allowedInstituteUserTypes.join(', ');
+      const message = `Access denied. Required: Global types [${globalTypes}] OR Institute types [${instituteTypes}]`;
+      
+      this.logger.warn(`❌ Hybrid validation failed: ${message}`);
+      throw new ForbiddenException(message);
+
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error('Hybrid validation error:', error);
+      throw new ForbiddenException('Hybrid access validation failed');
+    }
+  }
+
+  /**
+   * Extract client IP from request headers
+   */
+  private extractClientIp(request: any): string {
+    const clientIp = request.headers['cf-connecting-ip'] ||
+           request.headers['x-real-ip'] ||
+           request.headers['x-forwarded-for']?.split(',')[0] ||
+           request.headers['x-client-ip'] ||
+           request.connection?.remoteAddress ||
+           request.socket?.remoteAddress ||
+           request.ip ||
+           'unknown';
+    
+    return typeof clientIp === 'string' ? clientIp.trim() : 'unknown';
+  }
+}

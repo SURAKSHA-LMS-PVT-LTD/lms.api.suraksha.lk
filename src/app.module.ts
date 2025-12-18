@@ -1,0 +1,204 @@
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AuthModule } from './auth/auth.module';
+import { CommonModule } from './common/common.module';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
+import { CSRFProtectionMiddleware } from './common/middleware/csrf-protection.middleware';
+import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { DataMaskingInterceptor } from './common/interceptors/data-masking.interceptor';
+import { UrlTransformInterceptor } from './common/interceptors/url-transform.interceptor';
+import { DateTransformInterceptor } from './common/interceptors/date-transform.interceptor';
+import { UserEntity } from './modules/user/entities/user.entity';
+import { InstituteModule } from './modules/institute/institute.module';
+import { UsersModule } from './modules/user/user.module';
+import { ParentEntity } from './modules/parent/entities/parent.entity';
+import { StudentModule } from './modules/student/student.module';
+import { ParentModule } from './modules/parent/parent.module';
+import { SubjectModule } from './modules/subject/subject.module';
+import { StudentEntity } from './modules/student/entities/student.entity';
+import { SubjectEntity } from './modules/subject/entities/subject.entity';
+import { InstituteEntity } from './modules/institute/entities/institute.entity';
+import { InstitueUserModule } from './modules/institute_mudules/institue_user/institue_user.module';
+import { InstitueClassModule } from './modules/institute_mudules/institue_class/institue_class.module';
+import { InstitueLecturesModule } from './modules/institute_mudules/institue_lectures/institue_lectures.module';
+import { InstituteClassStudentModule } from './modules/institute_class_modules/institute_class_student/institute_class_student.module';
+import { InstituteClassSubjectModule } from './modules/institute_class_modules/institute_class_subject/institute_class_subject.module';
+import { InstituteClassSubjectExamsModule } from './modules/institute_class_subject_modules/institute_class_subject_exams/institute_class_subject_exams.module';
+import { InstituteClassSubjectLecturesModule } from './modules/institute_class_subject_modules/institute_class_subject_lectures/institute_class_subject_lectures.module';
+import { InstituteClassSubjectResaultsModule } from './modules/institute_class_subject_modules/institute_class_subject_resaults/institute_class_subject_resaults.module';
+import { InstituteClassSubjectStudentsModule } from './modules/institute_class_subject_modules/institute_class_subject_students/institute_class_subject_students.module';
+import { InstituteClassSubjectHomeworksModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks/institute_class_subject_homeworks.module';
+import { InstituteClassSubjectHomeworksSubmissionsModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks_submissions/institute_class_subject_homeworks_submissions.module';
+import { InstituteClassSubjectEntity } from './modules/institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
+import { UserOtpEntity } from './modules/user/entities/user-otp.entity';
+import { PasswordResetTokenEntity, UserFirstLoginLogEntity } from './auth/entities/password-reset.entity';
+import { ExamplesModule } from './examples/examples.module';
+import { IdCardModule } from './modules/id-card/id-card.module';
+import { InstituteClassExamModule } from './modules/institute_class_exams/institute-class-exam.module';
+import { PaymentModule } from './modules/payment/payment.module';
+import { ApiFrontendModule } from './modules/api-frontend/api-frontend.module';
+import { FileModule } from './modules/files/file.module';
+import { SecurityModule } from './common/security.module';
+import { SmsModule } from './modules/sms/sms.module';
+import { OrganizationModule } from './modules/organization/organization.module';
+import { AdvertisementModule } from './modules/advertisement/advertisement.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
+import { PrivateTransportationModule } from './modules/private-transportation/private-transportation.module';
+import { StructuredLecturesModule } from './modules/structured-lectures/structured-lectures.module';
+import { OriginValidationGuard } from './common/guards/origin-validation.guard';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+
+@Module({
+  imports: [
+    // API Frontend Module - MUST BE FIRST for security gateway
+    ApiFrontendModule,
+    CommonModule, // Add audit logging module
+    SecurityModule, // Add security module for interceptors and guards
+    ConfigModule.forRoot({ isGlobal: true }),
+    
+    // 🔒 RATE LIMITING: Protect against brute force and DoS attacks
+    ThrottlerModule.forRoot([{
+      name: 'short',
+      ttl: 1000,    // 1 second
+      limit: 3,     // 3 requests per second per IP
+    }, {
+      name: 'medium',
+      ttl: 10000,   // 10 seconds  
+      limit: 20,    // 20 requests per 10 seconds per IP
+    }, {
+      name: 'long',
+      ttl: 60000,   // 1 minute
+      limit: 100,   // 100 requests per minute per IP
+    }]),
+    
+    // MySQL 8.x Database Configuration with MySQL2 Driver
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'mysql', // Uses MySQL2 driver automatically for MySQL 8.x compatibility
+        host: config.get('DB_HOST'),
+        port: +config.get('DB_PORT'),
+        username: config.get('DB_USERNAME'),
+        password: config.get('DB_PASSWORD'),
+        database: config.get('DB_DATABASE'),
+        entities: [
+          // __dirname + '/entities/institue/*.entity{.ts,.js}',
+          // __dirname + '/entities/institue_class/*.entity{.ts,.js}',
+          // __dirname + '/entities/institute_class_subject/*.entity{.ts,.js}',
+          __dirname + '/modules/**/entities/*.entity{.ts,.js}',
+          __dirname + '/auth/entities/*.entity{.ts,.js}',
+          __dirname + '/modules/institute_mudules/institue_class/entities/*.entity{.ts,.js}',
+          InstituteEntity, ParentEntity, UserEntity, StudentEntity, SubjectEntity, InstituteClassSubjectEntity,
+          UserOtpEntity, // OTP verification entity
+          PasswordResetTokenEntity, UserFirstLoginLogEntity
+        ],
+        synchronize: false, // ⚠️ DISABLED - Prevents auto schema sync to avoid foreign key constraint issues
+        logging: config.get('NODE_ENV') === 'development' ? ['query', 'error', 'warn', 'schema'] : false, // No logging in production for faster startup
+        // SSL configuration moved to extra section for MySQL 8.x compatibility
+        // MySQL 8.x optimized connection pool configuration
+        poolSize: 5, // Reduced for faster startup
+        connectTimeout: 30000, // 30 seconds (faster timeout)
+        timeout: 30000,
+        extra: {
+          // MySQL2 driver optimized for MySQL 8.x
+          charset: 'utf8mb4_unicode_ci',
+          timezone: '+05:30', // Sri Lanka Time (UTC+5:30)
+          connectionLimit: 5, // Reduced for faster startup
+          // Performance optimizations for MySQL 8.x
+          supportBigNumbers: true,
+          bigNumberStrings: true,
+          dateStrings: false,
+          debug: false, // Always disabled in production
+          // MySQL 8.x SSL configuration
+          ssl: config.get('NODE_ENV') === 'production' ? {
+            rejectUnauthorized: false,
+            // Enable TLS 1.2+ for MySQL 8.x
+            minVersion: 'TLSv1.2'
+          } : false,
+        },
+      }),
+    }),
+    AuthModule,
+    TypeOrmModule.forFeature([UserEntity]),
+    InstituteModule,
+    UsersModule,
+    StudentModule,
+    ParentModule,
+    SubjectModule,
+    InstitueUserModule,
+    InstitueClassModule,
+    InstitueLecturesModule,
+    InstituteClassStudentModule,
+    InstituteClassSubjectModule,
+    InstituteClassSubjectExamsModule,
+    InstituteClassSubjectLecturesModule,
+    InstituteClassSubjectResaultsModule,
+    InstituteClassSubjectStudentsModule,
+    InstituteClassSubjectHomeworksModule,
+    InstituteClassSubjectHomeworksSubmissionsModule,
+    ExamplesModule, // Add examples module
+    IdCardModule, // Add ID card generation module
+    InstituteClassExamModule, // Add institute class exams module
+    PaymentModule, // Add payment module with file uploads and admin verification
+    FileModule, // Add file proxy module for custom domain serving
+    SmsModule, // Add SMS module with payment and verification workflow
+    OrganizationModule, // Add organization module for managing organizations
+    AdvertisementModule, // Add advertisement module with caching and matching
+    AttendanceModule, // Add attendance module with DynamoDB and notifications
+    PrivateTransportationModule, // Add private transportation (bookhire) module
+    StructuredLecturesModule, // Add structured lectures module for educational content
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    // 🔒 GLOBAL ORIGIN VALIDATION: Block all direct browser/Postman access
+    {
+      provide: APP_GUARD,
+      useClass: OriginValidationGuard,
+    },
+    // 🔒 GLOBAL JWT AUTHENTICATION: Require valid JWT token on all routes
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    // 🔒 GLOBAL RATE LIMITING: Apply to all routes
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: DateTransformInterceptor, // Transform dates to ISO strings globally
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: UrlTransformInterceptor, // Transform relative URLs to full URLs globally
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLogInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: DataMaskingInterceptor,
+    },
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(
+        // Strict origin validation now handled directly in main.ts for immediate 403 blocking
+        SecurityHeadersMiddleware, 
+        CSRFProtectionMiddleware
+      )
+      .forRoutes('*'); // Apply security middleware to all routes
+  }
+}
+

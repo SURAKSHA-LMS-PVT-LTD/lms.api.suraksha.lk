@@ -1,0 +1,907 @@
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
+import { StudentBookhireAttendanceEntity } from '../entities/student-bookhire-attendance.entity';
+import { StudentBookhireEnrollmentEntity, EnrollmentStatus } from '../entities/student-bookhire-enrollment.entity';
+import { BookhireEntity } from '../entities/bookhire.entity';
+import { StudentEntity } from '../../student/entities/student.entity';
+import { AdvertisementEntity } from '../../advertisement/entities/advertisement.entity';
+import { 
+  MarkAttendanceDto, 
+  MarkAttendanceByRfidDto,
+  BulkMarkAttendanceDto, 
+  AttendanceQueryDto,
+  MarkAttendanceByEnrollmentDto
+} from '../dto/student-bookhire-attendance.dto';
+import { AttendanceNotificationService } from '../../../services/attendance-notification.service';
+import { OptimizedAdvertisementService } from '../../../services/optimized-advertisement.service';
+import { NotificationConfigService } from '../../../services/notification-config.service';
+
+export enum AttendanceStatus {
+  PRESENT = 'present',
+  ABSENT = 'absent',
+  LATE = 'late'
+}
+import { StudentBookhireEnrollmentEntity, EnrollmentStatus } from '../entities/student-bookhire-enrollment.entity'; // Use MySQL entity
+import { BookhireEntity } from '../entities/bookhire.entity'; // Use MySQL entity
+import { StudentEntity } from '../../student/entities/student.entity'; // Use MySQL entity
+import { AdvertisementEntity } from '../../advertisement/entities/advertisement.entity'; // Use MySQL entity
+import { 
+  MarkAttendanceDto, 
+  MarkAttendanceByRfidDto,
+  BulkMarkAttendanceDto, 
+  AttendanceQueryDto,
+  MarkAttendanceByEnrollmentDto
+} from '../dto/attendance.dto';
+import { AttendanceNotificationService, AttendanceNotificationData } from '../../../services/attendance-notification.service';
+import { OptimizedAdvertisementService } from '../../../services/optimized-advertisement.service';
+import { NotificationConfigService } from '../../../services/notification-config.service';
+
+@Injectable()
+export class StudentBookhireAttendanceService {
+  constructor(
+    @InjectRepository(StudentBookhireAttendanceEntity)
+    private bookhireAttendanceRepository: Repository<StudentBookhireAttendanceEntity>,
+    @InjectRepository(StudentBookhireEnrollmentEntity)
+    private enrollmentRepository: Repository<StudentBookhireEnrollmentEntity>,
+    @InjectRepository(BookhireEntity)
+    private bookhireRepository: Repository<BookhireEntity>,
+    @InjectRepository(StudentEntity)
+    private studentRepository: Repository<StudentEntity>,
+    @InjectRepository(AdvertisementEntity)
+    private advertisementRepository: Repository<AdvertisementEntity>,
+    private readonly notificationService: AttendanceNotificationService,
+    private readonly advertisementService: OptimizedAdvertisementService,
+    private readonly configService: NotificationConfigService,
+  ) {
+    console.log('🔄 StudentBookhireAttendanceService: Using TypeORM repository for BookHire attendance');
+  }
+
+  // Mark single attendance record - ENHANCED with student data including imageUrl
+  async markAttendance(
+    markAttendanceDto: MarkAttendanceDto, 
+    ownerId: string
+  ): Promise<any> {
+    // Query 1: Verify bookhire belongs to the owner
+    const bookhire = await this.bookhireRepository.findOne({
+      where: { 
+        id: markAttendanceDto.bookhireId,
+        ownerId: ownerId
+      }
+    });
+
+    if (!bookhire) {
+      throw new NotFoundException('Bookhire not found or you do not have access');
+    }
+
+    // Query 2: Get student data including user info
+    const student = await this.studentRepository.findOne({
+      where: { userId: markAttendanceDto.studentId },
+      relations: ['user']
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    const studentName = `${student.user.firstName}${student.user.lastName ? ' ' + student.user.lastName : ''}`;
+
+    // Check environment variable for enrollment verification
+    const checkEnrollmentOnly = process.env.ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS === 'true';
+
+    if (checkEnrollmentOnly) {
+      // Query 3: Verify enrollment using TypeORM (only if env var is true)
+      const enrollment = await this.enrollmentRepository.findOne({
+        where: {
+          studentId: markAttendanceDto.studentId,
+          bookhireId: markAttendanceDto.bookhireId,
+          status: EnrollmentStatus.ACTIVE
+        }
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Student not enrolled in this bookhire or enrollment not active');
+      }
+    }
+
+    // Prepare attendance data for TypeORM entity
+    const attendanceData = {
+      studentId: markAttendanceDto.studentId,
+      bookhireId: markAttendanceDto.bookhireId,
+      attendanceDate: new Date(markAttendanceDto.date),
+      pickupStatus: markAttendanceDto.status,
+      dropoffStatus: markAttendanceDto.status,
+      markedBy: ownerId,
+      pickupTime: new Date(),
+      dropoffTime: new Date(),
+      notes: `Marked at ${markAttendanceDto.time}`,
+      enrollmentId: null // Will be set if enrollment exists
+    };
+
+    // If enrollment check is enabled, get the enrollment ID
+    if (checkEnrollmentOnly) {
+      const enrollment = await this.enrollmentRepository.findOne({
+        where: {
+          studentId: markAttendanceDto.studentId,
+          bookhireId: markAttendanceDto.bookhireId,
+          status: EnrollmentStatus.ACTIVE
+        }
+      });
+      
+      if (enrollment) {
+        attendanceData.enrollmentId = enrollment.id;
+      }
+    }
+
+    // Insert attendance record using TypeORM
+    try {
+      const savedAttendance = await this.bookhireAttendanceRepository.save(attendanceData);
+      
+      // Trigger notification asynchronously (don't block the response)
+      // TODO: Update notification method to work with TypeORM entity
+      // this.processAttendanceNotifications(savedAttendance, student, bookhire)
+      //   .catch(error => {
+      //     console.error(`Failed to process notifications for attendance ${savedAttendance.id}:`, error);
+      //   });
+      
+      // Return minimal optimized response
+      return {
+        id: savedAttendance.id,
+        attendanceDate: savedAttendance.attendanceDate,
+        pickupStatus: savedAttendance.pickupStatus,
+        dropoffStatus: savedAttendance.dropoffStatus,
+        studentName: studentName,
+        imageUrl: student.imageUrl
+      };
+    } catch (error) {
+      // Handle duplicate key error for TypeORM
+      if (error.code === 'ER_DUP_ENTRY' || error.code === '23000') {
+        throw new BadRequestException('Attendance already marked for this student and date');
+      }
+      throw error;
+    }
+  }
+
+  // Mark attendance using enrollment ID - for admin/teacher use
+  async markAttendanceByEnrollment(
+    markAttendanceDto: MarkAttendanceByEnrollmentDto,
+    userId: string
+  ): Promise<any> {
+    try {
+      // Find the enrollment
+      const enrollment = await this.enrollmentRepository.findOne({
+        where: { id: markAttendanceDto.enrollmentId }
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Enrollment not found');
+      }
+
+      // Get student info
+      const student = await this.studentModel.findOne({
+        userId: enrollment.studentId
+      });
+
+      if (!student) {
+        throw new NotFoundException('Student not found');
+      }
+
+      // Get bookhire info
+      const bookhire = await this.bookhireRepository.findOne({
+        where: { id: enrollment.bookhireId }
+      });
+
+      if (!bookhire) {
+        throw new NotFoundException('Bookhire not found');
+      }
+
+      // Create attendance record using TypeORM entity
+      const attendanceData = {
+        enrollmentId: markAttendanceDto.enrollmentId,
+        studentId: enrollment.studentId,
+        bookhireId: enrollment.bookhireId,
+        attendanceDate: new Date(markAttendanceDto.attendanceDate),
+        pickupStatus: markAttendanceDto.pickupStatus || 'absent',
+        dropoffStatus: markAttendanceDto.dropoffStatus || 'absent',
+        notes: markAttendanceDto.notes,
+        markedBy: userId,
+        pickupTime: new Date(),
+        dropoffTime: new Date()
+      };
+
+      const savedAttendance = await this.bookhireAttendanceRepository.save(attendanceData);
+
+      // Trigger notification asynchronously
+      // TODO: Update notification method to work with TypeORM entity
+      // this.processAttendanceNotifications(savedAttendance, student, bookhire)
+      //   .catch(error => {
+      //     console.error(`Failed to process notifications for attendance ${savedAttendance.id}:`, error);
+      //   });
+
+      return {
+        id: savedAttendance.id,
+        enrollmentId: savedAttendance.enrollmentId,
+        attendanceDate: savedAttendance.attendanceDate,
+        pickupStatus: savedAttendance.pickupStatus,
+        dropoffStatus: savedAttendance.dropoffStatus,
+        notes: savedAttendance.notes,
+        studentName: `${student.firstName} ${student.lastName}`,
+        vehicleNumber: bookhire.vehicleNumber
+      };
+    } catch (error) {
+      // Handle duplicate key error for TypeORM
+      if (error.code === 'ER_DUP_ENTRY' || error.code === '23000') {
+        throw new BadRequestException('Attendance already marked for this enrollment and date');
+      }
+      throw error;
+    }
+  }
+
+  // Mark attendance using RFID - ENHANCED with student data including imageUrl
+  async markAttendanceByRfid(
+    markAttendanceByRfidDto: MarkAttendanceByRfidDto, 
+    ownerId: string
+  ): Promise<any> {
+    // Query 1: Verify bookhire belongs to the owner
+    const bookhire = await this.bookhireRepository.findOne({
+      where: { 
+        id: markAttendanceByRfidDto.bookhireId,
+        ownerId: ownerId
+      }
+    });
+
+    if (!bookhire) {
+      throw new NotFoundException('Bookhire not found or you do not have access');
+    }
+
+    // Check environment variable for enrollment verification FIRST
+    const checkEnrollmentOnly = process.env.ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS === 'true';
+    let enrollment;
+    let studentId;
+    let studentName = 'Unknown';
+
+    if (checkEnrollmentOnly) {
+      // Query 2: Find enrollment by Card ID using TypeORM (mapped from rfid) to get student ID (only if strict mode)
+      enrollment = await this.enrollmentRepository.findOne({
+        where: {
+          // cardId not in enrollment entity
+          bookhireId: markAttendanceByRfidDto.bookhireId,
+          status: EnrollmentStatus.ACTIVE
+        }
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Student with this Card ID not found in this bookhire');
+      }
+
+      studentId = enrollment.studentId;
+      studentName = enrollment.studentName || 'Unknown';
+    } else {
+      // Query 2: Find any enrollment by Card ID using TypeORM (mapped from rfid) regardless of bookhire (flexible mode)
+      enrollment = await this.enrollmentRepository.findOne({
+        where: {
+          // cardId not in enrollment entity
+        }
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Student with this Card ID not found in any bookhire enrollment');
+      }
+
+      studentId = enrollment.studentId;
+      studentName = enrollment.studentName || 'Unknown';
+    }
+
+    // Query 3: Get student data including imageUrl
+    const student = await this.studentModel.findOne(
+      { userId: studentId },
+      { firstName: 1, lastName: 1, imageUrl: 1, _id: 0 }
+    );
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    // Update student name if it was Unknown
+    if (studentName === 'Unknown') {
+      studentName = `${student.firstName}${student.lastName ? ' ' + student.lastName : ''}`;
+    }
+
+    const attendanceData = {
+      studentId: studentId,
+      bookhireId: markAttendanceByRfidDto.bookhireId,
+      ownerId: ownerId,
+      date: new Date(markAttendanceByRfidDto.date),
+      time: markAttendanceByRfidDto.time,
+      status: markAttendanceByRfidDto.status,
+      studentName: studentName,
+      vehicleNumber: bookhire.vehicleNumber,
+      // cardId not in enrollment entity
+      markedAt: new Date()
+    };
+
+    // Insert attendance record - let database handle duplicates via unique index
+    try {
+      const attendance = new this.attendanceModel(attendanceData);
+      const savedAttendance = await attendance.save();
+      
+      // Trigger notification asynchronously (don't block the response)
+      this.processAttendanceNotifications(savedAttendance, student, bookhire)
+        .catch(error => {
+          console.error(`Failed to process notifications for RFID attendance ${savedAttendance._id}:`, error);
+        });
+      
+      // Return minimal optimized response
+      return {
+        date: savedAttendance.date,
+        time: savedAttendance.time,
+        status: savedAttendance.status,
+        studentName: savedAttendance.studentName,
+        imageUrl: student.imageUrl
+      };
+    } catch (error) {
+      // Handle duplicate key error gracefully
+      if (error.code === 11000) {
+        throw new BadRequestException('Attendance already marked for this student and date');
+      }
+      throw error;
+    }
+  }
+
+  // Mark bulk attendance for multiple students - OPTIMIZED with batch operations
+  async markBulkAttendance(
+    bulkMarkAttendanceDto: BulkMarkAttendanceDto,
+    ownerId: string
+  ): Promise<{
+    successful: StudentBookhireAttendance[];
+    failed: { studentId: string; error: string }[];
+  }> {
+    const successful: StudentBookhireAttendance[] = [];
+    const failed: { studentId: string; error: string }[] = [];
+    const attendanceDate = new Date(bulkMarkAttendanceDto.date);
+
+    // Query 1: Verify bookhire belongs to the owner
+    const bookhire = await this.bookhireRepository.findOne({
+      where: { 
+        id: bulkMarkAttendanceDto.bookhireId,
+        ownerId: ownerId
+      }
+    });
+
+    if (!bookhire) {
+      throw new NotFoundException('Bookhire not found or you do not have access');
+    }
+
+    const studentIds = bulkMarkAttendanceDto.attendanceRecords.map(r => r.studentId);
+
+    // Check environment variable for enrollment verification
+    const checkEnrollmentOnly = process.env.ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS === 'true';
+    let validStudentIds = new Set(studentIds);
+    let studentNameMap = new Map(studentIds.map(id => [id, 'Unknown']));
+
+    if (checkEnrollmentOnly) {
+      // Query 2: Batch validation using TypeORM - Get all valid enrollments in one query (only if env var is true)
+      const validEnrollments = await this.enrollmentRepository.find({
+        where: {
+          studentId: In(studentIds),
+          bookhireId: bulkMarkAttendanceDto.bookhireId,
+          status: EnrollmentStatus.ACTIVE
+        }
+      });
+
+      validStudentIds = new Set(validEnrollments.map(e => e.studentId));
+      studentNameMap = new Map(validEnrollments.map(e => [e.studentId, ""]));
+    }
+
+    // Prepare batch insert data
+    const attendanceRecords = [];
+    
+    for (const record of bulkMarkAttendanceDto.attendanceRecords) {
+      // Validate student enrollment (only if env var is true)
+      if (checkEnrollmentOnly && !validStudentIds.has(record.studentId)) {
+        failed.push({
+          studentId: record.studentId,
+          error: 'Student not enrolled in this bookhire or enrollment not active'
+        });
+        continue;
+      }
+
+      // Prepare record for batch insert (let database handle duplicates)
+      attendanceRecords.push({
+        studentId: record.studentId,
+        bookhireId: bulkMarkAttendanceDto.bookhireId,
+        ownerId: ownerId,
+        date: attendanceDate,
+        time: bulkMarkAttendanceDto.time,
+        status: record.status,
+        studentName: studentNameMap.get(record.studentId) || 'Unknown',
+        vehicleNumber: bookhire.vehicleNumber,
+        markedAt: new Date()
+      });
+    }
+
+    // Final Query: Batch insert all valid attendance records
+    if (attendanceRecords.length > 0) {
+      try {
+        const insertedRecords = await this.attendanceModel.insertMany(attendanceRecords, { 
+          ordered: false // Continue on individual errors (handles duplicates)
+        });
+        successful.push(...insertedRecords);
+      } catch (error) {
+        // Handle partial insertion errors (including duplicates)
+        if (error.writeErrors) {
+          // Some records succeeded, some failed
+          const succeededIndexes = new Set();
+          
+          // Find which records failed
+          error.writeErrors.forEach(writeError => {
+            const failedRecord = attendanceRecords[writeError.index];
+            const errorMessage = writeError.code === 11000 
+              ? 'Attendance already marked for this student and date'
+              : writeError.errmsg || 'Database insertion error';
+            
+            failed.push({
+              studentId: failedRecord.studentId,
+              error: errorMessage
+            });
+          });
+
+          // Find succeeded records
+          error.result?.result?.insertedIds?.forEach((id, index) => {
+            if (id) {
+              succeededIndexes.add(index);
+            }
+          });
+
+          // Add succeeded records to successful array
+          attendanceRecords.forEach((record, index) => {
+            if (succeededIndexes.has(index)) {
+              successful.push({ ...record, _id: error.result.result.insertedIds[index] });
+            }
+          });
+        } else {
+          // Complete failure
+          attendanceRecords.forEach(record => {
+            failed.push({
+              studentId: record.studentId,
+              error: 'Batch insertion failed'
+            });
+          });
+        }
+      }
+    }
+
+    return { successful, failed };
+  }
+
+  // Get attendance records with filters and pagination
+  async getAttendanceRecords(
+    queryDto: AttendanceQueryDto,
+    userRole: string,
+    userId: string,
+    ownerId?: string
+  ): Promise<{
+    data: any[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    };
+  }> {
+    const filter: any = {};
+
+    // Apply role-based access control
+    if (userRole === 'bookhire-owner') {
+      filter.ownerId = ownerId;
+    } else if (userRole === 'student') {
+      filter.studentId = userId;
+    } else if (userRole === 'parent') {
+      filter.studentId = userId; // Simplified - would need parent-child relationship
+    }
+
+    // Apply query filters
+    if (queryDto.studentId) filter.studentId = queryDto.studentId;
+    if (queryDto.bookhireId) filter.bookhireId = queryDto.bookhireId;
+    if (queryDto.vehicleNumber) filter.vehicleNumber = queryDto.vehicleNumber;
+    if (queryDto.status) filter.status = queryDto.status;
+
+    // Date range filter
+    if (queryDto.startDate || queryDto.endDate) {
+      filter.date = {};
+      if (queryDto.startDate) filter.date.$gte = new Date(queryDto.startDate);
+      if (queryDto.endDate) filter.date.$lte = new Date(queryDto.endDate);
+    }
+
+    const page = queryDto.page || 1;
+    const limit = queryDto.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const [attendanceData, totalItems] = await Promise.all([
+      this.attendanceModel
+        .find(filter)
+        .sort({ date: -1, markedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('bookhireId', 'title vehicleNumber')
+        .select('-__v') // Exclude version field
+        .exec(),
+      this.attendanceModel.countDocuments(filter)
+    ]);
+
+    // Enhance attendance data with student details
+    const enhancedData = await Promise.all(
+      attendanceData.map(async (attendance) => {
+        const student = await this.studentModel.findOne(
+          { userId: attendance.studentId },
+          { firstName: 1, lastName: 1, imageUrl: 1, _id: 0 }
+        );
+
+        return {
+          studentId: attendance.studentId,
+          bookhireId: attendance.bookhireId,
+          date: attendance.date,
+          time: attendance.time,
+          status: attendance.status,
+          studentName: attendance.studentName,
+          vehicleNumber: attendance.vehicleNumber,
+          cardId: attendance.cardId,
+          markedAt: attendance.markedAt,
+          student: student ? {
+            firstName: student.firstName,
+            lastName: student.lastName,
+            imageUrl: student.imageUrl
+          } : null
+        };
+      })
+    );
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return {
+      data: enhancedData,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      }
+    };
+  }
+
+  // Get student attendance summary
+  async getStudentAttendanceSummary(
+    studentId: string,
+    bookhireId?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<{
+    studentId: string;
+    totalDays: number;
+    presentDays: number;
+    absentDays: number;
+    attendancePercentage: number;
+  }> {
+    const filter: any = { studentId };
+
+    if (bookhireId) filter.bookhireId = bookhireId;
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    const stats = await this.attendanceModel.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalDays: { $sum: 1 },
+          presentDays: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'PRESENT'] }, 1, 0]
+            }
+          },
+          absentDays: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'ABSENT'] }, 1, 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    const result = stats[0] || {
+      totalDays: 0,
+      presentDays: 0,
+      absentDays: 0
+    };
+
+    const attendancePercentage = result.totalDays > 0 
+      ? (result.presentDays / result.totalDays) * 100 
+      : 0;
+
+    return {
+      studentId,
+      ...result,
+      attendancePercentage: Math.round(attendancePercentage * 100) / 100
+    };
+  }
+
+  // Delete attendance record
+  async deleteAttendance(attendanceId: string, ownerId: string): Promise<void> {
+    const result = await this.attendanceModel.findOneAndDelete({
+      _id: attendanceId,
+      ownerId: ownerId
+    });
+
+    if (!result) {
+      throw new NotFoundException('Attendance record not found');
+    }
+  }
+
+  // Update attendance status
+  async updateAttendanceStatus(
+    attendanceId: string, 
+    newStatus: AttendanceStatus,
+    ownerId: string
+  ): Promise<StudentBookhireAttendance> {
+    const attendance = await this.attendanceModel.findOneAndUpdate(
+      {
+        _id: attendanceId,
+        ownerId: ownerId
+      },
+      { 
+        status: newStatus,
+        markedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!attendance) {
+      throw new NotFoundException('Attendance record not found');
+    }
+
+    return attendance;
+  }
+
+  /**
+   * Process attendance notifications based on subscription packages
+   * This method handles the complete notification flow including:
+   * - Advertisement retrieval and targeting
+   * - Package-based channel selection
+   * - WhatsApp session/template message handling
+   * - Retry logic with exponential backoff
+   * - Notification tracking and logging
+   */
+  private async processAttendanceNotifications(
+    attendance: StudentBookhireAttendanceDocument,
+    student: any,
+    bookhire: any
+  ): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      // Get student's full profile including subscription and contact details
+      const studentProfile = await this.studentModel.findOne(
+        { userId: attendance.studentId },
+        { 
+          subscriptionPlan: 1, 
+          email: 1, 
+          phoneNumber: 1, 
+          telegramId: 1,
+          firstName: 1,
+          lastName: 1,
+          fatherId: 1,
+          motherId: 1,
+          guardianId: 1,
+          _id: 0 
+        }
+      );
+
+      if (!studentProfile) {
+        console.error(`Student profile not found for ID: ${attendance.studentId}`);
+        return;
+      }
+
+      // Get parent contact information
+      const parentContacts = await this.getParentContactInfo(studentProfile);
+      
+      if (!parentContacts.hasValidContact) {
+        console.warn(`No valid parent contact found for student: ${attendance.studentId}`);
+        return;
+      }
+
+      // Get targeted advertisement if ads are enabled for this package
+      let advertisementData;
+      const subscriptionPlan = studentProfile.subscriptionPlan || 'FREE';
+      
+      try {
+        if (process.env.IS_ADS_FROM_DB === 'true') {
+          // Get advertisement from database
+          advertisementData = await this.advertisementService.getTargetedAdvertisementForUser(
+            attendance.studentId,
+            studentProfile,
+            parentContacts.parentProfile
+          );
+        } else {
+          // Use default advertisement from environment variables if package supports ads
+          const isAdsEnabled = this.configService.isAdsEnabled(subscriptionPlan);
+          
+          if (isAdsEnabled) {
+            advertisementData = {
+              id: 'default-env-ad',
+              mediaUrl: process.env.DEFAULT_AD_URL || 'https://letsenhance.io/static/73136da51c245e80edc6ccfe44888a99/396e9/MainBefore.jpg',
+              type: process.env.DEFAULT_AD_TYPE || 'image',
+              title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
+              content: process.env.DEFAULT_AD_CONTENT || 'Professional education services for your child\'s bright future.',
+              description: process.env.DEFAULT_AD_CONTENT || 'Professional education services for your child\'s bright future.'
+            };
+            console.log(`Using default advertisement for ${subscriptionPlan} package: ${advertisementData.title}`);
+          }
+        }
+      } catch (adError) {
+        console.warn(`Failed to get advertisement for student ${attendance.studentId}:`, adError);
+        // Continue without advertisement
+      }
+
+      // Prepare notification data
+      const notificationData: AttendanceNotificationData = {
+        studentId: attendance.studentId,
+        studentName: attendance.studentName || `${studentProfile.firstName} ${studentProfile.lastName || ''}`.trim(),
+        parentContact: parentContacts.phoneNumber,
+        parentEmail: parentContacts.email,
+        parentTelegramId: parentContacts.telegramId,
+        attendanceStatus: attendance.status,
+        date: attendance.date.toISOString().split('T')[0],
+        time: attendance.time,
+        vehicleNumber: attendance.vehicleNumber,
+        bookhireName: bookhire.title || bookhire.vehicleNumber,
+        subscriptionPlan: subscriptionPlan,
+        advertisementData: advertisementData ? {
+          id: advertisementData.id,
+          mediaUrl: advertisementData.mediaUrl,
+          mediaType: advertisementData.type,
+          title: advertisementData.title,
+          content: advertisementData.content || advertisementData.description || ''
+        } : undefined
+      };
+
+      // Send notifications
+      const notificationSummary = await this.notificationService.sendAttendanceNotification(notificationData);
+
+      // Save notification data to attendance record
+      if (notificationSummary.successfulChannels > 0) {
+        const firstSuccessfulResult = notificationSummary.results.find(r => r.success);
+        if (firstSuccessfulResult) {
+          try {
+            // Combined database operation: Update attendance record AND advertisement metrics in parallel
+            const updateOperations = [];
+            
+            // 1. Update attendance record with notification data
+            updateOperations.push(
+              this.attendanceModel.findByIdAndUpdate(attendance._id, {
+                deliveredAdId: advertisementData?.id || null,
+                messageId: firstSuccessfulResult.deliveryId || null,
+                sendMode: firstSuccessfulResult.channel
+              })
+            );
+            
+            // 2. Update advertisement metrics if ad was delivered (combined with attendance update)
+            if (notificationSummary.advertisementDelivered && advertisementData) {
+              const successfulChannels = notificationSummary.results
+                .filter(r => r.success)
+                .map(r => r.channel);
+                
+              // TODO: Update advertisement metrics with TypeORM syntax
+              // For now, commenting out complex MongoDB-style update
+              /* 
+              updateOperations.push(
+                this.advertisementRepository.update(
+                  { adId: advertisementData.id },
+                  {
+                    $inc: {
+                      'metrics.totalSent': successfulChannels.length,
+                      'metrics.impressions': 1,
+                      currentSendCount: 1
+                    },
+                    $push: {
+                      'metadata.recentDeliveries': {
+                        studentId: attendance.studentId,
+                        channels: successfulChannels,
+                        timestamp: new Date()
+                      }
+                    }
+                  }
+                )
+              );
+              */
+            }
+            
+            // Execute both operations in parallel (single combined DB request)
+            await Promise.all(updateOperations);
+            
+            console.log(`Combined update completed for attendance ${attendance._id}: ${firstSuccessfulResult.channel}, messageId: ${firstSuccessfulResult.deliveryId}${advertisementData ? ', ad metrics updated' : ''}`);
+          } catch (saveError) {
+            console.error(`Failed to save combined notification data for attendance ${attendance._id}:`, saveError);
+          }
+        }
+      }
+
+      // Calculate processing time
+      const processingDuration = Date.now() - startTime;
+
+      console.log(`Notification processing completed for attendance ${attendance._id}: ${notificationSummary.successfulChannels}/${notificationSummary.totalChannels} channels successful in ${processingDuration}ms`);
+
+    } catch (error) {
+      console.error(`Failed to process notifications for attendance ${attendance._id}:`, error);
+    }
+  }
+
+  /**
+   * Get parent contact information from student profile
+   */
+  private async getParentContactInfo(studentProfile: any): Promise<{
+    hasValidContact: boolean;
+    phoneNumber?: string;
+    email?: string;
+    telegramId?: string;
+    parentProfile?: any;
+  }> {
+    // Priority order: father, mother, guardian, student self
+    const parentIds = [
+      studentProfile.fatherId,
+      studentProfile.motherId,
+      studentProfile.guardianId
+    ].filter(Boolean);
+
+    // Try to get parent contact info
+    for (const parentId of parentIds) {
+      try {
+        const parentProfile = await this.studentModel.findOne(
+          { userId: parentId },
+          { 
+            phoneNumber: 1, 
+            email: 1, 
+            telegramId: 1,
+            firstName: 1,
+            lastName: 1,
+            city: 1,
+            province: 1,
+            occupation: 1,
+            workplace: 1,
+            _id: 0 
+          }
+        );
+
+        if (parentProfile && (parentProfile.phoneNumber || parentProfile.email)) {
+          return {
+            hasValidContact: true,
+            phoneNumber: parentProfile.phoneNumber,
+            email: parentProfile.email,
+            telegramId: parentProfile.telegramId,
+            parentProfile: parentProfile
+          };
+        }
+      } catch (error) {
+        console.warn(`Failed to get parent profile for ID ${parentId}:`, error);
+        continue;
+      }
+    }
+
+    // Fallback to student's own contact info
+    if (studentProfile.phoneNumber || studentProfile.email) {
+      return {
+        hasValidContact: true,
+        phoneNumber: studentProfile.phoneNumber,
+        email: studentProfile.email,
+        telegramId: studentProfile.telegramId,
+        parentProfile: null // No parent profile available
+      };
+    }
+
+    return { hasValidContact: false };
+  }
+}

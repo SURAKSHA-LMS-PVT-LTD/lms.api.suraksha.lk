@@ -1,0 +1,293 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Param,
+  Body,
+  Query,
+  Request,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  ParseIntPipe,
+  DefaultValuePipe,
+  BadRequestException,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../../user/enums/user-type.enum';
+import { InstituteClassSubjectPaymentService } from '../services/institute-class-subject-payment.service';
+import { CreateInstituteClassSubjectPaymentSubmissionDto, VerifyPaymentSubmissionDto } from '../dto/create-institute-class-subject-payment-submission.dto';
+import { SubmissionCreationSuccessResponseDto, PaginatedSubmissionsResponseDto, PaymentSubmissionStatusResponseDto, UserSubmissionDetailsResponseDto } from '../dto/institute-class-subject-payment-response.dto';
+import { JwtRequest } from '@common/interfaces/jwt-request.interface';
+
+@ApiTags('Institute Class Subject Payment Submissions')
+@Controller('institute-class-subject-payment-submissions')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class InstituteClassSubjectPaymentSubmissionController {
+  constructor(
+    private readonly paymentService: InstituteClassSubjectPaymentService,
+  ) {}
+
+  /**
+   * Submit payment receipt
+   * POST /institute-class-subject-payment-submissions/payment/:paymentId/submit
+   * Access: Students, Parents (own submissions only)
+   */
+  @Post('payment/:paymentId/submit')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    student: {},
+    parent: {}
+  })
+  @ApiOperation({ summary: 'Submit payment receipt URL (Student/Parent only)' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiResponse({ status: 201, description: 'Payment submitted successfully', type: SubmissionCreationSuccessResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad request - validation errors' })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
+  @ApiResponse({ status: 409, description: 'Duplicate submission' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        paymentDate: { type: 'string', format: 'date-time' },
+        transactionId: { type: 'string' },
+        submittedAmount: { type: 'number' },
+        notes: { type: 'string' },
+        receiptUrl: { type: 'string', description: 'Receipt URL from /upload/verify-and-publish' }
+      },
+      required: ['paymentDate', 'submittedAmount']
+    }
+  })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async submitPayment(
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Body() createSubmissionDto: CreateInstituteClassSubjectPaymentSubmissionDto,
+    @Request() req: JwtRequest,
+  ): Promise<SubmissionCreationSuccessResponseDto> {
+    return await this.paymentService.submitPayment(paymentId, createSubmissionDto, createSubmissionDto.receiptUrl, req.user);
+  }
+
+  /**
+   * Get all submissions for a payment
+   * GET /institute-class-subject-payment-submissions/payment/:paymentId/submissions
+   * Access: Admin/Teacher (all submissions), Students/Parents (own submissions)
+   */
+  @Get('payment/:paymentId/submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    anyInstituteRole: true
+  })
+  @ApiOperation({ summary: 'Get all submissions for a payment' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10)' })
+  @ApiResponse({ status: 200, description: 'Submissions retrieved successfully', type: PaginatedSubmissionsResponseDto })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getPaymentSubmissions(
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ): Promise<PaginatedSubmissionsResponseDto> {
+    return this.paymentService.getSubmissions(paymentId, page, limit, req.user);
+  }
+
+  /**
+   * Verify or reject a payment submission
+   * PATCH /institute-class-subject-payment-submissions/submission/:submissionId/verify
+   * Access: Institute Admin, Teachers (with subject access)
+   */
+  @Patch('submission/:submissionId/verify')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ summary: 'Verify or reject a payment submission (Admin/Teacher only)' })
+  @ApiParam({ name: 'submissionId', type: String, description: 'Submission ID' })
+  @ApiResponse({ status: 200, description: 'Submission verified successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - submission already processed' })
+  @ApiResponse({ status: 404, description: 'Submission not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async verifySubmission(
+    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Body() verifyDto: VerifyPaymentSubmissionDto,
+    @Request() req: JwtRequest,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.paymentService.verifySubmission(submissionId, verifyDto, req.user);
+  }
+
+  /**
+   * Get submission status for a payment
+   * GET /institute-class-subject-payment-submissions/payment/:paymentId/my-status
+   * Access: Students, Parents (own status only)
+   */
+  @Get('payment/:paymentId/my-status')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    student: {},
+    parent: {},
+    anyInstituteRole: true
+  })
+  @ApiOperation({ summary: 'Get my submission status for a payment' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiResponse({ status: 200, description: 'Submission status retrieved successfully', type: PaymentSubmissionStatusResponseDto })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
+  async getMySubmissionStatus(
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Request() req: JwtRequest,
+  ): Promise<PaymentSubmissionStatusResponseDto> {
+    return this.paymentService.getMySubmissionStatus(paymentId, req.user);
+  }
+
+  /**
+   * Get my submissions for an institute/class/subject
+   * GET /institute-class-subject-payment-submissions/institute/:instituteId/class/:classId/subject/:subjectId/my-submissions
+   * Access: Students, Parents (own submissions only)
+   */
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/my-submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    student: {},
+    parent: {},
+    anyInstituteRole: true
+  })
+  @ApiOperation({ summary: 'Get my submissions for a specific institute/class/subject' })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiParam({ name: 'classId', type: String, description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', type: String, description: 'Subject ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10)' })
+  @ApiResponse({ status: 200, description: 'My submissions retrieved successfully' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getMySubmissions(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getMySubmissions(instituteId, classId, subjectId, page, limit, req.user);
+  }
+
+  /**
+   * Get submission details by ID
+   * GET /institute-class-subject-payment-submissions/submission/:submissionId
+   * Access: Admin/Teacher (any submission), Students/Parents (own submission)
+   */
+  @Get('submission/:submissionId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    anyInstituteRole: true
+  })
+  @ApiOperation({ summary: 'Get submission details by ID' })
+  @ApiParam({ name: 'submissionId', type: String, description: 'Submission ID' })
+  @ApiResponse({ status: 200, description: 'Submission details retrieved successfully with comprehensive preview' })
+  @ApiResponse({ status: 404, description: 'Submission not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  async getSubmissionById(
+    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Request() req: JwtRequest,
+  ): Promise<any> {
+    return this.paymentService.getSubmissionById(submissionId, req.user);
+  }
+
+  /**
+   * Delete submission (before verification only)
+   * DELETE /institute-class-subject-payment-submissions/submission/:submissionId
+   * Access: Submission creator only (before verification)
+   */
+  @Patch('submission/:submissionId/delete')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    student: {},
+    parent: {}
+  })
+  @ApiOperation({ summary: 'Delete unverified submission (Creator only)' })
+  @ApiParam({ name: 'submissionId', type: String, description: 'Submission ID' })
+  @ApiResponse({ status: 200, description: 'Submission deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot delete verified submission' })
+  @ApiResponse({ status: 404, description: 'Submission not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not submission creator' })
+  async deleteSubmission(
+    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.deleteSubmission(submissionId, req.user);
+  }
+
+  /**
+   * Get all submissions for an institute/class/subject (Admin/Teacher)
+   * GET /institute-class-subject-payment-submissions/institute/:instituteId/class/:classId/subject/:subjectId/all-submissions
+   * Access: Institute Admin, Teachers (with subject access)
+   */
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/all-submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ summary: 'Get all submissions for a specific institute/class/subject (Admin/Teacher only)' })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiParam({ name: 'classId', type: String, description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', type: String, description: 'Subject ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
+  @ApiQuery({ name: 'status', required: false, type: String, enum: ['PENDING', 'VERIFIED', 'REJECTED'], description: 'Filter by status' })
+  @ApiResponse({ status: 200, description: 'All submissions retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getAllSubmissions(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('status') status?: string,
+    @Request() req?: any,
+  ) {
+    return this.paymentService.getAllSubmissions(instituteId, classId, subjectId, page, limit, req.user, status);
+  }
+
+  /**
+   * Get submission statistics
+   * GET /institute-class-subject-payment-submissions/institute/:instituteId/class/:classId/subject/:subjectId/stats
+   * Access: Institute Admin, Teachers (with subject access)
+   */
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/stats')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ summary: 'Get submission statistics for institute/class/subject (Admin/Teacher only)' })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiParam({ name: 'classId', type: String, description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', type: String, description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Submission statistics retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  async getSubmissionStats(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getSubmissionStats(instituteId, classId, subjectId, req.user);
+  }
+}

@@ -1,0 +1,219 @@
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { UserType } from '../../user/enums/user-type.enum';
+import { Gender } from '../../user/enums/gender.enum';
+import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
+import { Province } from '../../user/enums/province.enum';
+import { District } from '../../user/enums/district.enum';
+import { Occupation } from '../../user/enums/occupation.enum';
+
+export enum MediaType {
+  IMAGE = 'image',
+  VIDEO = 'video', 
+  AUDIO = 'audio',
+  PDF = 'pdf'
+}
+
+export enum SupportivePlatform {
+  SMS = 'sms',
+  WHATSAPP = 'whatsapp',
+  TELEGRAM = 'telegram',
+  EMAIL = 'email',
+  MOBILE_PUSH = 'mobile-push',
+  WEB_PUSH = 'web-push'
+}
+
+@Entity('advertisements')
+@Index(['isActive', 'startDate', 'endDate']) // For active ads queries (CRITICAL for attendance notifications)
+@Index(['priority']) // For priority sorting
+@Index(['mediaType']) // For media type filtering
+@Index(['createdBy']) // For created by filtering
+@Index(['targetUserTypes']) // For user type targeting
+@Index(['targetSubscriptionPlans']) // For subscription targeting
+@Index(['minBornYear', 'maxBornYear']) // For age targeting
+@Index(['targetGenders']) // For gender targeting
+export class AdvertisementEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: false })
+  title: string;
+
+  @Column({ name: 'access_key', type: 'varchar', length: 100, nullable: false })
+  accessKey: string;
+
+  @Column({ type: 'text', nullable: true })
+  description?: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  mediaUrl?: string;
+
+  @Column({ name: 'landingUrl', type: 'varchar', length: 1000, nullable: true })
+  landingUrl?: string;
+
+  @Column({ name: 'sendingUrl', type: 'varchar', length: 500, nullable: true })
+  sendingUrl?: string;
+
+  @Column({ 
+    type: 'set',
+    enum: SupportivePlatform,
+    nullable: true
+  })
+  supportivePlatforms?: SupportivePlatform[];
+
+  @Column({ 
+    type: 'enum', 
+    enum: MediaType,
+    default: MediaType.IMAGE
+  })
+  mediaType: MediaType;
+
+  // Geographic Targeting
+  @Column({ type: 'json', nullable: true })
+  targetInstituteIds?: string[];
+
+  @Column({ type: 'json', nullable: true })
+  targetCities?: string[];
+
+  @Column({ 
+    type: 'set',
+    enum: Province,
+    nullable: true
+  })
+  targetProvinces?: Province[];
+
+  @Column({ 
+    type: 'set',
+    enum: District,
+    nullable: true
+  })
+  targetDistricts?: District[];
+
+  // Demographic Targeting
+  @Column({ type: 'int', nullable: true })
+  minBornYear?: number;
+
+  @Column({ type: 'int', nullable: true })
+  maxBornYear?: number;
+
+  @Column({ 
+    type: 'set',
+    enum: Gender,
+    nullable: true
+  })
+  targetGenders?: Gender[];
+
+  @Column({ type: 'json', nullable: true })
+  targetOccupations?: Occupation[];
+
+  // User Type & Subscription Targeting
+  @Column({
+    type: 'set',
+    enum: UserType,
+    nullable: true
+  })
+  targetUserTypes?: UserType[];
+
+  @Column({
+    type: 'set', 
+    enum: SubscriptionPlan,
+    nullable: true
+  })
+  targetSubscriptionPlans?: SubscriptionPlan[];
+
+  // Campaign Settings
+  @Column({ type: 'int', default: 30 })
+  displayDuration: number;
+
+  @Column({ type: 'int', default: 1 })
+  priority: number;
+
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
+
+  @Column({ type: 'datetime', nullable: false })
+  startDate: Date;
+
+  @Column({ type: 'datetime', nullable: false })
+  endDate: Date;
+
+  @Column({ type: 'int', default: 1000 })
+  maxSendings: number;
+
+  @Column({ type: 'int', default: 0 })
+  currentSendings: number;
+
+  // 🎯 CASCADE TO PARENTS FEATURE
+  // When true, if ad matches student, automatically send SAME ad to their parents too
+  // Example: "Grade 10 girls tuition" ad → matches female student → parents also get this ad
+  @Column({ type: 'boolean', default: false })
+  cascadeToParents: boolean;
+
+  // Analytics
+  @Column({ type: 'int', default: 0 })
+  clickCount: number;
+
+  @Column({ type: 'int', default: 0 })
+  impressionCount: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  budget?: number;
+
+  @Column({ type: 'decimal', precision: 6, scale: 4, nullable: true })
+  costPerClick?: number;
+
+  @Column({ type: 'decimal', precision: 6, scale: 4, nullable: true })
+  costPerImpression?: number;
+
+  // Administration
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  createdBy?: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  // 🎯 Automatic URL transformation hook
+  @AfterLoad()
+  transformFileUrls() {
+    const baseUrl = process.env.GCS_BASE_URL || process.env.STORAGE_BASE_URL || '';
+    
+    // Transform mediaUrl
+    if (this.mediaUrl && this.mediaUrl.startsWith('/') && baseUrl) {
+      this.mediaUrl = `${baseUrl}${this.mediaUrl}`;
+    }
+  }
+
+  // Helper methods
+  isExpired(): boolean {
+    return new Date() > this.endDate;
+  }
+
+  isCurrentlyActive(): boolean {
+    const now = new Date();
+    return this.isActive && 
+           now >= this.startDate && 
+           now <= this.endDate &&
+           this.currentSendings < this.maxSendings;
+  }
+
+  canSend(): boolean {
+    return this.isCurrentlyActive() && this.currentSendings < this.maxSendings;
+  }
+
+  incrementSending(): void {
+    this.currentSendings += 1;
+  }
+
+  incrementImpression(): void {
+    this.impressionCount += 1;
+    this.incrementSending();
+  }
+
+  incrementClick(): void {
+    this.clickCount += 1;
+  }
+}
+
+

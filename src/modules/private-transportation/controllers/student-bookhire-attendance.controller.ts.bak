@@ -1,0 +1,376 @@
+import { 
+  Controller, 
+  Post, 
+  Get, 
+  Put, 
+  Delete, 
+  Body, 
+  Param, 
+  Query, 
+  UseGuards,
+  Request,
+  HttpStatus,
+  HttpCode,
+  UnauthorizedException
+} from '@nestjs/common';
+import { 
+  ApiTags, 
+  ApiOperation, 
+  ApiResponse, 
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery
+} from '@nestjs/swagger';
+import { BookhireOwnerJwtGuard } from '../guards/bookhire-owner-jwt.guard';
+import { JwtAuthGuard } from '../../../guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../../../guards/roles.guard';
+import { UserType } from '../../../types/jwt.types';
+import { StudentBookhireAttendanceService } from '../services/student-bookhire-attendance.service';
+import { AttendanceStatus } from '../schemas/student-bookhire-attendance.schema';
+import { 
+  MarkAttendanceDto, 
+  MarkAttendanceByRfidDto,
+  BulkMarkAttendanceDto, 
+  AttendanceQueryDto,
+  MarkAttendanceByEnrollmentDto
+} from '../dto/attendance.dto';
+
+@ApiTags('bookhire-attendance')
+@Controller('bookhire-attendance')
+export class StudentBookhireAttendanceController {
+  constructor(
+    private readonly attendanceService: StudentBookhireAttendanceService
+  ) {}
+
+  // ==================== BOOKHIRE OWNER ENDPOINTS ====================
+
+  @Post('mark')
+  @UseGuards(BookhireOwnerJwtGuard)
+  @HttpCode(HttpStatus.CREATED)
+  async markAttendance(
+    @Body() markAttendanceDto: MarkAttendanceDto,
+    @Request() req: any
+  ) {
+    try {
+      const attendance = await this.attendanceService.markAttendance(
+        markAttendanceDto,
+        req.user.sub
+      );
+      
+      return {
+        success: true,
+        message: 'Attendance marked successfully',
+        data: attendance
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Post('mark')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.SUPERADMIN, UserType.INSTITUTE_ADMIN, UserType.ATTENDANCE_MARKER)
+  @HttpCode(HttpStatus.CREATED)
+  async markAttendanceByEnrollment(
+    @Body() markAttendanceDto: MarkAttendanceByEnrollmentDto,
+    @Request() req: any
+  ) {
+    try {
+      const attendance = await this.attendanceService.markAttendanceByEnrollment(
+        markAttendanceDto,
+        req.user.sub
+      );
+      
+      return {
+        success: true,
+        message: 'Attendance marked successfully',
+        data: attendance
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Post('mark-rfid')
+  @UseGuards(BookhireOwnerJwtGuard)
+  @HttpCode(HttpStatus.CREATED)
+  async markAttendanceByRfid(
+    @Body() markAttendanceByRfidDto: MarkAttendanceByRfidDto,
+    @Request() req: any
+  ) {
+    try {
+      const attendance = await this.attendanceService.markAttendanceByRfid(
+        markAttendanceByRfidDto,
+        req.user.sub
+      );
+      
+      return {
+        success: true,
+        message: 'Attendance marked successfully using RFID',
+        data: attendance
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Post('mark-bulk')
+  @UseGuards(BookhireOwnerJwtGuard)
+  @HttpCode(HttpStatus.CREATED)
+  async markBulkAttendance(
+    @Body() bulkMarkAttendanceDto: BulkMarkAttendanceDto,
+    @Request() req: any
+  ) {
+    try {
+      const result = await this.attendanceService.markBulkAttendance(
+        bulkMarkAttendanceDto,
+        req.user.sub
+      );
+      
+      return {
+        success: true,
+        message: 'Bulk attendance processed',
+        data: {
+          successful: result.successful.length,
+          failed: result.failed.length,
+          details: result
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Put(':attendanceId/status/:status')
+  @UseGuards(BookhireOwnerJwtGuard)
+  async updateAttendanceStatus(
+    @Param('attendanceId') attendanceId: string,
+    @Param('status') status: AttendanceStatus,
+    @Request() req: any
+  ) {
+    try {
+      const attendance = await this.attendanceService.updateAttendanceStatus(
+        attendanceId,
+        status,
+        req.user.sub
+      );
+      
+      return {
+        success: true,
+        message: 'Attendance status updated successfully',
+        data: attendance
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Get('owner/my-attendance')
+  @UseGuards(BookhireOwnerJwtGuard)
+  async getMyBookhireAttendance(
+    @Query() queryDto: AttendanceQueryDto,
+    @Request() req: any
+  ) {
+    try {
+      const result = await this.attendanceService.getAttendanceRecords(
+        queryDto,
+        'bookhire-owner',
+        req.user.sub,
+        req.user.sub
+      );
+      
+      return {
+        success: true,
+        message: 'Attendance records retrieved successfully',
+        ...result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Delete(':attendanceId')
+  @UseGuards(BookhireOwnerJwtGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAttendance(
+    @Param('attendanceId') attendanceId: string,
+    @Request() req: any
+  ) {
+    try {
+      await this.attendanceService.deleteAttendance(attendanceId, req.user.sub);
+      
+      return {
+        success: true,
+        message: 'Attendance record deleted successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  // ==================== STUDENT/PARENT ENDPOINTS ====================
+
+  @Get('student/:studentId')
+  async getStudentAttendance(
+    @Param('studentId') studentId: string,
+    @Query() queryDto: AttendanceQueryDto
+  ) {
+    try {
+      const result = await this.attendanceService.getAttendanceRecords(
+        { ...queryDto, studentId },
+        'student',
+        studentId
+      );
+      
+      return {
+        success: true,
+        message: 'Student attendance retrieved successfully',
+        ...result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Get(':bookhireId/student/:studentId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.SUPERADMIN, UserType.STUDENT, UserType.PARENT)
+  @ApiOperation({ 
+    summary: 'Get student attendance for specific bookhire',
+    description: 'Retrieves attendance records for a specific student in a specific bookhire. Students can only access their own data, parents can access their children\'s data, and super admins have full access.'
+  })
+  @ApiParam({ name: 'bookhireId', description: 'Bookhire ID' })
+  @ApiParam({ name: 'studentId', description: 'Student ID' })
+  @ApiQuery({ name: 'startDate', required: false, description: 'Filter from date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'Filter to date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10, max: 100)' })
+  @ApiResponse({ status: 200, description: 'Attendance records retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid JWT token' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Access denied for this student' })
+  @ApiBearerAuth()
+  async getBookhireStudentAttendance(
+    @Param('bookhireId') bookhireId: string,
+    @Param('studentId') studentId: string,
+    @Query() queryDto: AttendanceQueryDto,
+    @Request() req: any
+  ) {
+    try {
+      // Validate access based on user type
+      if (req.user.userType === 'STUDENT' && req.user.subject !== studentId) {
+        throw new UnauthorizedException('Access denied: Students can only access their own attendance');
+      }
+      
+      if (req.user.userType === 'PARENT' && !req.user.studentIds?.includes(studentId)) {
+        throw new UnauthorizedException('Access denied: Parents can only access their children\'s attendance');
+      }
+
+      const result = await this.attendanceService.getAttendanceRecords(
+        { ...queryDto, studentId, bookhireId },
+        req.user.userType === 'SUPERADMIN' ? 'admin' : 'student',
+        studentId
+      );
+      
+      return {
+        success: true,
+        message: 'Bookhire student attendance retrieved successfully',
+        ...result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  @Get('student/:studentId/summary')
+  async getStudentAttendanceSummary(
+    @Param('studentId') studentId: string,
+    @Query('bookhireId') bookhireId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string
+  ) {
+    try {
+      const summary = await this.attendanceService.getStudentAttendanceSummary(
+        studentId,
+        bookhireId,
+        startDate,
+        endDate
+      );
+      
+      return {
+        success: true,
+        message: 'Student attendance summary retrieved successfully',
+        data: summary
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+
+  // ==================== GENERAL ENDPOINTS ====================
+
+  @Get('vehicle/:vehicleNumber')
+  async getAttendanceByVehicle(
+    @Param('vehicleNumber') vehicleNumber: string,
+    @Query() queryDto: AttendanceQueryDto
+  ) {
+    try {
+      const result = await this.attendanceService.getAttendanceRecords(
+        { ...queryDto, vehicleNumber },
+        'public',
+        'system'
+      );
+      
+      return {
+        success: true,
+        message: 'Vehicle attendance retrieved successfully',
+        ...result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        error: error.name
+      };
+    }
+  }
+}

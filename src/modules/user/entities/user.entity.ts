@@ -1,0 +1,124 @@
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { UserType } from '../enums/user-type.enum';
+import { Gender } from '../enums/gender.enum';
+import { SubscriptionPlan } from '../enums/subscription-plan.enum';
+import { Province } from '../enums/province.enum';
+import { District } from '../enums/district.enum';
+import { Country } from '../enums/country.enum';
+import { Language } from '../enums/language.enum';
+import { Occupation } from '../enums/occupation.enum';
+
+@Entity('users')
+// 🎯 REAL QUERY-BASED INDEXES - Based on actual codebase queries (Nov 2024)
+// Email login: auth.service.ts line 112, 643, 701
+@Index('idx_users_email_login', ['email'], { unique: true })
+// Phone lookup: user.service.ts line 654, SMS filtering
+@Index('idx_users_phone_number', ['phoneNumber'])
+// User type + active: user.service.ts line 634, 959, 1096
+@Index('idx_users_type_active', ['userType', 'isActive'])
+// Gender filtering: user.service.ts line 638, 1124, 1262
+@Index('idx_users_gender_type', ['gender', 'userType'])
+// Geographic filtering: user.service.ts line 646, 650, 1163, 1167
+@Index('idx_users_province', ['province'])
+@Index('idx_users_district', ['district'])
+// City search: user.service.ts line 642, 1171
+@Index('idx_users_city', ['city'])
+// NIC search: user.service.ts line 658, 1254
+@Index('idx_users_nic', ['nic'])
+// Active status: user.service.ts line 670, 1099
+@Index('idx_users_is_active', ['isActive'])
+export class UserEntity {
+  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  id: string;
+
+  @Column({ name: 'first_name', type: 'varchar', length: 50 })
+  firstName: string;
+
+  @Column({ name: 'last_name', type: 'varchar', length: 50 })
+  lastName: string;
+
+  @Column({ type: 'varchar', length: 60, nullable: false, unique: true, transformer: {
+    to: (value: string) => value?.toLowerCase(),
+    from: (value: string) => value?.toLowerCase()
+  }})
+  email: string;
+
+  @Column({ type: 'varchar', length: 120, nullable: true, select: false })
+  password?: string; // Bcrypt hash - exactly 60 characters (2x safety margin: 120 chars)
+
+  @Column({ name: 'phone_number', type: 'varchar', length: 15, nullable: true })
+  phoneNumber?: string;
+
+  @Column({ name: 'user_type', type: 'enum', enum: UserType, nullable: false })
+  userType: UserType;
+
+  @Column({ name: 'date_of_birth', type: 'date', nullable: true })
+  dateOfBirth?: Date;
+
+  @Column({ type: 'enum', enum: Gender, nullable: true })
+  gender?: Gender;
+
+  @Column({ name: 'nic', type: 'varchar', length: 12, unique: true, nullable: true })
+  nic?: string;
+
+  @Column({ name: 'birth_certificate_no', type: 'varchar', length: 50, unique: true, nullable: true })
+  birthCertificateNo?: string;
+
+  @Column({ name: 'address_line1', type: 'varchar', length: 50, nullable: true })
+  addressLine1?: string;
+
+  @Column({ name: 'address_line2', type: 'varchar', length: 50, nullable: true })
+  addressLine2?: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  city?: string;
+
+  @Column({ type: 'enum', enum: District})
+  district?: District;
+
+  @Column({ type: 'enum', enum: Province })
+  province?: Province;
+
+  @Column({ name: 'postal_code', type: 'varchar', length: 6, nullable: true })
+  postalCode?: string;
+
+  @Column({ type: 'enum', enum: Country, default: Country.SRI_LANKA })
+  country: Country;
+
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  updatedAt: Date;
+
+  @Column({ name: 'image_url', type: 'varchar', length: 255, nullable: true })
+  imageUrl?: string;
+
+  @Column({ name: 'id_url', type: 'varchar', length: 255, nullable: true })
+  idUrl?: string;
+
+  @Column({ name: 'subscription_plan', type: 'enum', enum: SubscriptionPlan, default: SubscriptionPlan.FREE })
+  subscriptionPlan: SubscriptionPlan;
+
+  @Column({ name: 'payment_expires_at', type: 'timestamp', nullable: true })
+  paymentExpiresAt?: Date;
+
+  @Column({ name: 'telegram_id', type: 'varchar', length: 20, nullable: true })
+  telegramId?: string;
+
+  @Column({ name: 'rfid', type: 'varchar', length: 20, unique: true, nullable: true })
+  rfid?: string;
+
+  @Column({ 
+    type: 'enum', 
+    enum: Language, 
+    default: Language.ENGLISH,
+    comment: 'User preferred language: S=Sinhala, E=English, T=Tamil'
+  })
+  language: Language;
+
+}
+

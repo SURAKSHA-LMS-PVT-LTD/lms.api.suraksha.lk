@@ -1,0 +1,41 @@
+# Ignore node modules
+node_modules
+npm-debug.log
+
+# Ignore development files
+*.md
+.git
+.gitignore
+README.md
+.env
+.env.local
+.env.development
+.env.test
+.env.productiona
+
+# Ignore test files
+test
+coverage
+.nyc_output
+
+# Ignore IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore build artifacts (we copy from dist/ in multistage)
+dist
+build
+
+# Ignore logs
+logs
+*.log
+
+# Ignore temporary files
+tmp
+temp

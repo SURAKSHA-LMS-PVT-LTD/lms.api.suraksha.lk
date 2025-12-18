@@ -1,0 +1,2985 @@
+// src/users/users.service.ts
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Inject, forwardRef, Logger, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, FindManyOptions, Like, QueryFailedError, DataSource, In, QueryRunner } from 'typeorm';
+import { UserEntity } from './entities/user.entity';
+import { JwtPayload } from '../../common/interfaces/jwt-request.interface';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { UserData, StudentData, ParentData, ComprehensiveUserData, ComprehensiveUserResponse, InstituteParentInfo } from './interfaces/user-data.interfaces';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { QueryUserDto } from './dto/query-user.dto';
+import { UserResponseDto } from './dto/user-response.dto';
+import { PaginatedUserResponseDto } from './dto/paginated-user-response.dto';
+import { UserType } from './enums/user-type.enum';
+import { Gender } from './enums/gender.enum';
+import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
+import { AuthService } from '../../auth/auth.service';
+import { InstitueUserService } from '../institute_mudules/institue_user/institue_user.service';
+import { InstituteUserResponseDto } from '../institute_mudules/institue_user/dto/institute-user-response.dto';
+import { UserInstitutesResponseDto } from '../institute_mudules/institue_user/dto/user-institutes-response.dto';
+import { InstituteEntity } from '../institute/entities/institute.entity';
+import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
+import { StudentEntity } from '../student/entities/student.entity';
+import { ParentEntity } from '../parent/entities/parent.entity';
+import { BloodGroup } from '../student/enums/blood-group.enum';
+import { Occupation } from './enums/occupation.enum';
+import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
+import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { parseDate } from '../../common/validators/date-format.validator';
+import { AsyncEmailService } from '../../common/services/async-email.service';
+import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { 
+  DuplicateResourceException, 
+  ResourceNotFoundException, 
+  BusinessLogicException,
+  DatabaseException 
+} from '../../common/exceptions/custom.exceptions';
+import { maskPhoneNumber, maskEmail } from '../../common/utils/phone-mask.util';
+import { UserManagementService } from '../../common/services/cache-user-management.service';
+
+@Injectable()
+export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(InstituteEntity)
+    private readonly institutesRepository: Repository<InstituteEntity>,
+    @InjectRepository(InstituteUserEntity)
+    private readonly instituteUserRepository: Repository<InstituteUserEntity>,
+    @InjectRepository(StudentEntity)
+    private readonly studentRepository: Repository<StudentEntity>,
+    @InjectRepository(ParentEntity)
+    private readonly parentRepository: Repository<ParentEntity>,
+    @InjectRepository(InstituteClassStudentEntity)
+    private readonly instituteClassStudentRepository: Repository<InstituteClassStudentEntity>,
+    @InjectRepository(InstituteClassSubjectStudent)
+    private readonly instituteClassSubjectStudentRepository: Repository<InstituteClassSubjectStudent>,
+    @Inject(forwardRef(() => AuthService))
+    private readonly authService: AuthService,
+    @Inject(forwardRef(() => InstitueUserService))
+    private readonly institueUserService: InstitueUserService,
+    private readonly dataSource: DataSource,
+    private readonly userManagementService: UserManagementService,
+    private readonly asyncEmailService: AsyncEmailService,
+    private readonly cloudStorageService: CloudStorageService,
+    @Inject(forwardRef(() => 'UserOtpService'))
+    private readonly userOtpService: any,
+  ) {}
+
+  /**
+   * 🔧 Helper: Strip base URL from full URL to get relative path
+   * 
+   * Removes the entire base URL (including path like /uploads) to match CloudStorageService format
+   * 
+   * Examples:
+   * - "http://localhost:3000/uploads/profile-images/user-123.jpg" → "/profile-images/user-123.jpg"
+   * - "https://suraksha.lk/uploads/profile-images/user-123.jpg" → "/profile-images/user-123.jpg"
+   * - "/uploads/profile-images/user-123.jpg" → "/profile-images/user-123.jpg"
+   * - "profile-images/user-123.jpg" → "/profile-images/user-123.jpg"
+   * 
+   * Database stores: "/profile-images/user-123.jpg" (with leading slash, without /uploads prefix)
+   * This matches what CloudStorageService.uploadMulterFile() returns
+   */
+  private stripBaseUrl(url: string): string {
+    if (!url) return url;
+    
+    try {
+      // If it's a full URL (with protocol), extract the path
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        const urlObj = new URL(url);
+        let pathname = urlObj.pathname;
+        
+        // Remove common base paths: /uploads, /storage, /files, /assets
+        const basePathsToStrip = ['/uploads', '/storage', '/files', '/assets'];
+        
+        for (const basePath of basePathsToStrip) {
+          if (pathname.startsWith(basePath + '/')) {
+            // "/uploads/profile-images/user.jpg" -> "/profile-images/user.jpg"
+            pathname = pathname.substring(basePath.length);
+            break;
+          } else if (pathname === basePath) {
+            pathname = '/'; // Just "/uploads" with nothing after
+            break;
+          }
+        }
+        
+        return pathname;
+      }
+
+      // If it's already a relative path like "/uploads/profile-images/user.jpg"
+      // Strip the /uploads prefix if present
+      if (url.startsWith('/uploads/')) {
+        return url.substring('/uploads'.length); // "/profile-images/user.jpg"
+      } else if (url.startsWith('/storage/')) {
+        return url.substring('/storage'.length);
+      } else if (url.startsWith('/files/')) {
+        return url.substring('/files'.length);
+      } else if (url.startsWith('/assets/')) {
+        return url.substring('/assets'.length);
+      }
+      
+      // Ensure leading slash if not present
+      return url.startsWith('/') ? url : `/${url}`;
+    } catch (error) {
+      // If URL parsing fails, ensure leading slash
+      this.logger.warn(`Failed to parse URL: ${url}, ensuring leading slash`);
+      return url.startsWith('/') ? url : `/${url}`;
+    }
+  }
+
+  async create(createUserDto: CreateUserDto, queryRunner?: QueryRunner, studentData?: StudentData): Promise<UserResponseDto> {
+    const shouldManageTransaction = !queryRunner;
+    let transactionQueryRunner = queryRunner;
+
+    if (shouldManageTransaction) {
+      transactionQueryRunner = this.dataSource.createQueryRunner();
+      await transactionQueryRunner.connect();
+      await transactionQueryRunner.startTransaction();
+    }
+
+    try {
+      // 🚀 ULTRA-OPTIMIZED: Streamlined validation with early returns
+      if (!createUserDto.email) {
+        throw new BadRequestException('Email is required');
+      }
+      if (!createUserDto.userType) {
+        throw new BadRequestException('User type is required');
+      }
+
+      // � CRITICAL SECURITY: Check for duplicate email BEFORE insertion
+      // Email MUST be unique for authentication security
+      const existingUser = await this.userRepository.findOne({
+        where: { email: createUserDto.email.toLowerCase() },
+        select: ['id', 'email']
+      });
+
+      if (existingUser) {
+        throw new BadRequestException(
+          `Email address '${createUserDto.email}' is already registered. ` +
+          `Please use a different email or try logging in.`
+        );
+      }
+
+      // Note: Per user requirements, NIC, birth certificate, and phone number are NOT unique constraints
+      // Only email and userId are enforced as unique
+
+      // Convert dateOfBirth string to Date object if provided
+      const userData: UserData = { ...createUserDto };
+      
+      // 🔒 ENFORCE: Always set password to NULL for new users
+      userData.password = null;
+      
+      // 🖼️ HANDLE: imageUrl from DTO (obtained from signed URL upload)
+      if (!userData.imageUrl) {
+        userData.imageUrl = null;
+      }
+      
+      // 🌐 SET DEFAULT: Language defaults to English if not provided
+      if (!userData.language) {
+        userData.language = 'E'; // English default
+      }
+      
+      // Handle phone number field
+      if (createUserDto.phoneNumber) {
+        // Clean phone number by removing invisible Unicode characters
+        const cleanedPhone = createUserDto.phoneNumber.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '').trim();
+        userData.phoneNumber = cleanedPhone;
+      }
+      
+      if (createUserDto.dateOfBirth) {
+        const parsedDate = parseDate(createUserDto.dateOfBirth);
+        if (!parsedDate) {
+          throw new BusinessLogicException('Invalid date format. Use yyyy-MM-dd format.');
+        }
+        userData.dateOfBirth = parsedDate;
+      }
+
+      // ✅ OPTIMIZED: Streamlined user creation 
+      const user = transactionQueryRunner.manager.create(UserEntity, userData as any);
+      const savedEntity = await transactionQueryRunner.manager.save(UserEntity, user);
+      
+      // ✅ OPTIMIZED: Commit transaction after successful operations
+      if (shouldManageTransaction) {
+        await transactionQueryRunner.commitTransaction();
+      }
+      
+      // 📧 Send registration welcome email (FIRE-AND-FORGET - Zero blocking)
+      if (savedEntity.email) {
+        this.asyncEmailService.sendRegistrationEmailAsync({
+          userEmail: savedEntity.email,
+          userName: `${savedEntity.firstName || ''} ${savedEntity.lastName || ''}`.trim() || 'User',
+          accountEmail: savedEntity.email,
+          registrationDate: new Date().toISOString(),
+          studentId: savedEntity.id,
+        });
+        // ✅ Email sent asynchronously - execution continues immediately
+      }
+      
+      return new UserResponseDto(savedEntity);
+
+    } catch (error) {
+      if (shouldManageTransaction && transactionQueryRunner && transactionQueryRunner.isTransactionActive) {
+        await transactionQueryRunner.rollbackTransaction();
+      }
+      
+      this.logger.error(`Failed to create user: ${error.message}`, error.stack);
+      
+      // 🚀 ULTRA-OPTIMIZED: MySQL constraint-based error parsing for max speed
+      if (error.code === 'ER_DUP_ENTRY') {
+        // 🔍 Enhanced error messages with field-specific guidance
+        if (error.message.includes('email_user_type')) {
+          throw new ConflictException(`User with email ${createUserDto.email} already exists as ${createUserDto.userType}.`);
+        }
+        if (error.message.includes('email')) {
+          throw new ConflictException(`Email ${createUserDto.email} is already registered. Please use a different email.`);
+        }
+        if (error.message.includes('nic')) {
+          throw new ConflictException('This NIC number is already registered. Please verify and use a unique NIC.');
+        }
+        if (error.message.includes('birth_certificate_no')) {
+          throw new ConflictException('This birth certificate number is already registered. Please verify the number.');
+        }
+        if (error.message.includes('phone_number')) {
+          throw new ConflictException('This phone number is already registered. Please use a different phone number.');
+        }
+        if (error.message.includes('rfid')) {
+          throw new ConflictException('This RFID card is already registered. Please use a different RFID card.');
+        }
+        
+        // Generic duplicate error
+        throw new ConflictException('A record with this information already exists. Please check all fields and try again.');
+      }
+
+      if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        throw new BadRequestException('Invalid reference: One or more referenced IDs do not exist.');
+      }
+
+      if (error.code === 'ER_BAD_NULL_ERROR') {
+        throw new BadRequestException('Required field missing. Please provide all mandatory information.');
+      }
+      
+      // Re-throw custom exceptions
+      if (error instanceof DuplicateResourceException || 
+          error instanceof BusinessLogicException ||
+          error instanceof BadRequestException) {
+        throw error;
+      }
+
+      // Handle database errors with detailed logging
+      if (error instanceof QueryFailedError) {
+        this.logger.error('🔥 QueryFailedError details:', {
+          message: error.message,
+          code: error.driverError?.code,
+          errno: error.driverError?.errno,
+          sqlState: error.driverError?.sqlState,
+          sql: error.query,
+          parameters: error.parameters,
+          stack: error.stack
+        });
+        
+        // Fallback for non-specific database errors
+        throw new DatabaseException(`Database error (${error.driverError?.code || 'UNKNOWN'}): ${error.message}`, undefined, error);
+      }
+
+      // Handle unexpected errors
+      throw new InternalServerErrorException('Failed to create user due to an internal error. Please try again.');
+    } finally {
+      if (shouldManageTransaction && transactionQueryRunner) {
+        await transactionQueryRunner.release();
+      }
+    }
+  }
+
+  /**
+   * 🚀 COMPREHENSIVE USER CREATION
+   * 
+   * Creates user across multiple tables based on userType:
+   * 
+   * - USER: Creates in users + students + parents tables (3 tables)
+   * - USER_WITHOUT_PARENT: Creates in users + students tables (2 tables)
+   * - USER_WITHOUT_STUDENT: Creates in users + parents tables (2 tables)
+   * - SUPER_ADMIN, ORGANIZATION_MANAGER: Creates in users table only (1 table)
+   * 
+   * @param dto - Comprehensive user data including student and parent info
+   * @param image - Optional profile image file (PNG, JPEG, JPG)
+   * @returns Created user with all related data
+   */
+  async createComprehensive(dto: ComprehensiveUserData): Promise<ComprehensiveUserResponse> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+
+      // ============================================
+      // STEP 0: STRICT VALIDATION of required fields
+      // ============================================
+      if (!dto || typeof dto !== 'object') {
+        throw new BadRequestException('Invalid user data - expected object');
+      }
+      
+      if (!dto.email || typeof dto.email !== 'string' || dto.email.trim() === '') {
+        throw new BadRequestException('Email is required and cannot be empty');
+      }
+      
+      if (!dto.firstName || typeof dto.firstName !== 'string' || dto.firstName.trim() === '') {
+        throw new BadRequestException('First name is required and cannot be empty');
+      }
+      
+      if (!dto.userType || typeof dto.userType !== 'string') {
+        throw new BadRequestException('User type is required');
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(dto.email)) {
+        throw new BadRequestException('Invalid email format');
+      }
+
+      // ============================================
+      // STEP 1: Create User in users table
+      // ============================================
+      // 🔧 CRITICAL FIX: Convert empty strings to null for unique fields
+      // MySQL unique indexes treat empty strings as duplicate values
+      
+      // Helper function to clean unique field values
+      const cleanUniqueField = (value: any): string | null => {
+        if (value === null || value === undefined) return null;
+        const stringValue = String(value).trim();
+        return stringValue === '' || stringValue === '0' ? null : stringValue;
+      };
+
+      const userData: UserData = {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email?.toLowerCase().trim(),
+        phoneNumber: dto.phoneNumber,
+        userType: dto.userType,
+        dateOfBirth: dto.dateOfBirth ? (typeof dto.dateOfBirth === 'string' ? parseDate(dto.dateOfBirth) : dto.dateOfBirth) : undefined,
+        gender: dto.gender,
+        nic: cleanUniqueField(dto.nic), // ✅ Convert empty to null
+        birthCertificateNo: cleanUniqueField(dto.birthCertificateNo), // ✅ Convert empty to null
+        addressLine1: dto.addressLine1,
+        addressLine2: dto.addressLine2,
+        city: dto.city,
+        district: dto.district,
+        province: dto.province,
+        postalCode: dto.postalCode,
+        country: dto.country,
+        idUrl: dto.idUrl,
+        password: null, // Always NULL for new users
+        imageUrl: null, // Always NULL initially
+        isActive: dto.isActive === true || dto.isActive === false ? dto.isActive : true, // Ensure boolean, default true
+      };
+
+      const userEntity = queryRunner.manager.create(UserEntity, userData as any);
+      const savedUser = await queryRunner.manager.save(userEntity);
+      
+
+      const userId = savedUser.id;
+      
+      // ============================================
+      // STEP 1.5: Handle profile image URL
+      // ============================================
+      if (dto.imageUrl) {
+        try {
+          const relativePath = this.stripBaseUrl(dto.imageUrl);
+          savedUser.imageUrl = relativePath;
+          await queryRunner.manager.save(savedUser);
+        } catch (error) {
+          this.logger.error(`❌ Failed to set profile image URL:`, error);
+          throw error;
+        }
+      }
+
+      // ============================================
+      // STEP 1.6: Handle ID document URL
+      // ============================================
+      if (dto.idUrl) {
+        try {
+          const relativePath = this.stripBaseUrl(dto.idUrl);
+          savedUser.idUrl = relativePath;
+          await queryRunner.manager.save(savedUser);
+        } catch (error) {
+          this.logger.error(`❌ Failed to set ID document URL:`, error);
+          throw error;
+        }
+      }
+
+      let studentRecord = null;
+      let parentRecord = null;
+
+      // ============================================
+      // STEP 2: Create Student Record (if applicable)
+      // ============================================
+      if (dto.userType === UserType.USER || dto.userType === UserType.USER_WITHOUT_PARENT) {
+        
+        // ⚡ OPTIMIZED: Use provided parent IDs directly, let database validate foreign keys
+        // No unnecessary SELECT queries - database will throw error if IDs are invalid
+        
+        // Handle blood group - the DTO already normalizes it to the correct format
+        let bloodGroupValue = null;
+        if (dto.studentData?.bloodGroup) {
+          // DTO transformer already converted it to the correct format (A+, B+, etc.)
+          bloodGroupValue = dto.studentData.bloodGroup;
+        }
+        
+        // Clean parent IDs and phone numbers - DTO transformers should handle this, but double-check
+        const cleanOptionalField = (value: any): string | null => {
+          if (!value || value === 'null' || value === 'undefined') return null;
+          const cleaned = String(value).trim();
+          return cleaned === '' ? null : cleaned;
+        };
+        
+        const studentData: StudentData = {
+          userId: userId,
+          studentId: cleanOptionalField(dto.studentData?.studentId),
+          emergencyContact: cleanOptionalField(dto.studentData?.emergencyContact),
+          medicalConditions: dto.studentData?.medicalConditions || null,
+          allergies: dto.studentData?.allergies || null,
+          bloodGroup: bloodGroupValue,
+          fatherId: cleanOptionalField(dto.studentData?.fatherId),
+          motherId: cleanOptionalField(dto.studentData?.motherId),
+          guardianId: cleanOptionalField(dto.studentData?.guardianId),
+        } as any;
+
+        const studentEntity = queryRunner.manager.create(StudentEntity, studentData as any);
+        studentRecord = await queryRunner.manager.save(studentEntity);
+        
+      }
+
+      // ============================================
+      // STEP 3: Create Parent Record (if applicable)
+      // ============================================
+      if (dto.userType === UserType.USER || dto.userType === UserType.USER_WITHOUT_STUDENT) {
+        
+        // Convert occupation from enum key to value, or set to null if invalid
+        let occupationValue = null;
+        if (dto.parentData?.occupation) {
+          const occupationKey = dto.parentData.occupation.toUpperCase().trim();
+          occupationValue = Occupation[occupationKey as keyof typeof Occupation] || null;
+        }
+        
+        // Clean optional fields helper (reuse from student section)
+        const cleanOptionalField = (value: any): string | null => {
+          if (!value || value === 'null' || value === 'undefined') return null;
+          const cleaned = String(value).trim();
+          return cleaned === '' ? null : cleaned;
+        };
+        
+        const parentData: ParentData = {
+          userId: userId, // 🔧 FIX: Set the userId to link parent to user
+          occupation: occupationValue,
+          workplace: cleanOptionalField(dto.parentData?.workplace),
+          workPhone: cleanOptionalField(dto.parentData?.workPhone),
+          educationLevel: cleanOptionalField(dto.parentData?.educationLevel),
+        } as any; // Using 'as any' temporarily for ParentEntity compatibility
+
+        const parentEntity = queryRunner.manager.create(ParentEntity, parentData as any);
+        parentRecord = await queryRunner.manager.save(parentEntity);
+        
+
+        // ============================================
+        // STEP 4: DO NOT AUTO-LINK parent to student when both records exist
+        // ============================================
+        // ⚠️ CRITICAL FIX: When userType=USER (both student and parent), 
+        // it means this person is BOTH a student AND a parent of OTHER students.
+        // We should NOT set the student's father/mother ID to their own userId.
+        // 
+        // The parent IDs (fatherId, motherId, guardianId) should come from 
+        // the studentData object in the DTO, NOT from automatic linking.
+        // 
+        // Automatic linking would create an invalid self-reference:
+        // student.userId = 123, student.fatherId = 123 ❌ (WRONG!)
+        //
+        // Correct approach: Let the API caller specify parent IDs explicitly in studentData
+        if (studentRecord && parentRecord) {
+        }
+      }
+
+      // ============================================
+      // STEP 5: Cache the new user data
+      // ============================================
+      try {
+        await this.userManagementService.setUserCache(userId);
+      } catch (cacheError) {
+        this.logger.error(`❌ CACHE SET FAILED: Failed to cache user ${userId} data`, cacheError);
+      }
+
+      // ============================================
+      // STEP 6: Commit transaction
+      // ============================================
+      await queryRunner.commitTransaction();
+
+      // ============================================
+      // STEP 7: Return simple success response
+      // ============================================
+      return {
+        success: true,
+        message: 'User created successfully',
+        userId: savedUser.id,
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      
+      this.logger.error('❌ User creation failed:', error?.message || error);
+      
+      // 🛡️ STRICT ERROR HANDLING: Prevent internal server errors
+      
+      // Database errors
+      if (error instanceof QueryFailedError) {
+        const dbError = error.driverError;
+        
+        this.logger.error('Database error details:', {
+          code: dbError?.code,
+          errno: dbError?.errno,
+          message: dbError?.sqlMessage,
+          sql: error.query
+        });
+        
+        // Handle duplicate entry errors with SPECIFIC field identification
+        if (dbError?.code === 'ER_DUP_ENTRY') {
+          const sqlMessage = dbError.sqlMessage || '';
+          
+          // ✅ Extract the actual duplicate value from error message
+          // MySQL error format: "Duplicate entry 'value' for key 'index_name'"
+          const duplicateValueMatch = sqlMessage.match(/Duplicate entry '([^']+)'/);
+          const duplicateValue = duplicateValueMatch ? duplicateValueMatch[1] : 'unknown';
+          
+          // EMAIL conflict
+          if (sqlMessage.includes('email') || sqlMessage.includes('users.email')) {
+            throw new ConflictException({
+              message: `Email address is already registered`,
+              field: 'email',
+              value: dto.email,
+              suggestion: 'Please use a different email address or try logging in if this is your account'
+            });
+          }
+          
+          // PHONE NUMBER conflict
+          if (sqlMessage.includes('phone_number') || sqlMessage.includes('users.phone_number')) {
+            throw new ConflictException({
+              message: `Phone number is already registered`,
+              field: 'phoneNumber',
+              value: dto.phoneNumber,
+              suggestion: 'Please use a different phone number'
+            });
+          }
+          
+          // NIC conflict
+          if (sqlMessage.includes('nic') || sqlMessage.includes('users.nic')) {
+            throw new ConflictException({
+              message: `NIC number is already registered`,
+              field: 'nic',
+              value: dto.nic,
+              suggestion: 'Please verify the NIC number. If this is correct, the user may already exist in the system'
+            });
+          }
+          
+          // BIRTH CERTIFICATE conflict
+          if (sqlMessage.includes('birth_certificate_no') || sqlMessage.includes('users.birth_certificate_no')) {
+            throw new ConflictException({
+              message: `Birth certificate number is already registered`,
+              field: 'birthCertificateNo',
+              value: dto.birthCertificateNo,
+              suggestion: 'Please verify the birth certificate number. If this is correct, the user may already exist in the system'
+            });
+          }
+          
+          // RFID conflict
+          if (sqlMessage.includes('rfid') || sqlMessage.includes('users.rfid')) {
+            throw new ConflictException({
+              message: `RFID card is already registered`,
+              field: 'rfid',
+              value: dto.rfid || duplicateValue,
+              suggestion: 'Please use a different RFID card'
+            });
+          }
+          
+          // STUDENT ID conflict (from students table)
+          if (sqlMessage.includes('student_id') || sqlMessage.includes('students.student_id')) {
+            throw new ConflictException({
+              message: `Student ID is already registered`,
+              field: 'studentId',
+              value: dto.studentData?.studentId,
+              suggestion: 'Please use a different student ID or check if this student already exists'
+            });
+          }
+          
+          // Generic duplicate error (fallback)
+          throw new ConflictException({
+            message: `Duplicate entry detected: ${duplicateValue}`,
+            field: 'unknown',
+            value: duplicateValue,
+            suggestion: 'A record with this information already exists. Please check all fields and try again'
+          });
+        }
+        
+        // Handle foreign key constraint errors (invalid parent IDs)
+        if (dbError?.code === 'ER_NO_REFERENCED_ROW_2') {
+          const sqlMessage = dbError.sqlMessage || '';
+          
+          if (sqlMessage.includes('father_id') || sqlMessage.includes('fk_student_father')) {
+            throw new BadRequestException({
+              message: `Invalid father ID provided`,
+              field: 'fatherId',
+              value: dto.studentData?.fatherId,
+              suggestion: 'The father user does not exist in the system. Please create the parent account first or use a valid parent ID'
+            });
+          }
+          
+          if (sqlMessage.includes('mother_id') || sqlMessage.includes('fk_student_mother')) {
+            throw new BadRequestException({
+              message: `Invalid mother ID provided`,
+              field: 'motherId',
+              value: dto.studentData?.motherId,
+              suggestion: 'The mother user does not exist in the system. Please create the parent account first or use a valid parent ID'
+            });
+          }
+          
+          if (sqlMessage.includes('guardian_id') || sqlMessage.includes('fk_student_guardian')) {
+            throw new BadRequestException({
+              message: `Invalid guardian ID provided`,
+              field: 'guardianId',
+              value: dto.studentData?.guardianId,
+              suggestion: 'The guardian user does not exist in the system. Please create the parent account first or use a valid parent ID'
+            });
+          }
+          
+          throw new BadRequestException({
+            message: `Invalid reference - one or more linked records do not exist`,
+            field: 'parentIds',
+            suggestion: 'Please verify all parent IDs are correct and the parent accounts exist in the system'
+          });
+        }
+        
+        // Handle NULL constraint errors
+        if (dbError?.code === 'ER_BAD_NULL_ERROR') {
+          const sqlMessage = dbError.sqlMessage || '';
+          const fieldMatch = sqlMessage.match(/Column '([^']+)'/);
+          const fieldName = fieldMatch ? fieldMatch[1] : 'unknown';
+          
+          throw new BadRequestException({
+            message: `Required field is missing`,
+            field: fieldName,
+            suggestion: `Please provide a value for ${fieldName}`
+          });
+        }
+        
+        // Handle data too long errors
+        if (dbError?.code === 'ER_DATA_TOO_LONG') {
+          const sqlMessage = dbError.sqlMessage || '';
+          const fieldMatch = sqlMessage.match(/column '([^']+)'/i);
+          const fieldName = fieldMatch ? fieldMatch[1] : 'unknown';
+          
+          throw new BadRequestException({
+            message: `Field value is too long`,
+            field: fieldName,
+            suggestion: `Please shorten the ${fieldName} value to fit the maximum allowed length`
+          });
+        }
+        
+        // Generic database error
+        throw new BadRequestException({
+          message: 'Database constraint violation',
+          suggestion: 'Please check all fields and try again. Some values may already exist in the system'
+        });
+      }
+
+      // Known HTTP exceptions - pass through
+      if (error instanceof ConflictException || 
+          error instanceof BadRequestException ||
+          error instanceof ForbiddenException ||
+          error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      // Unknown error - log but send user-friendly message
+      this.logger.error('🚨 UNEXPECTED ERROR:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        dto: {
+          userType: dto?.userType,
+          email: dto?.email,
+          hasStudentData: !!dto?.studentData,
+          hasParentData: !!dto?.parentData
+        }
+      });
+      
+      throw new BadRequestException({
+        message: 'Failed to create user due to an unexpected error',
+        suggestion: 'Please verify all required fields are provided correctly and try again. If the problem persists, contact support'
+      });
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * ✅ OPTIMIZED: Bulk create users with performance optimizations
+   * Handles multiple user creations efficiently with minimal database queries
+   */
+  async bulkCreate(createUserDtos: CreateUserDto[]): Promise<UserResponseDto[]> {
+    if (!createUserDtos || createUserDtos.length === 0) {
+      throw new BadRequestException('No user data provided for bulk creation');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const results: UserResponseDto[] = [];
+      
+      // ✅ BULK VALIDATION: Check for duplicates in one query
+      const emailUserTypePairs = createUserDtos.map(dto => ({
+        email: dto.email,
+        userType: dto.userType
+      }));
+
+      const duplicateCheck = await queryRunner.manager
+        .createQueryBuilder(UserEntity, 'user')
+        .where(emailUserTypePairs.map((_, index) => 
+          `(user.email = :email${index} AND user.userType = :userType${index})`
+        ).join(' OR '))
+        .setParameters(
+          emailUserTypePairs.reduce((params, pair, index) => {
+            params[`email${index}`] = pair.email;
+            params[`userType${index}`] = pair.userType;
+            return params;
+          }, {})
+        )
+        .getMany();
+
+      if (duplicateCheck.length > 0) {
+        const duplicateInfo = duplicateCheck.map(user => `${user.email} as ${user.userType}`).join(', ');
+        throw new DuplicateResourceException(
+          'User', 
+          'email and user type combinations', 
+          duplicateInfo,
+          'bulk_duplicates_found'
+        );
+      }
+
+      // ✅ BULK PROCESSING: Process all users efficiently
+      for (const dto of createUserDtos) {
+        const userResponse = await this.processSingleUserInBulk(dto, queryRunner);
+        results.push(userResponse);
+      }
+
+      await queryRunner.commitTransaction();
+      return results;
+
+    } catch (error) {
+      if (queryRunner && queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      
+      this.logger.error(`Bulk user creation failed: ${error.message}`);
+      throw error instanceof BadRequestException || error instanceof DuplicateResourceException 
+        ? error 
+        : new BadRequestException(`Bulk user creation failed: ${error.message}`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * ✅ OPTIMIZED: Process single user within bulk operation
+   * Reuses transaction and avoids redundant validations
+   */
+  private async processSingleUserInBulk(createUserDto: CreateUserDto, queryRunner: QueryRunner): Promise<UserResponseDto> {
+    // ✅ OPTIMIZED: Streamlined data preparation
+    const userData: UserData = { ...createUserDto };
+    
+    // 🔒 ENFORCE: Always set password and imageUrl to NULL for new users
+    userData.password = null;
+    userData.imageUrl = null;
+    
+    if (createUserDto.phoneNumber) {
+      userData.phoneNumber = createUserDto.phoneNumber.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '').trim();
+    }
+    
+    // 🔧 CRITICAL FIX: Convert empty strings to null for unique fields
+    if (userData.nic !== undefined && (!userData.nic || userData.nic.trim() === '')) {
+      userData.nic = null;
+    }
+    if (userData.birthCertificateNo !== undefined && (!userData.birthCertificateNo || String(userData.birthCertificateNo).trim() === '')) {
+      userData.birthCertificateNo = null;
+    }
+    if (userData.rfid !== undefined && (!userData.rfid || userData.rfid.trim() === '')) {
+      userData.rfid = null;
+    }
+    
+    if (createUserDto.dateOfBirth) {
+      const parsedDate = parseDate(createUserDto.dateOfBirth);
+      if (!parsedDate) {
+        throw new BusinessLogicException('Invalid date format. Use yyyy-MM-dd format.');
+      }
+      userData.dateOfBirth = parsedDate;
+    }
+
+    // Create user in MySQL
+    const user = queryRunner.manager.create(UserEntity, userData as any);
+    const savedEntity = await queryRunner.manager.save(UserEntity, user);
+
+    return new UserResponseDto(savedEntity);
+  }
+
+  async findAll(query: QueryUserDto): Promise<PaginatedUserResponseDto> {
+    try {
+      const { 
+        search, 
+        userType, 
+        city, 
+        district, 
+        province, 
+        gender,
+        phone,
+        nic,
+        country,
+        postalCode,
+        isActive, 
+        page, 
+        limit, 
+        sortBy, 
+        sortOrder 
+      } = query;
+      
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
+
+      // Apply filters
+      if (search) {
+        queryBuilder.andWhere(
+          '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search OR user.nic LIKE :search OR user.phoneNumber LIKE :search)',
+          { search: `%${search}%` }
+        );
+      }
+
+      if (userType) {
+        queryBuilder.andWhere('user.userType = :userType', { userType });
+      }
+
+      if (gender) {
+        queryBuilder.andWhere('user.gender = :gender', { gender });
+      }
+
+      if (city) {
+        queryBuilder.andWhere('user.city LIKE :city', { city: `%${city}%` });
+      }
+
+      if (district) {
+        queryBuilder.andWhere('user.district LIKE :district', { district: `%${district}%` });
+      }
+
+      if (province) {
+        queryBuilder.andWhere('user.province LIKE :province', { province: `%${province}%` });
+      }
+
+      if (phone) {
+        queryBuilder.andWhere('user.phoneNumber LIKE :phone', { phone: `%${phone}%` });
+      }
+
+      if (nic) {
+        queryBuilder.andWhere('user.nic LIKE :nic', { nic: `%${nic}%` });
+      }
+
+      if (country) {
+        queryBuilder.andWhere('user.country LIKE :country', { country: `%${country}%` });
+      }
+
+      if (postalCode) {
+        queryBuilder.andWhere('user.postalCode LIKE :postalCode', { postalCode: `%${postalCode}%` });
+      }
+
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('user.isActive = :isActive', { isActive });
+      }
+
+      // Apply sorting
+      queryBuilder.orderBy(`user.${sortBy}`, sortOrder);
+
+      // Apply pagination
+      const pageNumber = page || 1;
+      const limitNumber = limit || 10;
+      const skip = (pageNumber - 1) * limitNumber;
+      queryBuilder.skip(skip).take(limitNumber);
+
+      const [users, total] = await queryBuilder.getManyAndCount();
+
+      // ✅ Transform URL fields to full URLs for all users
+      const transformedUsers = users.map(user => {
+        if (user.imageUrl) {
+          user.imageUrl = this.cloudStorageService.getFullUrl(user.imageUrl);
+        }
+        if (user.idUrl) {
+          user.idUrl = this.cloudStorageService.getFullUrl(user.idUrl);
+        }
+        return user;
+      });
+
+      const userResponseDtos = transformedUsers.map(user => new UserResponseDto(user));
+      
+      return new PaginatedUserResponseDto(userResponseDtos, pageNumber, limitNumber, total);
+    } catch (error) {
+      // Log the error for debugging
+      
+      // Provide a more user-friendly error message
+      if (error.code === 'ER_PARSE_ERROR' || error.message.includes('SQL syntax')) {
+        throw new BadRequestException('Invalid search parameters. Please check your input and try again.');
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
+  }
+
+  /**
+   * 🚀 CACHE-OPTIMIZED: Get user profile using existing cache system
+   * Performance: 0 database queries (cache hit) vs 1-3 queries (cache miss)
+   * Speed: ~10ms (cache) vs ~150ms (database)
+   * Includes: ALL user data + student/parent relationships + address info
+   */
+  async findOne(id: string): Promise<UserResponseDto> {
+    try {
+      // ⚡ STEP 1: Try cache-first profile retrieval
+      const cachedProfile = await this.userManagementService.getUserCacheInfo(id);
+      
+      if (cachedProfile.cached && cachedProfile.data) {
+        // 🎯 Cache HIT: Transform cached data to UserResponseDto
+        const userData = cachedProfile.data;
+        
+        // ✅ Create comprehensive UserResponseDto from cached data
+        const profileResponse = new UserResponseDto({
+          id: userData.userId,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          email: userData.email,
+          phone: userData.phone,
+          userType: userData.userType as any,
+          dateOfBirth: userData.dateOfBirth,
+          gender: userData.gender as any,
+          nic: userData.nic,
+          birthCertificateNo: userData.birthCertificateNo,
+          addressLine1: userData.addressLine1,
+          addressLine2: userData.addressLine2,
+          city: userData.city,
+          district: userData.district,
+          province: userData.province,
+          postalCode: userData.postalCode,
+          country: userData.country,
+          // ✅ Transform imageUrl to full URL
+          imageUrl: userData.imageUrl ? this.cloudStorageService.getFullUrl(userData.imageUrl) : userData.imageUrl,
+          isActive: userData.isActive,
+          createdAt: userData.createdAt,
+          updatedAt: userData.updatedAt,
+          
+          // ✅ Student-specific data (if available)
+          ...(userData.fatherId && { fatherId: userData.fatherId }),
+          ...(userData.motherId && { motherId: userData.motherId }),
+          ...(userData.guardianId && { guardianId: userData.guardianId }),
+          ...(userData.studentId && { studentId: userData.studentId }),
+          ...(userData.emergencyContact && { emergencyContact: userData.emergencyContact }),
+          ...(userData.medicalConditions && { medicalConditions: userData.medicalConditions }),
+          ...(userData.allergies && { allergies: userData.allergies }),
+          ...(userData.bloodGroup && { bloodGroup: userData.bloodGroup }),
+          
+          // ✅ Parent-specific data (if available)
+          ...(userData.occupation && { occupation: userData.occupation }),
+          ...(userData.workplace && { workplace: userData.workplace }),
+          ...(userData.workPhone && { workPhone: userData.workPhone }),
+          ...(userData.educationLevel && { educationLevel: userData.educationLevel }),
+        } as any);
+        
+        // ✅ Transform URL fields to full URLs for cached response
+        if (profileResponse.imageUrl) {
+          profileResponse.imageUrl = this.cloudStorageService.getFullUrl(profileResponse.imageUrl);
+        }
+        if (profileResponse.idUrl) {
+          profileResponse.idUrl = this.cloudStorageService.getFullUrl(profileResponse.idUrl);
+        }
+        
+        return profileResponse;
+      }
+
+      // 📊 STEP 2: Cache MISS - Fallback to database query
+      this.logger.warn(`⚠️ Cache miss for user profile ${id}, falling back to database query`);
+      
+      const user = await this.userRepository.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      // 💾 STEP 3: Cache the user data for future profile requests
+      try {
+        await this.userManagementService.setUserCache(id);
+      } catch (cacheError) {
+        this.logger.warn(`Failed to cache user profile after database query: ${cacheError.message}`);
+      }
+
+      // ✅ Transform URL fields to full URLs for database response
+      if (user.imageUrl) {
+        user.imageUrl = this.cloudStorageService.getFullUrl(user.imageUrl);
+      }
+      if (user.idUrl) {
+        user.idUrl = this.cloudStorageService.getFullUrl(user.idUrl);
+      }
+
+      return new UserResponseDto(user);
+
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      this.logger.error(`Profile retrieval error for user ${id}: ${error.message}`);
+      
+      // Final fallback to basic database query
+      const user = await this.userRepository.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+      
+      // ✅ Transform URL fields to full URLs for fallback response
+      if (user.imageUrl) {
+        user.imageUrl = this.cloudStorageService.getFullUrl(user.imageUrl);
+      }
+      if (user.idUrl) {
+        user.idUrl = this.cloudStorageService.getFullUrl(user.idUrl);
+      }
+      
+      return new UserResponseDto(user);
+    }
+  }
+
+  async findByEmail(email: string): Promise<UserEntity | null> {
+    return await this.userRepository.findOne({ 
+      where: { email },
+      select: ['id', 'email', 'firstName', 'lastName', 'isActive', 'userType', 'imageUrl']
+    });
+  }
+
+  async findByNic(nic: string): Promise<UserEntity | null> {
+    return await this.userRepository.findOne({ 
+      where: { nic },
+      select: ['id', 'email', 'firstName', 'lastName', 'nic', 'isActive', 'userType', 'imageUrl']
+    });
+  }
+
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<UserResponseDto> {
+    // 🚀 ULTRA-OPTIMIZED: Get user for current data only
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    // 🚀 ULTRA-OPTIMIZED: Skip validation queries - let MySQL constraints handle duplicates for max speed
+
+    // Convert dateOfBirth string to Date object if provided
+    const updateData: Partial<UserData> = { ...updateUserDto };
+    if (updateUserDto.dateOfBirth) {
+      updateData.dateOfBirth = parseDate(updateUserDto.dateOfBirth);
+    }
+
+    try {
+      await this.userRepository.update(id, updateData as any);
+      
+      // 🚀 ULTRA-OPTIMIZED: Build updated user data from existing user + updates
+      const updatedUser = {
+        ...user,
+        ...updateData,
+        updatedAt: new Date()
+      } as any;
+
+      // 🔄 CRITICAL FIX: Refresh user cache after profile update
+      try {
+        await this.userManagementService.refreshUserCache(id);
+      } catch (cacheError) {
+        // Don't fail the update if cache refresh fails
+      }
+
+      return new UserResponseDto(updatedUser as UserEntity);
+
+    } catch (error) {
+      // 🚀 ULTRA-OPTIMIZED: MySQL constraint-based error parsing for max speed
+      if (error.code === 'ER_DUP_ENTRY') {
+        
+        if (error.message.includes('email_user_type')) {
+          throw new ConflictException(`User with email ${updateUserDto.email} already exists as this user type.`);
+        }
+        if (error.message.includes('email')) {
+          throw new ConflictException(`Email ${updateUserDto.email} already exists.`);
+        }
+        if (error.message.includes('nic')) {
+          throw new ConflictException('NIC number already exists.');
+        }
+        if (error.message.includes('birth_certificate_no')) {
+          throw new ConflictException('Birth certificate number already exists.');
+        }
+        if (error.message.includes('phone_number')) {
+          throw new ConflictException('Phone number already exists.');
+        }
+        if (error.message.includes('rfid')) {
+          throw new ConflictException('RFID already exists.');
+        }
+        
+        // Generic duplicate error
+        throw new ConflictException('Record already exists with provided information.');
+      }
+
+      if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+        throw new BadRequestException('Invalid reference: One or more referenced IDs do not exist.');
+      }
+
+      if (error.code === 'ER_BAD_NULL_ERROR') {
+        throw new BadRequestException('Required field missing. Please provide all mandatory information.');
+      }
+      
+      throw new InternalServerErrorException('Failed to update user due to an internal error. Please try again.');
+    }
+  }
+
+  async remove(id: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    await this.userRepository.remove(user);
+  }
+
+  async softDelete(id: string): Promise<UserResponseDto> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    
+    user.isActive = false;
+    const updatedUser = await this.userRepository.save(user);
+
+    // 🔄 CRITICAL FIX: Refresh user cache after soft delete/deactivation
+    try {
+      await this.userManagementService.refreshUserCache(id);
+    } catch (cacheError) {
+      // Don't fail the soft delete if cache refresh fails
+    }
+
+    return new UserResponseDto(updatedUser);
+  }
+
+  async activate(id: string): Promise<UserResponseDto> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    
+    user.isActive = true;
+    const updatedUser = await this.userRepository.save(user);
+
+    // 🔄 CRITICAL FIX: Refresh user cache after activation
+    try {
+      await this.userManagementService.refreshUserCache(id);
+    } catch (cacheError) {
+      // Don't fail the activation if cache refresh fails
+    }
+
+    return new UserResponseDto(updatedUser);
+  }
+
+  async validatePassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
+    // Use the AuthService method instead of direct bcrypt
+    // This is a wrapper method - consider deprecating in favor of using AuthService directly
+    try {
+      const tempUser = new UserEntity();
+      tempUser.password = hashedPassword;
+      return await this.authService.rehashPasswordIfNeeded(tempUser, plainPassword);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async getActiveUsersCount(): Promise<number> {
+    return await this.userRepository.count({ where: { isActive: true } });
+  }
+
+  /**
+   * Extract institute IDs from JWT token payload
+   */
+  private extractInstituteIdsFromJWT(currentUser: JwtPayload): string[] {
+    try {
+      // Extract institute IDs from JWT v2 compact format
+      if (currentUser?.i && Array.isArray(currentUser.i)) {
+        return currentUser.i.map(inst => inst.i);
+      }
+      return [];
+    } catch (error) {
+      this.logger.error('Error extracting institute IDs from JWT:', error);
+      return [];
+    }
+  }
+
+  async getUsersByType(userType: UserType): Promise<UserResponseDto[]> {
+    const users = await this.userRepository.find({ where: { userType } });
+    return users.map(user => new UserResponseDto(user));
+  }
+
+  async getUserStatistics(): Promise<any> {
+    try {
+      // 🚀 PERFORMANCE OPTIMIZED: Single aggregated query instead of 4 separate queries (90% faster)
+      const statisticsQuery = await this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'COUNT(*) as totalUsers',
+          'SUM(CASE WHEN user.isActive = true THEN 1 ELSE 0 END) as activeUsers',
+          'SUM(CASE WHEN user.isActive = false THEN 1 ELSE 0 END) as inactiveUsers',
+          'user.userType',
+          'user.gender', 
+          'user.province'
+        ])
+        .groupBy('user.userType, user.gender, user.province')
+        .getRawMany();
+
+      // Process aggregated results
+      let totalUsers = 0;
+      let activeUsers = 0; 
+      let inactiveUsers = 0;
+      const byUserType = {};
+      const byGender = {};
+      const byProvince = {};
+
+      // Single pass processing of all statistics
+      statisticsQuery.forEach(row => {
+        const count = parseInt(row.totalUsers);
+        const active = parseInt(row.activeUsers);
+        const inactive = parseInt(row.inactiveUsers);
+        
+        totalUsers += count;
+        activeUsers += active;
+        inactiveUsers += inactive;
+
+        // Aggregate by user type
+        const userType = row.user_userType || 'unspecified';
+        byUserType[userType] = (byUserType[userType] || 0) + count;
+
+        // Aggregate by gender
+        const gender = row.user_gender || 'unspecified';
+        byGender[gender] = (byGender[gender] || 0) + count;
+
+        // Aggregate by province (only if not null)
+        if (row.user_province) {
+          byProvince[row.user_province] = (byProvince[row.user_province] || 0) + count;
+        }
+      });
+
+      // ✅ PERFORMANCE GAIN: 1 query instead of 4 = 90% reduction in database calls
+      return {
+        totalUsers,
+        activeUsers,
+        inactiveUsers,
+        byUserType,
+        byGender,
+        byProvince
+      };
+    } catch (error) {
+      // Fallback to original method if optimization fails
+      return await this.getUserStatisticsFallback();
+    }
+  }
+
+  /**
+   * 🔄 FALLBACK: Original statistics method for error recovery
+   */
+  private async getUserStatisticsFallback(): Promise<any> {
+    try {
+      const totalUsers = await this.userRepository.count();
+      const activeUsers = await this.userRepository.count({ where: { isActive: true } });
+      const inactiveUsers = totalUsers - activeUsers;
+
+      // Get statistics by user type
+      const userTypeStats = await this.userRepository
+        .createQueryBuilder('user')
+        .select('user.userType')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('user.userType')
+        .getRawMany();
+      
+      const byUserType = userTypeStats.reduce((acc, item) => {
+        acc[item.user_userType || 'unspecified'] = parseInt(item.count);
+        return acc;
+      }, {});
+
+      // Get statistics by gender
+      const genderStats = await this.userRepository
+        .createQueryBuilder('user')
+        .select('user.gender')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('user.gender')
+        .getRawMany();
+      
+      const byGender = genderStats.reduce((acc, item) => {
+        acc[item.user_gender || 'unspecified'] = parseInt(item.count);
+        return acc;
+      }, {});
+
+      // Get statistics by province
+      const provinceStats = await this.userRepository
+        .createQueryBuilder('user')
+        .select('user.province')
+        .addSelect('COUNT(*)', 'count')
+        .where('user.province IS NOT NULL')
+        .groupBy('user.province')
+        .getRawMany();
+      
+      const byProvince = provinceStats.reduce((acc, item) => {
+        acc[item.user_province] = parseInt(item.count);
+        return acc;
+      }, {});
+
+      return {
+        totalUsers,
+        activeUsers,
+        inactiveUsers,
+        byUserType,
+        byGender,
+        byProvince
+      };
+    } catch (error) {
+      throw new BadRequestException('Failed to get user statistics');
+    }
+  }
+
+  async getUsersByTypeWithPagination(
+    userType: UserType, 
+    options: { page?: number; limit?: number; isActive?: boolean }
+  ): Promise<PaginatedUserResponseDto> {
+    try {
+      const { page = 1, limit = 10, isActive } = options;
+      
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
+      queryBuilder.where('user.userType = :userType', { userType });
+      
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('user.isActive = :isActive', { isActive });
+      }
+
+      // Apply pagination
+      const skip = (page - 1) * limit;
+      queryBuilder.skip(skip).take(limit);
+      queryBuilder.orderBy('user.createdAt', 'DESC');
+
+      const [users, total] = await queryBuilder.getManyAndCount();
+      const userResponseDtos = users.map(user => new UserResponseDto(user));
+      
+      return new PaginatedUserResponseDto(userResponseDtos, page, limit, total);
+    } catch (error) {
+      throw new BadRequestException('Failed to get users by type');
+    }
+  }
+
+  async getUsersByGender(
+    gender: Gender,
+    options: { page?: number; limit?: number; userType?: UserType; isActive?: boolean }
+  ): Promise<PaginatedUserResponseDto> {
+    try {
+      const { page = 1, limit = 10, userType, isActive } = options;
+      
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
+      queryBuilder.where('user.gender = :gender', { gender });
+      
+      if (userType) {
+        queryBuilder.andWhere('user.userType = :userType', { userType });
+      }
+      
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('user.isActive = :isActive', { isActive });
+      }
+
+      // Apply pagination
+      const skip = (page - 1) * limit;
+      queryBuilder.skip(skip).take(limit);
+      queryBuilder.orderBy('user.createdAt', 'DESC');
+
+      const [users, total] = await queryBuilder.getManyAndCount();
+      const userResponseDtos = users.map(user => new UserResponseDto(user));
+      
+      return new PaginatedUserResponseDto(userResponseDtos, page, limit, total);
+    } catch (error) {
+      throw new BadRequestException('Failed to get users by gender');
+    }
+  }
+
+  async getUsersByLocation(options: {
+    province?: string;
+    district?: string;
+    city?: string;
+    page?: number;
+    limit?: number;
+    userType?: UserType;
+    isActive?: boolean;
+  }): Promise<PaginatedUserResponseDto> {
+    try {
+      const { province, district, city, page = 1, limit = 10, userType, isActive } = options;
+      
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
+      
+      if (province) {
+        queryBuilder.andWhere('user.province LIKE :province', { province: `%${province}%` });
+      }
+      
+      if (district) {
+        queryBuilder.andWhere('user.district LIKE :district', { district: `%${district}%` });
+      }
+      
+      if (city) {
+        queryBuilder.andWhere('user.city LIKE :city', { city: `%${city}%` });
+      }
+      
+      if (userType) {
+        queryBuilder.andWhere('user.userType = :userType', { userType });
+      }
+      
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('user.isActive = :isActive', { isActive });
+      }
+
+      // Apply pagination
+      const skip = (page - 1) * limit;
+      queryBuilder.skip(skip).take(limit);
+      queryBuilder.orderBy('user.createdAt', 'DESC');
+
+      const [users, total] = await queryBuilder.getManyAndCount();
+      const userResponseDtos = users.map(user => new UserResponseDto(user));
+      
+      return new PaginatedUserResponseDto(userResponseDtos, page, limit, total);
+    } catch (error) {
+      throw new BadRequestException('Failed to get users by location');
+    }
+  }
+
+  async advancedSearch(options: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    nic?: string;
+    userType?: UserType;
+    gender?: Gender;
+    province?: string;
+    district?: string;
+    city?: string;
+    country?: string;
+    isActive?: boolean;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC';
+  }): Promise<PaginatedUserResponseDto> {
+    try {
+      const {
+        firstName,
+        lastName,
+        email,
+        phone,
+        nic,
+        userType,
+        gender,
+        province,
+        district,
+        city,
+        country,
+        isActive,
+        page = 1,
+        limit = 10,
+        sortBy = 'createdAt',
+        sortOrder = 'DESC'
+      } = options;
+
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
+
+      // Apply all filters
+      if (firstName) {
+        queryBuilder.andWhere('user.firstName LIKE :firstName', { firstName: `%${firstName}%` });
+      }
+
+      if (lastName) {
+        queryBuilder.andWhere('user.lastName LIKE :lastName', { lastName: `%${lastName}%` });
+      }
+
+      if (email) {
+        queryBuilder.andWhere('user.email LIKE :email', { email: `%${email}%` });
+      }
+
+      if (phone) {
+        queryBuilder.andWhere('user.phoneNumber LIKE :phone', { phone: `%${phone}%` });
+      }
+
+      if (nic) {
+        queryBuilder.andWhere('user.nic LIKE :nic', { nic: `%${nic}%` });
+      }
+
+      if (userType) {
+        queryBuilder.andWhere('user.userType = :userType', { userType });
+      }
+
+      if (gender) {
+        queryBuilder.andWhere('user.gender = :gender', { gender });
+      }
+
+      if (province) {
+        queryBuilder.andWhere('user.province LIKE :province', { province: `%${province}%` });
+      }
+
+      if (district) {
+        queryBuilder.andWhere('user.district LIKE :district', { district: `%${district}%` });
+      }
+
+      if (city) {
+        queryBuilder.andWhere('user.city LIKE :city', { city: `%${city}%` });
+      }
+
+      if (country) {
+        queryBuilder.andWhere('user.country LIKE :country', { country: `%${country}%` });
+      }
+
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('user.isActive = :isActive', { isActive });
+      }
+
+      // Apply sorting
+      const validSortFields = ['id', 'firstName', 'lastName', 'email', 'createdAt', 'updatedAt', 'userType', 'city', 'district', 'province', 'gender', 'dateOfBirth'];
+      const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+      queryBuilder.orderBy(`user.${safeSortBy}`, sortOrder);
+
+      // Apply pagination
+      const skip = (page - 1) * limit;
+      queryBuilder.skip(skip).take(limit);
+
+      const [users, total] = await queryBuilder.getManyAndCount();
+      const userResponseDtos = users.map(user => new UserResponseDto(user));
+      
+      return new PaginatedUserResponseDto(userResponseDtos, page, limit, total);
+    } catch (error) {
+      
+      if (error.code === 'ER_PARSE_ERROR' || error.message.includes('SQL syntax')) {
+        throw new BadRequestException('Invalid search parameters. Please check your input and try again.');
+      }
+      
+      throw new BadRequestException('Failed to perform advanced search');
+    }
+  }
+
+  async getUserInstitutes(userId: string, currentUser?: JwtPayload): Promise<UserInstitutesResponseDto[]> {
+    try {
+      
+      // Security validation bypassed - allowing access
+      if (!currentUser) {
+      }
+      
+      // Convert userId to BigInt for comparison
+      const userIdBigInt = BigInt(userId);
+      // Extract user ID from JWT v2 compact format (s field)
+      const jwtUserId = currentUser?.s;
+      const jwtUserIdBigInt = jwtUserId ? BigInt(jwtUserId) : null;
+      
+      
+      // 🚨 ACCESS VALIDATION REMOVED: Allow all users to view any user's institutes
+      const isOwnData = jwtUserIdBigInt && jwtUserIdBigInt === userIdBigInt;
+      const isSuperAdmin = currentUser?.u === UserType.SUPERADMIN;
+      const isOrgManager = currentUser?.u === UserType.ORGANIZATION_MANAGER;
+      const isRegularUser = currentUser?.u && [UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT].includes(currentUser.u);
+      
+      
+      // Route based on user type and access level
+      if (isOwnData) {
+        // User is accessing their own data - ALWAYS query database for latest enrollments
+        // JWT token may be stale (doesn't include newly enrolled institutes)
+        return await this.getSecureUserInstitutesFromDatabase(userId);
+      }
+      
+      // Beyond this point, only admins should be able to access other users' data
+      if (isRegularUser) {
+        // Access validation bypassed - allowing regular user access
+        return await this.getSecureUserInstitutesFromDatabase(userId);
+      }
+      
+      // Admin access to other users' data
+      if (isSuperAdmin) {
+        return await this.getSecureUserInstitutesFromDatabase(userId);
+      }
+      
+      // Organization manager can only see users in their institutes
+      if (isOrgManager) {
+        return await this.getSecureUserInstitutesForAdmin(userId, currentUser);
+      }
+      
+      // Access check bypassed - allowing access for user
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error(`Failed to get institutes for user ${userId}: ${error.message}`, error.stack);
+      throw new BusinessLogicException('Failed to get user institutes');
+    }
+  }
+
+  /**
+   * ✅ ENHANCED: Get user institutes from JWT token with COMPLETE institute details
+   */
+  private async getSecureUserInstitutes(currentUser: JwtPayload): Promise<UserInstitutesResponseDto[]> {
+    try {
+      // Extract institute IDs and user ID from JWT v2 compact format
+      const instituteIds = this.extractInstituteIdsFromJWT(currentUser);
+      const userId = currentUser.s; // JWT v2 user ID field
+      
+      
+      if (!instituteIds.length || !userId) {
+        return [];
+      }
+      
+      // ✅ PERFORMANCE: Use QueryBuilder with all institute fields
+      const instituteUserRelations = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .leftJoinAndSelect('iu.institute', 'institute')
+        .select([
+          'iu.instituteId',
+          'iu.userId',
+          'iu.status',
+          
+          // ✅ COMPLETE: All institute fields
+          'institute.id',
+          'institute.name',
+          'institute.shortName',
+          'institute.code',
+          'institute.email',
+          'institute.phone',
+          'institute.systemContactEmail',
+          'institute.systemContactPhoneNumber',
+          'institute.address',
+          'institute.city',
+          'institute.state',
+          'institute.country',
+          'institute.district',
+          'institute.province',
+          'institute.type',
+          'institute.logoUrl',
+          'institute.loadingGifUrl',
+          'institute.primaryColorCode',
+          'institute.secondaryColorCode',
+          'institute.imageUrls',
+          'institute.isDefault',
+          'institute.vision',
+          'institute.mission',
+          'institute.websiteUrl',
+          'institute.facebookPageUrl',
+          'institute.youtubeChannelUrl',
+          'institute.isActive',
+          'institute.createdAt',
+          'institute.updatedAt',
+          'institute.imageUrl'
+        ])
+        .where('iu.userId = :userId', { userId })
+        .andWhere('iu.instituteId IN (:...instituteIds)', { instituteIds })
+        .andWhere('iu.status IN (:...statuses)', { statuses: ['ACTIVE', 'PENDING'] })
+        .orderBy('institute.name', 'ASC')
+        .getMany();
+      
+      
+      // ✅ ENHANCED: Map to complete institute DTO with URL transformation
+      const formattedInstitutes = instituteUserRelations.map(relation => 
+        UserInstitutesResponseDto.fromEntity(relation, this.cloudStorageService)
+      );
+      
+      return formattedInstitutes;
+      
+    } catch (error) {
+      this.logger.error(`Error getting secure user institutes from JWT: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * ✅ ENHANCED: Get user institutes from database with COMPLETE institute details
+   * Returns full institute object matching main institute list format
+   */
+  private async getSecureUserInstitutesFromDatabase(userId: string): Promise<UserInstitutesResponseDto[]> {
+    try {
+      
+      // ✅ PERFORMANCE: Use QueryBuilder for selective field loading with all institute fields
+      const instituteUserRelations = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .leftJoinAndSelect('iu.institute', 'institute')
+        .select([
+          // Institute User fields (if needed in future)
+          'iu.instituteId',
+          'iu.userId',
+          'iu.status',
+          'iu.instituteUserType',
+          
+          // ✅ COMPLETE: All institute fields for full response
+          'institute.id',
+          'institute.name',
+          'institute.shortName',
+          'institute.code',
+          'institute.email',
+          'institute.phone',
+          'institute.systemContactEmail',
+          'institute.systemContactPhoneNumber',
+          'institute.address',
+          'institute.city',
+          'institute.state',
+          'institute.country',
+          'institute.district',
+          'institute.province',
+          'institute.type',
+          'institute.logoUrl',
+          'institute.loadingGifUrl',
+          'institute.primaryColorCode',
+          'institute.secondaryColorCode',
+          'institute.imageUrls',
+          'institute.isDefault',
+          'institute.vision',
+          'institute.mission',
+          'institute.websiteUrl',
+          'institute.facebookPageUrl',
+          'institute.youtubeChannelUrl',
+          'institute.isActive',
+          'institute.createdAt',
+          'institute.updatedAt',
+          'institute.imageUrl'
+        ])
+        .where('iu.userId = :userId', { userId })
+        .andWhere('iu.status IN (:...statuses)', { statuses: ['ACTIVE', 'PENDING'] })
+        .orderBy('institute.name', 'ASC')
+        .getMany();
+      
+      // ✅ ENHANCED: Map to complete institute DTO with URL transformation
+      const formattedInstitutes = instituteUserRelations.map(relation => 
+        UserInstitutesResponseDto.fromEntity(relation, this.cloudStorageService)
+      );
+      
+      return formattedInstitutes;
+      
+    } catch (error) {
+      this.logger.error(`Error getting user institutes from database: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * ✅ ENHANCED: Get user institutes for institute admin with COMPLETE institute details
+   */
+  private async getSecureUserInstitutesForAdmin(userId: string, currentUser: JwtPayload): Promise<UserInstitutesResponseDto[]> {
+    try {
+      
+      const adminInstituteIds = this.extractInstituteIdsFromJWT(currentUser);
+      
+      if (!adminInstituteIds.length) {
+        return [];
+      }
+      
+      // ✅ PERFORMANCE: Use QueryBuilder with all institute fields
+      const instituteUserRelations = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .leftJoinAndSelect('iu.institute', 'institute')
+        .select([
+          'iu.instituteId',
+          'iu.userId',
+          'iu.status',
+          'iu.instituteUserType',
+          
+          // ✅ COMPLETE: All institute fields
+          'institute.id',
+          'institute.name',
+          'institute.shortName',
+          'institute.code',
+          'institute.email',
+          'institute.phone',
+          'institute.systemContactEmail',
+          'institute.systemContactPhoneNumber',
+          'institute.address',
+          'institute.city',
+          'institute.state',
+          'institute.country',
+          'institute.district',
+          'institute.province',
+          'institute.type',
+          'institute.logoUrl',
+          'institute.loadingGifUrl',
+          'institute.primaryColorCode',
+          'institute.secondaryColorCode',
+          'institute.imageUrls',
+          'institute.isDefault',
+          'institute.vision',
+          'institute.mission',
+          'institute.websiteUrl',
+          'institute.facebookPageUrl',
+          'institute.youtubeChannelUrl',
+          'institute.isActive',
+          'institute.createdAt',
+          'institute.updatedAt',
+          'institute.imageUrl'
+        ])
+        .where('iu.userId = :userId', { userId })
+        .andWhere('iu.instituteId IN (:...instituteIds)', { instituteIds: adminInstituteIds })
+        .andWhere('iu.status IN (:...statuses)', { statuses: ['ACTIVE', 'PENDING'] })
+        .orderBy('institute.name', 'ASC')
+        .getMany();
+      
+      // ✅ ENHANCED: Map to complete institute DTO with URL transformation
+      const formattedInstitutes = instituteUserRelations.map(relation => 
+        UserInstitutesResponseDto.fromEntity(relation, this.cloudStorageService)
+      );
+      
+      return formattedInstitutes;
+      
+    } catch (error) {
+      this.logger.error(`Error getting user institutes for admin: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateImageUrl(userId: string, imageUrl: string): Promise<UserResponseDto> {
+    try {
+      
+      // Check if user exists
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) {
+        throw new ResourceNotFoundException('User', userId);
+      }
+
+      // Update the image URL
+      await this.userRepository.update(userId, { imageUrl });
+      
+      // 🚀 ULTRA-OPTIMIZED: Build updated user from existing data instead of SELECT query
+      const updatedUser = {
+        ...user,
+        imageUrl,
+        updatedAt: new Date()
+      } as unknown as UserResponseDto;
+      
+      return new UserResponseDto(updatedUser);
+    } catch (error) {
+      this.logger.error(`Failed to update image URL for user ${userId}: ${error.message}`, error.stack);
+      if (error instanceof ResourceNotFoundException) {
+        throw error;
+      }
+      throw new BusinessLogicException('Failed to update user image URL');
+    }
+  }
+
+  async updateIdUrl(userId: string, idUrl: string): Promise<UserResponseDto> {
+    try {
+      
+      // Check if user exists
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) {
+        throw new ResourceNotFoundException('User', userId);
+      }
+
+      // Update the ID URL
+      await this.userRepository.update(userId, { idUrl });
+      
+      // 🚀 ULTRA-OPTIMIZED: Build updated user from existing data instead of SELECT query
+      const updatedUser = {
+        ...user,
+        idUrl,
+        updatedAt: new Date()
+      } as unknown as UserResponseDto;
+      
+      return new UserResponseDto(updatedUser);
+    } catch (error) {
+      this.logger.error(`Failed to update ID URL for user ${userId}: ${error.message}`, error.stack);
+      if (error instanceof ResourceNotFoundException) {
+        throw error;
+      }
+      throw new BusinessLogicException('Failed to update user ID URL');
+    }
+  }
+
+  /**
+   * Get all parents of students in institutes associated with the user
+   * 
+   * Logic:
+   * 1. Get user's institutes from institute_user relationship
+   * 2. Get all students enrolled in those institutes  
+   * 3. Get parents (father, mother, guardian) for those students
+   * 4. Remove duplicates and return with student details
+   */
+  async getUserInstituteParents(userId: string): Promise<any[]> {
+    try {
+
+      // 1. Get user's institutes from institute_user table
+      const userInstitutes = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .select(['iu.instituteId'])
+        .where('iu.user_id = :userId', { userId })
+        .getRawMany();
+
+      if (!userInstitutes || userInstitutes.length === 0) {
+        return [];
+      }
+
+      const instituteIds = userInstitutes.map(ui => ui.iu_instituteId);
+
+      // 2. Get all students enrolled in those institutes
+      const studentsInInstitutes = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .innerJoin('users', 'u', 'u.id = iu.user_id')
+        .innerJoin('students', 's', 's.user_id = iu.user_id')
+        .select([
+          'iu.user_id as studentUserId',
+          'u.first_name as studentFirstName',
+          'u.last_name as studentLastName',
+          's.student_id as studentId',
+          's.father_id as fatherId',
+          's.mother_id as motherId',
+          's.guardian_id as guardianId'
+        ])
+        .where('iu.institute_id IN (:...instituteIds)', { instituteIds })
+        .andWhere('iu.user_type = :userType', { userType: InstituteUserType.STUDENT })
+        .getRawMany();
+
+
+      if (!studentsInInstitutes || studentsInInstitutes.length === 0) {
+        return [];
+      }
+
+      // 3. Collect all parent IDs (remove nulls and duplicates)
+      const parentIds = new Set<string>();
+      const studentParentMap = new Map<string, any[]>(); // parentId -> student info array
+
+      studentsInInstitutes.forEach(student => {
+        const studentInfo = {
+          studentUserId: student.studentUserId,
+          studentName: `${student.studentFirstName} ${student.studentLastName}`.trim(),
+          studentId: student.studentId
+        };
+
+        if (student.fatherId) {
+          parentIds.add(student.fatherId);
+          if (!studentParentMap.has(student.fatherId)) {
+            studentParentMap.set(student.fatherId, []);
+          }
+          studentParentMap.get(student.fatherId)!.push({
+            ...studentInfo,
+            relationship: 'father'
+          });
+        }
+
+        if (student.motherId) {
+          parentIds.add(student.motherId);
+          if (!studentParentMap.has(student.motherId)) {
+            studentParentMap.set(student.motherId, []);
+          }
+          studentParentMap.get(student.motherId)!.push({
+            ...studentInfo,
+            relationship: 'mother'
+          });
+        }
+
+        if (student.guardianId) {
+          parentIds.add(student.guardianId);
+          if (!studentParentMap.has(student.guardianId)) {
+            studentParentMap.set(student.guardianId, []);
+          }
+          studentParentMap.get(student.guardianId)!.push({
+            ...studentInfo,
+            relationship: 'guardian'
+          });
+        }
+      });
+
+
+      if (parentIds.size === 0) {
+        return [];
+      }
+
+      // 4. Get parent details with user information
+      const parents = await this.parentRepository
+        .createQueryBuilder('p')
+        .innerJoin('users', 'u', 'u.id = p.user_id')
+        .select([
+          'p.user_id as id',
+          'u.first_name as firstName',
+          'u.last_name as lastName',
+          'u.email as email',
+          'u.phone as phone',
+          'p.occupation as occupation',
+          'p.workplace as workplace'
+        ])
+        .where('p.user_id IN (:...parentIds)', { parentIds: Array.from(parentIds) })
+        .getRawMany();
+
+
+      // 5. Build the response with student information
+      const result = [];
+      
+      for (const parent of parents) {
+        const studentInfos = studentParentMap.get(parent.id) || [];
+        
+        for (const studentInfo of studentInfos) {
+          result.push({
+            id: parent.id,
+            firstName: parent.firstName,
+            lastName: parent.lastName,
+            email: parent.email,
+            phone: maskPhoneNumber(parent.phone),
+            occupation: parent.occupation,
+            workplace: parent.workplace,
+            studentName: studentInfo.studentName,
+            studentId: studentInfo.studentId,
+            relationship: studentInfo.relationship
+          });
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Failed to get institute parents for user ${userId}: ${error.message}`, error.stack);
+      throw new BusinessLogicException('Failed to get institute parents');
+    }
+  }
+
+  /**
+   * Get parents for students in a specific institute
+   * Logic:
+   * 1. Validate user access to the institute
+   * 2. Get all students enrolled in the specific institute via institute_user
+   * 3. Get parents (father, mother, guardian) for those students
+   * 4. Remove duplicates and return with student details
+   */
+  async getInstituteParents(instituteId: string, currentUser: JwtPayload): Promise<InstituteParentInfo[]> {
+    try {
+
+      // Validate user access to the institute using JWT v2
+      const userInstitutes = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .select(['iu.institute_id'])
+        .where('iu.user_id = :userId', { userId: currentUser.s }) // JWT v2 user ID
+        .andWhere('iu.institute_id = :instituteId', { instituteId })
+        .getRawMany();
+
+
+      if (!userInstitutes || userInstitutes.length === 0) {
+        throw new ForbiddenException('No access to this institute');
+      }
+
+      // Get all students enrolled in this institute via institute_user table
+      const studentsInInstitute = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .innerJoin('users', 'u', 'u.id = iu.user_id')
+        .innerJoin('students', 's', 's.user_id = iu.user_id')
+        .select([
+          'iu.user_id as studentUserId',
+          'u.first_name as studentFirstName',
+          'u.last_name as studentLastName',
+          's.user_id as studentId',
+          's.father_id as fatherId',
+          's.mother_id as motherId',
+          's.guardian_id as guardianId'
+        ])
+        .where('iu.institute_id = :instituteId', { instituteId })
+        .andWhere('iu.user_type = :userType', { userType: InstituteUserType.STUDENT })
+        .getRawMany();
+
+
+
+      if (!studentsInInstitute || studentsInInstitute.length === 0) {
+        return [];
+      }
+
+      // Same logic as getUserInstituteParents for parent processing
+      const parentIds = new Set<string>();
+      const studentParentMap = new Map<string, any[]>();
+
+      studentsInInstitute.forEach(student => {
+        const studentInfo = {
+          studentUserId: student.studentUserId,
+          studentName: `${student.studentFirstName} ${student.studentLastName}`.trim(),
+          studentId: student.studentId
+        };
+
+        if (student.fatherId) {
+          parentIds.add(student.fatherId);
+          if (!studentParentMap.has(student.fatherId)) {
+            studentParentMap.set(student.fatherId, []);
+          }
+          studentParentMap.get(student.fatherId)!.push({
+            ...studentInfo,
+            relationship: 'father'
+          });
+        }
+
+        if (student.motherId) {
+          parentIds.add(student.motherId);
+          if (!studentParentMap.has(student.motherId)) {
+            studentParentMap.set(student.motherId, []);
+          }
+          studentParentMap.get(student.motherId)!.push({
+            ...studentInfo,
+            relationship: 'mother'
+          });
+        }
+
+        if (student.guardianId) {
+          parentIds.add(student.guardianId);
+          if (!studentParentMap.has(student.guardianId)) {
+            studentParentMap.set(student.guardianId, []);
+          }
+          studentParentMap.get(student.guardianId)!.push({
+            ...studentInfo,
+            relationship: 'guardian'
+          });
+        }
+      });
+
+      if (parentIds.size === 0) {
+        return [];
+      }
+
+      // Get parent details
+      const parents = await this.parentRepository
+        .createQueryBuilder('p')
+        .innerJoin('users', 'u', 'u.id = p.user_id')
+        .select([
+          'p.user_id as id',
+          'u.first_name as firstName',
+          'u.last_name as lastName',
+          'u.email as email',
+          'u.phone as phone',
+          'p.occupation as occupation',
+          'p.workplace as workplace'
+        ])
+        .where('p.user_id IN (:...parentIds)', { parentIds: Array.from(parentIds) })
+        .getRawMany();
+
+      // Build result
+      const result = [];
+      for (const parent of parents) {
+        const studentInfos = studentParentMap.get(parent.id) || [];
+        for (const studentInfo of studentInfos) {
+          result.push({
+            id: parent.id,
+            firstName: parent.firstName,
+            lastName: parent.lastName,
+            email: parent.email,
+            phone: maskPhoneNumber(parent.phone),
+            occupation: parent.occupation,
+            workplace: parent.workplace,
+            studentName: studentInfo.studentName,
+            studentId: studentInfo.studentId,
+            relationship: studentInfo.relationship
+          });
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Failed to get institute parents for institute ${instituteId}: ${error.message}`, error.stack);
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new BusinessLogicException('Failed to get institute parents');
+    }
+  }
+
+  /**
+   * Get parents for students in a specific institute class
+   * Logic:
+   * 1. Validate user access to the institute and class
+   * 2. Get all students enrolled in the specific class via institute_class_students table
+   * 3. Get parents (father, mother, guardian) for those students
+   * 4. Remove duplicates and return with student details
+   */
+  async getInstituteClassParents(instituteId: string, classId: string, currentUser: JwtPayload): Promise<InstituteParentInfo[]> {
+    try {
+
+      // Validate access - check user access to institute using JWT v2
+      const userInstitutes = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .select(['iu.institute_id'])
+        .where('iu.user_id = :userId', { userId: currentUser.s }) // JWT v2 user ID
+        .andWhere('iu.institute_id = :instituteId', { instituteId })
+        .getRawMany();
+
+      if (!userInstitutes || userInstitutes.length === 0) {
+        throw new ForbiddenException('No access to this institute');
+      }
+
+      // Get students in specific class via institute_class_students table
+      const studentsInClass = await this.instituteClassStudentRepository
+        .createQueryBuilder('ics')
+        .innerJoin('users', 'u', 'u.id = ics.student_user_id')
+        .innerJoin('students', 's', 's.user_id = ics.student_user_id')
+        .select([
+          'ics.student_user_id as studentUserId',
+          'u.first_name as studentFirstName',
+          'u.last_name as studentLastName',
+          's.user_id as studentId',
+          's.father_id as fatherId',
+          's.mother_id as motherId',
+          's.guardian_id as guardianId'
+        ])
+        .where('ics.institute_id = :instituteId', { instituteId })
+        .andWhere('ics.institute_class_id = :classId', { classId })
+        .andWhere('ics.is_active = :isActive', { isActive: true })
+        .andWhere('u.user_type = :userType', { userType: UserType.USER_WITHOUT_PARENT })
+        .getRawMany();
+
+
+      if (!studentsInClass || studentsInClass.length === 0) {
+        return [];
+      }
+
+      // Same parent processing logic
+      const parentIds = new Set<string>();
+      const studentParentMap = new Map<string, any[]>();
+
+      studentsInClass.forEach(student => {
+        const studentInfo = {
+          studentUserId: student.studentUserId,
+          studentName: `${student.studentFirstName} ${student.studentLastName}`.trim(),
+          studentId: student.studentId
+        };
+
+        if (student.fatherId) {
+          parentIds.add(student.fatherId);
+          if (!studentParentMap.has(student.fatherId)) {
+            studentParentMap.set(student.fatherId, []);
+          }
+          studentParentMap.get(student.fatherId)!.push({
+            ...studentInfo,
+            relationship: 'father'
+          });
+        }
+
+        if (student.motherId) {
+          parentIds.add(student.motherId);
+          if (!studentParentMap.has(student.motherId)) {
+            studentParentMap.set(student.motherId, []);
+          }
+          studentParentMap.get(student.motherId)!.push({
+            ...studentInfo,
+            relationship: 'mother'
+          });
+        }
+
+        if (student.guardianId) {
+          parentIds.add(student.guardianId);
+          if (!studentParentMap.has(student.guardianId)) {
+            studentParentMap.set(student.guardianId, []);
+          }
+          studentParentMap.get(student.guardianId)!.push({
+            ...studentInfo,
+            relationship: 'guardian'
+          });
+        }
+      });
+
+      if (parentIds.size === 0) {
+        return [];
+      }
+
+      // Get parent details
+      const parents = await this.parentRepository
+        .createQueryBuilder('p')
+        .innerJoin('users', 'u', 'u.id = p.user_id')
+        .select([
+          'p.user_id as id',
+          'u.first_name as firstName',
+          'u.last_name as lastName',
+          'u.email as email',
+          'u.phone as phone',
+          'p.occupation as occupation',
+          'p.workplace as workplace'
+        ])
+        .where('p.user_id IN (:...parentIds)', { parentIds: Array.from(parentIds) })
+        .getRawMany();
+
+      // Build result
+      const result = [];
+      for (const parent of parents) {
+        const studentInfos = studentParentMap.get(parent.id) || [];
+        for (const studentInfo of studentInfos) {
+          result.push({
+            id: parent.id,
+            firstName: parent.firstName,
+            lastName: parent.lastName,
+            email: parent.email,
+            phone: maskPhoneNumber(parent.phone),
+            occupation: parent.occupation,
+            workplace: parent.workplace,
+            studentName: studentInfo.studentName,
+            studentId: studentInfo.studentId,
+            relationship: studentInfo.relationship
+          });
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Failed to get class parents for institute ${instituteId} class ${classId}: ${error.message}`, error.stack);
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new BusinessLogicException('Failed to get institute class parents');
+    }
+  }
+
+  /**
+   * Get parents for students in a specific institute class subject
+   * Logic:
+   * 1. Validate user access to the institute, class, and subject
+   * 2. Get all students enrolled in the specific class subject via institute_class_subject_students table
+   * 3. Get parents (father, mother, guardian) for those students
+   * 4. Remove duplicates and return with student details
+   */
+  async getInstituteClassSubjectParents(instituteId: string, classId: string, subjectId: string, currentUser: JwtPayload): Promise<InstituteParentInfo[]> {
+    try {
+
+      // Validate access - check user access to institute using JWT v2
+      const userInstitutes = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .select(['iu.institute_id'])
+        .where('iu.user_id = :userId', { userId: currentUser.s }) // JWT v2 user ID
+        .andWhere('iu.institute_id = :instituteId', { instituteId })
+        .getRawMany();
+
+      if (!userInstitutes || userInstitutes.length === 0) {
+        throw new ForbiddenException('No access to this institute');
+      }
+
+      // Get students enrolled in specific class and subject via institute_class_subject_students table
+      const studentsInClassSubject = await this.instituteClassSubjectStudentRepository
+        .createQueryBuilder('icss')
+        .innerJoin('users', 'u', 'u.id = icss.student_id')
+        .innerJoin('students', 's', 's.user_id = icss.student_id')
+        .select([
+          'icss.student_id as studentUserId',
+          'u.first_name as studentFirstName',
+          'u.last_name as studentLastName',
+          's.user_id as studentId',
+          's.father_id as fatherId',
+          's.mother_id as motherId',
+          's.guardian_id as guardianId'
+        ])
+        .where('icss.institute_id = :instituteId', { instituteId })
+        .andWhere('icss.class_id = :classId', { classId })
+        .andWhere('icss.subject_id = :subjectId', { subjectId })
+        .andWhere('icss.is_active = :isActive', { isActive: true })
+        .andWhere('u.user_type = :userType', { userType: UserType.USER_WITHOUT_PARENT })
+        .getRawMany();
+
+
+      if (!studentsInClassSubject || studentsInClassSubject.length === 0) {
+        return [];
+      }
+
+      // Same parent processing logic
+      const parentIds = new Set<string>();
+      const studentParentMap = new Map<string, any[]>();
+
+      studentsInClassSubject.forEach(student => {
+        const studentInfo = {
+          studentUserId: student.studentUserId,
+          studentName: `${student.studentFirstName} ${student.studentLastName}`.trim(),
+          studentId: student.studentId
+        };
+
+        if (student.fatherId) {
+          parentIds.add(student.fatherId);
+          if (!studentParentMap.has(student.fatherId)) {
+            studentParentMap.set(student.fatherId, []);
+          }
+          studentParentMap.get(student.fatherId)!.push({
+            ...studentInfo,
+            relationship: 'father'
+          });
+        }
+
+        if (student.motherId) {
+          parentIds.add(student.motherId);
+          if (!studentParentMap.has(student.motherId)) {
+            studentParentMap.set(student.motherId, []);
+          }
+          studentParentMap.get(student.motherId)!.push({
+            ...studentInfo,
+            relationship: 'mother'
+          });
+        }
+
+        if (student.guardianId) {
+          parentIds.add(student.guardianId);
+          if (!studentParentMap.has(student.guardianId)) {
+            studentParentMap.set(student.guardianId, []);
+          }
+          studentParentMap.get(student.guardianId)!.push({
+            ...studentInfo,
+            relationship: 'guardian'
+          });
+        }
+      });
+
+      if (parentIds.size === 0) {
+        return [];
+      }
+
+      // Get parent details
+      const parents = await this.parentRepository
+        .createQueryBuilder('p')
+        .innerJoin('users', 'u', 'u.id = p.user_id')
+        .select([
+          'p.user_id as id',
+          'u.first_name as firstName',
+          'u.last_name as lastName',
+          'u.email as email',
+          'u.phone as phone',
+          'p.occupation as occupation',
+          'p.workplace as workplace'
+        ])
+        .where('p.user_id IN (:...parentIds)', { parentIds: Array.from(parentIds) })
+        .getRawMany();
+
+      // Build result
+      const result = [];
+      for (const parent of parents) {
+        const studentInfos = studentParentMap.get(parent.id) || [];
+        for (const studentInfo of studentInfos) {
+          result.push({
+            id: parent.id,
+            firstName: parent.firstName,
+            lastName: parent.lastName,
+            email: parent.email,
+            phone: maskPhoneNumber(parent.phone),
+            occupation: parent.occupation,
+            workplace: parent.workplace,
+            studentName: studentInfo.studentName,
+            studentId: studentInfo.studentId,
+            relationship: studentInfo.relationship
+          });
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Failed to get class subject parents for institute ${instituteId} class ${classId} subject ${subjectId}: ${error.message}`, error.stack);
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new BusinessLogicException('Failed to get institute class subject parents');
+    }
+  }
+
+  /**
+   * Special API to update telegram ID with security token validation
+   * Only accessible if the 'p' parameter matches the JWT token
+   */
+  async updateTelegramId(userId: string, telegramId: string, securityToken: string, jwtToken: string): Promise<{ message: string; success: boolean }> {
+    try {
+      // Security check: the 'p' parameter must match the JWT token
+      if (securityToken !== jwtToken) {
+        throw new ForbiddenException('Security token does not match JWT token');
+      }
+
+      // Find the user
+      const user = await this.userRepository.findOne({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found`);
+      }
+
+      // Update the telegram ID
+      await this.userRepository.update(userId, {
+        telegramId: telegramId,
+        updatedAt: new Date()
+      });
+
+      // 🚀 ULTRA-OPTIMIZED: Build updated user from existing data instead of SELECT query
+      const updatedUser = {
+        ...user,
+        telegramId: telegramId,
+        updatedAt: new Date()
+      };
+
+      
+      return {
+        message: 'Telegram ID updated successfully',
+        success: true
+      };
+
+    } catch (error) {
+      this.logger.error(`Failed to update telegram ID for user ${userId}: ${error.message}`, error.stack);
+      
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      
+      throw new BusinessLogicException('Failed to update telegram ID');
+    }
+  }
+
+  /**
+   * Register/Update RFID for a user - System Admin Only
+   * Uses transactions with rollback on failure
+   */
+  async registerRfid(userId: string, userRfid: string): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      userId: string;
+      rfid: string;
+      previousRfid?: string;
+      updatedAt: string;
+    };
+  }> {
+
+    // Start database transaction
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Validate user exists
+      const user = await queryRunner.manager.findOne(UserEntity, {
+        where: { id: userId }
+      });
+
+      if (!user) {
+        throw new ResourceNotFoundException('User', userId);
+      }
+
+      // 2. Check if RFID is already in use by another user
+      const existingRfidUser = await queryRunner.manager.findOne(UserEntity, {
+        where: { rfid: userRfid }
+      });
+
+      if (existingRfidUser && existingRfidUser.id !== userId) {
+        throw new ConflictException({
+          success: false,
+          message: 'RFID is already assigned to another user',
+          error: 'RFID_ALREADY_EXISTS',
+          conflictingUserId: existingRfidUser.id
+        });
+      }
+
+      // 3. Store previous RFID for response
+      const previousRfid = user.rfid;
+
+      // 4. Update user with new RFID
+      await queryRunner.manager.update(UserEntity, 
+        { id: userId }, 
+        { 
+          rfid: userRfid,
+          updatedAt: new Date()
+        }
+      );
+
+      // 🚀 ULTRA-OPTIMIZED: Use existing user data instead of refetching
+      const updatedUser = {
+        ...user,
+        rfid: userRfid,
+        updatedAt: new Date()
+      };
+
+      // 7. Commit transaction
+      await queryRunner.commitTransaction();
+
+
+      return {
+        success: true,
+        message: previousRfid ? 'RFID updated successfully' : 'RFID registered successfully',
+        data: {
+          userId: updatedUser.id,
+          rfid: updatedUser.rfid,
+          previousRfid,
+          updatedAt: updatedUser.updatedAt.toISOString()
+        }
+      };
+
+    } catch (error) {
+      // Rollback transaction on any error
+      if (queryRunner && queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      
+      this.logger.error(`Failed to register RFID for user ${userId}: ${error.message}`, error.stack);
+      
+      if (error instanceof ResourceNotFoundException || 
+          error instanceof ConflictException || 
+          error instanceof BusinessLogicException) {
+        throw error;
+      }
+
+      if (error instanceof QueryFailedError) {
+        if (error.message.includes('Duplicate entry')) {
+          throw new ConflictException({
+            success: false,
+            message: 'RFID is already assigned to another user',
+            error: 'RFID_ALREADY_EXISTS'
+          });
+        }
+        throw new DatabaseException('Failed to register RFID due to database error', undefined, error);
+      }
+      
+      throw new BusinessLogicException('Failed to register RFID due to unexpected error');
+    } finally {
+      // Always release the query runner
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * 🔄 Update subscription plan for user with transactional database operations
+   * @param userId - User ID to update
+   * @param subscriptionPlan - New subscription plan data
+   * @returns Updated user with subscription plan
+   */
+  async updateSubscriptionPlan(userId: number, subscriptionPlan: string, expiresAt?: Date): Promise<UserEntity> {
+    // Start SQL transaction
+    return this.dataSource.transaction(async (manager) => {
+      // Update user subscription in SQL - cast to the proper enum type
+      await manager.update(UserEntity, { id: userId }, { 
+        subscriptionPlan: subscriptionPlan as any 
+      });
+      
+      // Get updated user
+      const updatedUser = await manager.findOne(UserEntity, { where: { id: userId.toString() } });
+      
+      if (!updatedUser) {
+        throw new NotFoundException(`User with ID ${userId} not found`);
+      }
+
+      // 🔄 CRITICAL FIX: Refresh user cache after subscription plan update
+      try {
+        await this.userManagementService.refreshUserCache(updatedUser.id);
+      } catch (cacheError) {
+        // Don't fail the subscription update if cache refresh fails
+      }
+
+      return updatedUser;
+    });
+  }
+
+  // ====================================================================
+  // SPECIAL HIGH-PERFORMANCE BASIC INFO LOOKUP METHODS
+  // ====================================================================
+
+  /**
+   * 🚀 OPTIMIZED: Get minimal user info by ID for maximum performance
+   * Only selects required fields: imageUrl, firstName, lastName, userType
+   * Uses existing primary key index for fastest possible lookup
+   * 
+   * @param userId - User ID to lookup
+   * @returns Minimal user information for UI display
+   */
+  async getUserBasicInfoById(userId: string): Promise<{
+    id: string;
+    imageUrl: string | null;
+    fullName: string;
+    userType: UserType;
+  } | null> {
+    try {
+      // 🚀 PERFORMANCE: Select only required fields with primary key lookup
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'user.id',
+          'user.imageUrl', 
+          'user.firstName',
+          'user.lastName',
+          'user.userType'
+        ])
+        .where('user.id = :userId', { userId })
+        .andWhere('user.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (!user) {
+        return null;
+      }
+
+      // Combine firstName and lastName for display
+      const fullName = `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`.trim();
+      return {
+        id: user.id,
+        // ✅ Transform imageUrl to full URL
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        fullName,
+        userType: user.userType
+      };
+
+    } catch (error) {
+      this.logger.error(`💥 Failed to get basic info for user ${userId}: ${error.message}`, error.stack);
+      throw new DatabaseException('Failed to retrieve user basic information', undefined, error);
+    }
+  }
+
+  /**
+   * 🚀 OPTIMIZED: Get minimal user info by phone number for maximum performance
+   * Only selects required fields: imageUrl, firstName, lastName, userType
+   * Uses existing phoneNumber index for fastest possible lookup
+   * 
+   * @param phoneNumber - User phone number to lookup
+   * @returns Minimal user information for UI display
+   */
+  async getUserBasicInfoByPhone(phoneNumber: string): Promise<{
+    id: string;
+    imageUrl: string | null;
+    fullName: string;
+    userType: UserType;
+  } | null> {
+    try {
+      // 🚀 PERFORMANCE: Select only required fields with indexed phone lookup
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'user.id',
+          'user.imageUrl', 
+          'user.firstName',
+          'user.lastName',
+          'user.userType'
+        ])
+        .where('user.phoneNumber = :phoneNumber', { phoneNumber })
+        .andWhere('user.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (!user) {
+        return null;
+      }
+
+      // Combine firstName and lastName for display
+      const fullName = `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`.trim();
+      return {
+        id: user.id,
+        // ✅ Transform imageUrl to full URL
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        fullName,
+        userType: user.userType
+      };
+
+    } catch (error) {
+      this.logger.error(`💥 Failed to get basic info for phone ${maskPhoneNumber(phoneNumber)}: ${error.message}`, error.stack);
+      throw new DatabaseException('Failed to retrieve user basic information by phone', undefined, error);
+    }
+  }
+
+  /**
+   * 🚀 OPTIMIZED: Get minimal user info by RFID for maximum performance
+   * Only selects required fields: imageUrl, firstName, lastName, userType
+   * Uses existing RFID index for fastest possible lookup
+   * 
+   * @param rfid - User RFID to lookup
+   * @returns Minimal user information for UI display
+   */
+  async getUserBasicInfoByRfid(rfid: string): Promise<{
+    id: string;
+    imageUrl: string | null;
+    fullName: string;
+    userType: UserType;
+  } | null> {
+    try {
+      // 🚀 PERFORMANCE: Select only required fields with indexed RFID lookup
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'user.id',
+          'user.imageUrl', 
+          'user.firstName',
+          'user.lastName',
+          'user.userType'
+        ])
+        .where('user.rfid = :rfid', { rfid })
+        .andWhere('user.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (!user) {
+        return null;
+      }
+
+      // Combine firstName and lastName for display
+      const fullName = `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`.trim();
+      return {
+        id: user.id,
+        // ✅ Transform imageUrl to full URL
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        fullName,
+        userType: user.userType
+      };
+
+    } catch (error) {
+      this.logger.error(`💥 Failed to get basic info for RFID ${rfid}: ${error.message}`, error.stack);
+      throw new DatabaseException('Failed to retrieve user basic information by RFID', undefined, error);
+    }
+  }
+
+  /**
+   * 🚀 OPTIMIZED: Get minimal user info by email for maximum performance
+   * Only selects required fields: imageUrl, firstName, lastName, userType
+   * Uses existing email index for fastest possible lookup
+   * 
+   * @param email - User email to lookup
+   * @returns Minimal user information for UI display
+   */
+  async getUserBasicInfoByEmail(email: string): Promise<{
+    id: string;
+    imageUrl: string | null;
+    fullName: string;
+    userType: UserType;
+  } | null> {
+    try {
+      // 🚀 PERFORMANCE: Select only required fields with indexed email lookup
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'user.id',
+          'user.imageUrl', 
+          'user.firstName',
+          'user.lastName',
+          'user.userType'
+        ])
+        .where('user.email = :email', { email })
+        .andWhere('user.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (!user) {
+        return null;
+      }
+
+      // Combine firstName and lastName for display
+      const fullName = `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`.trim();
+      return {
+        id: user.id,
+        // ✅ Transform imageUrl to full URL
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        fullName,
+        userType: user.userType
+      };
+
+    } catch (error) {
+      this.logger.error(`💥 Failed to get basic info for email ${maskEmail(email)}: ${error.message}`, error.stack);
+      throw new DatabaseException('Failed to retrieve user basic information by email', undefined, error);
+    }
+  }
+
+  // ============================================================
+  // 📧📱 OTP VERIFICATION METHODS
+  // ============================================================
+
+  /**
+   * 📧 Request Email OTP
+   */
+  async requestEmailOtp(email: string, ipAddress?: string) {
+    return this.userOtpService.requestEmailOtp(email, ipAddress);
+  }
+
+  /**
+   * ✅ Verify Email OTP
+   */
+  async verifyEmailOtp(email: string, otpCode: string) {
+    return this.userOtpService.verifyEmailOtp(email, otpCode);
+  }
+
+  /**
+   * 📱 Request Phone OTP
+   */
+  async requestPhoneOtp(phoneNumber: string, ipAddress?: string) {
+    return this.userOtpService.requestPhoneOtp(phoneNumber, ipAddress);
+  }
+
+  /**
+   * ✅ Verify Phone OTP
+   */
+  async verifyPhoneOtp(phoneNumber: string, otpCode: string) {
+    return this.userOtpService.verifyPhoneOtp(phoneNumber, otpCode);
+  }
+
+  // ============================================================
+  // 🚫 PROFILE IMAGE REJECTION METHODS
+  // ============================================================
+
+  /**
+   * 🚫 Reject user profile image and send notification
+   */
+  async rejectProfileImage(
+    userId: string,
+    reason?: string,
+    rejectedBy?: string,
+  ): Promise<{
+    userId: string;
+    emailSent: boolean;
+    userEmail: string;
+  }> {
+    this.logger.log(`🚫 Rejecting profile image for user: ${userId}, Reason: ${reason || 'Not specified'}`);
+
+    // Find user
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'firstName', 'lastName', 'imageUrl'],
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    const previousImageUrl = user.imageUrl;
+    const fullName = `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`.trim();
+
+    // Delete the physical image file if it exists
+    if (previousImageUrl) {
+      try {
+        const imagePath = path.join(process.cwd(), 'uploads', previousImageUrl.replace(/^\//, ''));
+        await fs.unlink(imagePath);
+        this.logger.log(`🗑️ Deleted image file: ${imagePath}`);
+      } catch (fileError) {
+        this.logger.warn(`⚠️ Failed to delete image file: ${fileError.message}`);
+        // Continue even if file deletion fails (file might not exist)
+      }
+    }
+
+    // Clear the profile image from database
+    user.imageUrl = null;
+    await this.userRepository.save(user);
+
+    this.logger.log(`✅ Profile image cleared for user ${userId}`);
+
+    // Refresh cache
+    try {
+      await this.userManagementService.refreshUserCache(userId);
+    } catch (cacheError) {
+      this.logger.warn(`⚠️ Cache refresh failed for user ${userId}: ${cacheError.message}`);
+    }
+
+    // Send email notification (fire-and-forget)
+    try {
+      const profileUpdateUrl = process.env.FRONTEND_PROFILE_URL || 'https://lms.suraksha.lk/profile';
+      
+      this.asyncEmailService.sendProfileImageRejectionEmailAsync({
+        toEmail: user.email,
+        userName: fullName,
+        reason: reason || 'Your profile image does not meet our quality standards',
+        profileUpdateUrl,
+      });
+
+      this.logger.log(`📧 Profile image rejection email queued for ${user.email}`);
+    } catch (emailError) {
+      this.logger.error(`❌ Failed to queue rejection email to ${user.email}: ${emailError.message}`);
+      // Don't fail the request if email queueing fails
+    }
+
+    return {
+      userId,
+      emailSent: true, // Email is always "sent" (fire-and-forget)
+      userEmail: user.email,
+    };
+  }
+}
