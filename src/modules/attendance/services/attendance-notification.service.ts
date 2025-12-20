@@ -18,11 +18,13 @@ export interface AttendanceNotificationData {
   parentEmail?: string;
   parentTelegramId?: string;
   attendanceStatus: 'PRESENT' | 'ABSENT';
-  attendanceType?: 'INSTITUTE' | 'TRANSPORT';  // ✅ ADDED: Type of attendance
+  attendanceType?: 'INSTITUTE' | 'CLASS' | 'SUBJECT' | 'TRANSPORT';  // ✅ Type of attendance (with all levels)
   date: string;
   time: string;
-  location?: string;           // ✅ ADDED: Location where attendance was marked
+  location?: string;           // ✅ Location where attendance was marked
   instituteName?: string;
+  className?: string;          // ✅ Class name for class/subject attendance
+  subjectName?: string;        // ✅ Subject name for subject-level attendance
   vehicleNumber?: string;
   bookhireName?: string;
   subscriptionPlan: string;
@@ -721,14 +723,18 @@ export class AttendanceNotificationService {
     const attendanceType = data.attendanceType || (data.bookhireName ? 'TRANSPORT' : 'INSTITUTE');
     const isTransport = attendanceType === 'TRANSPORT';
     
+    // Format date and time properly
+    const formattedDate = this.formatDate(data.date);
+    const formattedTime = this.formatTime(data.time);
+    
     // Base template data (common for all templates)
     const templateData: any = {
       parentName: data.parentName || 'Parent/Guardian',
       studentName: data.studentName,
       studentId: data.studentId,
       status: data.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent',
-      date: data.date,
-      time: data.time,
+      date: formattedDate,
+      time: formattedTime,
       markedBy: 'System Administrator',
       locale: 'en'
     };
@@ -742,24 +748,45 @@ export class AttendanceNotificationService {
       // Natural language for pickup/dropoff status
       if (data.attendanceStatus === 'PRESENT') {
         templateData.pickupStatus = 'boarded';
-        templateData.statusMessage = `Your child ${data.studentName} boarded ${data.bookhireName}${data.vehicleNumber ? ' (' + data.vehicleNumber + ')' : ''} at ${data.time} on ${data.date}.`;
+        templateData.statusMessage = `Your child ${data.studentName} boarded ${data.bookhireName}${data.vehicleNumber ? ' (' + data.vehicleNumber + ')' : ''} at ${formattedTime} on ${formattedDate}.`;
       } else {
         templateData.pickupStatus = 'did not board';
-        templateData.statusMessage = `Your child ${data.studentName} did not board ${data.bookhireName}${data.vehicleNumber ? ' (' + data.vehicleNumber + ')' : ''} at ${data.time} on ${data.date}.`;
+        templateData.statusMessage = `Your child ${data.studentName} did not board ${data.bookhireName}${data.vehicleNumber ? ' (' + data.vehicleNumber + ')' : ''} at ${formattedTime} on ${formattedDate}.`;
       }
       
       templateData.place = data.location || `${data.bookhireName} - ${data.vehicleNumber || 'Transport'}`;
       
     } else {
-      // INSTITUTE ATTENDANCE - School/Class specific data
+      // INSTITUTE ATTENDANCE - School/Class/Subject specific data
       templateData.instituteName = data.instituteName || 'School';
+      templateData.className = data.className || '';
+      templateData.subjectName = data.subjectName || '';
       templateData.place = data.location || data.instituteName || 'School';
       
-      // Natural language for institute attendance
+      // Build context based on available information (most specific to least specific)
+      let contextText = '';
+      if (data.subjectName && data.className && data.instituteName) {
+        // Subject level: Show Subject (Class) at Institute
+        contextText = `${data.subjectName} (${data.className}) at ${data.instituteName}`;
+      } else if (data.subjectName && data.className) {
+        // Subject + Class without institute
+        contextText = `${data.subjectName} (${data.className})`;
+      } else if (data.className && data.instituteName) {
+        // Class level: Show Class at Institute
+        contextText = `${data.className} at ${data.instituteName}`;
+      } else if (data.className) {
+        // Class only
+        contextText = data.className;
+      } else if (data.instituteName) {
+        // Institute level only
+        contextText = data.instituteName;
+      }
+      
+      // Natural language for institute attendance with proper context
       if (data.attendanceStatus === 'PRESENT') {
-        templateData.statusMessage = `Your child ${data.studentName} arrived at ${data.instituteName || 'school'} at ${data.time} on ${data.date}.`;
+        templateData.statusMessage = `Your child ${data.studentName} arrived at ${contextText} at ${formattedTime} on ${formattedDate}.`;
       } else {
-        templateData.statusMessage = `Your child ${data.studentName} was absent from ${data.instituteName || 'school'} at ${data.time} on ${data.date}.`;
+        templateData.statusMessage = `Your child ${data.studentName} was absent from ${contextText} at ${formattedTime} on ${formattedDate}.`;
       }
     }
 
@@ -820,13 +847,13 @@ export class AttendanceNotificationService {
 
       let response;
       
-      // Build inline keyboard button (only "View More" if sendingUrl exists)
+      // Build inline keyboard button ("More Info" button if sendingUrl exists)
       let reply_markup = undefined;
       
       if (data.advertisementData?.sendingUrl?.trim()) {
         reply_markup = {
           inline_keyboard: [[{
-            text: '🔗 View More',
+            text: '🔗 More Info',
             url: data.advertisementData.sendingUrl.trim()
           }]]
         };
@@ -985,6 +1012,54 @@ export class AttendanceNotificationService {
   }
 
   /**
+   * Format date to user-friendly format
+   * Converts ISO date (2025-12-20T20:29:25.139Z) to readable format (December 20, 2025)
+   */
+  private formatDate(dateInput: string): string {
+    try {
+      const date = new Date(dateInput);
+      
+      // Check if valid date
+      if (isNaN(date.getTime())) {
+        return dateInput; // Return original if can't parse
+      }
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateInput; // Return original if error
+    }
+  }
+
+  /**
+   * Format time to user-friendly format
+   * Converts ISO date or time string to readable format (1:59 PM)
+   */
+  private formatTime(timeInput: string): string {
+    try {
+      // Try parsing as date first (handles ISO strings)
+      const date = new Date(timeInput);
+      
+      // Check if valid date
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+      }
+      
+      // If not a valid date, return as-is
+      return timeInput;
+    } catch (error) {
+      return timeInput; // Return original if error
+    }
+  }
+
+  /**
    * Build attendance message content
    * @param data - Attendance notification data
    * @param smsVersion - If true, returns SMS format
@@ -995,14 +1070,16 @@ export class AttendanceNotificationService {
     const statusText = data.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent';
     const vehicle = data.vehicleNumber ? ` (${data.vehicleNumber})` : '';
     
+    // Format date and time properly
+    const formattedDate = this.formatDate(data.date);
+    const formattedTime = this.formatTime(data.time);
+    
     if (smsVersion) {
       // Plain SMS format - Natural conversational style
       let sms = ``;
       
       // Add advertisement content FIRST if available and has content (keep it brief for SMS)
       if (data.advertisementData && (data.advertisementData.title?.trim() || data.advertisementData.content?.trim())) {
-        sms += `ADVERTISEMENT\n`;
-        
         if (data.advertisementData.title?.trim()) {
           sms += `${data.advertisementData.title.trim()}\n\n`;
         }
@@ -1011,15 +1088,14 @@ export class AttendanceNotificationService {
           sms += `${data.advertisementData.content.trim()}\n`;
         }
         
-        // Only add sendingUrl as visit link (NOT mediaUrl)
+        // Add sendingUrl as 'More info:' link if available
         if (data.advertisementData.sendingUrl?.trim()) {
-          sms += `\nVisit: ${data.advertisementData.sendingUrl.trim()}\n`;
+          sms += `\nMore info: ${data.advertisementData.sendingUrl.trim()}\n`;
         }
         sms += `\n---\n\n`;
       }
       
       // Natural conversational message based on attendance type
-      const timeOfDay = data.time || 'today';
       
       // Determine attendance type (auto-detect if not specified)
       const attendanceType = data.attendanceType || (data.bookhireName ? 'TRANSPORT' : 'INSTITUTE');
@@ -1027,24 +1103,38 @@ export class AttendanceNotificationService {
       if (attendanceType === 'TRANSPORT') {
         // Transport attendance
         if (data.attendanceStatus === 'PRESENT') {
-          sms += `Your child ${data.studentName} boarded ${data.bookhireName}${vehicle} at ${timeOfDay} on ${data.date}.`;
+          sms += `Your child ${data.studentName} boarded ${data.bookhireName}${vehicle} at ${formattedTime} on ${formattedDate}.`;
         } else {
-          sms += `Your child ${data.studentName} did not board ${data.bookhireName}${vehicle} at ${timeOfDay} on ${data.date}.`;
+          sms += `Your child ${data.studentName} did not board ${data.bookhireName}${vehicle} at ${formattedTime} on ${formattedDate}.`;
         }
         
       } else {
-        // Institute attendance
+        // Institute attendance - show appropriate level of detail
         if (data.attendanceStatus === 'PRESENT') {
           sms += `Your child ${data.studentName} arrived at`;
         } else {
           sms += `Your child ${data.studentName} was absent from`;
         }
         
-        if (data.instituteName) {
+        // Build context based on available information (most specific to least specific)
+        if (data.subjectName && data.className && data.instituteName) {
+          // Subject level: Show Subject (Class) at Institute
+          sms += ` ${data.subjectName} (${data.className}) at ${data.instituteName}`;
+        } else if (data.subjectName && data.className) {
+          // Subject + Class without institute
+          sms += ` ${data.subjectName} (${data.className})`;
+        } else if (data.className && data.instituteName) {
+          // Class level: Show Class at Institute
+          sms += ` ${data.className} at ${data.instituteName}`;
+        } else if (data.className) {
+          // Class only
+          sms += ` ${data.className}`;
+        } else if (data.instituteName) {
+          // Institute level only
           sms += ` ${data.instituteName}`;
         }
         
-        sms += ` at ${timeOfDay} on ${data.date}.`;
+        sms += ` at ${formattedTime} on ${formattedDate}.`;
       }
       
       // Footer with branding and contact info
@@ -1062,8 +1152,6 @@ export class AttendanceNotificationService {
     
     // Advertisement section FIRST (if available and has content)
     if (data.advertisementData && (data.advertisementData.title?.trim() || data.advertisementData.content?.trim())) {
-      message += `*ADVERTISEMENT*\n`;
-      
       if (data.advertisementData.title?.trim()) {
         message += `${data.advertisementData.title.trim()}\n\n`;
       }
@@ -1072,16 +1160,22 @@ export class AttendanceNotificationService {
         message += `${data.advertisementData.content.trim()}\n`;
       }
       
-      // Only add sendingUrl as visit link (NOT mediaUrl)
+      // Add sendingUrl as clickable link for WhatsApp/Telegram if available
       if (data.advertisementData.sendingUrl?.trim()) {
-        message += `\nVisit: ${data.advertisementData.sendingUrl.trim()}\n`;
+        if (platform === 'telegram') {
+          // Telegram supports inline buttons (handled separately in sendTelegramNotification)
+          // Just add text link as fallback
+          message += `\n🔗 More Info: ${data.advertisementData.sendingUrl.trim()}\n`;
+        } else {
+          // WhatsApp - add as clickable link
+          message += `\n🔗 More Info: ${data.advertisementData.sendingUrl.trim()}\n`;
+        }
       }
       
       message += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     }
     
     // Natural conversational attendance message based on type
-    const timeOfDay = data.time || 'today';
     
     // Determine attendance type (auto-detect if not specified)
     const attendanceType = data.attendanceType || (data.bookhireName ? 'TRANSPORT' : 'INSTITUTE');
@@ -1089,24 +1183,38 @@ export class AttendanceNotificationService {
     if (attendanceType === 'TRANSPORT') {
       // Transport attendance: getting on/off bus/van
       if (data.attendanceStatus === 'PRESENT') {
-        message += `Your child *${data.studentName}* boarded ${data.bookhireName}${vehicle} at ${timeOfDay} on ${data.date}.`;
+        message += `Your child *${data.studentName}* boarded ${data.bookhireName}${vehicle} at ${formattedTime} on ${formattedDate}.`;
       } else {
-        message += `Your child *${data.studentName}* did not board ${data.bookhireName}${vehicle} at ${timeOfDay} on ${data.date}.`;
+        message += `Your child *${data.studentName}* did not board ${data.bookhireName}${vehicle} at ${formattedTime} on ${formattedDate}.`;
       }
       
     } else {
-      // Institute attendance: arriving at school
+      // Institute attendance - show appropriate level of detail
       if (data.attendanceStatus === 'PRESENT') {
         message += `Your child *${data.studentName}* arrived at`;
       } else {
         message += `Your child *${data.studentName}* was absent from`;
       }
       
-      if (data.instituteName) {
+      // Build context based on available information (most specific to least specific)
+      if (data.subjectName && data.className && data.instituteName) {
+        // Subject level: Show Subject (Class) at Institute
+        message += ` *${data.subjectName}* (${data.className}) at ${data.instituteName}`;
+      } else if (data.subjectName && data.className) {
+        // Subject + Class without institute
+        message += ` *${data.subjectName}* (${data.className})`;
+      } else if (data.className && data.instituteName) {
+        // Class level: Show Class at Institute
+        message += ` *${data.className}* at ${data.instituteName}`;
+      } else if (data.className) {
+        // Class only
+        message += ` *${data.className}*`;
+      } else if (data.instituteName) {
+        // Institute level only
         message += ` ${data.instituteName}`;
       }
       
-      message += ` at ${timeOfDay} on ${data.date}.`;
+      message += ` at ${formattedTime} on ${formattedDate}.`;
     }
 
     // Add footer only for WhatsApp

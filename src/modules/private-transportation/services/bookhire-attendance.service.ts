@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { DynamoDBBookhireAttendanceService } from './dynamodb-bookhire-attendance.service';
@@ -12,6 +13,7 @@ import { MarkBookhireAttendanceDto, BulkMarkAttendanceDto } from '../dto/bookhir
 @Injectable()
 export class BookhireAttendanceService {
   constructor(
+    private readonly configService: ConfigService,
     private readonly dynamoBookhireAttendanceService: DynamoDBBookhireAttendanceService,
     @InjectRepository(ParentEntity)
     private readonly parentRepository: Repository<ParentEntity>,
@@ -88,7 +90,7 @@ export class BookhireAttendanceService {
     }
 
     // 🔍 STEP 4: Verify enrollment (if required by environment and user is a student)
-    const checkEnrollmentOnly = process.env.ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS === 'true';
+    const checkEnrollmentOnly = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS') === 'true';
     
     if (checkEnrollmentOnly && studentData.student) {
       const enrolled = await this.isStudentEnrolledInBookhire(user.id, markAttendanceDto.bookhireId);
@@ -252,7 +254,7 @@ export class BookhireAttendanceService {
     }
 
     // 🔍 STEP 5: Verify enrollment (if required by environment and user is a student)
-    const checkEnrollmentOnly = process.env.ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS === 'true';
+    const checkEnrollmentOnly = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS') === 'true';
     
     if (checkEnrollmentOnly && studentData.student) {
       const enrolled = await this.isStudentEnrolledInBookhire(userId, markAttendanceDto.bookhireId);
@@ -527,7 +529,7 @@ export class BookhireAttendanceService {
   ): Promise<void> {
     try {
       // 🎯 ADVERTISING LOGIC: Check IS_ADS_FROM_DB environment variable
-      const isAdsFromDB = process.env.IS_ADS_FROM_DB === 'true';
+      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
       
       if (isAdsFromDB) {
         // Database-driven advertising
@@ -584,8 +586,9 @@ export class BookhireAttendanceService {
         parentEmail: studentData.parentEmail,
         parentTelegramId: studentData.parentTelegramId,
         attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
+        attendanceType: 'TRANSPORT' as 'TRANSPORT',
         date: attendanceRecord.attendanceDate,
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toISOString(),
         vehicleNumber: vehicleData.vehicleNumber,
         bookhireName: vehicleData.bookhireName,
         subscriptionPlan: studentData.subscriptionPlan,
@@ -594,7 +597,8 @@ export class BookhireAttendanceService {
           mediaUrl: advertisementData.mediaUrl,
           mediaType: advertisementData.mediaType,
           title: advertisementData.title,
-          content: advertisementData.content
+          content: advertisementData.content,
+          sendingUrl: advertisementData.sendingUrl
         }
       };
 
@@ -660,8 +664,9 @@ export class BookhireAttendanceService {
         parentEmail: studentData.parentEmail,
         parentTelegramId: studentData.parentTelegramId,
         attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT', // Both pickup and dropoff indicate presence
+        attendanceType: 'TRANSPORT' as 'TRANSPORT',
         date: attendanceRecord.attendanceDate,
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toISOString(),
         vehicleNumber: vehicleData.vehicleNumber,
         bookhireName: vehicleData.bookhireName,
         subscriptionPlan: studentData.subscriptionPlan,
@@ -842,8 +847,9 @@ export class BookhireAttendanceService {
             parentEmail: parentUser.email || null,
             parentTelegramId: parentUser.telegramId || null,
             attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
+            attendanceType: 'TRANSPORT' as 'TRANSPORT',
             date: attendanceRecord.attendanceDate,
-            time: new Date().toLocaleTimeString(),
+            time: new Date().toISOString(),
             vehicleNumber: vehicleData.vehicleNumber,
             bookhireName: vehicleData.bookhireName,
             subscriptionPlan: parentSubscriptionPlan,
