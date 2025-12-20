@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
@@ -14,6 +15,7 @@ import { UserEntity } from '../user/entities/user.entity';
 import { StudentBookhireEnrollmentEntity } from '../private-transportation/entities/student-bookhire-enrollment.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { ImageVerificationStatus } from '../institute_mudules/institue_user/enums/image-verification-status.enum';
+import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
 import { AdvertisementMatchingService } from '../advertisement/advertisement-matching.service';
 
@@ -22,6 +24,7 @@ export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly dynamoAttendanceService: DynamoDBAttendanceService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
@@ -46,6 +49,12 @@ export class AttendanceService {
     this.logger.log(`[${requestId}] 🎯 Marking: ${markAttendanceDto.studentId}`);
     
     try {
+      // Validate student enrollment if configured
+      await this.validateStudentEnrollment(
+        markAttendanceDto.studentId,
+        markAttendanceDto.instituteId
+      );
+      
       const studentData = await this.fetchStudentWithParentData(markAttendanceDto.studentId);
       
       if (!studentData.student?.user) {
@@ -721,9 +730,12 @@ export class AttendanceService {
         parentTelegramId: data.parentTelegramId,
         attendanceStatus: (markAttendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: markAttendanceDto.date,
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toISOString(),
         location: markAttendanceDto.location,
         instituteName: markAttendanceDto.instituteName,
+        className: markAttendanceDto.className || null,
+        subjectName: markAttendanceDto.subjectName || null,
+        attendanceType: (markAttendanceDto.subjectName ? 'SUBJECT' : (markAttendanceDto.className ? 'CLASS' : 'INSTITUTE')) as 'SUBJECT' | 'CLASS' | 'INSTITUTE',
         vehicleNumber: null,
         bookhireName: null,
         subscriptionPlan: data.subscriptionPlan,
@@ -1546,6 +1558,48 @@ export class AttendanceService {
         markedAt: new Date().toISOString()
       }
     };
+  }
+
+  /**
+   * Validates that a student is enrolled in the given institute
+   * @throws BadRequestException if validation is enabled and student is not enrolled or inactive
+   */
+  private async validateStudentEnrollment(
+    studentId: string,
+    instituteId: string
+  ): Promise<void> {
+    // Check if enrollment validation is enabled via environment variable
+    const shouldValidate = this.configService.get<string>('VALIDATE_INSTITUTE_ENROLLMENT') === 'true';
+    
+    if (!shouldValidate) {
+      this.logger.debug(`Enrollment validation disabled for student ${studentId}`);
+      return;
+    }
+
+    this.logger.log(`Validating enrollment for student ${studentId} at institute ${instituteId}`);
+
+    // Check if student is enrolled in the institute
+    const enrollment = await this.instituteUserRepository.findOne({
+      where: {
+        userId: studentId,
+        instituteId: instituteId
+      }
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException(
+        `Student ${studentId} is not enrolled in institute ${instituteId}`
+      );
+    }
+
+    // Check if enrollment is active
+    if (enrollment.status !== InstituteUserStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Student ${studentId} enrollment is not active (status: ${enrollment.status})`
+      );
+    }
+
+    this.logger.log(`✅ Enrollment validated successfully for student ${studentId}`);
   }
 }
 

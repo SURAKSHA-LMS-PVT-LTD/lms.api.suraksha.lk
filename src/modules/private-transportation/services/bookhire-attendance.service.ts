@@ -584,8 +584,9 @@ export class BookhireAttendanceService {
         parentEmail: studentData.parentEmail,
         parentTelegramId: studentData.parentTelegramId,
         attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
+        attendanceType: 'TRANSPORT' as 'TRANSPORT',
         date: attendanceRecord.attendanceDate,
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toISOString(),
         vehicleNumber: vehicleData.vehicleNumber,
         bookhireName: vehicleData.bookhireName,
         subscriptionPlan: studentData.subscriptionPlan,
@@ -594,7 +595,8 @@ export class BookhireAttendanceService {
           mediaUrl: advertisementData.mediaUrl,
           mediaType: advertisementData.mediaType,
           title: advertisementData.title,
-          content: advertisementData.content
+          content: advertisementData.content,
+          sendingUrl: advertisementData.sendingUrl
         }
       };
 
@@ -660,8 +662,9 @@ export class BookhireAttendanceService {
         parentEmail: studentData.parentEmail,
         parentTelegramId: studentData.parentTelegramId,
         attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT', // Both pickup and dropoff indicate presence
+        attendanceType: 'TRANSPORT' as 'TRANSPORT',
         date: attendanceRecord.attendanceDate,
-        time: new Date().toLocaleTimeString(),
+        time: new Date().toISOString(),
         vehicleNumber: vehicleData.vehicleNumber,
         bookhireName: vehicleData.bookhireName,
         subscriptionPlan: studentData.subscriptionPlan,
@@ -842,8 +845,9 @@ export class BookhireAttendanceService {
             parentEmail: parentUser.email || null,
             parentTelegramId: parentUser.telegramId || null,
             attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
+            attendanceType: 'TRANSPORT' as 'TRANSPORT',
             date: attendanceRecord.attendanceDate,
-            time: new Date().toLocaleTimeString(),
+            time: new Date().toISOString(),
             vehicleNumber: vehicleData.vehicleNumber,
             bookhireName: vehicleData.bookhireName,
             subscriptionPlan: parentSubscriptionPlan,

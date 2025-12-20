@@ -18,13 +18,13 @@ export interface AttendanceNotificationData {
   parentEmail?: string;
   parentTelegramId?: string;
   attendanceStatus: 'PRESENT' | 'ABSENT';
-  attendanceType?: 'INSTITUTE' | 'TRANSPORT';  // ✅ ADDED: Type of attendance
+  attendanceType?: 'INSTITUTE' | 'CLASS' | 'SUBJECT' | 'TRANSPORT';  // ✅ Type of attendance (with all levels)
   date: string;
   time: string;
-  location?: string;           // ✅ ADDED: Location where attendance was marked
+  location?: string;           // ✅ Location where attendance was marked
   instituteName?: string;
-  className?: string;          // ✅ ADDED: Class name for institute attendance
-  subjectName?: string;        // ✅ ADDED: Subject name for lecture attendance
+  className?: string;          // ✅ Class name for class/subject attendance
+  subjectName?: string;        // ✅ Subject name for subject-level attendance
   vehicleNumber?: string;
   bookhireName?: string;
   subscriptionPlan: string;
