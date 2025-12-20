@@ -13,8 +13,14 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application with verification
+RUN npm run build && \
+    echo "✅ Build completed successfully" && \
+    echo "📦 Listing dist directory:" && \
+    ls -laR dist/ && \
+    echo "🎯 Checking for main.js:" && \
+    find dist -name "main.js" -o -name "main" && \
+    test -f dist/src/main.js && echo "✅ dist/src/main.js exists" || echo "❌ dist/src/main.js NOT FOUND"
 
 # Production stage
 FROM node:20-alpine AS production
@@ -31,8 +37,16 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built application from development stage
 COPY --from=development /app/dist ./dist
 
-# Copy node_modules from development (in case any runtime deps are needed)
-COPY --from=development /app/node_modules ./node_modules
+# Copy assets folder (required for PDF templates)
+COPY --from=development /app/assets ./assets
+
+# Verify copied files
+RUN echo "📁 Production stage - Verifying copied files:" && \
+    ls -la && \
+    echo "📦 Contents of dist/:" && \
+    ls -laR dist/ && \
+    echo "🎯 Checking main.js:" && \
+    test -f dist/src/main.js && echo "✅ dist/src/main.js exists" || (echo "❌ dist/src/main.js NOT FOUND" && exit 1)
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs
@@ -49,5 +63,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-8080}/health || exit 1
 
-# Start the application
-CMD ["node", "dist/main"]
+# Start the application (NestJS outputs to dist/src/main.js)
+CMD ["node", "dist/src/main"]
