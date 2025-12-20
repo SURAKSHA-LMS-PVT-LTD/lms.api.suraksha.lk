@@ -80,7 +80,7 @@ export class AttendanceService {
       this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
 
       // Check if institute requires custom user images
-      const instituteIdsRequiringCustomImages = process.env.INSTITUTE_IDS_WITH_CUSTOM_IMAGES?.split(',').map(id => id.trim()) || [];
+      const instituteIdsRequiringCustomImages = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
       const requiresInstituteImage = instituteIdsRequiringCustomImages.includes(markAttendanceDto.instituteId);
 
       let imageUrl = null;
@@ -692,7 +692,7 @@ export class AttendanceService {
       // Get package config to check isAds flag
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[data.subscriptionPlan.toUpperCase()];
       const isAdsEnabled = packageConfig?.isAds === true;
-      const isAdsFromDB = process.env.IS_ADS_FROM_DB === 'true';
+      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
       // Prepare ad data based on config
       let advertisementData = null;
@@ -1513,7 +1513,7 @@ export class AttendanceService {
     // Send notifications WITHOUT waiting - response returns immediately
     if (parentContact || parentEmail || parentTelegramId) {
       // Check if notifications enabled
-      const isAdsFromDB = process.env.IS_ADS_FROM_DB === 'true';
+      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
       
       // Fire-and-forget: Start notification process but don't wait
       this.sendImmediateNotification({
@@ -1569,37 +1569,54 @@ export class AttendanceService {
     instituteId: string
   ): Promise<void> {
     // Check if enrollment validation is enabled via environment variable
-    const shouldValidate = this.configService.get<string>('VALIDATE_INSTITUTE_ENROLLMENT') === 'true';
+    const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
+    const shouldValidate = envValue === 'true';
+    
+    this.logger.debug(`Enrollment validation check - ENV value: "${envValue}", shouldValidate: ${shouldValidate}`);
     
     if (!shouldValidate) {
-      this.logger.debug(`Enrollment validation disabled for student ${studentId}`);
+      this.logger.debug(`Institute enrollment validation disabled - skipping validation for student ${studentId}`);
       return;
     }
 
-    this.logger.log(`Validating enrollment for student ${studentId} at institute ${instituteId}`);
+    this.logger.log(`Validating institute enrollment for student ${studentId} at institute ${instituteId}`);
 
-    // Check if student is enrolled in the institute
-    const enrollment = await this.instituteUserRepository.findOne({
-      where: {
-        userId: studentId,
-        instituteId: instituteId
+    try {
+      // Check if student is enrolled in the institute
+      const enrollment = await this.instituteUserRepository.findOne({
+        where: {
+          userId: studentId,
+          instituteId: instituteId
+        }
+      });
+
+      if (!enrollment) {
+        this.logger.warn(`Student ${studentId} is not enrolled in institute ${instituteId}`);
+        throw new BadRequestException(
+          `Student is currently not enrolled in this institute. Please contact the institute administrator.`
+        );
       }
-    });
 
-    if (!enrollment) {
-      throw new NotFoundException(
-        `Student ${studentId} is not enrolled in institute ${instituteId}`
-      );
-    }
+      // Check if enrollment is active
+      if (enrollment.status !== InstituteUserStatus.ACTIVE) {
+        this.logger.warn(`Student ${studentId} enrollment status is ${enrollment.status} (not ACTIVE)`);
+        throw new BadRequestException(
+          `Student enrollment is not active. Please contact the institute administrator.`
+        );
+      }
 
-    // Check if enrollment is active
-    if (enrollment.status !== InstituteUserStatus.ACTIVE) {
+      this.logger.log(`✅ Enrollment validated successfully for student ${studentId}`);
+    } catch (error) {
+      // If it's already a BadRequestException, rethrow it
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      // For any other database/system errors, log but don't expose internal details
+      this.logger.error(`Error validating enrollment for student ${studentId}: ${error.message}`);
       throw new BadRequestException(
-        `Student ${studentId} enrollment is not active (status: ${enrollment.status})`
+        `Unable to verify student enrollment. Please try again.`
       );
     }
-
-    this.logger.log(`✅ Enrollment validated successfully for student ${studentId}`);
   }
 }
 
