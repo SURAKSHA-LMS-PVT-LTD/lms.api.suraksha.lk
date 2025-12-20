@@ -14,7 +14,11 @@ RUN npm ci
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm run build && \
+    echo "✅ Build completed" && \
+    ls -la dist/ && \
+    echo "📦 dist/main.js exists:" && \
+    ls -la dist/main.js
 
 # Production stage
 FROM node:20-alpine AS production
@@ -31,8 +35,18 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built application from development stage
 COPY --from=development /app/dist ./dist
 
-# Copy node_modules from development (in case any runtime deps are needed)
-COPY --from=development /app/node_modules ./node_modules
+# Copy assets folder (required for templates, etc.)
+COPY --from=development /app/assets ./assets
+
+# Verify the build artifacts
+RUN echo "📁 Verifying build artifacts..." && \
+    ls -la && \
+    echo "📦 dist folder contents:" && \
+    ls -la dist/ && \
+    echo "🎯 Checking dist/main.js:" && \
+    ls -la dist/main.js && \
+    echo "📚 node_modules exists:" && \
+    ls -la node_modules/ | head -20
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs
