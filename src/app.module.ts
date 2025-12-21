@@ -99,17 +99,21 @@ import { AppService } from './app.service';
           PasswordResetTokenEntity, UserFirstLoginLogEntity
         ],
         synchronize: false, // ⚠️ DISABLED - Prevents auto schema sync to avoid foreign key constraint issues
-        logging: config.get('NODE_ENV') === 'development' ? ['query', 'error', 'warn', 'schema'] : false, // No logging in production for faster startup
+        logging: false, // Disabled for faster startup
         // SSL configuration moved to extra section for MySQL 8.x compatibility
         // MySQL 8.x optimized connection pool configuration
-        poolSize: 5, // Reduced for faster startup
-        connectTimeout: 30000, // 30 seconds (faster timeout)
-        timeout: 30000,
+        poolSize: 3, // Minimal pool for faster startup
+        connectTimeout: 10000, // 10 seconds (faster timeout)
+        acquireTimeout: 10000,
+        timeout: 10000,
+        retryAttempts: 2,
+        retryDelay: 1000,
         extra: {
           // MySQL2 driver optimized for MySQL 8.x
           charset: 'utf8mb4_unicode_ci',
           timezone: '+05:30', // Sri Lanka Time (UTC+5:30)
-          connectionLimit: 5, // Reduced for faster startup
+          connectionLimit: 3, // Minimal for faster startup
+          connectTimeout: 10000, // 10 seconds
           // Performance optimizations for MySQL 8.x
           supportBigNumbers: true,
           bigNumberStrings: true,
