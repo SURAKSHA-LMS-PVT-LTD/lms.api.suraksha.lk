@@ -25,6 +25,10 @@ RUN npm run build && \
 # Production stage
 FROM node:20-alpine AS production
 
+# Set environment variables for production
+ENV NODE_ENV=production
+ENV PORT=8080
+
 # Set working directory
 WORKDIR /app
 
