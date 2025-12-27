@@ -22,6 +22,8 @@ import { AdvertisementMatchingService } from '../advertisement/advertisement-mat
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
+  private readonly instituteIdsRequiringCustomImages: Set<string>;
+  private readonly notificationsEnabled: boolean;
 
   constructor(
     private readonly configService: ConfigService,
@@ -41,7 +43,12 @@ export class AttendanceService {
     @InjectRepository(AdvertisementEntity)
     private readonly advertisementRepository: Repository<AdvertisementEntity>,
     private readonly CloudStorageService: CloudStorageService,
-  ) {}
+  ) {
+    // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
+    const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
+    this.instituteIdsRequiringCustomImages = new Set(instituteIds);
+    this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
+  }
 
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${Date.now()}`;
@@ -79,9 +86,8 @@ export class AttendanceService {
 
       this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
 
-      // Check if institute requires custom user images
-      const instituteIdsRequiringCustomImages = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
-      const requiresInstituteImage = instituteIdsRequiringCustomImages.includes(markAttendanceDto.instituteId);
+      // ⚡ OPTIMIZATION: Use cached Set for O(1) lookup
+      const requiresInstituteImage = this.instituteIdsRequiringCustomImages.has(markAttendanceDto.instituteId);
 
       let imageUrl = null;
       
@@ -203,8 +209,8 @@ export class AttendanceService {
       const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
       
       // ✅ STEP 8: Send notifications (same as before)
-      const notificationsEnabled = this.shouldSendNotifications();
-      if (notificationsEnabled) {
+      // ⚡ OPTIMIZATION: Use cached value
+      if (this.notificationsEnabled) {
         results.forEach(result => {
           const markAttendanceDto: MarkAttendanceDto = {
             studentId: result.studentId,
