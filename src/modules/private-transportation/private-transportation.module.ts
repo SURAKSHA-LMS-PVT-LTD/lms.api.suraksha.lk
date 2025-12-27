@@ -26,6 +26,7 @@ import { BookhireAttendanceService } from './services/bookhire-attendance.servic
 // AuthService is provided by AuthModule
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { DynamoDBBookhireAttendanceService } from './services/dynamodb-bookhire-attendance.service';
+import { DynamoDBBookhireAttendanceServiceV2 } from './services/dynamodb-bookhire-attendance.service.v2';
 import { SmsModule } from '../../modules/sms/sms.module';
 // import { OptimizedAdvertisementService } from '../../services/optimized-advertisement.service'; // Temporarily disabled - has MongoDB dependencies
 
@@ -79,6 +80,7 @@ import { BookhireAttendanceController } from './controllers/bookhire-attendance.
     StudentBookhireEnrollmentService,
     BookhireAttendanceService,
     DynamoDBBookhireAttendanceService,
+    DynamoDBBookhireAttendanceServiceV2,
     // StudentBookhireAttendanceService, // Temporarily disabled during MongoDB cleanup
     // AuthService, // Provided by AuthModule
     CloudStorageService,
@@ -89,6 +91,7 @@ import { BookhireAttendanceController } from './controllers/bookhire-attendance.
     StudentBookhireEnrollmentService,
     BookhireAttendanceService,
     DynamoDBBookhireAttendanceService,
+    DynamoDBBookhireAttendanceServiceV2,
     //StudentBookhireAttendanceService, // Temporarily disabled during MongoDB cleanup
   ],
 })
