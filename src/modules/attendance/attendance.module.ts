@@ -4,6 +4,7 @@ import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
+import { DynamoDBAttendanceServiceV2 } from './services/dynamodb-attendance.service.v2';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { CacheModule } from '../../common/modules/cache.module';
@@ -34,10 +35,11 @@ import { AdvertisementEntity } from '../advertisement/entities/advertisement.ent
   providers: [
     AttendanceService,
     DynamoDBAttendanceService,
+    DynamoDBAttendanceServiceV2,
     AttendanceNotificationService,
     CloudStorageService
   ],
-  exports: [AttendanceService, DynamoDBAttendanceService, AttendanceNotificationService]
+  exports: [AttendanceService, DynamoDBAttendanceService, DynamoDBAttendanceServiceV2, AttendanceNotificationService]
 })
 export class AttendanceModule {}
 

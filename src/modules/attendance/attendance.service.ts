@@ -22,6 +22,8 @@ import { AdvertisementMatchingService } from '../advertisement/advertisement-mat
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
+  private readonly instituteIdsRequiringCustomImages: Set<string>;
+  private readonly notificationsEnabled: boolean;
 
   constructor(
     private readonly configService: ConfigService,
@@ -41,7 +43,12 @@ export class AttendanceService {
     @InjectRepository(AdvertisementEntity)
     private readonly advertisementRepository: Repository<AdvertisementEntity>,
     private readonly CloudStorageService: CloudStorageService,
-  ) {}
+  ) {
+    // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
+    const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
+    this.instituteIdsRequiringCustomImages = new Set(instituteIds);
+    this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
+  }
 
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${Date.now()}`;
@@ -79,9 +86,8 @@ export class AttendanceService {
 
       this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
 
-      // Check if institute requires custom user images
-      const instituteIdsRequiringCustomImages = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
-      const requiresInstituteImage = instituteIdsRequiringCustomImages.includes(markAttendanceDto.instituteId);
+      // ⚡ OPTIMIZATION: Use cached Set for O(1) lookup
+      const requiresInstituteImage = this.instituteIdsRequiringCustomImages.has(markAttendanceDto.instituteId);
 
       let imageUrl = null;
       
@@ -129,50 +135,115 @@ export class AttendanceService {
   }
 
   async markBulkAttendance(bulkAttendanceDto: BulkAttendanceDto, markedBy: string): Promise<any> {
-    // Fetch student names from database for all students in bulk
-    const studentIds = bulkAttendanceDto.students.map(s => s.studentId);
-    const studentNamesMap = await this.fetchStudentNames(studentIds);
-
-    // Override student names from database
-    for (const student of bulkAttendanceDto.students) {
-      const dbName = studentNamesMap.get(student.studentId);
-      if (dbName) {
-        student.studentName = dbName;
-      }
-    }
-
-    const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
-    const notificationsEnabled = this.shouldSendNotifications();
-
-    if (notificationsEnabled) {
-      // Fire all notifications in parallel - non-blocking
-      results.forEach(result => {
-        const markAttendanceDto: MarkAttendanceDto = {
-          studentId: result.studentId,
-          studentName: result.studentName,
-          instituteId: bulkAttendanceDto.instituteId,
-          instituteName: bulkAttendanceDto.instituteName,
-          classId: bulkAttendanceDto.classId,
-          className: bulkAttendanceDto.className,
-          subjectId: bulkAttendanceDto.subjectId,
-          subjectName: bulkAttendanceDto.subjectName,
-          date: result.date,
-          location: bulkAttendanceDto.location,
-          status: result.status,
-          markingMethod: bulkAttendanceDto.markingMethod
-        };
-
-        this.scheduleAttendanceNotification(markAttendanceDto, result);
+    const requestId = `BULK_ATT_${Date.now()}`;
+    const startTime = Date.now();
+    this.logger.log(`[${requestId}] 🎯 Bulk marking for ${bulkAttendanceDto.students.length} students`);
+    
+    try {
+      const studentIds = bulkAttendanceDto.students.map(s => s.studentId);
+      
+      // ✅ STEP 1: Validate all students' enrollment (if configured) - batch operation
+      await Promise.all(
+        studentIds.map(studentId =>
+          this.validateStudentEnrollment(studentId, bulkAttendanceDto.instituteId)
+        )
+      );
+      
+      // ✅ STEP 2: Fetch all students from database at once - optimized batch query
+      const students = await this.studentRepository.find({
+        where: { userId: In(studentIds) },
+        relations: ['user'],
+        select: {
+          userId: true,
+          user: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phoneNumber: true,
+            subscriptionPlan: true,
+            telegramId: true,
+            imageUrl: true
+          }
+        }
       });
-    }
+      
+      // ✅ STEP 3: Create student lookup map for quick access
+      const studentMap = new Map(
+        students.map(s => [s.userId, s])
+      );
+      
+      // ✅ STEP 4: Validate all students exist and update names from database
+      const validatedStudents = [];
+      const invalidStudents = [];
+      
+      for (const studentItem of bulkAttendanceDto.students) {
+        const dbStudent = studentMap.get(studentItem.studentId);
+        
+        if (!dbStudent?.user) {
+          invalidStudents.push({
+            studentId: studentItem.studentId,
+            error: `Student not found: ${studentItem.studentId}`
+          });
+          this.logger.warn(`[${requestId}] ⚠️  Student not found: ${studentItem.studentId}`);
+          continue;
+        }
+        
+        // Override with database name
+        studentItem.studentName = `${dbStudent.user.firstName} ${dbStudent.user.lastName}`.trim();
+        validatedStudents.push(studentItem);
+      }
+      
+      // ✅ STEP 5: Check if any students were invalid
+      if (invalidStudents.length > 0) {
+        this.logger.error(`[${requestId}] ❌ ${invalidStudents.length} invalid students found`);
+        throw new NotFoundException(
+          `${invalidStudents.length} student(s) not found: ${invalidStudents.map(s => s.studentId).join(', ')}`
+        );
+      }
+      
+      // ✅ STEP 6: Update the DTO with only validated students
+      bulkAttendanceDto.students = validatedStudents;
+      
+      // ✅ STEP 7: Mark attendance in DynamoDB
+      const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
+      
+      // ✅ STEP 8: Send notifications (same as before)
+      // ⚡ OPTIMIZATION: Use cached value
+      if (this.notificationsEnabled) {
+        results.forEach(result => {
+          const markAttendanceDto: MarkAttendanceDto = {
+            studentId: result.studentId,
+            studentName: result.studentName,
+            instituteId: bulkAttendanceDto.instituteId,
+            instituteName: bulkAttendanceDto.instituteName,
+            classId: bulkAttendanceDto.classId,
+            className: bulkAttendanceDto.className,
+            subjectId: bulkAttendanceDto.subjectId,
+            subjectName: bulkAttendanceDto.subjectName,
+            date: result.date,
+            location: bulkAttendanceDto.location,
+            status: result.status,
+            markingMethod: bulkAttendanceDto.markingMethod
+          };
 
-    return {
-      success: true,
-      message: `Bulk attendance marked successfully for ${results.length} students`,
-      totalProcessed: results.length,
-      action: 'bulk_created',
-      records: results
-    };
+          this.scheduleAttendanceNotification(markAttendanceDto, result);
+        });
+      }
+      
+      this.logger.log(`[${requestId}] ✅ Bulk marked ${results.length} students in ${Date.now() - startTime}ms`);
+
+      return {
+        success: true,
+        message: `Bulk attendance marked successfully for ${results.length} students`,
+        totalProcessed: results.length,
+        action: 'bulk_created',
+        records: results
+      };
+    } catch (error) {
+      this.logger.error(`[${requestId}] ❌ ERROR: Bulk attendance failed - ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   async getStudentAttendance(getStudentAttendanceDto: GetStudentAttendanceDto): Promise<StudentAttendanceResponseDto> {
