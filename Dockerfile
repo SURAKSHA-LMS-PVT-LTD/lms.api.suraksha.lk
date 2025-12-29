@@ -19,8 +19,15 @@ RUN npm run build && \
     echo "📦 Listing dist directory:" && \
     ls -laR dist/ && \
     echo "🎯 Checking for main.js:" && \
-    find dist -name "main.js" -o -name "main" && \
-    test -f dist/src/main.js && echo "✅ dist/src/main.js exists" || echo "❌ dist/src/main.js NOT FOUND"
+    find dist -name "main.js" && \
+    if [ -f dist/main.js ]; then \
+        echo "✅ Found dist/main.js"; \
+    elif [ -f dist/src/main.js ]; then \
+        echo "✅ Found dist/src/main.js"; \
+    else \
+        echo "❌ main.js NOT FOUND"; \
+        exit 1; \
+    fi
 
 # Production stage
 FROM node:20-alpine AS production
@@ -48,8 +55,15 @@ RUN echo "📁 Production stage - Verifying copied files:" && \
     ls -la && \
     echo "📦 Contents of dist/:" && \
     ls -laR dist/ && \
-    echo "🎯 Checking main.js:" && \
-    test -f dist/src/main.js && echo "✅ dist/src/main.js exists" || (echo "❌ dist/src/main.js NOT FOUND" && exit 1)
+    echo "🎯 Checking for main.js:" && \
+    if [ -f dist/main.js ]; then \
+        echo "✅ Found dist/main.js"; \
+    elif [ -f dist/src/main.js ]; then \
+        echo "✅ Found dist/src/main.js"; \
+    else \
+        echo "❌ main.js NOT FOUND in dist"; \
+        exit 1; \
+    fi
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs
@@ -66,5 +80,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-8080}/health || exit 1
 
-# Start the application (NestJS outputs to dist/src/main.js)
-CMD ["node", "dist/src/main.js"]
+# Start the application (check both possible locations)
+CMD if [ -f dist/src/main.js ]; then node dist/src/main.js; else node dist/main.js; fi
