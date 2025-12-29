@@ -207,8 +207,7 @@ export class UserNotificationService {
       }
 
       let message = 
-        `Dear ${firstName},\n\n` +
-        `Welcome to Suraksha LMS!.` +
+        `Welcome to Suraksha LMS!\n\n` +
         `Your account has been successfully created.\n` +
         `User ID: ${userId}\n\n` +
         `Thank you,\n` +
