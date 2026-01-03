@@ -4,7 +4,6 @@ import { InstituteUserStatus } from '../enums/institute-user-status.enum';
 import { InstituteUserType } from '../enums/institute-user-type.enum';
 import { ImageVerificationStatus } from '../enums/image-verification-status.enum';
 import { InstituteType } from '../../../institute/enums/institute.enums';
-import { maskEmail, maskPhoneNumber } from '../../../../common/utils/phone-mask.util';
 import { CloudStorageService } from '../../../../common/services/cloud-storage.service';
 
 /**
@@ -31,11 +30,11 @@ export class UserInstitutesResponseDto {
   @Expose()
   code: string;
 
-  @ApiProperty({ description: 'Institute email (masked)', example: 'co***t@greenfieldacademy.org' })
+  @ApiProperty({ description: 'Institute email', example: 'contact@greenfieldacademy.org' })
   @Expose()
   email: string;
 
-  @ApiPropertyOptional({ description: 'Institute phone (masked)', example: '+947***723' })
+  @ApiPropertyOptional({ description: 'Institute phone', example: '+94771234567' })
   @Expose()
   phone?: string;
 
@@ -186,8 +185,8 @@ export class UserInstitutesResponseDto {
     dto.name = institute.name;
     dto.shortName = institute.shortName;
     dto.code = institute.code;
-    dto.email = maskEmail(institute.email);
-    dto.phone = maskPhoneNumber(institute.phone);
+    dto.email = institute.email;
+    dto.phone = institute.phone;
     dto.systemContactEmail = institute.systemContactEmail;
     dto.systemContactPhoneNumber = institute.systemContactPhoneNumber;
 
