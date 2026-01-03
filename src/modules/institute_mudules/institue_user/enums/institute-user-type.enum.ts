@@ -1,10 +1,10 @@
-export enum InstituteUserType {
-  INSTITUTE_ADMIN = 'INSTITUTE_ADMIN',
-  TEACHER = 'TEACHER',
-  STUDENT = 'STUDENT', 
-  ATTENDANCE_MARKER = 'ATTENDANCE_MARKER',
-  PARENT = 'PARENT',
-}
+  export enum InstituteUserType {
+    INSTITUTE_ADMIN = 'INSTITUTE_ADMIN',
+    TEACHER = 'TEACHER',
+    STUDENT = 'STUDENT', 
+    ATTENDANCE_MARKER = 'ATTENDANCE_MARKER',
+    PARENT = 'PARENT',
+  }
 
 // Compact codes for JWT tokens only
 export const INSTITUTE_USER_TYPE_CODES = {

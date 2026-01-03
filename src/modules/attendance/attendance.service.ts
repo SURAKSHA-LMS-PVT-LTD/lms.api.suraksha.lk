@@ -53,7 +53,6 @@ export class AttendanceService {
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${Date.now()}`;
     const startTime = Date.now();
-    this.logger.log(`[${requestId}] 🎯 Marking: ${markAttendanceDto.studentId}`);
     
     try {
       // Validate student enrollment if configured
@@ -119,8 +118,6 @@ export class AttendanceService {
           ? this.CloudStorageService.getFullUrl(studentData.student.user.imageUrl)
           : null;
       }
-
-      this.logger.log(`[${requestId}] ✅ Marked in ${Date.now() - startTime}ms`);
       
       return {
         success: true,
@@ -137,7 +134,6 @@ export class AttendanceService {
   async markBulkAttendance(bulkAttendanceDto: BulkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `BULK_ATT_${Date.now()}`;
     const startTime = Date.now();
-    this.logger.log(`[${requestId}] 🎯 Bulk marking for ${bulkAttendanceDto.students.length} students`);
     
     try {
       const studentIds = bulkAttendanceDto.students.map(s => s.studentId);
@@ -230,8 +226,6 @@ export class AttendanceService {
           this.scheduleAttendanceNotification(markAttendanceDto, result);
         });
       }
-      
-      this.logger.log(`[${requestId}] ✅ Bulk marked ${results.length} students in ${Date.now() - startTime}ms`);
 
       return {
         success: true,
@@ -684,8 +678,6 @@ export class AttendanceService {
       startDate,
       endDate
     );
-
-    this.logger.log(`📊 Raw records from DynamoDB: ${summary.records.length} records`);
     
     // Filter by status and studentId if provided
     let filteredRecords = summary.records;
@@ -693,18 +685,11 @@ export class AttendanceService {
       filteredRecords = filteredRecords.filter(record => 
         record.status.toLowerCase() === status.toLowerCase()
       );
-      this.logger.log(`🔍 After status filter (${status}): ${filteredRecords.length} records`);
     }
     if (studentId) {
-      this.logger.log(`🔍 Filtering by studentId: "${studentId}" (type: ${typeof studentId})`);
-      this.logger.log(`📋 Sample record studentId: "${filteredRecords[0]?.studentId}" (type: ${typeof filteredRecords[0]?.studentId})`);
-      
       filteredRecords = filteredRecords.filter(record => {
-        const matches = record.studentId === studentId || record.studentId == studentId;
-        this.logger.log(`  Record ${record.studentId} === ${studentId}? ${matches}`);
-        return matches;
+        return record.studentId === studentId || record.studentId == studentId;
       });
-      this.logger.log(`🔍 After studentId filter: ${filteredRecords.length} records`);
     }
 
     // Apply pagination
@@ -921,16 +906,9 @@ export class AttendanceService {
       // 🚀 Send notification immediately (fire-and-forget)
       await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
       
-      if (advertisementData?.matchScore) {
-        this.logger.log(`✅ Notification sent with BEST matching ad (Score: ${advertisementData.matchScore}): "${advertisementData.title}"`);
-      } else {
-        this.logger.log(`✅ Notification sent for student ${studentId} with ${isAdsFromDB ? 'database' : 'default'} ad`);
-      }
-
-      // 🎯 CASCADE TO PARENTS FEATURE
+      // CASCADE TO PARENTS FEATURE
       // If ad has cascadeToParents=true, send SAME ad to ALL parents (not just primary)
       if (advertisementData?.cascadeToParents && studentData) {
-        this.logger.log(`🎯 CASCADE ENABLED: Sending same ad to ALL parents of student ${studentId}`);
         await this.cascadeAdToAllParents(studentData, advertisementData, attendanceDto);
       }
 
@@ -976,8 +954,6 @@ export class AttendanceService {
         return;
       }
 
-      this.logger.log(`🎯 Cascading ad "${advertisementData.title}" to ${allParents.length} parent(s)`);
-
       // Send notification to EACH parent with the SAME ad
       const cascadePromises = allParents.map(async (parent) => {
         try {
@@ -985,7 +961,6 @@ export class AttendanceService {
           
           // Check if parent has contact info
           if (!parentUser.phoneNumber && !parentUser.email && !parentUser.telegramId) {
-            this.logger.warn(`⚠️ ${parent.type} has no contact info for student ${studentData.userId}`);
             return;
           }
 
@@ -995,7 +970,6 @@ export class AttendanceService {
           const shouldReceiveAds = parentPackageConfig?.isAds === true;
 
           if (!shouldReceiveAds) {
-            this.logger.log(`ℹ️ ${parent.type} subscription (${parentSubscriptionPlan}) doesn't receive ads`);
             return;
           }
 
@@ -1018,8 +992,6 @@ export class AttendanceService {
           // Send notification (fire-and-forget)
           await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
           
-          this.logger.log(`✅ Cascaded ad to ${parent.type} (${parentUser.phoneNumber || parentUser.email})`);
-          
         } catch (error) {
           this.logger.error(`❌ Failed to cascade ad to ${parent.type}: ${error.message}`);
           // Continue with other parents
@@ -1028,8 +1000,6 @@ export class AttendanceService {
 
       // Wait for all cascade notifications (but don't block main response)
       await Promise.allSettled(cascadePromises);
-
-      this.logger.log(`✅ Cascade complete: Ad sent to ${allParents.length} parent(s)`);
 
     } catch (error) {
       this.logger.error(`❌ Cascade to parents failed: ${error.message}`, error.stack);
@@ -1063,16 +1033,7 @@ export class AttendanceService {
         occupation: studentData.user.occupation || null
       };
 
-      this.logger.log(`🎯 Finding MOST MATCHING ad for user ${userProfile.userId} with profile: ${JSON.stringify({
-        userType: userProfile.userType,
-        subscriptionPlan: userProfile.subscriptionPlan,
-        instituteId: userProfile.instituteId,
-        city: userProfile.city,
-        gender: userProfile.gender,
-        birthYear: userProfile.birthYear
-      })}`);
-
-      // 🔥 Use sophisticated multi-factor matching service
+      // Use sophisticated multi-factor matching service
       const matches = await this.advertisementMatchingService.findMostMatchingAdvertisements(
         userProfile,
         1  // Get only the BEST match
@@ -1081,8 +1042,6 @@ export class AttendanceService {
       if (matches.length > 0) {
         const bestMatch = matches[0];
         const advertisement = bestMatch.advertisement;
-
-        this.logger.log(`✅ Found BEST matching ad: "${advertisement.title}" (Score: ${bestMatch.matchScore}, Reasons: ${bestMatch.matchReasons.join(', ')})`);
 
         // Increment sending count (fire-and-forget)
         this.advertisementRepository.increment(
@@ -1643,14 +1602,9 @@ export class AttendanceService {
     const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
     const shouldValidate = envValue === 'true';
     
-    this.logger.debug(`Enrollment validation check - ENV value: "${envValue}", shouldValidate: ${shouldValidate}`);
-    
     if (!shouldValidate) {
-      this.logger.debug(`Institute enrollment validation disabled - skipping validation for student ${studentId}`);
       return;
     }
-
-    this.logger.log(`Validating institute enrollment for student ${studentId} at institute ${instituteId}`);
 
     try {
       // Check if student is enrolled in the institute
@@ -1675,8 +1629,6 @@ export class AttendanceService {
           `Student enrollment is not active. Please contact the institute administrator.`
         );
       }
-
-      this.logger.log(`✅ Enrollment validated successfully for student ${studentId}`);
     } catch (error) {
       // If it's already a BadRequestException, rethrow it
       if (error instanceof BadRequestException) {

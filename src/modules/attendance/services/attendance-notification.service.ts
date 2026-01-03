@@ -131,7 +131,6 @@ export class AttendanceNotificationService {
    */
   async sendAttendanceNotification(data: AttendanceNotificationData): Promise<NotificationSummary> {
     const startTime = Date.now();
-    this.logger.log(`📝 Attendance marked: ${data.studentName}`);
 
     // Get package configuration (with environment filtering)
     let channels = this.getNotificationChannels(data.subscriptionPlan);
@@ -159,17 +158,7 @@ export class AttendanceNotificationService {
       });
       
       if (channels.length < originalChannels.length) {
-        this.logger.log(`🎯 Platform filtering: ${originalChannels.length} → ${channels.length} channels (Ad supports: ${supportedPlatforms.join(', ')})`);
       }
-    }
-
-    // Log ad selection
-    if (isAdsEnabled && data.advertisementData) {
-      this.logger.log(`📢 Selected ad: ${data.advertisementData.id}`);
-    } else if (isAdsEnabled) {
-      this.logger.log(`⏭️ Skip ads: No advertisement available`);
-    } else {
-      this.logger.log(`⏭️ Skip ads: isAds=false`);
     }
 
     if (channels.length === 0) {
@@ -211,7 +200,6 @@ export class AttendanceNotificationService {
     };
 
     const duration = Date.now() - startTime;
-    this.logger.log(`✅ Sent ${successCount}/${channels.length} notifications (${duration}ms)`);
 
     return summary;
   } 
@@ -273,7 +261,6 @@ export class AttendanceNotificationService {
   ): Promise<NotificationResult> {
     // Check if channel is available in current environment
     if (!this.isChannelAvailable(channel)) {
-      this.logger.log(`⏭️ ${channel} skip: Not configured`);
       return {
         success: false,
         channel,
@@ -309,7 +296,6 @@ export class AttendanceNotificationService {
         }
 
         if (success) {
-          this.logger.log(`✅ Sent ${channel}`);
           return {
             success: true,
             channel,
@@ -352,7 +338,6 @@ export class AttendanceNotificationService {
     data: AttendanceNotificationData
   ): Promise<{ success: boolean; deliveryId?: string }> {
     if (!data.parentContact) {
-      this.logger.log(`⏭️ WhatsApp skip: No parent contact`);
       return { success: false };
     }
 
@@ -368,7 +353,6 @@ export class AttendanceNotificationService {
     try {
       // PREMIUM WhatsApp-only: Use template message (requires pre-approval from Meta)
       if (isWhatsAppOnly && process.env.WHATSAPP_TEMPLATE_ENABLED === 'true') {
-        this.logger.log(`📋 Using WhatsApp template message (PREMIUM WhatsApp-only)`);
         const templateResult = await this.sendWhatsAppTemplateMessage(
           data.parentContact,
           data
@@ -383,7 +367,6 @@ export class AttendanceNotificationService {
       }
 
       // PLATINUM or packages with multiple channels: Use session message (no cost)
-      this.logger.log(`💬 Using WhatsApp session message (${subscriptionPlan})`);
       const sessionResult = await this.sendWhatsAppSessionMessage(
         data.parentContact,
         message,
@@ -474,7 +457,6 @@ export class AttendanceNotificationService {
       const result = await response.json();
 
       if (response.ok && result.messages) {
-        this.logger.log(`✅ WhatsApp session message sent (${messageType})`);
         return {
           success: true,
           deliveryId: result.messages[0]?.id
@@ -580,7 +562,6 @@ export class AttendanceNotificationService {
       const result = await response.json();
 
       if (response.ok && result.messages) {
-        this.logger.log(`✅ WhatsApp template message sent`);
         return {
           success: true,
           deliveryId: result.messages[0]?.id
@@ -830,7 +811,6 @@ export class AttendanceNotificationService {
     data: AttendanceNotificationData
   ): Promise<{ success: boolean; deliveryId?: string }> {
     if (!data.parentTelegramId) {
-      this.logger.log(`⏭️ Telegram skip: User hasn't Telegram ID`);
       return { success: false };
     }
 
@@ -841,7 +821,6 @@ export class AttendanceNotificationService {
       const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
       if (!botToken) {
-        this.logger.log(`⏭️ Telegram skip: Not configured`);
         return { success: false };
       }
 
@@ -967,7 +946,6 @@ export class AttendanceNotificationService {
     try {
       // Check if parent contact is available
       if (!data.parentContact) {
-        this.logger.log(`⏭️ SMS skip: No parent contact`);
         return { success: false, deliveryId: undefined };
       }
 
@@ -980,7 +958,6 @@ export class AttendanceNotificationService {
 
       // Check if SMS is configured
       if (!userId || !apiKey) {
-        this.logger.log(`⏭️ SMS skip: Not configured`);
         return { success: false, deliveryId: undefined };
       }
 

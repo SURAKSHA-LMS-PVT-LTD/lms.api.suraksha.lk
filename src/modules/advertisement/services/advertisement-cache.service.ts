@@ -43,10 +43,6 @@ export class AdvertisementCacheService {
       this.logger.warn('🚨 GLOBAL CACHING DISABLED - Advertisement cache will be bypassed');
     } else if (!adCacheEnabled) {
       this.logger.warn('🚨 ADVERTISEMENT CACHING DISABLED - Using direct database access');
-    } else {
-      this.logger.log(`✅ ADVERTISEMENT CACHING ENABLED:`);
-      this.logger.log(`  Cache TTL: ${this.CACHE_TTL}s (${this.CACHE_TTL / 60}min)`);
-      this.logger.log(`  Metrics sync interval: ${this.METRICS_SYNC_INTERVAL}min`);
     }
   }
 
@@ -164,8 +160,6 @@ export class AdvertisementCacheService {
         return;
       }
 
-      this.logger.log(`🔄 Syncing metrics for ${adIds.length} advertisements to database...`);
-
       // Bulk update currentSendings in database
       for (const adId of adIds) {
         const { sendings } = metrics.data[adId];
@@ -187,8 +181,6 @@ export class AdvertisementCacheService {
       };
       
       await this.cacheManager.set(this.METRICS_CACHE_KEY, updatedMetrics, this.CACHE_TTL * 24);
-
-      this.logger.log(`✅ Metrics synced: ${adIds.length} ads, last updated: ${metrics.lastUpdated.toISOString()}`);
       
     } catch (error) {
       this.logger.error('❌ Failed to sync metrics to database', error);
@@ -221,7 +213,6 @@ export class AdvertisementCacheService {
   async invalidateCache(): Promise<void> {
     try {
       await this.cacheManager.del(this.ADS_CACHE_KEY);
-      this.logger.log('✅ Advertisement cache invalidated');
     } catch (error) {
       this.logger.error('❌ Cache invalidation failed', error);
     }

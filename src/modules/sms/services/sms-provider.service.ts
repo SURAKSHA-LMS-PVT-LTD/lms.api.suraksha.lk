@@ -111,10 +111,8 @@ export class SmsProviderService {
       const data: SmsSendResponse = await response.json();
 
       // Log full response for debugging
-      this.logger.log(`SMS API Response: ${JSON.stringify(data)}`);
 
       if (data.success || data.data?.status === 'success') {
-        this.logger.log(`✅ SMS sent to ${contact}`);
       } else {
         this.logger.error(`❌ SMS failed to ${contact}: ${data.message}`);
       }

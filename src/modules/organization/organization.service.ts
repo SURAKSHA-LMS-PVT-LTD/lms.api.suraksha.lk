@@ -1382,8 +1382,6 @@ export class OrganizationService {
       }
     }
 
-    this.logger.log(`✅ Bulk assignment complete: ${results.summary.succeeded} succeeded, ${results.summary.failed} failed, ${results.summary.skipped} skipped`);
-
     return {
       message: `Bulk assignment complete: ${results.summary.succeeded} succeeded, ${results.summary.failed} failed, ${results.summary.skipped} skipped`,
       institute: {

@@ -115,8 +115,6 @@ export class InstituteClassExamService {
           });
         }
       }
-
-      this.logger.log(`Bulk marks entry completed: ${successCount} success, ${errorCount} errors`);
       
       return {
         success: errorCount === 0,

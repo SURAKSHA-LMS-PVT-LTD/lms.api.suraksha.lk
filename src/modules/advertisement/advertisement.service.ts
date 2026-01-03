@@ -140,7 +140,6 @@ export class AdvertisementService {
       
       // Invalidate cache after creating new advertisement
       await this.advertisementCacheService.invalidateCache();
-      this.logger.log(`✅ Created advertisement ${saved.id} and invalidated cache`);
       
       return saved;
     } catch (error) {
@@ -194,7 +193,6 @@ export class AdvertisementService {
       
       // Invalidate cache after updating advertisement
       await this.advertisementCacheService.invalidateCache();
-      this.logger.log(`✅ Updated advertisement ${id} and invalidated cache`);
       
       return updated;
     } catch (error) {
@@ -208,7 +206,6 @@ export class AdvertisementService {
       
       // Invalidate cache after deleting advertisement
       await this.advertisementCacheService.invalidateCache();
-      this.logger.log(`✅ Deleted advertisement ${id} and invalidated cache`);
     } catch (error) {
       throw error;
     }
@@ -327,7 +324,6 @@ export class AdvertisementService {
    */
   async sendAdvertisementManually(sendDto: ManualAdvertisementSendDto, adminUserId: string): Promise<ManualSendResponseDto> {
     try {
-      this.logger.log(`🎯 Manual ad send initiated by admin: ${adminUserId}`);
       
       // 1. Validate advertisement exists and is active
       const advertisement = await this.findOne(sendDto.advertisementId);
@@ -341,7 +337,6 @@ export class AdvertisementService {
 
       // 2. Get targeted users based on criteria
       const targetedUsers = await this.getTargetedUsers(sendDto);
-      this.logger.log(`🎯 Found ${targetedUsers.length} targeted users`);
 
       if (targetedUsers.length === 0) {
         return {
@@ -362,8 +357,6 @@ export class AdvertisementService {
       // 3. Filter users by their subscription package capabilities
       const { eligibleUsers, packageBreakdown } = await this.filterUsersByPackageCapabilities(targetedUsers, sendDto.channels);
       
-      this.logger.log(`📦 Package filtering result: ${eligibleUsers.length} eligible users`);
-
       // 4. Send advertisements to eligible users
       const sendResults = await this.sendAdvertisementToUsers(advertisement, eligibleUsers, sendDto.message, sendDto.channels);
 
@@ -376,8 +369,6 @@ export class AdvertisementService {
 
       const campaignId = `manual-${Date.now()}-${adminUserId}`;
       
-      this.logger.log(`✅ Manual ad send completed: ${sendResults.sentUsers.length} sent, ${sendResults.failedUsers.length} failed`);
-
       return {
         success: true,
         message: `Advertisement sent to ${sendResults.sentUsers.length} users successfully`,
@@ -403,7 +394,6 @@ export class AdvertisementService {
    */
   async sendBulkAdvertisementsManually(bulkSendDto: BulkManualAdvertisementSendDto, adminUserId: string): Promise<ManualSendResponseDto[]> {
     try {
-      this.logger.log(`🚀 Bulk manual ad send initiated by admin: ${adminUserId} for ${bulkSendDto.campaigns.length} campaigns`);
       
       const results: ManualSendResponseDto[] = [];
 
@@ -547,7 +537,6 @@ export class AdvertisementService {
           packageBreakdown[subscriptionPlan].failed++;
         }
       } else {
-        this.logger.log(`📵 User ${user.id} package ${subscriptionPlan} doesn't receive advertisements`);
         packageBreakdown[subscriptionPlan].failed++;
       }
     }
@@ -595,7 +584,6 @@ export class AdvertisementService {
         await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
         
         sentUsers.push(user.id);
-        this.logger.log(`✅ Advertisement sent to user ${user.id} (${user.subscriptionPlan})`);
         
       } catch (error) {
         failedUsers.push(user.id);
@@ -615,7 +603,6 @@ export class AdvertisementService {
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[subscriptionPlan.toUpperCase()];
       
       if (!packageConfig) {
-        this.logger.log(`📊 Package configuration not found for: ${subscriptionPlan}, using FREE fallback`);
         return NOTIFICATION_PACKAGES_CONFIG.packages['FREE'] || { isAds: false, channels: ['email'] };
       }
       
@@ -684,7 +671,6 @@ export class AdvertisementService {
     let dbQueryCount = 0;
 
     try {
-      this.logger.log(`🔍 Checking advertisement sending for ad: ${sendDto.advertisementId}`);
 
       // Query 1: Get advertisement
       const advertisement = await this.findOne(sendDto.advertisementId);

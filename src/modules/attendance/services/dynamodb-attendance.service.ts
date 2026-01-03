@@ -274,7 +274,6 @@ export class DynamoDBAttendanceService {
       await this.retryWithBackoff(async () => {
         return await this.dynamoClient.send(new PutItemCommand(params));
       });
-      this.logger.log(`Attendance marked for student ${attendance.studentId} on ${attendance.date}`);
       return attendance;
     } catch (error) {
       this.handleDynamoDBError(error, 'mark attendance');
@@ -375,7 +374,6 @@ export class DynamoDBAttendanceService {
     
     // Retry failed items individually (may be duplicates or need conditional writes)
     if (failed.length > 0) {
-      this.logger.log(`Retrying ${failed.length} failed items individually with duplicate protection...`);
       
       for (const failedItem of failed) {
         try {
@@ -503,7 +501,6 @@ export class DynamoDBAttendanceService {
       await this.retryWithBackoff(async () => {
         return await this.dynamoClient.send(new DeleteItemCommand(params));
       });
-      this.logger.log(`Attendance deleted for student ${studentId} on ${date} at ${timestamp}`);
     } catch (error) {
       this.handleDynamoDBError(error, 'delete attendance');
     }
@@ -567,8 +564,6 @@ export class DynamoDBAttendanceService {
       params.ExpressionAttributeNames = attributeNames;
       params.ExpressionAttributeValues = marshall(attributeValues, { removeUndefinedValues: true });
     }
-
-    this.logger.log(`🔍 DynamoDB Query - Institute: ${instituteId}, Class: ${classId}, Subject: ${subjectId}, Date: ${startDate} to ${endDate}`);
 
     const result = await this.retryWithBackoff(async () => {
       return await this.dynamoClient.send(new QueryCommand(params));

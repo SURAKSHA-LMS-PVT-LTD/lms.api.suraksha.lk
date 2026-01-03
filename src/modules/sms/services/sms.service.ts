@@ -1356,7 +1356,6 @@ export class SmsService {
       await this.updateMessageFinalStatus(messageId, deliveryResult);
 
       const processingTime = Date.now() - startTime;
-      this.logger.log(`✅ SMS processing completed in ${processingTime}ms - Success: ${deliveryResult.successful}, Failed: ${deliveryResult.failed}`);
 
     } catch (error) {
       this.logger.error(`❌ SMS processing failed for message ${messageId}: ${error.message}`);

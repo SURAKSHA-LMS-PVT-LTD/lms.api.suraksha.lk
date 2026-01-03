@@ -41,12 +41,10 @@ export class AsyncEmailService {
     emailType: string,
     recipient: string
   ): void {
-    this.logger.log(`📧 Sending ${emailType} email to ${recipient}...`);
     
     // Fire immediately, don't wait
     emailPromise
       .then((result) => {
-        this.logger.log(`✅ ${emailType} email sent successfully to ${recipient}`);
       })
       .catch((error) => {
         this.logger.error(

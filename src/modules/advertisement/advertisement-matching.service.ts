@@ -50,11 +50,6 @@ export class AdvertisementMatchingService {
     limit: number = 10
   ): Promise<AdvertisementMatch[]> {
     try {
-      this.logger.log(`🎯 === FINDING ADVERTISEMENTS FOR USER ===`);
-      this.logger.log(`   User ID: ${userProfile.userId}`);
-      this.logger.log(`   User Type: ${userProfile.userType}`);
-      this.logger.log(`   Subscription: ${userProfile.subscriptionPlan}`);
-
       // Get all active advertisements from cache (12-hour TTL + 5 AM daily refresh)
       // This will query database if cache is empty/expired
       const activeAds = await this.advertisementCacheService.getActiveAdvertisements();
@@ -64,8 +59,6 @@ export class AdvertisementMatchingService {
         this.logger.warn('   This means database returned 0 results');
         return [];
       }
-
-      this.logger.log(`✅ Processing ${activeAds.length} advertisements for matching algorithm`);
 
       // Calculate match scores for each advertisement
       const matches = activeAds
@@ -79,8 +72,6 @@ export class AdvertisementMatchingService {
           return b.advertisement.priority - a.advertisement.priority;
         })
         .slice(0, limit);
-
-      this.logger.log(`Found ${matches.length} matching advertisements for user ${userProfile.userId}`);
       
       return matches;
     } catch (error) {
@@ -366,8 +357,6 @@ export class AdvertisementMatchingService {
       if (advertisement && advertisement.canSend()) {
         advertisement.incrementImpression();
         await this.advertisementRepository.save(advertisement);
-        
-        this.logger.log(`Recorded impression for ad ${advertisementId} by user ${userProfile.userId}`);
       }
     } catch (error) {
       this.logger.error(`Error recording impression: ${error.message}`, error.stack);
@@ -388,8 +377,6 @@ export class AdvertisementMatchingService {
       if (advertisement) {
         advertisement.incrementClick();
         await this.advertisementRepository.save(advertisement);
-        
-        this.logger.log(`Recorded click for ad ${advertisementId} by user ${userProfile.userId}`);
       }
     } catch (error) {
       this.logger.error(`Error recording click: ${error.message}`, error.stack);

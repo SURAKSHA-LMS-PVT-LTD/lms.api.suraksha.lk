@@ -70,8 +70,6 @@ export class NotificationLoggingService {
       const successful = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.filter(r => r.status === 'rejected').length;
       
-      this.logger.log(`📊 SMS batch logging completed: ${successful}/${recipients.length} successful, ${failed} failed for message ${messageId}`);
-      
       // Log failures for debugging (without throwing)
       if (failed > 0) {
         const failures = results

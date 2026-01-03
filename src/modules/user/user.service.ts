@@ -2919,8 +2919,6 @@ export class UsersService {
     emailSent: boolean;
     userEmail: string;
   }> {
-    this.logger.log(`🚫 Rejecting profile image for user: ${userId}, Reason: ${reason || 'Not specified'}`);
-
     // Find user
     const user = await this.userRepository.findOne({
       where: { id: userId },
@@ -2939,7 +2937,6 @@ export class UsersService {
       try {
         const imagePath = path.join(process.cwd(), 'uploads', previousImageUrl.replace(/^\//, ''));
         await fs.unlink(imagePath);
-        this.logger.log(`🗑️ Deleted image file: ${imagePath}`);
       } catch (fileError) {
         this.logger.warn(`⚠️ Failed to delete image file: ${fileError.message}`);
         // Continue even if file deletion fails (file might not exist)
@@ -2949,8 +2946,6 @@ export class UsersService {
     // Clear the profile image from database
     user.imageUrl = null;
     await this.userRepository.save(user);
-
-    this.logger.log(`✅ Profile image cleared for user ${userId}`);
 
     // Refresh cache
     try {
@@ -2969,8 +2964,6 @@ export class UsersService {
         reason: reason || 'Your profile image does not meet our quality standards',
         profileUpdateUrl,
       });
-
-      this.logger.log(`📧 Profile image rejection email queued for ${user.email}`);
     } catch (emailError) {
       this.logger.error(`❌ Failed to queue rejection email to ${user.email}: ${emailError.message}`);
       // Don't fail the request if email queueing fails
