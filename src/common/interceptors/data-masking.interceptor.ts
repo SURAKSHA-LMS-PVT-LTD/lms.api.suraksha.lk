@@ -77,6 +77,9 @@ export class DataMaskingInterceptor implements NestInterceptor {
     // Handle objects
     const maskedData = { ...data };
 
+    // Detect if this is an Institute object (has institute-specific fields)
+    const isInstituteObject = this.isInstituteObject(maskedData);
+
     // Fields that should NOT be masked (institute contact details and emergency contacts for safety)
     const skipMaskingFields = [
       'instituteEmail',
@@ -84,6 +87,11 @@ export class DataMaskingInterceptor implements NestInterceptor {
       'emergencyContact',
       'emergency_contact',
     ];
+
+    // If this is an institute object, also skip masking the main email and phone fields
+    if (isInstituteObject) {
+      skipMaskingFields.push('email', 'phone');
+    }
 
     // Common email field names (ALL should be masked)
     const emailFields = [
@@ -141,5 +149,27 @@ export class DataMaskingInterceptor implements NestInterceptor {
     }
 
     return maskedData;
+  }
+
+  /**
+   * Detect if an object is an Institute object based on its fields
+   * Institute objects typically have: id, name, code, and at least one of (logoUrl, type, status)
+   */
+  private isInstituteObject(obj: any): boolean {
+    if (!obj || typeof obj !== 'object') return false;
+    
+    // Check for typical institute fields
+    const hasInstituteIdentifiers = 
+      'code' in obj && 
+      'name' in obj && 
+      (
+        'logoUrl' in obj || 
+        'type' in obj || 
+        'status' in obj ||
+        'shortName' in obj ||
+        'instituteType' in obj
+      );
+    
+    return hasInstituteIdentifiers;
   }
 }

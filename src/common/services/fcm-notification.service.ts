@@ -66,7 +66,6 @@ export class FcmNotificationService implements OnModuleInit {
       });
 
       this.isInitialized = true;
-      this.logger.log('✅ Firebase Admin SDK initialized successfully');
     } catch (error) {
       this.logger.error(`❌ Failed to initialize Firebase Admin SDK: ${error.message}`);
     }
@@ -139,7 +138,6 @@ export class FcmNotificationService implements OnModuleInit {
 
       const messageId = await admin.messaging().send(message);
 
-      this.logger.log(`✅ Notification sent successfully. Message ID: ${messageId}`);
       return {
         success: true,
         messageId,
@@ -256,10 +254,6 @@ export class FcmNotificationService implements OnModuleInit {
         }
       });
 
-      this.logger.log(
-        `📊 Batch notification sent: ${response.successCount} succeeded, ${response.failureCount} failed`
-      );
-
       if (invalidTokens.length > 0) {
         this.logger.warn(`⚠️ Found ${invalidTokens.length} invalid tokens`);
       }
@@ -312,7 +306,6 @@ export class FcmNotificationService implements OnModuleInit {
       }
 
       const fcmTokens = tokens.map(token => token.fcmToken);
-      this.logger.log(`📱 Sending notification to user ${userId} (${fcmTokens.length} devices)`);
 
       const result = await this.sendToMultipleDevices(fcmTokens, notification, data, options);
 
@@ -361,10 +354,6 @@ export class FcmNotificationService implements OnModuleInit {
       totalFailure += result.failureCount;
     }
 
-    this.logger.log(
-      `📊 Sent to ${userIds.length} users: ${totalSuccess} succeeded, ${totalFailure} failed`
-    );
-
     return {
       totalSuccess,
       totalFailure,
@@ -389,10 +378,6 @@ export class FcmNotificationService implements OnModuleInit {
 
     try {
       const response = await admin.messaging().subscribeToTopic(fcmTokens, topic);
-
-      this.logger.log(
-        `✅ Subscribed to topic "${topic}": ${response.successCount} succeeded, ${response.failureCount} failed`
-      );
 
       return {
         successCount: response.successCount,
@@ -426,10 +411,6 @@ export class FcmNotificationService implements OnModuleInit {
 
     try {
       const response = await admin.messaging().unsubscribeFromTopic(fcmTokens, topic);
-
-      this.logger.log(
-        `✅ Unsubscribed from topic "${topic}": ${response.successCount} succeeded, ${response.failureCount} failed`
-      );
 
       return {
         successCount: response.successCount,
@@ -494,7 +475,6 @@ export class FcmNotificationService implements OnModuleInit {
 
       const messageId = await admin.messaging().send(message);
 
-      this.logger.log(`✅ Notification sent to topic "${topic}". Message ID: ${messageId}`);
       return {
         success: true,
         messageId,
@@ -518,7 +498,6 @@ export class FcmNotificationService implements OnModuleInit {
         const tokenEntity = await this.fcmTokenRepository.findByToken(token);
         if (tokenEntity) {
           await this.fcmTokenRepository.deactivateToken(tokenEntity.id);
-          this.logger.log(`🗑️ Deactivated invalid token for user ${tokenEntity.userId}`);
         }
       }
     } catch (error) {

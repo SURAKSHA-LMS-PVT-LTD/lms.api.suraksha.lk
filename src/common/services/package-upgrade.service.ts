@@ -131,8 +131,6 @@ export class PackageUpgradeService {
       }
     }
 
-    this.logger.log(`Batch package upgrade completed: ${success.length} successful, ${failed.length} failed`);
-
     return { success, failed };
   }
 
@@ -229,8 +227,6 @@ export class PackageUpgradeService {
         errors.push(`User ${user.id}: ${error.message}`);
       }
     }
-
-    this.logger.log(`Bulk sync completed: ${successful} successful, ${failed} failed`);
 
     return {
       processed: users.length,

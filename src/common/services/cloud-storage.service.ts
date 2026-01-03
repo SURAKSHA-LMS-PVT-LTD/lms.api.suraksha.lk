@@ -175,10 +175,6 @@ export class CloudStorageService implements OnModuleInit {
       
       this.bucket = this.storage.bucket(this.bucketName);
       
-      this.logger.log('✅ Google Cloud Storage initialized successfully');
-      this.logger.log(`   Project ID: ${projectId}`);
-      this.logger.log(`   Bucket: ${this.bucketName}`);
-      this.logger.log(`   Client Email: ${clientEmail}`);
     } catch (error) {
       this.logger.error('❌ Google Cloud Storage initialization failed:', error);
       this.logger.error('💡 Ensure all GCS environment variables are set in .env file:');
@@ -208,8 +204,6 @@ export class CloudStorageService implements OnModuleInit {
       if (!secretAccessKey) {
         throw new Error('AWS_SECRET_ACCESS_KEY not configured in environment variables');
       }
-
-      this.logger.log('🔧 Initializing AWS SDK v3 S3 Client...');
       
       // Initialize AWS SDK v3 S3 Client
       this.s3Client = new S3Client({
@@ -220,10 +214,6 @@ export class CloudStorageService implements OnModuleInit {
         }
       });
       
-      this.logger.log('✅ AWS S3 initialized successfully');
-      this.logger.log(`   Bucket: ${this.s3BucketName}`);
-      this.logger.log(`   Region: ${this.s3Region}`);
-      this.logger.log(`   Access Key ID: ${accessKeyId.substring(0, 8)}...`);
       
     } catch (error) {
       this.logger.error('❌ AWS S3 initialization failed:', error);
@@ -590,14 +580,11 @@ export class CloudStorageService implements OnModuleInit {
     // 🔒 SECURITY 1: Add file size limit to signed URL if provided
     if (maxFileSize) {
       signedUrlOptions.extensionHeaders['x-goog-content-length-range'] = `0,${maxFileSize}`;
-      this.logger.log(`🔒 GCS Signed URL enforces file size limit: 0-${maxFileSize} bytes`);
     }
 
     // Generate signed URL for upload (PUT request)
     const [uploadUrl] = await file.getSignedUrl(signedUrlOptions);
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
-    this.logger.log(`✅ Generated GCS signed upload URL for ${relativePath}, expires at ${expiresAt.toISOString()}`);
 
     return {
       uploadUrl,
@@ -658,7 +645,6 @@ export class CloudStorageService implements OnModuleInit {
     // 🔒 SECURITY 5: File size constraint (prevent storage abuse)
     if (maxFileSize) {
       conditions.push(['content-length-range', 0, maxFileSize]);
-      this.logger.log(`🔒 S3 Presigned POST enforces file size limit: 0-${maxFileSize} bytes`);
     }
 
     // Build fields for presigned POST
@@ -683,8 +669,6 @@ export class CloudStorageService implements OnModuleInit {
       });
 
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
-      this.logger.log(`✅ Generated AWS S3 presigned POST for ${relativePath}, expires at ${expiresAt.toISOString()}`);
 
       return {
         uploadUrl: presignedPost.url,
@@ -713,8 +697,6 @@ export class CloudStorageService implements OnModuleInit {
     const provider = this.provider.toLowerCase();
 
     try {
-      this.logger.log(`🔍 Verifying file: ${relativePath}`);
-
       switch (provider) {
         case 'google':
         case 'gcs':
@@ -751,7 +733,6 @@ export class CloudStorageService implements OnModuleInit {
     let exists = false;
     try {
       [exists] = await file.exists();
-      this.logger.log(`GCS file exists check result: ${exists}`);
     } catch (existsError) {
       this.logger.error(`❌ Error checking file existence: ${existsError.message}`, existsError.stack);
       throw new InternalServerErrorException(`Failed to verify file: ${existsError.message}`);
@@ -765,7 +746,6 @@ export class CloudStorageService implements OnModuleInit {
     // 2️⃣ Make file publicly accessible (long-term)
     try {
       await file.makePublic();
-      this.logger.log(`✅ Made GCS file public: ${relativePath}`);
     } catch (aclError) {
       // Bucket might have uniform bucket-level access enabled
       this.logger.warn(`Could not set ACL (likely uniform access enabled): ${aclError.message}`);
@@ -773,7 +753,6 @@ export class CloudStorageService implements OnModuleInit {
 
     // 3️⃣ Return long-term public URL
     const publicUrl = this.getFullUrl(relativePath);
-    this.logger.log(`✅ GCS file verified and public: ${publicUrl}`);
     
     return publicUrl;
   }
@@ -796,7 +775,6 @@ export class CloudStorageService implements OnModuleInit {
       fileMetadata = await this.s3Client.send(headCommand);
       
       const fileSizeKB = (fileMetadata.ContentLength / 1024).toFixed(2);
-      this.logger.log(`S3 file exists: ${relativePath} (${fileSizeKB} KB)`);
       
       const folder = relativePath.split('/')[0]; // Extract folder from path
       
@@ -883,7 +861,6 @@ export class CloudStorageService implements OnModuleInit {
         ACL: 'public-read'
       });
       await this.s3Client.send(putAclCommand);
-      this.logger.log(`✅ Made S3 file public: ${relativePath}`);
     } catch (aclError) {
       // Bucket might have block public access enabled
       this.logger.warn(`Could not set S3 ACL to public: ${aclError.message}`);
@@ -891,7 +868,6 @@ export class CloudStorageService implements OnModuleInit {
 
     // 3️⃣ Return long-term public URL
     const publicUrl = this.getFullUrl(relativePath);
-    this.logger.log(`✅ S3 file verified and public: ${publicUrl}`);
     
     return publicUrl;
   }
@@ -1417,7 +1393,6 @@ export class CloudStorageService implements OnModuleInit {
         Key: relativePath
       });
       await this.s3Client.send(deleteCommand);
-      this.logger.log(`🗑️ Deleted invalid file: ${relativePath}`);
     } catch (deleteError) {
       this.logger.error(`Failed to delete invalid file: ${deleteError.message}`);
     }

@@ -144,8 +144,6 @@ export class CacheValidationGuard implements CanActivate {
       
       // ✅ ENHANCED: Test cache health on validation errors
       if (error.message?.includes('cache') || error.message?.includes('database')) {
-        this.logger.log(`🔧 Testing cache health due to validation error`);
-        
         try {
           const healthCheck = await this.cacheValidationService.testCacheHealth();
           this.logger.warn(`📊 Cache health status:`, healthCheck);

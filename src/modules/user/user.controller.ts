@@ -390,13 +390,6 @@ export class UsersController {
       if (!validUserTypes.includes(dto.userType)) {
         throw new BadRequestException(`Invalid userType. Must be one of: ${validUserTypes.join(', ')}`);
       }
-
-      // 📊 LOG: Incoming request
-      this.logger.log(`[${requestId}] 📥 Comprehensive user creation request received`);
-      this.logger.log(`[${requestId}] User Type: ${dto.userType}`);
-      this.logger.log(`[${requestId}] Email: ${dto.email}`);
-      this.logger.log(`[${requestId}] Phone: ${dto.phoneNumber}`);
-      this.logger.log(`[${requestId}] Name: ${dto.firstName} ${dto.lastName}`);
       
       const currentUser = req?.user;
     
@@ -493,36 +486,24 @@ export class UsersController {
     }
 
     // Pass imageUrl and idUrl from DTO to service
-    this.logger.log(`[${requestId}] 🔄 Calling user service to create user...`);
     const result = await this.usersService.createComprehensive(dto);
     
     if (result.success) {
-      this.logger.log(`[${requestId}] ✅ User created successfully - ID: ${result.userId}`);
     }
 
-    // ============================================
-    // 📧📱 Send Welcome Notifications
-    // ============================================
-    // Delegated to UserNotificationService for better architecture
+    // Send welcome notifications
     if (result.success && result.userId && dto.email) {
-      this.logger.log(`[${requestId}] 📧 Sending welcome notifications...`);
-      this.logger.log(`[${requestId}]   - Email: ${dto.email}`);
-      this.logger.log(`[${requestId}]   - Phone: ${dto.phoneNumber}`);
-      
       this.userNotificationService.sendWelcomeNotifications({
         email: dto.email,
         phoneNumber: dto.phoneNumber,
         firstName: dto.firstName,
         userId: result.userId,
         instituteId: dto.instituteId,
-      }).then(() => {
-        this.logger.log(`[${requestId}] ✅ Welcome notifications sent successfully`);
       }).catch((error) => {
         this.logger.warn(`[${requestId}] ⚠️ Failed to send welcome notifications: ${error.message}`);
       });
     }
     
-    this.logger.log(`[${requestId}] 📤 Sending response to client`);
     return result;
       
     } catch (error) {
@@ -3000,11 +2981,7 @@ export class UsersController {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
-    this.logger.log(`[${requestId}] 📧 Request Email OTP - Email: ${body.email}, IP: ${ipAddress}`);
-    
     const result = await this.usersService.requestEmailOtp(body.email, ipAddress);
-    
-    this.logger.log(`[${requestId}] ✅ Email OTP sent successfully - Remaining: ${result.remainingAttempts}`);
     
     return result;
   }
@@ -3054,11 +3031,7 @@ export class UsersController {
   ) {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    this.logger.log(`[${requestId}] 🔍 Verify Email OTP - Email: ${body.email}`);
-    
     const result = await this.usersService.verifyEmailOtp(body.email, body.otpCode);
-    
-    this.logger.log(`[${requestId}] ✅ Email verified successfully`);
     
     return result;
   }
@@ -3124,11 +3097,7 @@ export class UsersController {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
-    this.logger.log(`[${requestId}] 🔄 Re-request Email OTP - Email: ${body.email}, IP: ${ipAddress}`);
-    
     const result = await this.usersService.requestEmailOtp(body.email, ipAddress);
-    
-    this.logger.log(`[${requestId}] ✅ Email OTP resent - Remaining: ${result.remainingAttempts}`);
     
     return result;
   }
@@ -3195,11 +3164,7 @@ export class UsersController {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
-    this.logger.log(`[${requestId}] 📱 Request Phone OTP - Phone: ${body.phoneNumber}, IP: ${ipAddress}`);
-    
     const result = await this.usersService.requestPhoneOtp(body.phoneNumber, ipAddress);
-    
-    this.logger.log(`[${requestId}] ✅ Phone OTP sent successfully - Remaining: ${result.remainingAttempts}`);
     
     return result;
   }
@@ -3249,11 +3214,7 @@ export class UsersController {
   ) {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    this.logger.log(`[${requestId}] 🔍 Verify Phone OTP - Phone: ${body.phoneNumber}`);
-    
     const result = await this.usersService.verifyPhoneOtp(body.phoneNumber, body.otpCode);
-    
-    this.logger.log(`[${requestId}] ✅ Phone verified successfully`);
     
     return result;
   }
@@ -3319,11 +3280,7 @@ export class UsersController {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
-    this.logger.log(`[${requestId}] 🔄 Re-request Phone OTP - Phone: ${body.phoneNumber}, IP: ${ipAddress}`);
-    
     const result = await this.usersService.requestPhoneOtp(body.phoneNumber, ipAddress);
-    
-    this.logger.log(`[${requestId}] ✅ Phone OTP resent - Remaining: ${result.remainingAttempts}`);
     
     return result;
   }
@@ -3406,12 +3363,8 @@ export class UsersController {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const adminUser = req.user;
     
-    this.logger.log(`[${requestId}] 🚫 Reject Profile Image - UserId: ${userId}, Admin: ${adminUser.id}, Reason: ${body.reason || 'Not specified'}`);
-    
     try {
       const result = await this.usersService.rejectProfileImage(userId, body.reason, adminUser.id);
-      
-      this.logger.log(`[${requestId}] ✅ Profile image rejected - User: ${userId}, Email sent: ${result.emailSent}`);
       
       return {
         success: true,

@@ -16,7 +16,6 @@ import { CacheModule } from './modules/cache.module';
 import { EnhancedAccessGuard } from './guards/enhanced-access.guard';
 import { EnhancedValidationGuard } from './guards/enhanced-validation.guard';
 import { UploadController } from './controllers/upload.controller';
-import { FcmTestController } from './controllers/fcm-test.controller';
 import { UrlTransformerHelper } from './helpers/url-transformer.helper';
 
 @Global()
@@ -45,7 +44,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
       useClass: GlobalExceptionFilter,
     },
   ],
-  controllers: [UploadController, FcmTestController],
+  controllers: [UploadController],
   exports: [
     AuditService,
     AuditLogInterceptor,

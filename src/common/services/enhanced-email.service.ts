@@ -63,9 +63,6 @@ export class EnhancedEmailService {
         ...(template.replyTo && { reply_to: template.replyTo }),
       };
       
-      this.logger.log(`📤 Sending email to Lambda: ${this.emailServerUrl}`);
-      this.logger.log(`📦 Payload: ${JSON.stringify(payload, null, 2)}`);
-      
       const response = await axios.post(this.emailServerUrl, payload, {
         headers: {
           'Content-Type': 'application/json',
@@ -74,13 +71,10 @@ export class EnhancedEmailService {
         timeout: 10000, // 10 second timeout
       });
 
-      this.logger.log(`📬 Lambda response: ${JSON.stringify(response.data)}`);
-
       // Check for success - Lambda returns messageId when successful
       const isSuccess = response.data.messageId || response.data.message_id || response.data.status === 'success';
       
       if (isSuccess) {
-        this.logger.log(`✅ Email sent successfully via Lambda`);
         return {
           success: true,
           messageId: response.data.messageId || response.data.message_id,
@@ -303,10 +297,6 @@ export class EnhancedEmailService {
     const firstName = nameParts[0] || 'User';
     const lastName = nameParts.slice(1).join(' ') || 'Member';
     const userId = params.studentId || 'Pending';
-
-    this.logger.log(
-      `📧 Registration email template data: firstName="${firstName}", lastName="${lastName}", userId="${userId}"`
-    );
 
     // Use 'welcome' template type (matches Lambda example)
     const result = await this.sendTemplateEmail({

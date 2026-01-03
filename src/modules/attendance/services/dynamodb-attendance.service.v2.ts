@@ -161,7 +161,6 @@ export class DynamoDBAttendanceServiceV2 {
         return await this.docClient.send(command);
       });
       
-      this.logger.log(`✅ Attendance marked: Student ${dto.studentId}, Date ${dto.date}, Status ${dto.status}`);
       return record;
     } catch (error) {
       this.handleDynamoDBError(error, 'mark attendance');
@@ -229,7 +228,6 @@ export class DynamoDBAttendanceServiceV2 {
         }));
 
         successful.push(...putRequests);
-        this.logger.log(`✅ Batch marked ${batch.length} attendance records`);
       } catch (error) {
         this.logger.error(`Batch write failed: ${error.message}`);
         batch.forEach(dto => {

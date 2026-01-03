@@ -50,8 +50,6 @@ export class EnhancedAdvertisingService {
    */
   async controlStudentAllocations(studentId: string, location?: string): Promise<any[]> {
     try {
-      this.logger.debug(`Controlling allocations for student: ${studentId}`);
-
       // TODO: Update to use AdvertisementEntity once BookHire integration is complete
       // For now, return empty array to maintain API compatibility
       return [];
@@ -66,9 +64,7 @@ export class EnhancedAdvertisingService {
    */
   async processAdvertiserPayment(serviceId: string, amount: number, paymentPeriod: 'monthly' | 'weekly' = 'monthly'): Promise<void> {
     try {
-      this.logger.log(`Processing payment of $${amount} for service ${serviceId}`);
       // TODO: Implement when advertisement payment system is ready
-      this.logger.log(`Payment processed successfully for service ${serviceId}`);
     } catch (error) {
       this.logger.error(`Error processing payment: ${error.message}`);
       throw error;
