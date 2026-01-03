@@ -50,8 +50,6 @@ export class UserManagementService {
       this.logger.warn('🚨 GLOBAL CACHING DISABLED - All cache operations will be skipped, using direct database access');
     } else if (!userCacheEnabled) {
       this.logger.warn('🚨 USER CACHING DISABLED - User cache operations will be skipped, using direct database access');
-    } else {
-      this.logger.log('✅ USER CACHING ENABLED - Using cache-first strategy with database fallback');
     }
   }
 
@@ -168,8 +166,6 @@ export class UserManagementService {
         });
       }
     }
-
-    this.logger.log(`✅ Bulk cache operation completed: ${successCount} success, ${errorCount} errors`);
     
     return {
       successCount,
@@ -729,7 +725,6 @@ export class UserManagementService {
       }
     }
 
-    this.logger.log(`✅ Bulk index operation completed: ${results.successCount} success, ${results.errorCount} errors`);
     return results;
   }
 
@@ -824,8 +819,6 @@ export class UserManagementService {
       const successCount = results.filter(r => r.success).length;
       const errorCount = results.filter(r => !r.success).length;
       const duration = Date.now() - startTime;
-
-      this.logger.log(`🎉 CacheAllUsers completed: ${successCount} success, ${errorCount} errors in ${duration}ms`);
 
       return {
         totalUsers,

@@ -73,14 +73,6 @@ export class AdvertisementDeliveryService {
     this.defaultAdContent = process.env.DEFAULT_AD_CONTENT || 'Quality Education Management System';
     this.defaultAdMediaUrl = process.env.DEFAULT_AD_MEDIA_URL || 'https://example.com/ad.jpg';
 
-    this.logger.log(`🎯 Advertisement Delivery Service initialized`);
-    this.logger.log(`   Mode: ${this.isAdsFromDatabase ? 'DATABASE (queries from DB)' : 'DEFAULT (environment variables)'}`);
-    this.logger.log(`   IS_ADS_FROM_DB: ${process.env.IS_ADS_FROM_DB}`);
-    if (!this.isAdsFromDatabase) {
-      this.logger.log(`   Default Ad: ${this.defaultAdTitle}`);
-    } else {
-      this.logger.log(`   Database Mode: Will NOT fall back to default ads`);
-    }
   }
 
   /**
@@ -98,8 +90,6 @@ export class AdvertisementDeliveryService {
     const startTime = Date.now();
     
     try {
-      this.logger.log(`Processing attendance notification with ad for student: ${studentId}`);
-
       // Step 1: Select and attach advertisement
       const advertisementResult = await this.selectAdvertisementForUser(studentId, attendanceData.subscriptionPlan);
       
@@ -123,7 +113,6 @@ export class AdvertisementDeliveryService {
       }
 
       const duration = Date.now() - startTime;
-      this.logger.log(`Attendance notification with ad completed for ${studentId} in ${duration}ms`);
 
       return {
         attendanceNotified: notificationResult.successfulChannels > 0,
@@ -241,8 +230,6 @@ export class AdvertisementDeliveryService {
 
       // Select the best match
       const bestMatch = matches[0];
-      
-      this.logger.log(`Selected database ad "${bestMatch.advertisement.title}" (score: ${bestMatch.matchScore}) for student ${studentId}`);
       
       return {
         success: true,
@@ -391,8 +378,6 @@ export class AdvertisementDeliveryService {
       if (advertisement && advertisement.currentSendings < advertisement.maxSendings) {
         advertisement.incrementImpression();
         await this.advertisementRepository.save(advertisement);
-        
-        this.logger.log(`Recorded impression for ad ${advertisementId} (student: ${studentId})`);
       }
     } catch (error) {
       this.logger.error(`Error recording impression for ad ${advertisementId}`, error);
@@ -413,7 +398,6 @@ export class AdvertisementDeliveryService {
         advertisement.incrementClick();
         await this.advertisementRepository.save(advertisement);
         
-        this.logger.log(`Recorded click for ad ${advertisementId} (student: ${studentId})`);
         return true;
       }
 

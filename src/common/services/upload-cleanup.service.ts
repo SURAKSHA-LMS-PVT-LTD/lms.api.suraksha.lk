@@ -24,7 +24,6 @@ export class UploadCleanupService {
       () => this.cleanupUnverifiedUploads(),
       60 * 60 * 1000 // 1 hour
     );
-    this.logger.log('🕐 Automatic upload cleanup scheduled (every 1 hour)');
   }
 
   /**
@@ -33,7 +32,6 @@ export class UploadCleanupService {
   onModuleDestroy() {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
-      this.logger.log('⏹️ Automatic upload cleanup stopped');
     }
   }
 
@@ -43,8 +41,6 @@ export class UploadCleanupService {
    * but never referenced in the database (user creation failed or was abandoned)
    */
   async cleanupUnverifiedUploads() {
-    this.logger.log('🧹 Starting cleanup of unverified uploads...');
-
     try {
       // Get all imageUrl and idUrl from database
       const userRepository = this.dataSource.getRepository('users');
@@ -59,8 +55,6 @@ export class UploadCleanupService {
         if (user.imageUrl) referencedPaths.add(user.imageUrl);
         if (user.idUrl) referencedPaths.add(user.idUrl);
       });
-
-      this.logger.log(`📊 Found ${referencedPaths.size} files referenced in database`);
 
       // Define folders to check
       const foldersToClean = [
@@ -86,7 +80,6 @@ export class UploadCleanupService {
               const fileAge = Date.now() - new Date(fileObj.updated).getTime();
               
               if (fileAge > 2 * 60 * 60 * 1000) { // 2 hours in milliseconds
-                this.logger.log(`🗑️ Deleting unreferenced file (${Math.round(fileAge / 1000 / 60)} minutes old): ${filePath}`);
                 await this.cloudStorageService.deleteFile(filePath);
                 totalDeleted++;
               }
@@ -96,8 +89,6 @@ export class UploadCleanupService {
           this.logger.error(`Error cleaning folder ${folder}: ${error.message}`);
         }
       }
-
-      this.logger.log(`✅ Cleanup complete. Deleted ${totalDeleted} unreferenced files.`);
     } catch (error) {
       this.logger.error(`❌ Cleanup failed: ${error.message}`, error.stack);
     }
@@ -107,7 +98,6 @@ export class UploadCleanupService {
    * Manual cleanup trigger (for testing or admin operations)
    */
   async triggerManualCleanup(): Promise<{ success: boolean; deletedCount: number }> {
-    this.logger.log('🔧 Manual cleanup triggered');
     await this.cleanupUnverifiedUploads();
     return { success: true, deletedCount: 0 }; // TODO: Return actual count
   }

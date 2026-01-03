@@ -235,7 +235,6 @@ export class IdCardGeneratorService {
         }
       }
 
-      this.logger.log(`Bulk generation completed. Success: ${success.length}, Failed: ${failed.length}`);
       return { success, failed };
 
     } catch (error) {
@@ -410,7 +409,6 @@ export class IdCardGeneratorService {
         try {
           return await pdfDoc.embedPng(imageBuffer);
         } catch (pngError) {
-          this.logger.log('PNG failed, trying JPEG...');
           return await pdfDoc.embedJpg(imageBuffer);
         }
       }

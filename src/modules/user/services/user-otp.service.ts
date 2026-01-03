@@ -80,9 +80,7 @@ export class UserOtpService {
     email: string,
     ipAddress?: string,
   ): Promise<{ success: boolean; message: string; expiresAt: Date; remainingAttempts: number; totalRequests: number }> {
-    this.logger.log(`📧 OTP request for email: ${email}`);
-
-    // ✅ CHECK IF EMAIL ALREADY EXISTS IN USER TABLE
+    // Check if email already exists in user table
     const existingUser = await this.userRepository.findOne({
       where: { email: email.toLowerCase() },
     });
@@ -144,8 +142,6 @@ export class UserOtpService {
 
     await this.otpRepository.save(otp);
 
-    this.logger.log(`✅ OTP generated for email ${email}: ${otpCode} (expires at ${expiresAt})`);
-
     // Send OTP via email service
     try {
       await this.enhancedEmailService.sendOTP({
@@ -156,7 +152,6 @@ export class UserOtpService {
         requestType: 'Email Verification',
         ipAddress,
       });
-      this.logger.log(`📧 OTP email sent successfully to ${email}`);
     } catch (emailError) {
       this.logger.error(`❌ Failed to send OTP email to ${email}: ${emailError.message}`);
       // Don't fail the request if email sending fails - OTP is still valid
@@ -178,8 +173,6 @@ export class UserOtpService {
     email: string,
     otpCode: string,
   ): Promise<{ success: boolean; message: string }> {
-    this.logger.log(`🔍 Verifying OTP for email: ${email}`);
-
     const otp = await this.otpRepository.findOne({
       where: {
         email,
@@ -200,8 +193,6 @@ export class UserOtpService {
     otp.verifiedAt = new Date();
     await this.otpRepository.save(otp);
 
-    this.logger.log(`✅ OTP verified successfully for email: ${email}`);
-
     return {
       success: true,
       message: 'Email verified successfully',
@@ -221,9 +212,7 @@ export class UserOtpService {
       throw new BadRequestException('Invalid phone number format');
     }
 
-    this.logger.log(`📱 OTP request for phone: ${normalizedPhone}`);
-
-    // ✅ CHECK IF PHONE NUMBER ALREADY EXISTS IN USER TABLE
+    // Check if phone number already exists in user table
     const existingUser = await this.userRepository.findOne({
       where: { phoneNumber: normalizedPhone },
     });
@@ -285,8 +274,6 @@ export class UserOtpService {
 
     await this.otpRepository.save(otp);
 
-    this.logger.log(`✅ OTP generated for phone ${normalizedPhone}: ${otpCode} (expires at ${expiresAt})`);
-
     // Send OTP via SMS service
     try {
       const smsResult = await this.smsProvider.sendSms({
@@ -295,9 +282,7 @@ export class UserOtpService {
         senderId: 'SurakshaLMS', // Will use default from config if not provided
       });
       
-      if (smsResult.success) {
-        this.logger.log(`📱 OTP SMS sent successfully to ${normalizedPhone}`);
-      } else {
+      if (!smsResult.success) {
         this.logger.error(`❌ Failed to send OTP SMS to ${normalizedPhone}: ${smsResult.message}`);
       }
     } catch (smsError) {
@@ -327,8 +312,6 @@ export class UserOtpService {
       throw new BadRequestException('Invalid phone number format');
     }
 
-    this.logger.log(`🔍 Verifying OTP for phone: ${normalizedPhone}`);
-
     const otp = await this.otpRepository.findOne({
       where: {
         phoneNumber: normalizedPhone,
@@ -348,8 +331,6 @@ export class UserOtpService {
     otp.isVerified = true;
     otp.verifiedAt = new Date();
     await this.otpRepository.save(otp);
-
-    this.logger.log(`✅ OTP verified successfully for phone: ${normalizedPhone}`);
 
     return {
       success: true,

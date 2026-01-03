@@ -718,8 +718,6 @@ export class AuthService {
         throw new InternalServerErrorException('Failed to update password');
       }
 
-      this.logger.log(`✅ Password successfully changed for user ${userId}`);
-
       // Step 6: Refresh user cache (non-blocking, don't fail if cache update fails)
       this.refreshUserCacheAsync(userId);
 
@@ -737,7 +735,6 @@ export class AuthService {
     try {
       await this.userManagementService.refreshUserCache(userId);
       await this.userManagementService.setUserIndexes(userId);
-      this.logger.log(`✅ Cache refreshed for user ${userId}`);
     } catch (error) {
       this.logger.warn(`⚠️ Cache refresh failed for user ${userId}: ${error.message}`);
     }
@@ -1319,7 +1316,6 @@ export class AuthService {
       await this.refreshTokenRepository.delete({
         expiresAt: LessThan(new Date())
       });
-      this.logger.log('Expired refresh tokens cleaned up');
     } catch (error) {
       this.logger.error(`Failed to cleanup expired tokens: ${error.message}`);
     }

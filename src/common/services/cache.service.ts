@@ -67,7 +67,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     
     if (cacheEnabled) {
       await this.connect();
-      this.logger.log('✅ Redis caching enabled and connected');
     } else {
       this.logger.warn('⚠️ Redis caching disabled via CACHE_ENABLED=false');
       this.isConnected = false;

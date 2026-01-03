@@ -141,12 +141,10 @@ export class UserCacheManagerService {
       );
       
       if (cached) {
-        this.logger.debug(`✅ Cache HIT: user:${userId}:full`);
         return cached;
       }
       
       // Cache miss - build from database
-      this.logger.debug(`❌ Cache MISS: user:${userId}:full - fetching from DB`);
       const userProfile = await this.buildUserProfile(userId);
       
       if (!userProfile) {
@@ -215,7 +213,6 @@ export class UserCacheManagerService {
         this.cacheService.del(`user:${userId}:access`),
       ]);
       
-      this.logger.log(`🔄 Invalidated cache for user: ${userId}`);
     } catch (error) {
       this.logger.error(`Failed to invalidate user cache: ${error.message}`);
     }
@@ -233,7 +230,6 @@ export class UserCacheManagerService {
       // Rebuild cache immediately
       await this.getUserWithInstitutes(userId);
       
-      this.logger.log(`✅ Refreshed cache after enrollment for user: ${userId}`);
     } catch (error) {
       this.logger.error(`Failed to refresh user cache on enrollment: ${error.message}`);
     }
@@ -278,7 +274,6 @@ export class UserCacheManagerService {
           { ttl: this.USER_PROFILE_TTL }
         );
         
-        this.logger.log(`✅ Updated institute enrollment cache: user=${userId}, institute=${instituteId}`);
       }
     } catch (error) {
       this.logger.error(`Failed to update institute enrollment cache: ${error.message}`);
@@ -290,7 +285,6 @@ export class UserCacheManagerService {
    * Used by: Attendance job, ad matching job
    */
   async warmCacheForUsers(userIds: string[]): Promise<void> {
-    this.logger.log(`🔥 Warming cache for ${userIds.length} users...`);
     
     const batchSize = 50;
     for (let i = 0; i < userIds.length; i += batchSize) {
@@ -299,11 +293,7 @@ export class UserCacheManagerService {
       await Promise.all(
         batch.map(userId => this.getUserWithInstitutes(userId))
       );
-      
-      this.logger.debug(`Warmed cache: ${i + batch.length}/${userIds.length}`);
     }
-    
-    this.logger.log(`✅ Cache warming complete for ${userIds.length} users`);
   }
 
   // =================== PRIVATE HELPERS ===================
