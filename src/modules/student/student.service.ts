@@ -147,6 +147,7 @@ export class StudentsService {
       const userDto = {
         firstName,
         lastName,
+        nameWithInitials: `${firstName} ${lastName}`,  // Construct from firstName and lastName
         email,
         password: null,  // Always NULL for security
         phoneNumber: phone,  // Map phone to phoneNumber field
@@ -441,6 +442,7 @@ export class StudentsService {
     const userDto = {
       firstName,
       lastName,
+      nameWithInitials: `${firstName} ${lastName}`,  // Construct from firstName and lastName
       email,
       password: null,  // Always NULL for security
       phoneNumber: phone,  // Map phone to phoneNumber
