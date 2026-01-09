@@ -1,0 +1,67 @@
+{
+  "// COMPREHENSIVE USER CREATE API - Complete Example": "",
+  "// This creates a user who is BOTH a student AND a parent": "",
+  "// userType: USER creates records in users + students + parents tables": "",
+  
+  "// ============================================": "",
+  "// USER BASE DATA (Required for all)": "",
+  "// ============================================": "",
+  "firstName": "John",
+  "lastName": "Doe",
+  "nameWithInitials": "J. Doe",
+  "email": "john.doe@example.com",
+  "phoneNumber": "+94771234567",
+  "userType": "USER",
+  "dateOfBirth": "1995-05-15",
+  "gender": "MALE",
+  "nic": "199512345678",
+  "birthCertificateNo": null,
+  "addressLine1": "123 Main Street",
+  "addressLine2": "Apartment 4B",
+  "city": "Colombo",
+  "district": "COLOMBO",
+  "province": "WESTERN",
+  "postalCode": "10100",
+  "country": "Sri Lanka",
+  "imageUrl": "profile-images/john-doe-uuid.jpg",
+  "idUrl": "id-documents/john-doe-id-uuid.pdf",
+  "isActive": true,
+  "language": "E",
+
+  "// ============================================": "",
+  "// STUDENT DATA (when userType = USER or USER_WITHOUT_PARENT)": "",
+  "// ============================================": "",
+  "studentData": {
+    "studentId": "STU-2024-001",
+    "emergencyContact": "+94771234567",
+    "medicalConditions": "Asthma, requires inhaler",
+    "allergies": "Peanuts, Shellfish",
+    "bloodGroup": "O+",
+    
+    "// Parent IDs (if parents exist in system)": "",
+    "fatherId": "1234567890",
+    "motherId": "0987654321",
+    "guardianId": null,
+
+    "// OR provide phone numbers to search for parents": "",
+    "fatherPhoneNumber": "+94771111111",
+    "motherPhoneNumber": "+94772222222",
+    "guardianPhoneNumber": null,
+
+    "// ⭐ NEW: Parent Skip Reasons": "",
+    "// Provide reason if parent information is not available": "",
+    "fatherSkipReason": null,
+    "motherSkipReason": "Mother is deceased",
+    "guardianSkipReason": "No guardian assigned"
+  },
+
+  "// ============================================": "",
+  "// PARENT DATA (when userType = USER or USER_WITHOUT_STUDENT)": "",
+  "// ============================================": "",
+  "parentData": {
+    "occupation": "ENGINEER",
+    "workplace": "ABC Corporation",
+    "workPhone": "+94112345678",
+    "educationLevel": "Bachelor of Engineering"
+  }
+}

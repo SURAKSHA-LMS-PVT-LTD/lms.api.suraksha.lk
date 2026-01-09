@@ -451,6 +451,44 @@ export class UsersService {
         const studentEntity = queryRunner.manager.create(StudentEntity, studentData as any);
         studentRecord = await queryRunner.manager.save(studentEntity);
         
+        // ============================================
+        // STEP 2.5: Handle Parent Skip Reasons
+        // ============================================
+        const { ReasonOfParentSkipEntity, ParentType } = await import('../student/entities/reason-of-parent-skip.entity');
+        
+        // Father skip reason
+        if (dto.studentData?.fatherSkipReason) {
+          const fatherSkipRecord = queryRunner.manager.create(ReasonOfParentSkipEntity, {
+            userId: userId,
+            parentType: ParentType.FATHER,
+            reason: dto.studentData.fatherSkipReason,
+            isActive: true
+          });
+          await queryRunner.manager.save(fatherSkipRecord);
+        }
+
+        // Mother skip reason
+        if (dto.studentData?.motherSkipReason) {
+          const motherSkipRecord = queryRunner.manager.create(ReasonOfParentSkipEntity, {
+            userId: userId,
+            parentType: ParentType.MOTHER,
+            reason: dto.studentData.motherSkipReason,
+            isActive: true
+          });
+          await queryRunner.manager.save(motherSkipRecord);
+        }
+
+        // Guardian skip reason
+        if (dto.studentData?.guardianSkipReason) {
+          const guardianSkipRecord = queryRunner.manager.create(ReasonOfParentSkipEntity, {
+            userId: userId,
+            parentType: ParentType.GUARDIAN,
+            reason: dto.studentData.guardianSkipReason,
+            isActive: true
+          });
+          await queryRunner.manager.save(guardianSkipRecord);
+        }
+        
       }
 
       // ============================================

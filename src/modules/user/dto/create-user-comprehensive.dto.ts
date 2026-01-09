@@ -186,6 +186,42 @@ export class StudentDataDto {
     return normalizeSriLankanPhone(value);
   })
   guardianPhoneNumber?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Reason why father information is skipped (TEXT field)',
+    example: 'Father is deceased'
+  })
+  @IsOptional()
+  @IsString({ message: 'Father skip reason must be a string' })
+  @Transform(({ value }) => {
+    if (!value || typeof value !== 'string' || value.trim() === '') return null;
+    return value.trim();
+  })
+  fatherSkipReason?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Reason why mother information is skipped (TEXT field)',
+    example: 'Mother is not available'
+  })
+  @IsOptional()
+  @IsString({ message: 'Mother skip reason must be a string' })
+  @Transform(({ value }) => {
+    if (!value || typeof value !== 'string' || value.trim() === '') return null;
+    return value.trim();
+  })
+  motherSkipReason?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Reason why guardian information is skipped (TEXT field)',
+    example: 'No guardian assigned'
+  })
+  @IsOptional()
+  @IsString({ message: 'Guardian skip reason must be a string' })
+  @Transform(({ value }) => {
+    if (!value || typeof value !== 'string' || value.trim() === '') return null;
+    return value.trim();
+  })
+  guardianSkipReason?: string;
 }
 
 /**
