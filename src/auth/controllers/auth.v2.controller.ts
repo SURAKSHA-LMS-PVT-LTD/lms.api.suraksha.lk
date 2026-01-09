@@ -16,15 +16,16 @@ export class AuthV2Controller {
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 900000 } }) // 🔒 SECURITY: 5 login attempts per 15 minutes
   @ApiOperation({ 
-    summary: 'User login (enhanced JWT payload with refresh token in cookie)',
-    description: 'Authenticates user and returns access token (15 min expiry). Refresh token (7 days) is set in httpOnly cookie for security.'
+    summary: 'User login with refresh token support for all clients (SSO compatible)',
+    description: 'Authenticates user and returns access token (15 min expiry) + refresh token (7 days). Refresh token available in both response body (for all clients/SSO) and httpOnly cookie (for browsers).'
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'Login successful - refresh token set in httpOnly cookie',
+    description: 'Login successful - refresh token available for all clients (web browsers, mobile apps, SSO)',
     schema: {
       example: {
         access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refresh_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         payload: {
           s: '12345',
           u: 'STUDENT',
@@ -61,7 +62,7 @@ export class AuthV2Controller {
       clientInfo.userAgent
     );
 
-    // 🔐 SECURITY: Set refresh token in httpOnly cookie
+    // 🔐 SECURITY: Set refresh token in httpOnly cookie (for browsers)
     const isProduction = process.env.NODE_ENV === 'production';
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
@@ -72,24 +73,25 @@ export class AuthV2Controller {
       domain: isProduction ? undefined : 'localhost' // Set domain for localhost
     });
 
-    // Return everything except refresh_token (it's now in cookie)
-    const { refresh_token, ...responseWithoutRefreshToken } = result;
-    return responseWithoutRefreshToken;
+    // 🌐 SSO SUPPORT: Return complete response including refresh_token
+    // Available in both cookie (browsers) and response body (all clients: web/mobile/SSO)
+    return result;
   }
 
   @Public()
   @Post('refresh')
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 🔒 SECURITY: 10 refresh attempts per minute
   @ApiOperation({ 
-    summary: 'Refresh access token using refresh token',
-    description: 'Validates refresh token (from cookie or body) and returns new access token (15 min) + new refresh token (7 days in cookie). Old refresh token is automatically revoked.'
+    summary: 'Refresh access token for all clients (SSO compatible)',
+    description: 'Validates refresh token (from cookie or body) and returns new access token (15 min) + new refresh token (7 days). Supports all clients: web browsers, mobile apps, and SSO. Old refresh token is automatically revoked.'
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'Token refreshed successfully - new refresh token set in httpOnly cookie',
+    description: 'Token refreshed successfully - supports all clients (web browsers, mobile apps, SSO)',
     schema: {
       example: {
         access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refresh_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         user: {
           id: '12345',
           email: 'student@example.com',
@@ -125,7 +127,7 @@ export class AuthV2Controller {
       clientInfo.userAgent
     );
 
-    // 🔐 SECURITY: Set new refresh token in httpOnly cookie
+    // 🔐 SECURITY: Set new refresh token in httpOnly cookie (for browsers)
     const isProduction = process.env.NODE_ENV === 'production';
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
@@ -136,8 +138,8 @@ export class AuthV2Controller {
       domain: isProduction ? undefined : 'localhost'
     });
 
-    // Return access token and user info (refresh token is in cookie)
-    const { refresh_token, ...responseWithoutRefreshToken } = result;
-    return responseWithoutRefreshToken;
+    // 🌐 SSO SUPPORT: Return complete response including refresh_token
+    // Available for all clients: web browsers, mobile apps, and SSO integrations
+    return result;
   }
 }
