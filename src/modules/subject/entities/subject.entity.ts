@@ -1,6 +1,5 @@
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, AfterLoad } from 'typeorm';
-import { InstituteType } from '../../institute/enums/institute.enums';
 
 export enum SubjectType {
   MAIN = 'MAIN',
@@ -21,6 +20,9 @@ export enum SubjectType {
 export class SubjectEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
+
+  @Column({ name: 'institute_id', type: 'bigint' })
+  instituteId: string;
 
   @Column({ type: 'varchar', length: 50, unique: true })
   code: string;
@@ -49,9 +51,6 @@ export class SubjectEntity {
 
   @Column({ name: 'img_url', type: 'varchar', length: 255, nullable: true })
   imgUrl?: string;
-
-  @Column({ name: 'institute_type', type: 'enum', enum: InstituteType, nullable: true })
-  instituteType?: InstituteType;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

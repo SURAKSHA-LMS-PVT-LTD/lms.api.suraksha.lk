@@ -233,7 +233,7 @@ export class InstituteClassSubjectService {
         isActive: entity.subject.isActive,
         subjectType: entity.subject.subjectType,
         basketCategory: entity.subject.basketCategory,
-        instituteType: entity.subject.instituteType,
+        instituteId: entity.subject.instituteId,
         imgUrl: entity.subject.imgUrl,
         createdAt: entity.subject.createdAt,
         updatedAt: entity.subject.updatedAt

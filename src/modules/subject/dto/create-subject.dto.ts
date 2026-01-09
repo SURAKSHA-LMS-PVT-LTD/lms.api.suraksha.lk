@@ -2,7 +2,6 @@ import { IsString, IsOptional, IsBoolean, IsInt, Length, Min, Max, IsEnum, IsUrl
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { SubjectType } from '../entities/subject.entity';
-import { InstituteType } from '../../institute/enums/institute.enums';
 
 export class CreateSubjectDto {
   @ApiProperty({ description: 'Subject code (unique)', example: 'MATH101' })
@@ -62,14 +61,12 @@ export class CreateSubjectDto {
   @Length(1, 100)
   basketCategory?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Institute type this subject applies to (leave empty for all institute types)',
-    enum: InstituteType,
-    example: InstituteType.SCHOOL
+  @ApiProperty({ 
+    description: 'Institute ID this subject belongs to',
+    example: '1'
   })
-  @IsOptional()
-  @IsEnum(InstituteType)
-  instituteType?: InstituteType;
+  @IsString()
+  instituteId: string;
 
   @ApiPropertyOptional({ 
     description: 'Subject image relative path from /upload/verify-and-publish endpoint', 

@@ -1,8 +1,7 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
 import { IsOptional, IsString, IsBoolean, IsInt, Min, Max, IsEnum } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { InstituteType } from '../../institute/enums/institute.enums';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // Updated QuerySubjectDto with improved validation and institute/class filtering
 
@@ -27,18 +26,9 @@ export class QuerySubjectDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ 
-    description: 'Filter by institute type',
-    enum: InstituteType,
-    example: InstituteType.SCHOOL
-  })
-  @IsOptional()
-  @IsEnum(InstituteType)
-  instituteType?: InstituteType;
-
-  @ApiPropertyOptional({ description: 'Filter subjects by institute ID' })
-  @IsOptionalBigIntId()
-  instituteId?: string;
+  @ApiProperty({ description: 'Filter subjects by institute ID - REQUIRED', example: '1' })
+  @IsBigIntId()
+  instituteId: string;
 
   @ApiPropertyOptional({ description: 'Filter subjects by class ID (requires instituteId)' })
   @IsOptionalBigIntId()

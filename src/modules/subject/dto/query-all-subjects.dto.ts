@@ -1,6 +1,6 @@
-import { IsOptional, IsString, IsBoolean, IsEnum } from 'class-validator';
+import { IsBigIntId } from '../../../common/validators/bigint-id.validator';
+import { IsOptional, IsString, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { InstituteType } from '../../institute/enums/institute.enums';
 
 export class QueryAllSubjectsDto {
   @IsOptional()
@@ -16,9 +16,8 @@ export class QueryAllSubjectsDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @IsOptional()
-  @IsEnum(InstituteType)
-  instituteType?: InstituteType;
+  @IsBigIntId()
+  instituteId: string;
 
   @IsOptional()
   @IsString()

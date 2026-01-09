@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SubjectType } from '../entities/subject.entity';
-import { InstituteType } from '../../institute/enums/institute.enums';
 
 export class SubjectResponseDto {
   @ApiProperty({ description: 'Subject ID', example: '1' })
@@ -30,13 +29,12 @@ export class SubjectResponseDto {
   @ApiPropertyOptional({ description: 'Basket category', example: 'G003' })
   basketCategory?: string;
 
+  @ApiProperty({ description: 'Institute ID', example: '1' })
+  instituteId: string;
+
   @ApiPropertyOptional({ 
-    description: 'Institute type this subject applies to (null means all institute types)',
-    enum: InstituteType,
-    example: InstituteType.SCHOOL,
     nullable: true
   })
-  instituteType?: InstituteType;
 
   @ApiPropertyOptional({ 
     description: 'Subject image URL', 

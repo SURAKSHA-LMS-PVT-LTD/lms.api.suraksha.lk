@@ -503,7 +503,7 @@ export class InstituteClassSubjectStudentsService {
           isActive: Boolean(row.subjectIsActive),
           subjectType: row.subjectType,
           basketCategory: row.basketCategory,
-          instituteType: row.instituteType,
+          instituteId: row.instituteId,
           imgUrl: row.imgUrl,
           createdAt: row.subjectCreatedAt,
           updatedAt: row.subjectUpdatedAt

@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, ValidationPipe, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, ValidationPipe, UsePipes, BadRequestException } from '@nestjs/common';
 import { Transform } from 'class-transformer';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { SubjectService } from './subject.service';
@@ -16,7 +16,6 @@ import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 
 import { UserType } from '../user/enums/user-type.enum';
-import { InstituteType } from '../institute/enums/institute.enums';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { FileValidationUtil } from '../../common/utils/file-validation.util';
 
@@ -33,11 +32,12 @@ export class SubjectController {
   @Post()
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
-    global: [UserType.SUPERADMIN]
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true
   })
   @ApiOperation({ 
-    summary: 'Create a new system-wide subject (SUPERADMIN only)',
-    description: 'Upload image using /upload/generate-signed-url first, then include imgUrl in the request body'
+    summary: 'Create a new subject (SUPERADMIN, Institute Admin)',
+    description: 'Upload image using /upload/generate-signed-url first, then include imgUrl in the request body. Institute ID is required.'
   })
   @ApiConsumes('application/json')
   @ApiBody({
@@ -53,14 +53,14 @@ export class SubjectController {
         isActive: { type: 'boolean', example: true },
         subjectType: { type: 'string', enum: ['MAIN', 'BASKET', 'COMMON'] },
         basketCategory: { type: 'string', example: 'G003' },
-        instituteType: { type: 'string', enum: Object.values(InstituteType) },
+        instituteId: { type: 'string', example: '1', description: 'Institute ID' },
         imgUrl: {
           type: 'string',
           description: 'Subject image URL from /upload/verify-and-publish',
           example: 'https://storage.googleapis.com/suraksha-lms/subject-images/subject-123.jpg'
         },
       },
-      required: ['code', 'name']
+      required: ['code', 'name', 'instituteId']
     }
   })
   @ApiResponse({ status: 201, description: 'Subject created successfully', type: SubjectResponseDto })
@@ -74,14 +74,19 @@ export class SubjectController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get all subjects - Accessible by any authenticated user' })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get all subjects (Institute Admin, Teacher) - instituteId required' })
   @ApiResponse({ status: 200, description: 'All subjects retrieved successfully', type: [SubjectResponseDto] })
+  @ApiResponse({ status: 400, description: 'instituteId is required' })
   @ApiQuery({ name: 'search', required: false, description: 'Search in code, name, or description' })
   @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
-  @ApiQuery({ name: 'instituteType', required: false, enum: Object.values(InstituteType), description: 'Filter by institute type' })
-  @ApiQuery({ name: 'instituteId', required: false, description: 'Filter subjects by institute ID' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   @ApiQuery({ name: 'classId', required: false, description: 'Filter subjects by class ID (requires instituteId)' })
   @ApiQuery({ name: 'subjectId', required: false, description: 'Filter by specific subject ID' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number for pagination' })
@@ -89,10 +94,16 @@ export class SubjectController {
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field (default: createdAt)' })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['ASC', 'DESC'], description: 'Sort order (default: DESC)' })
   async findAll(@Query() query: QuerySubjectDto): Promise<SubjectResponseDto[]> {
+    // Validate that instituteId is provided
+    if (!query.instituteId) {
+      throw new BadRequestException('instituteId is required to access subjects');
+    }
     
     // Force limit to -1 to return all subjects regardless of query parameters
+    // Default to only active subjects if not explicitly specified
     const modifiedQuery: QuerySubjectDto = {
       ...query,
+      isActive: query.isActive !== undefined ? query.isActive : true,
       limit: -1,
       page: 1
     };
@@ -104,14 +115,19 @@ export class SubjectController {
   }
 
   @Get('all')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get all subjects without pagination - Accessible by any authenticated user' })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get all subjects without pagination (Institute Admin, Teacher) - instituteId required' })
   @ApiResponse({ status: 200, description: 'All subjects retrieved successfully', type: [SubjectResponseDto] })
+  @ApiResponse({ status: 400, description: 'instituteId is required' })
   @ApiQuery({ name: 'search', required: false, description: 'Search in code, name, or description' })
   @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
-  @ApiQuery({ name: 'instituteType', required: false, enum: Object.values(InstituteType), description: 'Filter by institute type' })
-  @ApiQuery({ name: 'instituteId', required: false, description: 'Filter subjects by institute ID' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   @ApiQuery({ name: 'classId', required: false, description: 'Filter subjects by class ID (requires instituteId)' })
   @ApiQuery({ name: 'subjectId', required: false, description: 'Filter by specific subject ID' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number for pagination' })
@@ -119,9 +135,16 @@ export class SubjectController {
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field (default: createdAt)' })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['ASC', 'DESC'], description: 'Sort order (default: DESC)' })
   async findAllWithoutPagination(@Query() query: QueryAllSubjectsDto): Promise<SubjectResponseDto[]> {
+    // Validate that instituteId is provided
+    if (!query.instituteId) {
+      throw new BadRequestException('instituteId is required to access subjects');
+    }
+    
     // Create full query object with pagination set to get all records
+    // Default to only active subjects if not explicitly specified
     const fullQuery: QuerySubjectDto = {
       ...query,
+      isActive: query.isActive !== undefined ? query.isActive : true,
       limit: -1,
       page: 1
     };
@@ -132,46 +155,92 @@ export class SubjectController {
 
   @Get('stats')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Get subject statistics' })
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get subject statistics (Institute Admin, Teacher) - instituteId required' })
   @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
-  async getStats(): Promise<ISubjectStats> {
-    return this.subjectService.getSubjectStats();
+  @ApiResponse({ status: 400, description: 'instituteId is required' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
+  async getStats(@Query('instituteId') instituteId: string): Promise<ISubjectStats> {
+    if (!instituteId) {
+      throw new BadRequestException('instituteId is required to access statistics');
+    }
+    return this.subjectService.getSubjectStats(instituteId);
   }
 
   @Get('categories')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get subjects grouped by category - Accessible by any authenticated user' })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get subjects grouped by category (Institute Admin, Teacher) - instituteId required' })
   @ApiResponse({ status: 200, description: 'Categories retrieved successfully' })
-  async getSubjectsByCategory(): Promise<ISubjectCategoryStats[]> {
-    return this.subjectService.getSubjectsByCategory();
+  @ApiResponse({ status: 400, description: 'instituteId is required' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
+  async getSubjectsByCategory(@Query('instituteId') instituteId: string): Promise<ISubjectCategoryStats[]> {
+    if (!instituteId) {
+      throw new BadRequestException('instituteId is required to access categories');
+    }
+    return this.subjectService.getSubjectsByCategory(instituteId);
   }
 
   @Get('code/:code')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
-  @ApiOperation({ summary: 'Get subject by code' })
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get subject by code (Institute Admin, Teacher) - instituteId required' })
   @ApiResponse({ status: 200, description: 'Subject found', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
-  async findByCode(@Param('code', SubjectCodeValidationPipe) code: string): Promise<SubjectResponseDto> {
-    return this.subjectService.findByCode(code);
+  @ApiResponse({ status: 400, description: 'instituteId is required' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
+  async findByCode(
+    @Param('code', SubjectCodeValidationPipe) code: string,
+    @Query('instituteId') instituteId: string
+  ): Promise<SubjectResponseDto> {
+    if (!instituteId) {
+      throw new BadRequestException('instituteId is required to access subject');
+    }
+    return this.subjectService.findByCodeAndInstitute(code, instituteId);
   }
 
   @Get(':id')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
-  @ApiOperation({ summary: 'Get subject by ID' })
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get subject by ID (Institute Admin, Teacher) - instituteId required' })
   @ApiResponse({ status: 200, description: 'Subject found', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
-  async findOne(@Param('id', ParseBigIntPipe) id: string): Promise<SubjectResponseDto> {
-    return this.subjectService.findOne(id);
+  @ApiResponse({ status: 400, description: 'instituteId is required' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
+  async findOne(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Query('instituteId') instituteId: string
+  ): Promise<SubjectResponseDto> {
+    if (!instituteId) {
+      throw new BadRequestException('instituteId is required to access subject');
+    }
+    return this.subjectService.findOneByInstitute(id, instituteId);
   }
 
   @Patch(':id')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true
+  })
   @ApiOperation({ 
-    summary: 'Update subject by ID',
+    summary: 'Update subject by ID (SUPERADMIN, Institute Admin)',
     description: 'Upload new image using /upload/generate-signed-url first, then include imgUrl in the request body'
   })
   @ApiConsumes('application/json')
@@ -188,7 +257,6 @@ export class SubjectController {
         isActive: { type: 'boolean', example: true },
         subjectType: { type: 'string', enum: ['MAIN', 'BASKET', 'COMMON'] },
         basketCategory: { type: 'string', example: 'G003' },
-        instituteType: { type: 'string', enum: Object.values(InstituteType) },
         imgUrl: {
           type: 'string',
           description: 'New subject image URL from /upload/verify-and-publish',
@@ -210,8 +278,11 @@ export class SubjectController {
 
   @Patch(':id/deactivate')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Soft delete (deactivate) subject by ID' })
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true
+  })
+  @ApiOperation({ summary: 'Soft delete (deactivate) subject by ID (SUPERADMIN, Institute Admin)' })
   @ApiResponse({ status: 200, description: 'Subject deactivated successfully', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
   async softDelete(@Param('id', ParseBigIntPipe) id: string): Promise<SubjectResponseDto> {

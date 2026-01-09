@@ -105,6 +105,26 @@ export class SubjectService {
     return this.mapToResponseDto(subject);
   }
 
+  async findByCodeAndInstitute(code: string, instituteId: string): Promise<SubjectResponseDto> {
+    const subject = await this.subjectRepository.findByCodeAndInstitute(code.toUpperCase(), instituteId);
+
+    if (!subject) {
+      throw new NotFoundException(`Subject with code ${code} not found in this institute`);
+    }
+
+    return this.mapToResponseDto(subject);
+  }
+
+  async findOneByInstitute(id: string, instituteId: string): Promise<SubjectResponseDto> {
+    const subject = await this.subjectRepository.findByIdAndInstitute(id, instituteId);
+
+    if (!subject) {
+      throw new NotFoundException(`Subject with ID ${id} not found in this institute`);
+    }
+
+    return this.mapToResponseDto(subject);
+  }
+
   async update(id: string, updateSubjectDto: UpdateSubjectDto): Promise<SubjectResponseDto> {
     const subject = await this.subjectRepository.findById(id);
 
@@ -210,16 +230,16 @@ export class SubjectService {
     return await this.findOne(id);
   }
 
-  async getSubjectStats(): Promise<ISubjectStats> {
-    const total = await this.subjectRepository.count();
-    const active = await this.subjectRepository.countActive();
+  async getSubjectStats(instituteId: string): Promise<ISubjectStats> {
+    const total = await this.subjectRepository.countByInstitute(instituteId);
+    const active = await this.subjectRepository.countActiveByInstitute(instituteId);
     const inactive = total - active;
 
     return { total, active, inactive };
   }
 
-  async getSubjectsByCategory(): Promise<ISubjectCategoryStats[]> {
-    return this.subjectRepository.getSubjectsByCategory();
+  async getSubjectsByCategory(instituteId: string): Promise<ISubjectCategoryStats[]> {
+    return this.subjectRepository.getSubjectsByCategoryAndInstitute(instituteId);
   }
 
   private mapToResponseDto(subject: SubjectEntity): SubjectResponseDto {
@@ -233,7 +253,7 @@ export class SubjectService {
       isActive: subject.isActive,
       subjectType: subject.subjectType,
       basketCategory: subject.basketCategory,
-      instituteType: subject.instituteType,
+      instituteId: subject.instituteId,
       // ✅ Transform relative path to full URL
       imgUrl: subject.imgUrl ? this.cloudStorageService.getFullUrl(subject.imgUrl) : subject.imgUrl,
       createdAt: subject.createdAt,

@@ -67,6 +67,22 @@ export class SubjectRepository {
     return this.repository.count({ where: { isActive: true } });
   }
 
+  async countByInstitute(instituteId: string): Promise<number> {
+    return this.repository.count({ where: { instituteId } });
+  }
+
+  async countActiveByInstitute(instituteId: string): Promise<number> {
+    return this.repository.count({ where: { instituteId, isActive: true } });
+  }
+
+  async findByIdAndInstitute(id: string, instituteId: string): Promise<SubjectEntity | null> {
+    return this.repository.findOne({ where: { id, instituteId } });
+  }
+
+  async findByCodeAndInstitute(code: string, instituteId: string): Promise<SubjectEntity | null> {
+    return this.repository.findOne({ where: { code, instituteId } });
+  }
+
   async getSubjectsByCategory(): Promise<{ category: string; count: number }[]> {
     const result = await this.repository
       .createQueryBuilder('subject')
@@ -81,12 +97,27 @@ export class SubjectRepository {
     }));
   }
 
+  async getSubjectsByCategoryAndInstitute(instituteId: string): Promise<{ category: string; count: number }[]> {
+    const result = await this.repository
+      .createQueryBuilder('subject')
+      .select('subject.category as category, COUNT(*) as count')
+      .where('subject.isActive = :isActive', { isActive: true })
+      .andWhere('subject.instituteId = :instituteId', { instituteId })
+      .groupBy('subject.category')
+      .getRawMany();
+
+    return result.map(item => ({
+      category: item.category || 'Uncategorized',
+      count: parseInt(item.count)
+    }));
+  }
+
   private createQueryBuilder(): SelectQueryBuilder<SubjectEntity> {
     return this.repository.createQueryBuilder('subject');
   }
 
   private applyFilters(queryBuilder: SelectQueryBuilder<SubjectEntity>, query: QuerySubjectDto): void {
-    const { search, category, isActive, instituteType, instituteId, classId, subjectId } = query;
+    const { search, category, isActive, instituteId, classId, subjectId } = query;
 
     // Basic subject filters
     if (search) {
@@ -104,12 +135,9 @@ export class SubjectRepository {
       queryBuilder.andWhere('subject.isActive = :isActive', { isActive });
     }
 
-    // Filter by institute type
-    if (instituteType) {
-      queryBuilder.andWhere(
-        '(subject.instituteType = :instituteType OR subject.instituteType IS NULL)',
-        { instituteType }
-      );
+    // Filter by institute ID (direct filter on subject table)
+    if (instituteId) {
+      queryBuilder.andWhere('subject.instituteId = :instituteId', { instituteId });
     }
 
     // Filter by specific subject ID
@@ -117,20 +145,13 @@ export class SubjectRepository {
       queryBuilder.andWhere('subject.id = :subjectId', { subjectId });
     }
 
-    // Institute/Class filtering - join with institute_class_subjects table
-    if (instituteId || classId) {
-      // Join with the institute_class_subjects table to filter by assignments
+    // Class filtering - join with institute_class_subjects table only if classId is provided
+    if (classId) {
+      // Join with the institute_class_subjects table to filter by class assignments
       queryBuilder
         .leftJoin('subject.classSubjects', 'classSubject')
-        .andWhere('classSubject.isActive = :classSubjectActive', { classSubjectActive: true });
-
-      if (instituteId) {
-        queryBuilder.andWhere('classSubject.instituteId = :instituteId', { instituteId });
-      }
-
-      if (classId) {
-        queryBuilder.andWhere('classSubject.classId = :classId', { classId });
-      }
+        .andWhere('classSubject.isActive = :classSubjectActive', { classSubjectActive: true })
+        .andWhere('classSubject.classId = :classId', { classId });
 
       // Ensure we get distinct subjects (avoid duplicates from multiple class assignments)
       queryBuilder.distinct(true);
