@@ -356,6 +356,7 @@ export class UsersService {
       const userData: UserData = {
         firstName: dto.firstName,
         lastName: dto.lastName,
+        nameWithInitials: dto.nameWithInitials,
         email: dto.email?.toLowerCase().trim(),
         phoneNumber: dto.phoneNumber,
         userType: dto.userType,
@@ -960,6 +961,7 @@ export class UsersService {
           id: userData.userId,
           firstName: userData.firstName,
           lastName: userData.lastName,
+          nameWithInitials: userData.nameWithInitials,
           email: userData.email,
           phone: userData.phone,
           userType: userData.userType as any,
@@ -1061,14 +1063,14 @@ export class UsersService {
   async findByEmail(email: string): Promise<UserEntity | null> {
     return await this.userRepository.findOne({ 
       where: { email },
-      select: ['id', 'email', 'firstName', 'lastName', 'isActive', 'userType', 'imageUrl']
+      select: ['id', 'email', 'firstName', 'lastName', 'nameWithInitials', 'isActive', 'userType', 'imageUrl']
     });
   }
 
   async findByNic(nic: string): Promise<UserEntity | null> {
     return await this.userRepository.findOne({ 
       where: { nic },
-      select: ['id', 'email', 'firstName', 'lastName', 'nic', 'isActive', 'userType', 'imageUrl']
+      select: ['id', 'email', 'firstName', 'lastName', 'nameWithInitials', 'nic', 'isActive', 'userType', 'imageUrl']
     });
   }
 
@@ -2922,7 +2924,7 @@ export class UsersService {
     // Find user
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'firstName', 'lastName', 'imageUrl'],
+      select: ['id', 'email', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
     });
 
     if (!user) {

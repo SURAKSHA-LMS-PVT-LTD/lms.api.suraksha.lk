@@ -289,6 +289,18 @@ export class CreateUserComprehensiveDto {
   lastName: string;
 
   @ApiProperty({ 
+    description: 'Name with initials (required)', 
+    example: 'J. Doe',
+    minLength: 1,
+    maxLength: 100
+  })
+  @IsNotEmpty({ message: 'Name with initials is required' })
+  @IsString({ message: 'Name with initials must be a string' })
+  @Length(1, 100, { message: 'Name with initials must be between 1 and 100 characters' })
+  @Transform(({ value }) => value?.trim())
+  nameWithInitials: string;
+
+  @ApiProperty({ 
     description: 'Email address (REQUIRED, cannot be empty, automatically converted to lowercase)', 
     example: 'john.doe@example.com',
     maxLength: 60

@@ -37,6 +37,9 @@ export class UserEntity {
   @Column({ name: 'last_name', type: 'varchar', length: 50 })
   lastName: string;
 
+  @Column({ name: 'name_with_initials', type: 'varchar', length: 100 })
+  nameWithInitials: string;
+
   @Column({ type: 'varchar', length: 60, nullable: false, unique: true, transformer: {
     to: (value: string) => value?.toLowerCase(),
     from: (value: string) => value?.toLowerCase()

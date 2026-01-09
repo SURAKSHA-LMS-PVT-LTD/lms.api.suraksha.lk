@@ -45,6 +45,17 @@ export class CreateUserDto {
   lastName: string;
 
   @ApiProperty({ 
+    description: 'Name with initials (required)', 
+    example: 'J. Doe',
+    minLength: 1,
+    maxLength: 100
+  })
+  @IsString()
+  @Length(1, 100)
+  @Transform(({ value }) => value?.trim())
+  nameWithInitials: string;
+
+  @ApiProperty({ 
     description: 'Email address (required, automatically converted to lowercase)', 
     example: 'john.doe@example.com',
     maxLength: 60

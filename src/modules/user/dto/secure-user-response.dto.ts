@@ -20,6 +20,10 @@ export class UserPublicResponseDto {
   @Expose()
   lastName?: string;
 
+  @ApiPropertyOptional({ description: 'Name with initials', example: 'J. Doe' })
+  @Expose()
+  nameWithInitials?: string;
+
   @ApiPropertyOptional({ description: 'Profile image URL' })
   @Expose()
   imageUrl?: string;
@@ -130,6 +134,10 @@ export class UserDetailResponseDto {
   @Expose()
   lastName?: string;
 
+  @ApiPropertyOptional({ description: 'Name with initials', example: 'J. Doe' })
+  @Expose()
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'Email address', example: 'john.doe@example.com' })
   @Expose()
   email?: string;
@@ -221,6 +229,10 @@ export class UserOwnProfileResponseDto {
   @ApiPropertyOptional({ description: 'Last name', example: 'Doe' })
   @Expose()
   lastName?: string;
+
+  @ApiPropertyOptional({ description: 'Name with initials', example: 'J. Doe' })
+  @Expose()
+  nameWithInitials?: string;
 
   @ApiProperty({ description: 'Email address', example: 'john.doe@example.com' })
   @Expose()
@@ -315,6 +327,10 @@ export class UserAdminResponseDto {
   @ApiPropertyOptional({ description: 'Last name', example: 'Doe' })
   @Expose()
   lastName?: string;
+
+  @ApiPropertyOptional({ description: 'Name with initials', example: 'J. Doe' })
+  @Expose()
+  nameWithInitials?: string;
 
   @ApiProperty({ description: 'Email address', example: 'john.doe@example.com' })
   @Expose()

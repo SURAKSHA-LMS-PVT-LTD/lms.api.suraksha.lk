@@ -15,6 +15,7 @@ import { Language } from '../enums/language.enum';
 export interface UserData {
   firstName: string;
   lastName: string;
+  nameWithInitials?: string;
   email?: string;
   phoneNumber?: string;
   userType: UserType;
@@ -122,6 +123,7 @@ export interface InstituteParentInfo {
   userId: string;
   firstName: string;
   lastName: string;
+  nameWithInitials?: string;
   email?: string;
   phoneNumber?: string;
   userType: UserType;

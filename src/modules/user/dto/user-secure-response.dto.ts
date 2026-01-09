@@ -22,6 +22,10 @@ export class UserSecureResponseDto {
   @Expose()
   lastName?: string;
 
+  @ApiProperty({ description: 'Name with initials', required: false })
+  @Expose()
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'User email address', required: false })
   @Expose()
   email?: string;
@@ -98,6 +102,7 @@ export class UserSecureResponseDto {
       this.id = partial.id || '';
       this.firstName = partial.firstName || '';
       this.lastName = partial.lastName;
+      this.nameWithInitials = partial.nameWithInitials;
       this.email = partial.email;
       this.userType = partial.userType;
       this.gender = partial.gender;

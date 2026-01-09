@@ -18,6 +18,9 @@ export class UserMinimalResponseDto {
   @ApiProperty({ description: 'User last name', required: false })
   lastName?: string;
 
+  @ApiProperty({ description: 'Name with initials', required: false })
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'User type/role', enum: UserType, required: false })
   userType?: UserType;
 
@@ -29,6 +32,7 @@ export class UserMinimalResponseDto {
       this.id = partial.id || '';
       this.firstName = partial.firstName || '';
       this.lastName = partial.lastName;
+      this.nameWithInitials = partial.nameWithInitials;
       this.userType = partial.userType;
       this.imageUrl = partial.imageUrl;
     }
@@ -57,6 +61,9 @@ export class UserProfileResponseDto {
   @ApiProperty({ description: 'User last name', required: false })
   lastName?: string;
 
+  @ApiProperty({ description: 'Name with initials', required: false })
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'User email address', required: false })
   email?: string;
 
@@ -80,6 +87,7 @@ export class UserProfileResponseDto {
       this.id = partial.id || '';
       this.firstName = partial.firstName || '';
       this.lastName = partial.lastName;
+      this.nameWithInitials = partial.nameWithInitials;
       this.email = partial.email;
       this.userType = partial.userType;
       this.gender = partial.gender;

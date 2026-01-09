@@ -13,6 +13,7 @@ export interface UserCacheData {
   userId: string;
   firstName: string;
   lastName: string;
+  nameWithInitials: string;
   email: string;
   phone?: string;
   userType: string;

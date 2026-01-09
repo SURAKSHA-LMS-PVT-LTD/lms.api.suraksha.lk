@@ -31,6 +31,13 @@ export class UserResponseDto {
   lastName?: string;
 
   @ApiPropertyOptional({ 
+    description: 'Name with initials', 
+    example: 'J. Doe' 
+  })
+  @Expose()
+  nameWithInitials?: string;
+
+  @ApiPropertyOptional({ 
     description: 'Email address', 
     example: 'john.doe@example.com' 
   })

@@ -82,7 +82,7 @@ export class OptimizedUserService {
 
     // Optimized query - only fetch required fields
     const [data, total] = await this.userRepository.findAndCount({
-      select: ['id', 'firstName', 'lastName', 'email', 'userType', 'imageUrl'],
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'userType', 'imageUrl'],
       where,
       order: { firstName: 'ASC' },
       skip: (page - 1) * limit,
@@ -102,7 +102,7 @@ export class OptimizedUserService {
 
     const user = await this.userRepository.findOne({
       select: [
-        'id', 'firstName', 'lastName', 'email', 
+        'id', 'firstName', 'lastName', 'nameWithInitials', 'email', 
         'userType', 'dateOfBirth', 'gender', 'imageUrl'
       ],
       where: { id, isActive: true }
@@ -121,7 +121,7 @@ export class OptimizedUserService {
   async findOwnProfile(id: string): Promise<UserOwnProfileResponseDto> {
     const user = await this.userRepository.findOne({
       select: [
-        'id', 'firstName', 'lastName', 'email', 'userType',
+        'id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'userType',
         'dateOfBirth', 'gender', 'imageUrl', 'city', 'country'
       ],
       where: { id, isActive: true }
@@ -164,7 +164,7 @@ export class OptimizedUserService {
     }
 
     const users = await this.userRepository.find({
-      select: ['id', 'firstName', 'lastName', 'email'],
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email'],
       where,
       order: { firstName: 'ASC' }
     });
