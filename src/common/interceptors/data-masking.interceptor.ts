@@ -167,7 +167,7 @@ export class DataMaskingInterceptor implements NestInterceptor {
         'type' in obj || 
         'status' in obj ||
         'shortName' in obj ||
-        'instituteType' in obj
+        'instituteId' in obj
       );
     
     return hasInstituteIdentifiers;

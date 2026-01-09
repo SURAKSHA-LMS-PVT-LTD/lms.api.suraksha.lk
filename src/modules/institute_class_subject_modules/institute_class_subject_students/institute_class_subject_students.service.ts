@@ -441,7 +441,7 @@ export class InstituteClassSubjectStudentsService {
           subj.is_active as "subjectIsActive",
           subj.subject_type as "subjectType",
           subj.basket_category as "basketCategory",
-          subj.institute_type as "instituteType",
+          subj.institute_id as "instituteId",
           subj.img_url as "imgUrl",
           subj.created_at as "subjectCreatedAt",
           subj.updated_at as "subjectUpdatedAt"

@@ -30,7 +30,7 @@ export class SimpleRedisService implements OnModuleInit, OnModuleDestroy {
         host: 'redis-18329.c47035.us-east-1-mz.ec2.cloud.rlrcp.com',
         port: 18329,
         username: 'laas',
-        password: 'Skaveesha1355660@',
+        password: process.env.REDIS_PASSWORD,
         db: 0,
         // ✅ Your proven stable settings
         connectTimeout: 60000,

@@ -114,7 +114,7 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
         'subject.isActive',
         'subject.subjectType',
         'subject.basketCategory',
-        'subject.instituteType',
+        'subject.instituteId',
         'subject.imgUrl',
         'subject.createdAt',
         'subject.updatedAt'
@@ -306,7 +306,7 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
         'subject.isActive',
         'subject.subjectType',
         'subject.basketCategory',
-        'subject.instituteType',
+        'subject.instituteId',
         'subject.imgUrl',
         'subject.createdAt',
         'subject.updatedAt',
