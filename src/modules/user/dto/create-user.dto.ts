@@ -135,23 +135,23 @@ export class CreateUserDto {
   gender?: Gender;
 
   @ApiPropertyOptional({ 
-    description: 'Address line 1 (street address)', 
+    description: 'Address line 1 (street address) - Optional', 
     example: '123 Main Street',
-    maxLength: 50
+    maxLength: 200
   })
   @IsOptional()
   @IsString()
-  @Length(1, 50)
+  @Length(1, 200)
   addressLine1?: string;
 
   @ApiPropertyOptional({ 
-    description: 'Address line 2 (apartment, suite, etc.)', 
+    description: 'Address line 2 (apartment, suite, etc.) - Optional', 
     example: 'Apt 4B',
-    maxLength: 50
+    maxLength: 200
   })
   @IsOptional()
   @IsString()
-  @Length(1, 50)
+  @Length(1, 200)
   addressLine2?: string;
 
   @ApiPropertyOptional({ 

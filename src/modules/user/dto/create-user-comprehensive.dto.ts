@@ -422,24 +422,24 @@ export class CreateUserComprehensiveDto {
   birthCertificateNo?: string;
 
   @ApiPropertyOptional({ 
-    description: 'Address line 1 (max 50 characters)', 
+    description: 'Address line 1 (max 200 characters) - Optional, not required', 
     example: '123 Main Street',
-    maxLength: 50
+    maxLength: 200
   })
   @IsOptional()
   @IsString({ message: 'Address line 1 must be a string' })
-  @MaxLength(50, { message: 'Address line 1 cannot exceed 50 characters' })
+  @MaxLength(200, { message: 'Address line 1 cannot exceed 200 characters' })
   @Transform(({ value }) => value?.trim())
   addressLine1?: string;
 
   @ApiPropertyOptional({ 
-    description: 'Address line 2 (max 50 characters)', 
+    description: 'Address line 2 (max 200 characters) - Optional, not required', 
     example: 'Apartment 4B',
-    maxLength: 50
+    maxLength: 200
   })
   @IsOptional()
   @IsString({ message: 'Address line 2 must be a string' })
-  @MaxLength(50, { message: 'Address line 2 cannot exceed 50 characters' })
+  @MaxLength(200, { message: 'Address line 2 cannot exceed 200 characters' })
   @Transform(({ value }) => value?.trim())
   addressLine2?: string;
 

@@ -67,10 +67,10 @@ export class UserEntity {
   @Column({ name: 'birth_certificate_no', type: 'varchar', length: 50, unique: true, nullable: true })
   birthCertificateNo?: string;
 
-  @Column({ name: 'address_line1', type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'address_line1', type: 'varchar', length: 200, nullable: true })
   addressLine1?: string;
 
-  @Column({ name: 'address_line2', type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'address_line2', type: 'varchar', length: 200, nullable: true })
   addressLine2?: string;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
