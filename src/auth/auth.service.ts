@@ -114,7 +114,7 @@ export class AuthService {
       
       const user = await this.userRepository.findOne({ 
         where: { email },
-        select: ['id', 'email', 'password', 'firstName', 'lastName', 'isActive', 'userType', 'imageUrl']
+        select: ['id', 'email', 'password', 'nameWithInitials', 'isActive', 'userType', 'imageUrl']
       });
       
       if (!user) {
@@ -1151,8 +1151,7 @@ export class AuthService {
     user: {
       id: string;
       email: string;
-      firstName: string;
-      lastName: string;
+      nameWithInitials: string;
       userType: UserType;
       imageUrl?: string;
     }
@@ -1190,7 +1189,7 @@ export class AuthService {
       // 🔐 Get user data with hierarchy validation
       const user = await this.userRepository.findOne({
         where: { id: payload.sub },
-        select: ['id', 'email', 'firstName', 'lastName', 'userType', 'isActive', 'imageUrl']
+        select: ['id', 'email', 'nameWithInitials', 'userType', 'isActive', 'imageUrl']
       });
 
       if (!user) {
@@ -1266,8 +1265,7 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
+          nameWithInitials: user.nameWithInitials,
           userType: user.userType,
           imageUrl: user.imageUrl
         }

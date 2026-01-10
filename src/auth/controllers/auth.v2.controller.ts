@@ -35,9 +35,9 @@ export class AuthV2Controller {
         user: {
           id: '12345',
           email: 'student@example.com',
-          firstName: 'John',
-          lastName: 'Doe',
-          userType: 'STUDENT'
+          nameWithInitials: 'J. Doe',
+          userType: 'STUDENT',
+          imageUrl: 'https://storage.googleapis.com/...'
         }
       }
     }
@@ -95,9 +95,9 @@ export class AuthV2Controller {
         user: {
           id: '12345',
           email: 'student@example.com',
-          firstName: 'John',
-          lastName: 'Doe',
-          userType: 'STUDENT'
+          nameWithInitials: 'J. Doe',
+          userType: 'STUDENT',
+          imageUrl: 'https://storage.googleapis.com/...'
         }
       }
     }
