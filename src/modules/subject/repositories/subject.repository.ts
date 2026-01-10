@@ -117,7 +117,7 @@ export class SubjectRepository {
   }
 
   private applyFilters(queryBuilder: SelectQueryBuilder<SubjectEntity>, query: QuerySubjectDto): void {
-    const { search, category, isActive, instituteId, classId, subjectId } = query;
+    const { search, category, isActive, instituteId, classId, subjectId, subjectType, basketCategory } = query;
 
     // Basic subject filters
     if (search) {
@@ -129,6 +129,14 @@ export class SubjectRepository {
 
     if (category) {
       queryBuilder.andWhere('subject.category LIKE :category', { category: `%${category}%` });
+    }
+
+    if (subjectType) {
+      queryBuilder.andWhere('subject.subjectType = :subjectType', { subjectType });
+    }
+
+    if (basketCategory) {
+      queryBuilder.andWhere('subject.basketCategory = :basketCategory', { basketCategory });
     }
 
     if (isActive !== undefined) {

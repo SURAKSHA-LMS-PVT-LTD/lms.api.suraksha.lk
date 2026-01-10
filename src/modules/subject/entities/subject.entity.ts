@@ -42,8 +42,8 @@ export class SubjectEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ name: 'subject_type', type: 'enum', enum: SubjectType, default: SubjectType.MAIN })
-  subjectType: SubjectType;
+  @Column({ name: 'subject_type', type: 'varchar', length: 100, default: SubjectType.MAIN })
+  subjectType: string;
 
   //this for print before cell in the mraks eg G003|98%
   @Column({ name: 'basket_category', type: 'varchar', length: 100, nullable: true })

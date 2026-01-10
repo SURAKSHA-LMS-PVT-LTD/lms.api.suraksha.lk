@@ -191,11 +191,13 @@ Content-Type: application/json
   "creditHours": 3,
   "isActive": true,
   "subjectType": "MAIN",
-  "basketCategory": "G003",
+  "basketCategory": "LANGUAGE",
   "instituteId": "1",
   "imgUrl": "subject-images/subject-uuid-timestamp.jpg"
 }
 ```
+
+**Note:** `subjectType` and `basketCategory` now accept **any string value** (VARCHAR 100 chars). While there are recommended values (see Subject Type ENUM and Basket Categories sections below), you can use custom values for institute-specific needs.
 
 **Required Fields:**
 - ✅ `code` - Unique subject code (max 50 chars)
@@ -207,8 +209,8 @@ Content-Type: application/json
 - `category` - Subject category (max 100 chars)
 - `creditHours` - Credit hours (1-1000)
 - `isActive` - Active status (default: true)
-- `subjectType` - MAIN, BASKET, COMMON (default: MAIN)
-- `basketCategory` - Basket category code
+- `subjectType` - Any string value up to 100 chars (default: MAIN). Recommended: MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1-4, GRADE_12TO13_BASKET_1-4, or custom values
+- `basketCategory` - Any string value up to 100 chars. Recommended: LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION, or custom values
 - `imgUrl` - Subject image path or URL
 
 **Response:**
@@ -222,7 +224,7 @@ Content-Type: application/json
   "creditHours": 3,
   "isActive": true,
   "subjectType": "MAIN",
-  "basketCategory": "G003",
+  "basketCategory": "LANGUAGE",
   "instituteId": "1",
   "imgUrl": "https://storage.googleapis.com/suraksha-lms/subject-images/subject-uuid-timestamp.jpg",
   "createdAt": "2026-01-10T10:00:00Z",
@@ -254,6 +256,8 @@ Authorization: Bearer {token}
 - `isActive` - Filter by active status (default: true)
 - `search` - Search in code, name, or description
 - `category` - Filter by category
+- `subjectType` - Filter by subject type (any string value, e.g., MAIN, BASKET, COMMON, etc.)
+- `basketCategory` - Filter by basket category (any string value, e.g., LANGUAGE, ARTS, SCIENCE, etc.)
 - `classId` - Filter subjects assigned to specific class
 - `subjectId` - Filter by specific subject ID
 - `page` - Page number (default: 1)
@@ -273,7 +277,7 @@ Authorization: Bearer {token}
     "creditHours": 3,
     "isActive": true,
     "subjectType": "MAIN",
-    "basketCategory": "G003",
+    "basketCategory": "LANGUAGE",
     "instituteId": "1",
     "imgUrl": "https://storage.googleapis.com/.../subject-123.jpg",
     "createdAt": "2026-01-10T10:00:00Z",
@@ -367,7 +371,7 @@ Authorization: Bearer {token}
   "creditHours": 3,
   "isActive": true,
   "subjectType": "MAIN",
-  "basketCategory": "G003",
+  "basketCategory": "LANGUAGE",
   "instituteId": "1",
   "imgUrl": "https://storage.googleapis.com/.../subject-123.jpg",
   "createdAt": "2026-01-10T10:00:00Z",
@@ -433,8 +437,8 @@ Content-Type: application/json
 - `category` - Category
 - `creditHours` - Credit hours
 - `isActive` - Active status
-- `subjectType` - Subject type
-- `basketCategory` - Basket category
+- `subjectType` - Any string value (max 100 chars). Use predefined types or custom values
+- `basketCategory` - Any string value (max 100 chars). Use predefined categories or custom values
 - `imgUrl` - Image URL
 
 **Response:**
@@ -748,11 +752,86 @@ GET /subjects?instituteId=1
 
 ---
 
-## 📋 Frontend Implementation Checklist
+## � Database Schema: Flexible Subject Types
+
+### **VARCHAR vs ENUM Approach**
+
+**Current Implementation:** VARCHAR(100) for maximum flexibility
+
+#### **Why VARCHAR instead of ENUM?**
+- ✅ Institutes can define custom subject types without database migration
+- ✅ Extensible: Add new types instantly without schema changes
+- ✅ Backward compatible: All existing enum values still work
+- ✅ Future-proof: Adapts to evolving educational requirements
+
+#### **Database Column Types:**
+```sql
+CREATE TABLE subjects (
+  ...,
+  subject_type VARCHAR(100) NOT NULL DEFAULT 'MAIN',
+  basket_category VARCHAR(100) NULL,
+  ...
+);
+```
+
+#### **Validation Strategy:**
+- **Backend:** Accepts any string (1-100 chars), provides type safety via TypeScript types
+- **Frontend:** Shows recommended values in dropdown + allows custom input
+- **Database:** Stores any string value
+
+#### **Recommended vs Custom Values:**
+
+**Recommended Subject Types:**
+- Standard: `MAIN`, `BASKET`, `COMMON`
+- Grade 6-9: `GRADE_6TO9_BASKET`
+- Grade 10-11: `GRADE_10TO11_BASKET_1`, `GRADE_10TO11_BASKET_2`, `GRADE_10TO11_BASKET_3`, `GRADE_10TO11_BASKET_4`
+- Grade 12-13: `GRADE_12TO13_BASKET_1`, `GRADE_12TO13_BASKET_2`, `GRADE_12TO13_BASKET_3`, `GRADE_12TO13_BASKET_4`
+
+**Recommended Basket Categories:**
+- `LANGUAGE`, `ARTS`, `TECHNOLOGY`, `COMMERCE`, `SCIENCE`, `RELIGION`
+
+**Custom Values:**
+Institutes can create their own types like:
+- `ADVANCED_PLACEMENT`, `HONORS`, `REMEDIAL`, `ELECTIVE`
+- `TECH_ARTS`, `BIO_SCIENCE`, `SOCIAL_STUDIES`
+
+#### **Example: Creating Custom Subject Type**
+```json
+{
+  "code": "AP_CALC",
+  "name": "AP Calculus",
+  "subjectType": "ADVANCED_PLACEMENT",
+  "basketCategory": "MATHEMATICS_ADVANCED",
+  "instituteId": "1"
+}
+```
+
+#### **Filtering with Custom Types**
+```bash
+# Filter by custom subject type
+GET /subjects?instituteId=1&subjectType=ADVANCED_PLACEMENT
+
+# Filter by custom basket category
+GET /subjects?instituteId=1&basketCategory=MATHEMATICS_ADVANCED
+```
+
+---
+
+## �📋 Frontend Implementation Checklist
 
 ### **Subject Create/Edit Form:**
 
 - [ ] Add instituteId hidden field (auto-filled from user context)
+- [ ] **Subject Type Field:**
+  - [ ] Dropdown/combobox with recommended values (MAIN, BASKET, COMMON, etc.)
+  - [ ] Allow custom text input (not restricted to dropdown)
+  - [ ] Max length validation: 100 characters
+  - [ ] Show tooltip: "Select from common types or enter custom value"
+- [ ] **Basket Category Field:**
+  - [ ] Dropdown/combobox with recommended categories (LANGUAGE, ARTS, TECHNOLOGY, etc.)
+  - [ ] Allow custom text input (not restricted to dropdown)
+  - [ ] Max length validation: 100 characters
+  - [ ] Show tooltip: "Select from common categories or enter custom value"
 - [ ] Implement image upload with:
   - [ ] File size validation (max 5 MB)
   - [ ] File type validation (jpg, png, webp, gif)
@@ -772,6 +851,8 @@ GET /subjects?instituteId=1
 - [ ] Add filter toggle for inactive subjects
 - [ ] Implement search by code/name/description
 - [ ] Category filter dropdown
+- [ ] **Subject Type filter** - Dropdown with common types + "All" option
+- [ ] **Basket Category filter** - Dropdown with common categories + "All" option
 - [ ] Role-based action buttons:
   - [ ] Teachers: View only
   - [ ] Institute Admin: View, Edit, Deactivate
@@ -789,15 +870,22 @@ GET /subjects?instituteId=1
 ## 🎯 Migration Checklist
 
 - [x] Database migration executed (instituteType → instituteId)
+- [x] Database migration executed (subject_type ENUM → VARCHAR(100))
 - [x] All DTOs updated with instituteId
+- [x] CreateSubjectDto updated to accept string for subjectType/basketCategory
+- [x] SubjectResponseDto updated to return string for subjectType/basketCategory
+- [x] SubjectEntity updated to use string type for subjectType
 - [x] Repository methods filter by instituteId
+- [x] Repository filtering added for subjectType and basketCategory
 - [x] Controller endpoints require instituteId
+- [x] Controller endpoints accept any string for subjectType/basketCategory
 - [x] Service layer validates institute access
 - [x] Role-based access guards implemented
 - [x] Active subjects filtering added
 - [x] Error messages updated
 - [x] API documentation updated
 - [ ] Frontend updated to use instituteId
+- [ ] Frontend dropdowns with custom input implemented
 - [ ] Old instituteType references removed
 - [ ] Testing completed for all roles
 - [ ] Production deployment scheduled
@@ -808,21 +896,26 @@ GET /subjects?instituteId=1
 
 ### **✅ Completed:**
 1. Database schema migrated (instituteType → instituteId)
-2. All APIs require instituteId parameter
-3. Role-based access control implemented
-4. Institute isolation enforced
-5. Active subjects filtering added
-6. Image upload flow documented
-7. Complete API documentation created
+2. Database schema migrated (subject_type ENUM → VARCHAR(100))
+3. All APIs require instituteId parameter
+4. SubjectType and basketCategory accept any string value (flexible, extensible)
+5. API filtering added for subjectType and basketCategory
+6. Role-based access control implemented
+7. Institute isolation enforced
+8. Active subjects filtering added
+9. Image upload flow documented
+10. Complete API documentation created with VARCHAR approach
 
 ### **⚠️ Pending:**
 1. Frontend updates to use new API structure
-2. Remove old instituteType references from frontend
-3. Update frontend forms with instituteId
-4. Implement image upload UI with crop tool
-5. Add role-based UI restrictions
-6. Complete end-to-end testing
-7. User training/documentation
+2. Frontend dropdown/combobox with custom input for subjectType
+3. Frontend dropdown/combobox with custom input for basketCategory
+4. Remove old instituteType references from frontend
+5. Update frontend forms with instituteId
+6. Implement image upload UI with crop tool
+7. Add role-based UI restrictions
+8. Complete end-to-end testing
+9. User training/documentation
 
 ---
 
@@ -835,6 +928,12 @@ GET /subjects?instituteId=1
 **Default Behavior:**
 - ✅ GET requests return only active subjects
 - ✅ Use `?isActive=false` to include inactive
+
+**Subject Types & Categories:**
+- ✅ `subjectType` accepts any string (max 100 chars)
+- ✅ `basketCategory` accepts any string (max 100 chars)
+- ✅ Recommended values documented, but custom values allowed
+- ✅ Use filtering: `?subjectType=CUSTOM_TYPE&basketCategory=CUSTOM_CATEGORY`
 
 **Image Upload:**
 1. Generate signed URL

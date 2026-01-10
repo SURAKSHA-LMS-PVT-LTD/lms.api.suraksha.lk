@@ -50,12 +50,19 @@ export class CreateSubjectDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ description: 'Subject type', enum: SubjectType, example: SubjectType.MAIN })
+  @ApiPropertyOptional({ 
+    description: 'Subject type (e.g., MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1, etc.)', 
+    example: 'MAIN' 
+  })
   @IsOptional()
-  @IsEnum(SubjectType)
-  subjectType?: SubjectType;
+  @IsString()
+  @Length(1, 100)
+  subjectType?: string;
 
-  @ApiPropertyOptional({ description: 'Basket category for grading', example: 'G003' })
+  @ApiPropertyOptional({ 
+    description: 'Basket category (e.g., LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION)', 
+    example: 'LANGUAGE' 
+  })
   @IsOptional()
   @IsString()
   @Length(1, 100)

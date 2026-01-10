@@ -51,8 +51,8 @@ export class SubjectController {
         category: { type: 'string', example: 'Science' },
         creditHours: { type: 'integer', example: 3 },
         isActive: { type: 'boolean', example: true },
-        subjectType: { type: 'string', enum: ['MAIN', 'BASKET', 'COMMON'] },
-        basketCategory: { type: 'string', example: 'G003' },
+        subjectType: { type: 'string', example: 'MAIN', description: 'Subject type (e.g., MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1, etc.)' },
+        basketCategory: { type: 'string', example: 'LANGUAGE', description: 'Basket category (e.g., LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION)' },
         instituteId: { type: 'string', example: '1', description: 'Institute ID' },
         imgUrl: {
           type: 'string',
@@ -88,6 +88,8 @@ export class SubjectController {
   @ApiResponse({ status: 400, description: 'instituteId is required' })
   @ApiQuery({ name: 'search', required: false, description: 'Search in code, name, or description' })
   @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
+  @ApiQuery({ name: 'subjectType', required: false, type: String, description: 'Filter by subject type (e.g., MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1, GRADE_10TO11_BASKET_2, GRADE_10TO11_BASKET_3, GRADE_10TO11_BASKET_4, GRADE_12TO13_BASKET_1, GRADE_12TO13_BASKET_2, GRADE_12TO13_BASKET_3, GRADE_12TO13_BASKET_4)' })
+  @ApiQuery({ name: 'basketCategory', required: false, type: String, description: 'Filter by basket category (e.g., LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION)' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status. Use ?isActive=false to get inactive subjects. Default: true (active only)' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   @ApiQuery({ name: 'classId', required: false, description: 'Filter subjects by class ID (requires instituteId)' })
@@ -130,6 +132,8 @@ export class SubjectController {
   @ApiResponse({ status: 400, description: 'instituteId is required' })
   @ApiQuery({ name: 'search', required: false, description: 'Search in code, name, or description' })
   @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
+  @ApiQuery({ name: 'subjectType', required: false, type: String, description: 'Filter by subject type (e.g., MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1, GRADE_10TO11_BASKET_2, GRADE_10TO11_BASKET_3, GRADE_10TO11_BASKET_4, GRADE_12TO13_BASKET_1, GRADE_12TO13_BASKET_2, GRADE_12TO13_BASKET_3, GRADE_12TO13_BASKET_4)' })
+  @ApiQuery({ name: 'basketCategory', required: false, type: String, description: 'Filter by basket category (e.g., LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION)' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   @ApiQuery({ name: 'classId', required: false, description: 'Filter subjects by class ID (requires instituteId)' })
@@ -259,8 +263,8 @@ export class SubjectController {
         category: { type: 'string', example: 'Science' },
         creditHours: { type: 'integer', example: 4 },
         isActive: { type: 'boolean', example: true },
-        subjectType: { type: 'string', enum: ['MAIN', 'BASKET', 'COMMON'] },
-        basketCategory: { type: 'string', example: 'G003' },
+        subjectType: { type: 'string', example: 'MAIN', description: 'Subject type (e.g., MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1, etc.)' },
+        basketCategory: { type: 'string', example: 'LANGUAGE', description: 'Basket category (e.g., LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION)' },
         imgUrl: {
           type: 'string',
           description: 'New subject image URL from /upload/verify-and-publish',

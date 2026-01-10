@@ -23,10 +23,16 @@ export class SubjectResponseDto {
   @ApiProperty({ description: 'Active status', example: true })
   isActive: boolean;
 
-  @ApiProperty({ description: 'Subject type', enum: SubjectType, example: SubjectType.MAIN })
-  subjectType: SubjectType;
+  @ApiProperty({ 
+    description: 'Subject type (e.g., MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, GRADE_10TO11_BASKET_1, etc.)', 
+    example: 'MAIN' 
+  })
+  subjectType: string;
 
-  @ApiPropertyOptional({ description: 'Basket category', example: 'G003' })
+  @ApiPropertyOptional({ 
+    description: 'Basket category (e.g., LANGUAGE, ARTS, TECHNOLOGY, COMMERCE, SCIENCE, RELIGION)', 
+    example: 'LANGUAGE' 
+  })
   basketCategory?: string;
 
   @ApiProperty({ description: 'Institute ID', example: '1' })

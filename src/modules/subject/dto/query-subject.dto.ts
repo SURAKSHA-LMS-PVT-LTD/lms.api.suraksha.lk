@@ -16,6 +16,22 @@ export class QuerySubjectDto {
   @IsString()
   category?: string;
 
+  @ApiPropertyOptional({ 
+    description: 'Filter by subject type', 
+    enum: ['MAIN', 'BASKET', 'COMMON', 'GRADE_6TO9_BASKET', 'GRADE_10TO11_BASKET_1', 'GRADE_10TO11_BASKET_2', 'GRADE_10TO11_BASKET_3', 'GRADE_10TO11_BASKET_4', 'GRADE_12TO13_BASKET_1', 'GRADE_12TO13_BASKET_2', 'GRADE_12TO13_BASKET_3', 'GRADE_12TO13_BASKET_4']
+  })
+  @IsOptional()
+  @IsString()
+  subjectType?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Filter by basket category', 
+    enum: ['LANGUAGE', 'ARTS', 'TECHNOLOGY', 'COMMERCE', 'SCIENCE', 'RELIGION']
+  })
+  @IsOptional()
+  @IsString()
+  basketCategory?: string;
+
   @ApiPropertyOptional({ description: 'Filter by active status', type: Boolean })
   @IsOptional()
   @Transform(({ value }) => {
