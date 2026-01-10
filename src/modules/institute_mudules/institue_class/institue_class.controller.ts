@@ -977,8 +977,8 @@ export class InstitueClassController {
     validateCustomDecorators: true
   }))
   @ApiOperation({
-    summary: 'Get verified classes for a specific student within an institute',
-    description: 'Ultra-secure endpoint that retrieves all verified classes that a student is enrolled in within a specific institute. Returns only verified enrollments with class image URLs. Protected by JWT authentication, institute-scoped access control, role-based authorization, and comprehensive input validation. Uses parameterized queries to prevent SQL injection. Returns paginated results with sanitized response data. Includes anti-hacking protections against XSS, CSRF, injection attacks, and privilege escalation.'
+    summary: 'Get all classes (verified and unverified) for a specific student within an institute',
+    description: 'Ultra-secure endpoint that retrieves all classes that a student is enrolled in within a specific institute, including both verified and pending enrollments. Returns isVerified field to indicate enrollment status. Protected by JWT authentication, institute-scoped access control, role-based authorization, and comprehensive input validation. Uses parameterized queries to prevent SQL injection. Returns paginated results with sanitized response data. Includes anti-hacking protections against XSS, CSRF, injection attacks, and privilege escalation.'
   })
   @ApiParam({
     name: 'instituteId',
@@ -1098,7 +1098,7 @@ export class InstitueClassController {
       // Calculate pagination with bounds checking
       const offset = Math.max(0, (page - 1) * limit);
 
-      // Enhanced secure parameterized query with mandatory institute filtering and verification
+      // Enhanced secure parameterized query with mandatory institute filtering (includes verified and unverified)
       const query = `
         SELECT 
           ics.institute_id as "instituteId",
@@ -1121,19 +1121,17 @@ export class InstitueClassController {
         WHERE ics.student_user_id = ? 
         AND ics.institute_id = ?
         AND ics.is_active = true
-        AND ics.is_verified = true
-        ORDER BY ics.created_at DESC
+        ORDER BY ics.is_verified DESC, ics.created_at DESC
         LIMIT ? OFFSET ?
       `;
 
-      // Enhanced secure parameterized count query with institute filtering and verification
+      // Enhanced secure parameterized count query with institute filtering (includes verified and unverified)
       const countQuery = `
         SELECT COUNT(*) as total
         FROM institute_class_students ics
         WHERE ics.student_user_id = ? 
         AND ics.institute_id = ?
         AND ics.is_active = true
-        AND ics.is_verified = true
       `;
 
       // Execute secure parameterized queries with institute ID validation
