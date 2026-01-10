@@ -13,6 +13,7 @@ import { RefreshTokenEntity } from './entities/password-reset.entity';
 // ✅ CACHING SERVICES
 import { UserManagementService } from '../common/services/cache-user-management.service';
 import { CacheService } from '../common/services/cache.service';
+import { CloudStorageService } from '../common/services/cloud-storage.service';
 import { InstituteClassStudentEntity } from '../modules/institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { StudentEntity } from '../modules/student/entities/student.entity';
 import { ParentEntity } from '../modules/parent/entities/parent.entity';
@@ -52,6 +53,7 @@ export class AuthService {
     // ✅ CACHING SERVICES
     private readonly userManagementService: UserManagementService,
     private readonly cacheService: CacheService,
+    private readonly cloudStorageService: CloudStorageService,
     private readonly enhancedJwtService: EnhancedJwtService,
   ) {
     // Get salt rounds from environment variable
@@ -171,8 +173,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        nameWithInitials: user.nameWithInitials,
         userType: user.userType,
         imageUrl: user.imageUrl,
       },
@@ -950,12 +951,12 @@ export class AuthService {
       id: string;
       firstName: string;
       lastName: string;
+      nameWithInitials: string;
       email: string;
       phoneNumber?: string;
       userType: string;
       dateOfBirth?: Date;
       gender?: string;
-      nic?: string;
       birthCertificateNo?: string;
       addressLine1?: string;
       addressLine2?: string;
@@ -965,15 +966,25 @@ export class AuthService {
       postalCode?: string;
       country?: string;
       imageUrl?: string;
-      idUrl?: string;
-      isActive: boolean;
       subscriptionPlan?: string;
       paymentExpiresAt?: Date;
-      telegramId?: string;
-      rfid?: string;
       language?: string;
       createdAt: Date;
       updatedAt: Date;
+      // Student-specific fields
+      studentId?: string;
+      emergencyContact?: string;
+      bloodGroup?: string;
+      medicalConditions?: string;
+      allergies?: string;
+      fatherId?: string;
+      motherId?: string;
+      guardianId?: string;
+      // Parent-specific fields
+      occupation?: string;
+      workplace?: string;
+      workPhone?: string;
+      educationLevel?: string;
     };
   }> {
     try {
@@ -981,8 +992,13 @@ export class AuthService {
       const cachedProfile = await this.userManagementService.getUserCacheInfo(userId);
       
       if (cachedProfile.cached && cachedProfile.data) {
-        // 🎯 Cache HIT: Return cached data (excluding password and fields not in cache)
+        // 🎯 Cache HIT: Return cached data with URL transformation
         const userData = cachedProfile.data;
+        
+        // Transform imageUrl to full URL if exists
+        const fullImageUrl = userData.imageUrl 
+          ? this.cloudStorageService.getFullUrl(userData.imageUrl)
+          : undefined;
         
         return {
           success: true,
@@ -990,12 +1006,12 @@ export class AuthService {
             id: userData.userId,
             firstName: userData.firstName,
             lastName: userData.lastName,
+            nameWithInitials: userData.nameWithInitials,
             email: userData.email,
             phoneNumber: userData.phone,
             userType: userData.userType,
             dateOfBirth: userData.dateOfBirth,
             gender: userData.gender,
-            nic: userData.nic,
             birthCertificateNo: userData.birthCertificateNo,
             addressLine1: userData.addressLine1,
             addressLine2: userData.addressLine2,
@@ -1004,38 +1020,79 @@ export class AuthService {
             province: userData.province,
             postalCode: userData.postalCode,
             country: userData.country,
-            imageUrl: userData.imageUrl,
-            isActive: userData.isActive,
+            imageUrl: fullImageUrl,
             createdAt: userData.createdAt,
             updatedAt: userData.updatedAt,
             // Fields not available in cache - will be undefined
-            idUrl: undefined,
             subscriptionPlan: undefined,
             paymentExpiresAt: undefined,
-            telegramId: undefined,
-            rfid: undefined,
-            language: undefined
+            language: undefined,
+            // Student/parent fields from cache
+            studentId: userData.studentId,
+            emergencyContact: userData.emergencyContact,
+            bloodGroup: userData.bloodGroup,
+            medicalConditions: userData.medicalConditions,
+            allergies: userData.allergies,
+            fatherId: userData.fatherId,
+            motherId: userData.motherId,
+            guardianId: userData.guardianId,
+            occupation: userData.occupation,
+            workplace: userData.workplace,
+            workPhone: userData.workPhone,
+            educationLevel: userData.educationLevel,
           }
         };
       }
 
-      // 📊 STEP 2: Cache MISS - Fallback to database (includes all fields)
+      // 📊 STEP 2: Cache MISS - Fallback to database with student/parent joins
       this.logger.warn(`⚠️ Cache miss for user ${userId}, falling back to database`);
       
       const user = await this.userRepository.findOne({ 
         where: { id: userId },
         select: [
-          'id', 'firstName', 'lastName', 'email', 'phoneNumber', 'userType',
-          'dateOfBirth', 'gender', 'nic', 'birthCertificateNo',
+          'id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'phoneNumber', 'userType',
+          'dateOfBirth', 'gender', 'birthCertificateNo',
           'addressLine1', 'addressLine2', 'city', 'district', 'province',
-          'postalCode', 'country', 'imageUrl', 'idUrl', 'isActive',
-          'subscriptionPlan', 'paymentExpiresAt', 'telegramId', 'rfid',
+          'postalCode', 'country', 'imageUrl',
+          'subscriptionPlan', 'paymentExpiresAt',
           'language', 'createdAt', 'updatedAt'
         ]
       });
 
       if (!user) {
         throw new UnauthorizedException('User not found');
+      }
+
+      // 🔗 STEP 2.5: Fetch student/parent data based on userType
+      let studentData: any = null;
+      let parentData: any = null;
+
+      if (user.userType === UserType.USER) {
+        // USER type: join both student AND parent tables
+        try {
+          studentData = await this.studentRepository.findOne({ where: { userId } });
+        } catch (error) {
+          // Student data doesn't exist
+        }
+        try {
+          parentData = await this.parentRepository.findOne({ where: { userId } });
+        } catch (error) {
+          // Parent data doesn't exist
+        }
+      } else if (user.userType === UserType.USER_WITHOUT_PARENT) {
+        // USER_WITHOUT_PARENT: join only student table
+        try {
+          studentData = await this.studentRepository.findOne({ where: { userId } });
+        } catch (error) {
+          // Student data doesn't exist
+        }
+      } else if (user.userType === UserType.USER_WITHOUT_STUDENT) {
+        // USER_WITHOUT_STUDENT: join only parent table
+        try {
+          parentData = await this.parentRepository.findOne({ where: { userId } });
+        } catch (error) {
+          // Parent data doesn't exist
+        }
       }
 
       // 💾 STEP 3: Cache the user data for future requests
@@ -1045,18 +1102,23 @@ export class AuthService {
         this.logger.warn(`Failed to cache user data: ${cacheError.message}`);
       }
 
+      // ✅ Transform imageUrl to full URL
+      const fullImageUrl = user.imageUrl 
+        ? this.cloudStorageService.getFullUrl(user.imageUrl)
+        : undefined;
+
       return {
         success: true,
         data: {
           id: user.id,
           firstName: user.firstName,
           lastName: user.lastName,
+          nameWithInitials: user.nameWithInitials,
           email: user.email,
           phoneNumber: user.phoneNumber,
           userType: user.userType,
           dateOfBirth: user.dateOfBirth,
           gender: user.gender,
-          nic: user.nic,
           birthCertificateNo: user.birthCertificateNo,
           addressLine1: user.addressLine1,
           addressLine2: user.addressLine2,
@@ -1065,16 +1127,30 @@ export class AuthService {
           province: user.province,
           postalCode: user.postalCode,
           country: user.country,
-          imageUrl: user.imageUrl,
-          idUrl: user.idUrl,
-          isActive: user.isActive,
+          imageUrl: fullImageUrl,
           subscriptionPlan: user.subscriptionPlan,
           paymentExpiresAt: user.paymentExpiresAt,
-          telegramId: user.telegramId,
-          rfid: user.rfid,
           language: user.language,
           createdAt: user.createdAt,
-          updatedAt: user.updatedAt
+          updatedAt: user.updatedAt,
+          // Student-specific fields (if exists)
+          ...(studentData && {
+            studentId: studentData.studentId,
+            emergencyContact: studentData.emergencyContact,
+            bloodGroup: studentData.bloodGroup,
+            medicalConditions: studentData.medicalConditions,
+            allergies: studentData.allergies,
+            fatherId: studentData.fatherId,
+            motherId: studentData.motherId,
+            guardianId: studentData.guardianId,
+          }),
+          // Parent-specific fields (if exists)
+          ...(parentData && {
+            occupation: parentData.occupation,
+            workplace: parentData.workplace,
+            workPhone: parentData.workPhone,
+            educationLevel: parentData.educationLevel,
+          }),
         }
       };
 

@@ -49,8 +49,7 @@ export interface EnhancedLoginResponse {
   user: {
     id: string;
     email: string;
-    firstName: string;
-    lastName: string;
+    nameWithInitials: string;
     userType: UserType;
     imageUrl?: string;
   };

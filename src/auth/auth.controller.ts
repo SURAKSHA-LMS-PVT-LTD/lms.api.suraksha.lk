@@ -168,15 +168,25 @@ export class AuthController {
           id: '12345',
           firstName: 'John',
           lastName: 'Doe',
+          nameWithInitials: 'J. Doe',
           email: 'john.doe@example.com',
           phoneNumber: '+94771234567',
-          userType: 'STUDENT',
+          userType: 'USER_WITHOUT_PARENT',
           dateOfBirth: '2005-01-15',
-          gender: 'M',
-          imageUrl: 'https://storage.googleapis.com/...',
-          isActive: true,
+          gender: 'MALE',
+          birthCertificateNo: '12345678',
+          addressLine1: '123 Main Street',
+          city: 'Colombo',
+          district: 'COLOMBO',
+          province: 'WESTERN',
+          imageUrl: 'https://storage.googleapis.com/suraksha-lms/profile-images/user-123.jpg',
+          subscriptionPlan: 'FREE',
+          language: 'E',
           createdAt: '2024-01-01T00:00:00.000Z',
-          updatedAt: '2024-11-22T00:00:00.000Z'
+          updatedAt: '2024-11-22T00:00:00.000Z',
+          studentId: 'STU2024001',
+          emergencyContact: '+94771234567',
+          bloodGroup: 'O+'
         }
       }
     }
