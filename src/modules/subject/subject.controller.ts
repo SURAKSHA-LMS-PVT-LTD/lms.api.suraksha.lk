@@ -80,12 +80,15 @@ export class SubjectController {
     instituteAdmin: true,
     teacher: true
   })
-  @ApiOperation({ summary: 'Get all subjects (Institute Admin, Teacher) - instituteId required' })
+  @ApiOperation({ 
+    summary: 'Get all subjects (Institute Admin, Teacher) - instituteId required',
+    description: 'Get subjects with filtering. Institute admins can get inactive subjects by passing ?isActive=false to activate them later.'
+  })
   @ApiResponse({ status: 200, description: 'All subjects retrieved successfully', type: [SubjectResponseDto] })
   @ApiResponse({ status: 400, description: 'instituteId is required' })
   @ApiQuery({ name: 'search', required: false, description: 'Search in code, name, or description' })
   @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status. Use ?isActive=false to get inactive subjects. Default: true (active only)' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   @ApiQuery({ name: 'classId', required: false, description: 'Filter subjects by class ID (requires instituteId)' })
   @ApiQuery({ name: 'subjectId', required: false, description: 'Filter by specific subject ID' })
@@ -100,7 +103,8 @@ export class SubjectController {
     }
     
     // Force limit to -1 to return all subjects regardless of query parameters
-    // Default to only active subjects if not explicitly specified
+    // If isActive not specified, default to true for backwards compatibility
+    // If explicitly set to false, return inactive subjects (for institute admin to activate)
     const modifiedQuery: QuerySubjectDto = {
       ...query,
       isActive: query.isActive !== undefined ? query.isActive : true,
@@ -276,6 +280,30 @@ export class SubjectController {
     return this.subjectService.update(id, updateSubjectDto);
   }
 
+  @Patch(':id/activate')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true
+  })
+  @ApiOperation({ 
+    summary: 'Activate inactive subject (SUPERADMIN, Institute Admin)',
+    description: 'Reactivate a previously deactivated subject. Use GET /subjects?isActive=false to find inactive subjects first.'
+  })
+  @ApiResponse({ status: 200, description: 'Subject activated successfully', type: SubjectResponseDto })
+  @ApiResponse({ status: 404, description: 'Subject not found' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
+  async activate(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Query('instituteId') instituteId: string
+  ): Promise<SubjectResponseDto> {
+    if (!instituteId) {
+      throw new BadRequestException('instituteId is required');
+    }
+    // Update subject to set isActive = true
+    return this.subjectService.update(id, { isActive: true });
+  }
+
   @Patch(':id/deactivate')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
@@ -285,7 +313,14 @@ export class SubjectController {
   @ApiOperation({ summary: 'Soft delete (deactivate) subject by ID (SUPERADMIN, Institute Admin)' })
   @ApiResponse({ status: 200, description: 'Subject deactivated successfully', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
-  async softDelete(@Param('id', ParseBigIntPipe) id: string): Promise<SubjectResponseDto> {
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
+  async softDelete(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Query('instituteId') instituteId: string
+  ): Promise<SubjectResponseDto> {
+    if (!instituteId) {
+      throw new BadRequestException('instituteId is required');
+    }
     return this.subjectService.softDelete(id);
   }
 
