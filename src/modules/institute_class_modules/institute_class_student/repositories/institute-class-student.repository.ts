@@ -124,7 +124,18 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
         'c.startDate as start_date',
         'c.endDate as end_date',
         'i.name as instituteName',
-        'i.code as instituteCode'
+        'i.code as instituteCode',
+        // Add enrollment status as derived field
+        `CASE 
+          WHEN ics.isVerified = true THEN 'verified'
+          WHEN ics.isVerified = false THEN 'pending'
+          ELSE 'unknown'
+        END as enrollmentStatus`,
+        // Add access permission flag
+        `CASE 
+          WHEN ics.isVerified = true AND ics.isActive = true THEN true
+          ELSE false
+        END as hasAccess`
       ])
       .innerJoin('ics.class', 'c')
       .innerJoin('ics.institute', 'i')
@@ -135,9 +146,13 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
       queryBuilder.andWhere('ics.isActive = :isActive', { isActive: true });
     }
 
-    if (filters.verifiedOnly) {
+    // UPDATED: verifiedOnly now optional - by default show all (verified + pending)
+    if (filters.verifiedOnly === true) {
       queryBuilder.andWhere('ics.isVerified = :isVerified', { isVerified: true });
+    } else if (filters.verifiedOnly === false) {
+      queryBuilder.andWhere('ics.isVerified = :isVerified', { isVerified: false });
     }
+    // If verifiedOnly is undefined, show all enrollments (verified + unverified)
 
     // Apply advanced filters
     if (filters.instituteId) {

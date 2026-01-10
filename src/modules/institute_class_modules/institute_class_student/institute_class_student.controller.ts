@@ -382,34 +382,43 @@ export class StudentClassesController {
   @RequireAnyOfRoles({ student: {}, teacher: {}, instituteAdmin: true, global: [UserType.SUPERADMIN] })
   @ApiOperation({ 
     summary: 'Get student enrolled classes with advanced filtering (Ultra-Optimized)',
-    description: 'Retrieves classes a student is enrolled in with optional filters for institute. Uses single-query architecture for maximum performance.'
+    description: 'Retrieves classes a student is enrolled in with optional filters for institute. By default, includes both verified (active access) and pending (no access) enrollments. Pending enrollments are marked with enrollmentStatus="pending" and hasAccess=false.'
   })
-  @ApiResponse({ status: 200, description: 'List of enrolled classes with minimal data' })
+  @ApiResponse({ status: 200, description: 'List of enrolled classes with verification status and access permission flags' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10, max: 100)' })
   @ApiQuery({ name: 'instituteId', required: false, description: 'Filter by institute ID' })
-  @ApiQuery({ name: 'verifiedOnly', required: false, description: 'Show only verified enrollments (default: false)' })
+  @ApiQuery({ name: 'verifiedOnly', required: false, description: 'Filter by verification status: true (verified only), false (pending only), or omit for all (default: show all)' })
   @ApiQuery({ name: 'enrollmentMethod', required: false, description: 'Filter by enrollment method (admin_assigned, self_enrollment)' })
   async getEnrolledClasses(
     @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Query('instituteId', ParseBigIntPipe) instituteId?: string,
-    @Query('verifiedOnly') verifiedOnly: string = 'false',
+    @Query('verifiedOnly') verifiedOnly?: string,
     @Query('enrollmentMethod') enrollmentMethod?: string
   ) {
     const parsedLimit = Math.min(parseInt(limit), 100); // Max 100 items per page
+    
+    // Parse verifiedOnly - undefined means show all
+    let parsedVerifiedOnly: boolean | undefined;
+    if (verifiedOnly === 'true') {
+      parsedVerifiedOnly = true;
+    } else if (verifiedOnly === 'false') {
+      parsedVerifiedOnly = false;
+    }
+    // Otherwise leave undefined to show all
     
     const filters = {
       skip: (parseInt(page) - 1) * parsedLimit,
       take: parsedLimit,
       activeOnly: true, // Only active enrollments
       instituteId,
-      verifiedOnly: verifiedOnly === 'true',
+      verifiedOnly: parsedVerifiedOnly,
       enrollmentMethod,
     };
     
-    // Use ultra-optimized method with advanced filtering (no classId needed)
+    // Use ultra-optimized method with advanced filtering (includes pending enrollments by default)
     return await this.instituteClassStudentService.getStudentEnrolledClassesWithFilters(studentUserId, filters);
   }
 }
