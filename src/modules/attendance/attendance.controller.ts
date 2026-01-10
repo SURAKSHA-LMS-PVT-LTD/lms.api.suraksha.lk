@@ -478,6 +478,9 @@ export class AttendanceController {
             totalPresent: { type: 'number' },
             totalAbsent: { type: 'number' },
             totalLate: { type: 'number' },
+            totalLeft: { type: 'number' },
+            totalLeftEarly: { type: 'number' },
+            totalLeftLately: { type: 'number' },
             attendanceRate: { type: 'number' }
           }
         }
@@ -631,6 +634,9 @@ export class AttendanceController {
             totalPresent: { type: 'number' },
             totalAbsent: { type: 'number' },
             totalLate: { type: 'number' },
+            totalLeft: { type: 'number' },
+            totalLeftEarly: { type: 'number' },
+            totalLeftLately: { type: 'number' },
             uniqueStudents: { type: 'number' },
             totalClasses: { type: 'number' },
             totalSubjects: { type: 'number' }
@@ -779,6 +785,9 @@ export class AttendanceController {
             totalPresent: { type: 'number' },
             totalAbsent: { type: 'number' },
             totalLate: { type: 'number' },
+            totalLeft: { type: 'number' },
+            totalLeftEarly: { type: 'number' },
+            totalLeftLately: { type: 'number' },
             uniqueStudents: { type: 'number' },
             totalSubjects: { type: 'number' }
           }
@@ -929,6 +938,9 @@ export class AttendanceController {
             totalPresent: { type: 'number' },
             totalAbsent: { type: 'number' },
             totalLate: { type: 'number' },
+            totalLeft: { type: 'number' },
+            totalLeftEarly: { type: 'number' },
+            totalLeftLately: { type: 'number' },
             uniqueStudents: { type: 'number' }
           }
         }

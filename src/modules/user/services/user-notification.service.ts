@@ -24,7 +24,7 @@ import { InstituteEntity } from '../../institute/entities/institute.entity';
 export interface WelcomeNotificationParams {
   email: string;
   phoneNumber?: string;
-  firstName: string;
+  nameWithInitials: string;
   userId: string;
   instituteId?: string;
 }
@@ -61,10 +61,10 @@ export class UserNotificationService {
    */
   async sendWelcomeNotifications(params: WelcomeNotificationParams): Promise<void> {
     try {
-      const { email, phoneNumber, firstName, userId, instituteId } = params;
+      const { email, phoneNumber, nameWithInitials, userId, instituteId } = params;
 
       // Validate input parameters
-      if (!email || !firstName || !userId) {
+      if (!email || !nameWithInitials || !userId) {
         this.logger.warn(`⚠️ Missing required parameters for welcome notifications. UserId: ${userId || 'unknown'}`);
         return; // Silent return - don't throw
       }
@@ -76,7 +76,7 @@ export class UserNotificationService {
       // 1. EMAIL (PRIMARY) - Always send
       notifications.push(
         Promise.resolve()
-          .then(() => this.sendWelcomeEmail(email, firstName, userId))
+          .then(() => this.sendWelcomeEmail(email, nameWithInitials, userId))
           .catch((error) => {
             this.logger.error(`❌ Email notification failed for user ${userId}: ${error.message}`);
             // Swallow error - don't propagate
@@ -86,7 +86,7 @@ export class UserNotificationService {
       // 2. SMS (SECONDARY) - Only if phone number provided
       if (phoneNumber) {
         notifications.push(
-          this.sendWelcomeSms(phoneNumber, firstName, userId, instituteId || 'system')
+          this.sendWelcomeSms(phoneNumber, nameWithInitials, userId, instituteId || 'system')
             .catch((error) => {
               this.logger.error(`❌ SMS notification failed for user ${userId}: ${error.message}`);
               // Swallow error - don't propagate
@@ -112,10 +112,10 @@ export class UserNotificationService {
    * 🛡️ BULLETPROOF: Never throws errors - email failure won't affect SMS or user creation
    * @private
    */
-  private sendWelcomeEmail(email: string, firstName: string, userId: string): void {
+  private sendWelcomeEmail(email: string, nameWithInitials: string, userId: string): void {
     try {
       // Validate inputs
-      if (!email || !firstName || !userId) {
+      if (!email || !nameWithInitials || !userId) {
         this.logger.warn(`⚠️ Invalid email parameters. Email: ${email}, UserId: ${userId}`);
         return; // Silent return
       }
@@ -130,7 +130,7 @@ export class UserNotificationService {
       // Fire-and-forget email sending (async, non-blocking)
       this.asyncEmailService.sendRegistrationEmailAsync({
         userEmail: email,
-        userName: firstName,
+        userName: nameWithInitials,
         accountEmail: email,
         registrationDate: new Date().toISOString(),
         studentId: userId, // Include User ID in email
@@ -154,13 +154,13 @@ export class UserNotificationService {
    */
   private async sendWelcomeSms(
     phoneNumber: string,
-    firstName: string,
+    nameWithInitials: string,
     userId: string,
     instituteId: string,
   ): Promise<void> {
     try {
       // Validate inputs
-      if (!phoneNumber || !firstName || !userId) {
+      if (!phoneNumber || !nameWithInitials || !userId) {
         this.logger.warn(`⚠️ Invalid SMS parameters. Phone: ${phoneNumber}, UserId: ${userId}`);
         return; // Silent return
       }

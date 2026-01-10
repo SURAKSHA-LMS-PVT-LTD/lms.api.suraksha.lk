@@ -573,13 +573,21 @@ export class DynamoDBAttendanceService {
     // Calculate summary statistics
     const totalRecords = attendanceRecords.length;
     const presentCount = attendanceRecords.filter(record => record.status === 1).length;
-    const absentCount = totalRecords - presentCount;
+    const absentCount = attendanceRecords.filter(record => record.status === 0).length;
+    const lateCount = attendanceRecords.filter(record => record.status === 2).length;
+    const leftCount = attendanceRecords.filter(record => record.status === 3).length;
+    const leftEarlyCount = attendanceRecords.filter(record => record.status === 4).length;
+    const leftLatelyCount = attendanceRecords.filter(record => record.status === 5).length;
     const attendanceRate = totalRecords > 0 ? (presentCount / totalRecords) * 100 : 0;
 
     return {
       totalRecords,
       presentCount,
       absentCount,
+      lateCount,
+      leftCount,
+      leftEarlyCount,
+      leftLatelyCount,
       attendanceRate: parseFloat(attendanceRate.toFixed(2)),
       records: attendanceRecords.map(record => this.recordToAttendance(record))
     };

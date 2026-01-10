@@ -5,7 +5,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export enum AttendanceStatus {
   PRESENT = 'present',
   ABSENT = 'absent',
-  LATE = 'late'
+  LATE = 'late',
+  LEFT = 'left',
+  LEFT_EARLY = 'left_early',
+  LEFT_LATELY = 'left_lately'
 }
 
 export enum MarkingMethod {
@@ -269,6 +272,9 @@ export class StudentAttendanceResponseDto {
     totalPresent: number;
     totalAbsent: number;
     totalLate: number;
+    totalLeft: number;
+    totalLeftEarly: number;
+    totalLeftLately: number;
     attendanceRate: number;
   };
 }

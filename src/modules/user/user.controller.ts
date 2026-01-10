@@ -496,7 +496,7 @@ export class UsersController {
       this.userNotificationService.sendWelcomeNotifications({
         email: dto.email,
         phoneNumber: dto.phoneNumber,
-        firstName: dto.firstName,
+        nameWithInitials: dto.nameWithInitials,
         userId: result.userId,
         instituteId: dto.instituteId,
       }).catch((error) => {

@@ -29,7 +29,7 @@ export interface AttendanceRecordV2 {
   // ✅ CORE DATA - Minimal required fields
   sid: string;                   // studentId (shortened)
   dt: string;                    // date YYYY-MM-DD (shortened)
-  st: number;                    // status: 1=Present, 0=Absent, 2=Late (shortened)
+  st: number;                    // status: 1=Present, 0=Absent, 2=Late, 3=Left, 4=LeftEarly, 5=LeftLately (shortened)
   ts: number;                    // timestamp (shortened)
   
   // ✅ OPTIONAL FIELDS - Only stored if provided
@@ -51,7 +51,10 @@ export interface AttendanceRecordV2 {
 export enum AttendanceStatus {
   PRESENT = 1,
   ABSENT = 0,
-  LATE = 2
+  LATE = 2,
+  LEFT = 3,
+  LEFT_EARLY = 4,
+  LEFT_LATELY = 5
 }
 
 export interface MarkAttendanceDto {

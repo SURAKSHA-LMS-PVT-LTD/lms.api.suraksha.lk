@@ -267,6 +267,9 @@ export class AttendanceService {
     const totalPresent = allRecords.filter(r => r.status === AttendanceStatus.PRESENT).length;
     const totalAbsent = allRecords.filter(r => r.status === AttendanceStatus.ABSENT).length;
     const totalLate = allRecords.filter(r => r.status === AttendanceStatus.LATE).length;
+    const totalLeft = allRecords.filter(r => r.status === AttendanceStatus.LEFT).length;
+    const totalLeftEarly = allRecords.filter(r => r.status === AttendanceStatus.LEFT_EARLY).length;
+    const totalLeftLately = allRecords.filter(r => r.status === AttendanceStatus.LEFT_LATELY).length;
     const attendanceRate = totalRecords > 0 ? (totalPresent / totalRecords) * 100 : 0;
 
     // Transform records to response format
@@ -300,6 +303,9 @@ export class AttendanceService {
         totalPresent,
         totalAbsent,
         totalLate,
+        totalLeft,
+        totalLeftEarly,
+        totalLeftLately,
         attendanceRate: parseFloat(attendanceRate.toFixed(2))
       }
     };
@@ -594,6 +600,10 @@ export class AttendanceService {
       summary: {
         totalPresent: summary.presentCount,
         totalAbsent: summary.absentCount,
+        totalLate: summary.lateCount || 0,
+        totalLeft: summary.leftCount || 0,
+        totalLeftEarly: summary.leftEarlyCount || 0,
+        totalLeftLately: summary.leftLatelyCount || 0,
         attendanceRate: summary.attendanceRate
       }
     };
@@ -653,6 +663,10 @@ export class AttendanceService {
       summary: {
         totalPresent: summary.presentCount,
         totalAbsent: summary.absentCount,
+        totalLate: summary.lateCount || 0,
+        totalLeft: summary.leftCount || 0,
+        totalLeftEarly: summary.leftEarlyCount || 0,
+        totalLeftLately: summary.leftLatelyCount || 0,
         attendanceRate: summary.attendanceRate
       }
     };
@@ -713,6 +727,10 @@ export class AttendanceService {
       summary: {
         totalPresent: summary.presentCount,
         totalAbsent: summary.absentCount,
+        totalLate: summary.lateCount || 0,
+        totalLeft: summary.leftCount || 0,
+        totalLeftEarly: summary.leftEarlyCount || 0,
+        totalLeftLately: summary.leftLatelyCount || 0,
         attendanceRate: summary.attendanceRate
       }
     };
