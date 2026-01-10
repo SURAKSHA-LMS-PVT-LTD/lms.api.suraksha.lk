@@ -13,6 +13,16 @@ export class UpdateInstituteClassSubjectDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({ description: 'Enable or disable self-enrollment' })
+  @IsOptional()
+  @IsBoolean()
+  enrollmentEnabled?: boolean;
+
+  @ApiProperty({ description: 'Enrollment key (set to require key, leave empty for open enrollment)' })
+  @IsOptional()
+  @IsString()
+  enrollmentKey?: string;
 }
 
 export class InstituteClassSubjectResponseDto {

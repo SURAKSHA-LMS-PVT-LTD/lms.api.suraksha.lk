@@ -42,6 +42,12 @@ export class InstituteClassSubjectResponseDto {
   @ApiProperty({ description: 'Whether the assignment is active' })
   isActive: boolean;
 
+  @ApiProperty({ description: 'Whether self-enrollment is enabled for this subject' })
+  enrollmentEnabled: boolean;
+
+  @ApiPropertyOptional({ description: 'Enrollment key for self-enrollment (only visible to authorized users)' })
+  enrollmentKey?: string;
+
   @ApiProperty({ description: 'Creation date' })
   createdAt: Date;
 

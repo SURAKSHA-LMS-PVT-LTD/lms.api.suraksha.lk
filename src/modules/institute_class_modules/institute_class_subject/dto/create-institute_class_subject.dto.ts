@@ -27,6 +27,17 @@ export class CreateInstituteClassSubjectDto {
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiPropertyOptional({ description: 'Enable self-enrollment for this subject', default: false, example: true })
+  @IsOptional()
+  @IsBoolean()
+  enrollmentEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enrollment key required to join (leave empty for open enrollment without key)', example: 'MATH-2026' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  enrollmentKey?: string;
+
   @ApiPropertyOptional({ description: 'Subject schedule/timetable', example: 'Mon 9:00-10:30, Wed 11:00-12:30' })
   @IsOptional()
   @IsString()

@@ -27,10 +27,18 @@ export class InstituteClassSubjectService {
         throw new ConflictException(INSTITUTE_CLASS_SUBJECT_CONSTANTS.ERRORS.ALREADY_EXISTS);
       }
 
+      // Generate enrollment key if enrollment is enabled but no key provided
+      const enrollmentData = this.handleEnrollmentSettings(
+        createDto.enrollmentEnabled,
+        createDto.enrollmentKey
+      );
+
       // Use optimized create method that doesn't return the entity
       await this.instituteClassSubjectRepository.createOptimized({
         ...createDto,
         isActive: createDto.isActive ?? true,
+        enrollmentEnabled: enrollmentData.enrollmentEnabled,
+        enrollmentKey: enrollmentData.enrollmentKey,
       });
 
       // Return simple success response
@@ -147,11 +155,22 @@ export class InstituteClassSubjectService {
       throw new NotFoundException(INSTITUTE_CLASS_SUBJECT_CONSTANTS.ERRORS.NOT_FOUND);
     }
 
+    // Handle enrollment settings if provided
+    const updateData = { ...updateDto };
+    if (updateDto.enrollmentEnabled !== undefined) {
+      const enrollmentData = this.handleEnrollmentSettings(
+        updateDto.enrollmentEnabled,
+        updateDto.enrollmentKey
+      );
+      updateData.enrollmentEnabled = enrollmentData.enrollmentEnabled;
+      updateData.enrollmentKey = enrollmentData.enrollmentKey;
+    }
+
     const updated = await this.instituteClassSubjectRepository.update(
       instituteId,
       classId,
       subjectId,
-      updateDto,
+      updateData,
     );
 
     return this.mapToResponseDto(updated);
@@ -254,9 +273,33 @@ export class InstituteClassSubjectService {
         imageUrl: entity.teacher.imageUrl
       } : undefined,
       isActive: entity.isActive,
+      enrollmentEnabled: entity.enrollmentEnabled || false,
+      enrollmentKey: entity.enrollmentKey,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
+  }
+
+  /**
+   * Handle enrollment settings
+   * - enrollmentEnabled: true + enrollmentKey: null = Open enrollment (no key required)
+   * - enrollmentEnabled: true + enrollmentKey: "XXXX" = Key-required enrollment
+   * - enrollmentEnabled: false = Enrollment disabled (key cleared)
+   */
+  private handleEnrollmentSettings(enrollmentEnabled?: boolean, enrollmentKey?: string): { enrollmentEnabled: boolean; enrollmentKey?: string } {
+    // If enrollment not specified, default to disabled
+    if (enrollmentEnabled === undefined) {
+      return { enrollmentEnabled: false, enrollmentKey: null };
+    }
+
+    // If enrollment enabled
+    if (enrollmentEnabled) {
+      // Use provided key or null (open enrollment)
+      return { enrollmentEnabled: true, enrollmentKey: enrollmentKey || null };
+    }
+
+    // If enrollment disabled, clear the key
+    return { enrollmentEnabled: false, enrollmentKey: null };
   }
 
   /**
