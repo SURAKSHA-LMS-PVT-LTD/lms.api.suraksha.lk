@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { SubjectEntity } from './entities/subject.entity';
 import { SubjectRepository } from './repositories/subject.repository';
 import { CreateSubjectDto } from './dto/create-subject.dto';
@@ -8,6 +8,8 @@ import { SubjectResponseDto } from './dto/subject-response.dto';
 import { PaginatedSubjectResponseDto } from './dto/paginated-subject-response.dto';
 import { ISubjectStats, ISubjectCategoryStats } from './interfaces/subject.interface';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { JwtPayload } from '../../common/interfaces/jwt-request.interface';
+import { UserType } from '../user/enums/user-type.enum';
 
 @Injectable()
 export class SubjectService {
@@ -125,11 +127,16 @@ export class SubjectService {
     return this.mapToResponseDto(subject);
   }
 
-  async update(id: string, updateSubjectDto: UpdateSubjectDto): Promise<SubjectResponseDto> {
+  async update(id: string, updateSubjectDto: UpdateSubjectDto, user?: JwtPayload): Promise<SubjectResponseDto> {
     const subject = await this.subjectRepository.findById(id);
 
     if (!subject) {
       throw new NotFoundException(`Subject with ID ${id} not found`);
+    }
+
+    // Validate institute access for non-SUPERADMIN users
+    if (user) {
+      this.validateInstituteAccess(subject, user, 'update');
     }
 
     // Check for duplicate code if code is being updated
@@ -159,12 +166,18 @@ export class SubjectService {
   async updateWithImage(
     id: string, 
     updateSubjectDto: UpdateSubjectDto, 
-    imageFile?: string
+    imageFile?: string,
+    user?: JwtPayload
   ): Promise<SubjectResponseDto> {
     const subject = await this.subjectRepository.findById(id);
 
     if (!subject) {
       throw new NotFoundException(`Subject with ID ${id} not found`);
+    }
+
+    // Validate institute access for non-SUPERADMIN users
+    if (user) {
+      this.validateInstituteAccess(subject, user, 'update');
     }
 
     // Check for duplicate code if code is being updated
@@ -218,11 +231,16 @@ export class SubjectService {
     return this.mapToResponseDto(updatedSubject);
   }
 
-  async softDelete(id: string): Promise<SubjectResponseDto> {
+  async softDelete(id: string, user?: JwtPayload): Promise<SubjectResponseDto> {
     const subject = await this.subjectRepository.findById(id);
 
     if (!subject) {
       throw new NotFoundException(`Subject with ID ${id} not found`);
+    }
+
+    // Validate institute access for non-SUPERADMIN users
+    if (user) {
+      this.validateInstituteAccess(subject, user, 'deactivate');
     }
 
     await this.subjectRepository.update(id, { isActive: false });
@@ -240,6 +258,52 @@ export class SubjectService {
 
   async getSubjectsByCategory(instituteId: string): Promise<ISubjectCategoryStats[]> {
     return this.subjectRepository.getSubjectsByCategoryAndInstitute(instituteId);
+  }
+
+  /**
+   * Validate that user has access to the institute that owns the subject
+   * @throws ForbiddenException if user doesn't have access
+   * @throws NotFoundException if subject has no instituteId
+   */
+  private validateInstituteAccess(subject: SubjectEntity, user: JwtPayload, operation: string): void {
+    // Validate subject has instituteId
+    if (!subject.instituteId) {
+      throw new NotFoundException(
+        `Subject ${subject.id} does not belong to any institute. Cannot validate access.`
+      );
+    }
+
+    // SUPERADMIN has access to all institutes
+    if (user.u === UserType.SUPERADMIN) {
+      console.log(`[Subject Access] SUPERADMIN user ${user.s} accessing subject ${subject.id} for ${operation}`);
+      return;
+    }
+
+    // Validate user has instituteId array
+    if (!user.i || !Array.isArray(user.i) || user.i.length === 0) {
+      console.error(`[Subject Access] User ${user.s} has no institute access. User type: ${user.u}`);
+      throw new ForbiddenException(
+        `You do not have access to any institute. Cannot ${operation} subjects.`
+      );
+    }
+
+    // Check if user has institute admin access to this specific institute
+    // Role bitmask for Institute Admin (IA) = 2 in JwtPayload format
+    // Note: This is different from EnhancedJwtPayload where IA = 8
+    const INSTITUTE_ADMIN_BITMASK = 2;
+    
+    const hasAccessToInstitute = user.i.some(
+      entry => entry.i === subject.instituteId && (entry.r & INSTITUTE_ADMIN_BITMASK) !== 0
+    );
+
+    if (!hasAccessToInstitute) {
+      console.error(`[Subject Access] User ${user.s} denied access to subject ${subject.id} (institute: ${subject.instituteId}). User institutes: ${JSON.stringify(user.i.map(e => ({ i: e.i, r: e.r })))}`);
+      throw new ForbiddenException(
+        `You do not have permission to ${operation} subjects in institute ${subject.instituteId}. This subject belongs to a different institute or you don't have Institute Admin role.`
+      );
+    }
+
+    console.log(`[Subject Access] User ${user.s} granted access to subject ${subject.id} (institute: ${subject.instituteId}) for ${operation}`);
   }
 
   private mapToResponseDto(subject: SubjectEntity): SubjectResponseDto {

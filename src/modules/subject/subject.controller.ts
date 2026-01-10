@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, ValidationPipe, UsePipes, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, ValidationPipe, UsePipes, BadRequestException, Req } from '@nestjs/common';
 import { Transform } from 'class-transformer';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { SubjectService } from './subject.service';
@@ -14,6 +14,7 @@ import { ISubjectStats, ISubjectCategoryStats } from './interfaces/subject.inter
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { JwtRequest } from '../../common/interfaces/jwt-request.interface';
 
 import { UserType } from '../user/enums/user-type.enum';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
@@ -276,12 +277,15 @@ export class SubjectController {
   @ApiResponse({ status: 200, description: 'Subject updated successfully', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
   @ApiResponse({ status: 409, description: 'Subject code already exists' })
+  @ApiResponse({ status: 403, description: 'Forbidden - No access to this institute' })
   async update(
     @Param('id', ParseBigIntPipe) id: string,
-    @Body() updateSubjectDto: UpdateSubjectDto
+    @Body() updateSubjectDto: UpdateSubjectDto,
+    @Req() request: JwtRequest
   ): Promise<SubjectResponseDto> {
     // imgUrl is already validated and public - just update subject
-    return this.subjectService.update(id, updateSubjectDto);
+    // Pass user context for institute access validation
+    return this.subjectService.update(id, updateSubjectDto, request.user);
   }
 
   @Patch(':id/activate')
@@ -296,16 +300,18 @@ export class SubjectController {
   })
   @ApiResponse({ status: 200, description: 'Subject activated successfully', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - No access to this institute' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   async activate(
     @Param('id', ParseBigIntPipe) id: string,
-    @Query('instituteId') instituteId: string
+    @Query('instituteId') instituteId: string,
+    @Req() request: JwtRequest
   ): Promise<SubjectResponseDto> {
     if (!instituteId) {
       throw new BadRequestException('instituteId is required');
     }
-    // Update subject to set isActive = true
-    return this.subjectService.update(id, { isActive: true });
+    // Update subject to set isActive = true, with user context for validation
+    return this.subjectService.update(id, { isActive: true }, request.user);
   }
 
   @Patch(':id/deactivate')
@@ -317,15 +323,18 @@ export class SubjectController {
   @ApiOperation({ summary: 'Soft delete (deactivate) subject by ID (SUPERADMIN, Institute Admin)' })
   @ApiResponse({ status: 200, description: 'Subject deactivated successfully', type: SubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - No access to this institute' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   async softDelete(
     @Param('id', ParseBigIntPipe) id: string,
-    @Query('instituteId') instituteId: string
+    @Query('instituteId') instituteId: string,
+    @Req() request: JwtRequest
   ): Promise<SubjectResponseDto> {
     if (!instituteId) {
       throw new BadRequestException('instituteId is required');
     }
-    return this.subjectService.softDelete(id);
+    // Pass user context for institute access validation
+    return this.subjectService.softDelete(id, request.user);
   }
 
   @Delete(':id')
