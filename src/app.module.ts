@@ -48,6 +48,7 @@ import { AdvertisementModule } from './modules/advertisement/advertisement.modul
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PrivateTransportationModule } from './modules/private-transportation/private-transportation.module';
 import { StructuredLecturesModule } from './modules/structured-lectures/structured-lectures.module';
+import { UserCardManagementModule } from './modules/user-card-management/user-card-management.module';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
@@ -157,6 +158,7 @@ import { AppService } from './app.service';
     AttendanceModule, // Add attendance module with DynamoDB and notifications
     PrivateTransportationModule, // Add private transportation (bookhire) module
     StructuredLecturesModule, // Add structured lectures module for educational content
+    UserCardManagementModule, // Add user card management for NFC/PVC/Temporary cards with RFID
   ],
   controllers: [AppController],
   providers: [

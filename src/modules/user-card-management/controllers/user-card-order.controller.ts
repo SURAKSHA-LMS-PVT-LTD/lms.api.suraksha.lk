@@ -1,0 +1,136 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+  DefaultValuePipe,
+  ParseIntPipe,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { CardService } from '../services/card.service';
+import { CardOrderService } from '../services/card-order.service';
+import { CardPaymentService } from '../services/card-payment.service';
+import { CreateOrderDto } from '../dto/create-order.dto';
+import { SubmitPaymentDto } from '../dto/submit-payment.dto';
+import { UpdateCardStatusDto } from '../dto/update-card-status.dto';
+import { PaginatedCardsResponseDto } from '../dto/response/card-response.dto';
+import { OrderResponseDto, PaginatedOrdersResponseDto } from '../dto/response/order-response.dto';
+import { PaymentResponseDto } from '../dto/response/payment-response.dto';
+import { OrderStatus } from '../enums/order-status.enum';
+
+interface JwtRequest extends Request {
+  user: { s: string; ut: string };
+}
+
+@ApiTags('User Card Orders')
+@Controller('user-card')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class UserCardOrderController {
+  constructor(
+    private readonly cardService: CardService,
+    private readonly orderService: CardOrderService,
+    private readonly paymentService: CardPaymentService,
+  ) {}
+
+  // Browse Cards
+  @Get('cards')
+  @ApiOperation({ summary: 'Get available cards catalog' })
+  @ApiResponse({ status: 200, description: 'Cards retrieved successfully', type: PaginatedCardsResponseDto })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getCards(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ): Promise<PaginatedCardsResponseDto> {
+    return this.cardService.findAll(page, limit, true);
+  }
+
+  // Create Order
+  @Post('orders')
+  @ApiOperation({ summary: 'Create new card order' })
+  @ApiResponse({ status: 201, description: 'Order created successfully', type: OrderResponseDto })
+  async createOrder(
+    @Request() req: JwtRequest,
+    @Body() createOrderDto: CreateOrderDto,
+  ): Promise<OrderResponseDto> {
+    const userId = req.user.s;
+    return this.orderService.createOrder(userId, createOrderDto);
+  }
+
+  // Submit Payment
+  @Post('orders/:orderId/payment')
+  @ApiOperation({ summary: 'Submit payment for order' })
+  @ApiResponse({ status: 201, description: 'Payment submitted successfully', type: PaymentResponseDto })
+  async submitPayment(
+    @Request() req: JwtRequest,
+    @Param('orderId') orderId: string,
+    @Body() submitPaymentDto: SubmitPaymentDto,
+  ): Promise<PaymentResponseDto> {
+    const userId = req.user.s;
+    return this.paymentService.submitPayment(orderId, userId, submitPaymentDto);
+  }
+
+  // Get My Orders
+  @Get('orders')
+  @ApiOperation({ summary: "Get user's card orders" })
+  @ApiResponse({ status: 200, description: 'Orders retrieved successfully', type: PaginatedOrdersResponseDto })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'orderStatus', required: false, enum: OrderStatus })
+  async getMyOrders(
+    @Request() req: JwtRequest,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('orderStatus') orderStatus?: OrderStatus,
+  ): Promise<PaginatedOrdersResponseDto> {
+    const userId = req.user.s;
+    return this.orderService.getMyOrders(userId, page, limit, orderStatus);
+  }
+
+  // Get Specific Order
+  @Get('orders/:orderId')
+  @ApiOperation({ summary: 'Get specific order details' })
+  @ApiResponse({ status: 200, description: 'Order retrieved successfully', type: OrderResponseDto })
+  async getOrderById(
+    @Request() req: JwtRequest,
+    @Param('orderId') orderId: string,
+  ): Promise<OrderResponseDto> {
+    const userId = req.user.s;
+    return this.orderService.getOrderById(orderId, userId);
+  }
+
+  // Get My Cards (Active + Deactivated)
+  @Get('my-cards')
+  @ApiOperation({ summary: 'Get my cards (ACTIVE + DEACTIVATED)' })
+  @ApiResponse({ status: 200, description: 'Cards retrieved successfully', type: PaginatedOrdersResponseDto })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getMyCards(
+    @Request() req: JwtRequest,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ): Promise<PaginatedOrdersResponseDto> {
+    const userId = req.user.s;
+    return this.orderService.getMyCards(userId, page, limit);
+  }
+
+  // Update Card Status (Activate, Deactivate, Report Lost, etc.)
+  @Patch('my-cards/:orderId/status')
+  @ApiOperation({ summary: 'Update card status' })
+  @ApiResponse({ status: 200, description: 'Card status updated successfully', type: OrderResponseDto })
+  async updateCardStatus(
+    @Request() req: JwtRequest,
+    @Param('orderId') orderId: string,
+    @Body() updateCardStatusDto: UpdateCardStatusDto,
+  ): Promise<OrderResponseDto> {
+    const userId = req.user.s;
+    return this.orderService.updateCardStatus(orderId, userId, updateCardStatusDto);
+  }
+}
