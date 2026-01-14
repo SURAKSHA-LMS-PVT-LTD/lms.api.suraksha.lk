@@ -1061,22 +1061,24 @@ export class UsersController {
    * Get All Users with Enhanced Filtering
    * 
    * Retrieves paginated list of users with comprehensive filtering options.
-   * Access restricted to SUPERADMIN and ORGANIZATION_MANAGER only (system admins).
+   * Access restricted to SUPERADMIN only.
    * 
    * @param query - Query parameters for filtering and pagination
    * @param req - Request object containing authenticated user
    * @returns Paginated user list
    */
   @Get()
-  @UseGuards(SystemAdminGuard)
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN]
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Get all users with advanced filtering and pagination',
     description: `Retrieves a paginated list of users with comprehensive filtering capabilities.
     
     **Access Control:**
-    - SUPERADMIN (SA): Can view all users across all institutes
-    - ORGANIZATION_MANAGER (OM): Can view all users across all institutes
+    - SUPERADMIN: Can view all users across all institutes
     - Access denied for all other user types including institute admins
     
     **Features:**
@@ -1232,15 +1234,17 @@ export class UsersController {
    * @returns Statistical data about users
    */
   @Get('statistics')
-  @UseGuards(SystemAdminGuard)
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN]
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Get comprehensive user statistics',
     description: `Retrieves detailed statistical information about users in the system.
     
     **Access Control:**
-    - SUPERADMIN (SA): Can view all statistics across all institutes
-    - ORGANIZATION_MANAGER (OM): Can view all statistics across all institutes
+    - SUPERADMIN: Can view all statistics across all institutes
     - Access denied for all other user types
     
     **Features:**
