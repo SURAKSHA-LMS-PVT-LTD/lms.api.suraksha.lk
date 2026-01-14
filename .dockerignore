@@ -17,6 +17,16 @@ README.md
 test
 coverage
 .nyc_output
+**/test-*.ts
+**/*-test.ts
+**/*.spec.ts
+**/*.test.ts
+test-endpoints.ts
+test-user-card-apis.ts
+verify-card-implementation.ts
+check-card-tables.ts
+run-card-migration.ts
+rollback-card-migration.ts
 
 # Ignore IDE files
 .vscode
