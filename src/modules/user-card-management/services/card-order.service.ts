@@ -38,6 +38,21 @@ export class CardOrderService {
       throw new BadRequestException('Card is out of stock');
     }
 
+    // Check if user already has a pending order for this card (prevent duplicates)
+    const existingPendingOrder = await this.orderRepository.findOne({
+      where: {
+        userId,
+        cardId: card.id,
+        orderStatus: In([OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_RECEIVED]),
+      },
+    });
+
+    if (existingPendingOrder) {
+      throw new ConflictException(
+        'You already have a pending order for this card. Please complete or cancel the existing order first.',
+      );
+    }
+
     // Calculate expiry date
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + card.validityDays);

@@ -25,10 +25,20 @@ export class CardPaymentService {
     // Verify order belongs to user
     const order = await this.orderRepository.findOne({
       where: { id: orderId, userId },
+      relations: ['payments'],
     });
 
     if (!order) {
       throw new NotFoundException('Order not found');
+    }
+
+    // Check if payment already submitted (prevent duplicate submissions)
+    const existingPayment = await this.paymentRepository.findOne({
+      where: { orderId, paymentStatus: 'PENDING' },
+    });
+
+    if (existingPayment) {
+      throw new BadRequestException('Payment already submitted for this order');
     }
 
     // Check if order is in correct status
