@@ -80,12 +80,13 @@ export class DataMaskingInterceptor implements NestInterceptor {
     // Detect if this is an Institute object (has institute-specific fields)
     const isInstituteObject = this.isInstituteObject(maskedData);
 
-    // Fields that should NOT be masked (institute contact details and emergency contacts for safety)
+    // Fields that should NOT be masked (institute contact details, emergency contacts, and card order contacts)
     const skipMaskingFields = [
       'instituteEmail',
       'institutePhone',
       'emergencyContact',
       'emergency_contact',
+      'contactPhone',  // Skip masking for card order contact phone (needed for delivery)
     ];
 
     // If this is an institute object, also skip masking the main email and phone fields
@@ -107,7 +108,7 @@ export class DataMaskingInterceptor implements NestInterceptor {
       'systemContactEmail',
     ];
 
-    // Common phone field names (ALL should be masked except emergency contacts)
+    // Common phone field names (ALL should be masked except emergency contacts and card order contacts)
     const phoneFields = [
       'phone',
       'phoneNumber',
@@ -118,7 +119,7 @@ export class DataMaskingInterceptor implements NestInterceptor {
       'teacherPhone',
       'systemContactPhone',
       'systemContactPhoneNumber',
-      'contactPhone',
+      // 'contactPhone', // Excluded - used for card order delivery contact, should not be masked
       'mobileNumber',
       'mobile',
     ];

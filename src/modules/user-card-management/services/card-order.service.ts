@@ -251,33 +251,64 @@ export class CardOrderService {
     orderId: string,
     updateOrderStatusDto: UpdateOrderStatusDto,
   ): Promise<OrderResponseDto> {
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: ['card'],
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!order) {
-      throw new NotFoundException('Order not found');
+    try {
+      const order = await queryRunner.manager.findOne(UserIdCardOrder, {
+        where: { id: orderId },
+        relations: ['card'],
+      });
+
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
+
+      // Update order status
+      order.orderStatus = updateOrderStatusDto.orderStatus;
+
+      if (updateOrderStatusDto.trackingNumber) {
+        order.trackingNumber = updateOrderStatusDto.trackingNumber;
+      }
+
+      if (updateOrderStatusDto.rejectedReason) {
+        order.rejectedReason = updateOrderStatusDto.rejectedReason;
+      }
+
+      if (updateOrderStatusDto.orderStatus === OrderStatus.DELIVERED) {
+        order.deliveredAt = new Date();
+        
+        // Auto-update user's rfid column when delivered (if RFID is assigned)
+        if (order.rfidNumber) {
+          const user = await queryRunner.manager.findOne(UserEntity, {
+            where: { id: order.userId },
+          });
+
+          if (user) {
+            user.rfid = order.rfidNumber;
+            await queryRunner.manager.save(user);
+          }
+        }
+      }
+
+      const updatedOrder = await queryRunner.manager.save(order);
+
+      await queryRunner.commitTransaction();
+
+      // Fetch updated order with relations
+      const finalOrder = await this.orderRepository.findOne({
+        where: { id: orderId },
+        relations: ['card'],
+      });
+
+      return this.toResponseDto(finalOrder);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    // Update order status
-    order.orderStatus = updateOrderStatusDto.orderStatus;
-
-    if (updateOrderStatusDto.trackingNumber) {
-      order.trackingNumber = updateOrderStatusDto.trackingNumber;
-    }
-
-    if (updateOrderStatusDto.rejectedReason) {
-      order.rejectedReason = updateOrderStatusDto.rejectedReason;
-    }
-
-    if (updateOrderStatusDto.orderStatus === OrderStatus.DELIVERED) {
-      order.deliveredAt = new Date();
-    }
-
-    const updatedOrder = await this.orderRepository.save(order);
-
-    return this.toResponseDto(updatedOrder);
   }
 
   async assignRfid(orderId: string, assignRfidDto: AssignRfidDto): Promise<OrderResponseDto> {
