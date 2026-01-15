@@ -39,7 +39,6 @@ interface JwtRequest extends Request {
 @ApiTags('Admin - Card Management')
 @Controller('admin')
 @UseGuards(FlexibleAccessGuard)
-@RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
 @ApiBearerAuth()
 export class AdminCardOrderController {
   constructor(
@@ -51,6 +50,7 @@ export class AdminCardOrderController {
   // ========== Card Catalog Management ==========
 
   @Get('cards')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get all cards in catalog' })
   @ApiResponse({ status: 200, description: 'Cards retrieved successfully', type: PaginatedCardsResponseDto })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -65,6 +65,7 @@ export class AdminCardOrderController {
   }
 
   @Post('cards')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Create new card in catalog' })
   @ApiResponse({ status: 201, description: 'Card created successfully', type: CardResponseDto })
   async createCard(@Body() createCardDto: CreateCardDto): Promise<CardResponseDto> {
@@ -72,6 +73,7 @@ export class AdminCardOrderController {
   }
 
   @Get('cards/:cardId')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get card details' })
   @ApiResponse({ status: 200, description: 'Card retrieved successfully', type: CardResponseDto })
   async getCardById(@Param('cardId') cardId: string): Promise<CardResponseDto> {
@@ -79,6 +81,7 @@ export class AdminCardOrderController {
   }
 
   @Patch('cards/:cardId')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Update card details' })
   @ApiResponse({ status: 200, description: 'Card updated successfully', type: CardResponseDto })
   async updateCard(
@@ -89,6 +92,7 @@ export class AdminCardOrderController {
   }
 
   @Delete('cards/:cardId')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Deactivate card (soft delete)' })
   @ApiResponse({ status: 200, description: 'Card deactivated successfully' })
   async deactivateCard(@Param('cardId') cardId: string): Promise<{ message: string }> {
@@ -98,6 +102,7 @@ export class AdminCardOrderController {
   // ========== Order Management ==========
 
   @Get('card-orders')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get all card orders' })
   @ApiResponse({ status: 200, description: 'Orders retrieved successfully', type: PaginatedOrdersResponseDto })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -126,6 +131,7 @@ export class AdminCardOrderController {
   }
 
   @Get('card-orders/:orderId')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get order details' })
   @ApiResponse({ status: 200, description: 'Order retrieved successfully', type: OrderResponseDto })
   async getOrderById(@Param('orderId') orderId: string): Promise<OrderResponseDto> {
@@ -133,6 +139,7 @@ export class AdminCardOrderController {
   }
 
   @Patch('card-orders/:orderId/status')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Update order status' })
   @ApiResponse({ status: 200, description: 'Order status updated successfully', type: OrderResponseDto })
   async updateOrderStatus(
@@ -143,6 +150,7 @@ export class AdminCardOrderController {
   }
 
   @Patch('card-orders/:orderId/rfid')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Assign RFID to order (auto-updates user table)' })
   @ApiResponse({ status: 200, description: 'RFID assigned successfully', type: OrderResponseDto })
   async assignRfid(
@@ -153,6 +161,7 @@ export class AdminCardOrderController {
   }
 
   @Patch('card-orders/:orderId/card-status')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Change card status' })
   @ApiResponse({ status: 200, description: 'Card status updated successfully', type: OrderResponseDto })
   async updateCardStatusByAdmin(
@@ -165,6 +174,7 @@ export class AdminCardOrderController {
   // ========== Payment Verification ==========
 
   @Get('card-payments')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get all payment submissions' })
   @ApiResponse({ status: 200, description: 'Payments retrieved successfully', type: PaginatedPaymentsResponseDto })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -181,6 +191,7 @@ export class AdminCardOrderController {
   }
 
   @Get('card-payments/:paymentId')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get payment details' })
   @ApiResponse({ status: 200, description: 'Payment retrieved successfully', type: PaymentResponseDto })
   async getPaymentById(@Param('paymentId') paymentId: string): Promise<PaymentResponseDto> {
@@ -188,6 +199,7 @@ export class AdminCardOrderController {
   }
 
   @Patch('card-payments/:paymentId/verify')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Verify or reject payment submission' })
   @ApiResponse({ status: 200, description: 'Payment verified successfully', type: PaymentResponseDto })
   async verifyPayment(
@@ -200,6 +212,7 @@ export class AdminCardOrderController {
   }
 
   @Delete('card-payments/:paymentId')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Attempt to delete payment (will fail - audit compliance)' })
   @ApiResponse({ status: 403, description: 'Payment deletion forbidden' })
   async attemptDeletePayment(@Param('paymentId') paymentId: string): Promise<never> {
@@ -209,6 +222,7 @@ export class AdminCardOrderController {
   // ========== Statistics ==========
 
   @Get('card-orders/statistics')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[Admin] Get card order statistics' })
   @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
   @ApiQuery({ name: 'dateFrom', required: false, type: Date })
