@@ -14,8 +14,9 @@ import {
   ParseBoolPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
-import { SystemAdminGuard } from '../../user-card-management/guards/system-admin.guard';
+import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../../user/enums/user-type.enum';
 import { CardService } from '../services/card.service';
 import { CardOrderService } from '../services/card-order.service';
 import { CardPaymentService } from '../services/card-payment.service';
@@ -37,7 +38,8 @@ interface JwtRequest extends Request {
 
 @ApiTags('Admin - Card Management')
 @Controller('admin')
-@UseGuards(JwtAuthGuard, SystemAdminGuard)
+@UseGuards(FlexibleAccessGuard)
+@RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
 @ApiBearerAuth()
 export class AdminCardOrderController {
   constructor(
