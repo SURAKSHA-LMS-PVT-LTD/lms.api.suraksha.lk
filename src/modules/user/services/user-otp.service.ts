@@ -6,6 +6,7 @@ import { UserEntity } from '../entities/user.entity';
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { SmslenzProvider } from '../../../modules/sms/providers/smslenz.provider';
+import { now, nowTimestamp, getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class UserOtpService {
@@ -34,8 +35,7 @@ export class UserOtpService {
    * Get today's date in YYYY-MM-DD format
    */
   private getTodayDate(): string {
-    const now = new Date();
-    return now.toISOString().split('T')[0];
+    return getCurrentSriLankaDate();
   }
 
   /**
@@ -67,8 +67,7 @@ export class UserOtpService {
    * Get tomorrow's date for retry message
    */
   private getTomorrowDate(): string {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = new Date(nowTimestamp() + 24 * 60 * 60 * 1000);
     tomorrow.setHours(0, 0, 0, 0);
     return tomorrow.toISOString();
   }
@@ -119,10 +118,10 @@ export class UserOtpService {
       {
         email,
         isVerified: false,
-        expiresAt: MoreThan(new Date()),
+        expiresAt: MoreThan(now()),
       },
       {
-        expiresAt: new Date(), // Expire immediately
+        expiresAt: now(), // Expire immediately
       },
     );
 
@@ -178,7 +177,7 @@ export class UserOtpService {
         email,
         otpCode,
         isVerified: false,
-        expiresAt: MoreThan(new Date()),
+        expiresAt: MoreThan(now()),
       },
       order: { createdAt: 'DESC' },
     });
@@ -190,7 +189,7 @@ export class UserOtpService {
 
     // Mark as verified
     otp.isVerified = true;
-    otp.verifiedAt = new Date();
+    otp.verifiedAt = now();
     await this.otpRepository.save(otp);
 
     return {
@@ -251,10 +250,10 @@ export class UserOtpService {
       {
         phoneNumber: normalizedPhone,
         isVerified: false,
-        expiresAt: MoreThan(new Date()),
+        expiresAt: MoreThan(now()),
       },
       {
-        expiresAt: new Date(), // Expire immediately
+        expiresAt: now(), // Expire immediately
       },
     );
 
@@ -317,7 +316,7 @@ export class UserOtpService {
         phoneNumber: normalizedPhone,
         otpCode,
         isVerified: false,
-        expiresAt: MoreThan(new Date()),
+        expiresAt: MoreThan(now()),
       },
       order: { createdAt: 'DESC' },
     });
@@ -329,7 +328,7 @@ export class UserOtpService {
 
     // Mark as verified
     otp.isVerified = true;
-    otp.verifiedAt = new Date();
+    otp.verifiedAt = now();
     await this.otpRepository.save(otp);
 
     return {

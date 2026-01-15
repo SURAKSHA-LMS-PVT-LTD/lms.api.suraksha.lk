@@ -38,6 +38,7 @@ import {
 } from '../../common/exceptions/custom.exceptions';
 import { maskPhoneNumber, maskEmail } from '../../common/utils/phone-mask.util';
 import { UserManagementService } from '../../common/services/cache-user-management.service';
+import { now, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class UsersService {
@@ -213,7 +214,7 @@ export class UsersService {
           userEmail: savedEntity.email,
           userName: `${savedEntity.firstName || ''} ${savedEntity.lastName || ''}`.trim() || 'User',
           accountEmail: savedEntity.email,
-          registrationDate: new Date().toISOString(),
+          registrationDate: getCurrentSriLankaISO(),
           studentId: savedEntity.id,
         });
         // ✅ Email sent asynchronously - execution continues immediately
@@ -1134,7 +1135,7 @@ export class UsersService {
       const updatedUser = {
         ...user,
         ...updateData,
-        updatedAt: new Date()
+        updatedAt: now()
       } as any;
 
       // 🔄 CRITICAL FIX: Refresh user cache after profile update
@@ -1899,7 +1900,7 @@ export class UsersService {
       const updatedUser = {
         ...user,
         imageUrl,
-        updatedAt: new Date()
+        updatedAt: now()
       } as unknown as UserResponseDto;
       
       return new UserResponseDto(updatedUser);
@@ -1928,7 +1929,7 @@ export class UsersService {
       const updatedUser = {
         ...user,
         idUrl,
-        updatedAt: new Date()
+        updatedAt: now()
       } as unknown as UserResponseDto;
       
       return new UserResponseDto(updatedUser);
@@ -2542,14 +2543,14 @@ export class UsersService {
       // Update the telegram ID
       await this.userRepository.update(userId, {
         telegramId: telegramId,
-        updatedAt: new Date()
+        updatedAt: now()
       });
 
       // 🚀 ULTRA-OPTIMIZED: Build updated user from existing data instead of SELECT query
       const updatedUser = {
         ...user,
         telegramId: telegramId,
-        updatedAt: new Date()
+        updatedAt: now()
       };
 
       
@@ -2621,7 +2622,7 @@ export class UsersService {
         { id: userId }, 
         { 
           rfid: userRfid,
-          updatedAt: new Date()
+          updatedAt: now()
         }
       );
 
@@ -2629,7 +2630,7 @@ export class UsersService {
       const updatedUser = {
         ...user,
         rfid: userRfid,
-        updatedAt: new Date()
+        updatedAt: now()
       };
 
       // 7. Commit transaction

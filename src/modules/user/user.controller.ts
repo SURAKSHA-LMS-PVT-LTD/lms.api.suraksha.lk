@@ -47,6 +47,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { UserNotificationService } from './services/user-notification.service';
 import { UsersService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { nowTimestamp, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
 import { CreateUserComprehensiveDto } from './dto/create-user-comprehensive.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateImageUrlDto } from './dto/update-image-url.dto';
@@ -364,7 +365,7 @@ export class UsersController {
     @Body() dto: any,
     @Request() req?: JwtRequest
   ): Promise<any> {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
       // 🛡️ CRITICAL VALIDATION: Check if dto exists
@@ -2684,7 +2685,7 @@ export class UsersController {
     @Body() body: { imageUrl: string },
     @Request() req: JwtRequest
   ) {
-    const startTime = Date.now();
+    const startTime = nowTimestamp();
     const userId = req.user.s;
 
     // Validate imageUrl presence
@@ -2697,7 +2698,7 @@ export class UsersController {
     }
 
     try {
-      const uploadStartTime = Date.now();
+      const uploadStartTime = nowTimestamp();
       
       // Get current user to check for existing photo
       const currentUser = await this.usersService.findOne(userId);
@@ -2706,10 +2707,10 @@ export class UsersController {
       // Use imageUrl from signed URL upload
       const imageUrl = body.imageUrl;
       
-      const uploadEndTime = Date.now();
+      const uploadEndTime = nowTimestamp();
       const uploadTime = uploadEndTime - uploadStartTime;
 
-      const syncStartTime = Date.now();
+      const syncStartTime = nowTimestamp();
       
       // Update user profile with new image URL using dedicated method
       const updatedUser = await this.usersService.updateImageUrl(userId.toString(), imageUrl);
@@ -2721,7 +2722,7 @@ export class UsersController {
         // Don't fail the request if caching fails
       }
       
-      const syncEndTime = Date.now();
+      const syncEndTime = nowTimestamp();
       const syncTime = syncEndTime - syncStartTime;
 
       // Extract old image key for cleanup if exists
@@ -2737,7 +2738,7 @@ export class UsersController {
         }
       }
 
-      const totalTime = Date.now() - startTime;
+      const totalTime = nowTimestamp() - startTime;
 
       return {
         success: true,
@@ -2746,7 +2747,7 @@ export class UsersController {
           userId: updatedUser.id,
           // ? Transform imageUrl to full URL
           imageUrl: updatedUser.imageUrl ? this.cloudStorageService.getFullUrl(updatedUser.imageUrl) : updatedUser.imageUrl,
-          uploadedAt: new Date().toISOString()
+          uploadedAt: getCurrentSriLankaISO()
         },
         performance: {
           uploadTime: `${uploadTime}ms`,
@@ -2883,7 +2884,7 @@ export class UsersController {
           userId: updatedUser.id,
           // ? Transform imageUrl to full URL
           imageUrl: updatedUser.imageUrl ? this.cloudStorageService.getFullUrl(updatedUser.imageUrl) : updatedUser.imageUrl,
-          updatedAt: new Date().toISOString()
+          updatedAt: getCurrentSriLankaISO()
         }
       };
 
@@ -2976,7 +2977,7 @@ export class UsersController {
     @Body() body: { email: string },
     @Request() req: any,
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestEmailOtp(body.email, ipAddress);
@@ -3027,7 +3028,7 @@ export class UsersController {
   async verifyEmailOtp(
     @Body() body: { email: string; otpCode: string },
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const result = await this.usersService.verifyEmailOtp(body.email, body.otpCode);
     
@@ -3092,7 +3093,7 @@ export class UsersController {
     @Body() body: { email: string },
     @Request() req: any,
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestEmailOtp(body.email, ipAddress);
@@ -3159,7 +3160,7 @@ export class UsersController {
     @Body() body: { phoneNumber: string },
     @Request() req: any,
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestPhoneOtp(body.phoneNumber, ipAddress);
@@ -3210,7 +3211,7 @@ export class UsersController {
   async verifyPhoneOtp(
     @Body() body: { phoneNumber: string; otpCode: string },
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const result = await this.usersService.verifyPhoneOtp(body.phoneNumber, body.otpCode);
     
@@ -3275,7 +3276,7 @@ export class UsersController {
     @Body() body: { phoneNumber: string },
     @Request() req: any,
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestPhoneOtp(body.phoneNumber, ipAddress);
@@ -3358,7 +3359,7 @@ export class UsersController {
     @Body() body: { reason?: string },
     @Request() req: any,
   ) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     const adminUser = req.user;
     
     try {

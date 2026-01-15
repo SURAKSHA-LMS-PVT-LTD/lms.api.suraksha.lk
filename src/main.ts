@@ -6,9 +6,10 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
+import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
 
-// Set timezone to Sri Lanka (Asia/Colombo - UTC+5:30)
-process.env.TZ = 'Asia/Colombo';
+// ⚠️ CRITICAL: Set timezone to Sri Lanka BEFORE any date operations
+ensureTimezoneSet();
 
 // Suppress MySQL2 deprecation warnings
 const originalEmitWarning = process.emitWarning;
@@ -31,6 +32,10 @@ async function bootstrap() {
     }
 
     console.log('🚀 Starting application...');
+    
+    // Log timezone information
+    logTimezoneInfo();
+    
     const app = await NestFactory.create(AppModule, {
       logger: ['error', 'warn', 'log'],
       abortOnError: false,

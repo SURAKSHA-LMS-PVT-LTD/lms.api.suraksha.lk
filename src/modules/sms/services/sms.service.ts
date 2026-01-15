@@ -45,6 +45,7 @@ import { RecipientBreakdown } from '../interfaces/sms-internal.interface';
 // Enums
 import { UserType } from '../../user/enums/user-type.enum';
 import { SmsMessageHistoryResponseDto } from '../dto/sms.dto';
+import { now, nowTimestamp, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 /**
  * OPTIMIZED SMS SERVICE WITH LOCAL CACHING & DEFERRED CREDIT DEDUCTION
@@ -134,7 +135,7 @@ export class SmsService {
     userType: UserType,
     dto: SendCustomSmsDto
   ): Promise<SmsResponseDto> {
-    const startTime = Date.now();
+    const startTime = nowTimestamp();
 
     try {
       // Validate inputs
@@ -204,7 +205,7 @@ export class SmsService {
           phoneNumber: '',
           isActive: credentials.isActive,
         },
-        scheduledAt: dto.isNow ? new Date() : dto.scheduledAt,
+        scheduledAt: dto.isNow ? now() : dto.scheduledAt,
         filterCriteria: { 
           recipientTypes: [RecipientFilterType.CUSTOM],
           customNumbers: dto.customRecipients, // ✅ Store custom recipients for later retrieval
@@ -262,7 +263,7 @@ export class SmsService {
     userType: UserType,
     dto: SendBulkSmsDto
   ): Promise<SmsResponseDto> {
-    const startTime = Date.now();
+    const startTime = nowTimestamp();
 
     try {
       // Validate inputs
@@ -325,7 +326,7 @@ export class SmsService {
           phoneNumber: '',
           isActive: credentials.isActive,
         },
-        scheduledAt: dto.isNow ? new Date() : dto.scheduledAt,
+        scheduledAt: dto.isNow ? now() : dto.scheduledAt,
         filterCriteria: {
           recipientTypes: dto.recipientTypes,
           classIds: dto.classIds,
@@ -343,7 +344,7 @@ export class SmsService {
       //    the message will ONLY send after admin approval
       //    When approved, it sends IMMEDIATELY regardless of scheduledAt time
 
-      const processingTime = Date.now() - startTime;
+      const processingTime = nowTimestamp() - startTime;
 
       return {
         success: true,
@@ -443,9 +444,7 @@ export class SmsService {
         status: PaymentSubmissionStatus.PENDING,
         paymentSlipUrl: dto.paymentSlipUrl || null,
         paymentSlipFilename: dto.paymentSlipFilename || null,
-        submittedAt: new Date()
-      });
-      
+        submittedAt: now()
       const submission = await this.paymentSubmissionRepository.save(submissionEntity);
 
       // 📧 Send payment submission confirmation email (FIRE-AND-FORGET - Zero blocking)
@@ -470,7 +469,7 @@ export class SmsService {
           paymentReference: dto.paymentReference?.trim() || '',
           submissionNotes: dto.submissionNotes?.trim() || '',
           paymentSlipUrl: dto.paymentSlipUrl || '',
-          submittedAt: new Date().toISOString(),
+          submittedAt: getCurrentSriLankaISO(),
         });
         // ✅ Email sent asynchronously - execution continues immediately
       }
@@ -532,8 +531,7 @@ export class SmsService {
    * 📈 Get SMS statistics
    */
   async getSmsStatistics(instituteId: string, period: string = 'month'): Promise<SmsStatisticsDto> {
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - (period === 'month' ? 30 : 7));
+    const fromDate = new Date(nowTimestamp() - (period === 'month' ? 30 : 7) * 24 * 60 * 60 * 1000);
 
     const stats = await this.smsMessageRepository
       .createQueryBuilder('sms')

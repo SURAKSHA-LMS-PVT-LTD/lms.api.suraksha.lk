@@ -7,6 +7,7 @@ import { UserEntity } from '../user/entities/user.entity';
 import { UsersService } from '../user/user.service';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
+import { now } from '../../common/utils/timezone.util';
 import { QueryStudentDto } from './dto/query-student.dto';
 import { StudentResponseDto } from './dto/student-response.dto';
 import { PaginatedStudentResponseDto } from './dto/paginated-student-response.dto';
@@ -175,8 +176,8 @@ export class StudentsService {
       const savedUser = {
         id: userResponse.id,
         ...userDto,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: now(),
+        updatedAt: now()
       };
 
       // Create student with user relation and student-specific properties
@@ -468,8 +469,8 @@ export class StudentsService {
     const savedUser = {
       id: userResponse.id,
       ...userDto,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now(),
+      updatedAt: now()
     };
 
     const studentData = {
@@ -703,13 +704,13 @@ export class StudentsService {
       const updatedStudent = {
         ...student,
         ...studentUpdateData,
-        updatedAt: new Date()
+        updatedAt: now()
       };
 
       const updatedUser = {
         ...student.user,
         ...userUpdateData,
-        updatedAt: new Date()
+        updatedAt: now()
       };
 
       // ✅ ENHANCED: Invalidate parent access caches if parent assignments changed
@@ -818,13 +819,13 @@ export class StudentsService {
       const deactivatedStudent = {
         ...student,
         isActive: false,
-        updatedAt: new Date()
+        updatedAt: now()
       };
 
       const deactivatedUser = {
         ...student.user,
         isActive: false,
-        updatedAt: new Date()
+        updatedAt: now()
       };
 
       return {
@@ -931,7 +932,7 @@ export class StudentsService {
       return {
         success: true,
         message: 'Parent assigned successfully',
-        timestamp: new Date()
+        timestamp: now()
       };
     } catch (error) {
       if (queryRunner && queryRunner.isTransactionActive) {
@@ -1040,7 +1041,7 @@ export class StudentsService {
       return {
         success: true,
         message: 'Parent removed successfully',
-        timestamp: new Date()
+        timestamp: now()
       };
     } catch (error) {
       if (queryRunner && queryRunner.isTransactionActive) {

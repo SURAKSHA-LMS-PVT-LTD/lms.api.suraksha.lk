@@ -117,7 +117,28 @@ export class DateTransformInterceptor implements NestInterceptor {
       'exam_date',
       'lectureDate',
       'lecture_date',
-      'timestamp'
+      'timestamp',
+      // Card management date fields
+      'orderDate',
+      'order_date',
+      'deliveredAt',
+      'delivered_at',
+      'activatedAt',
+      'activated_at',
+      'deactivatedAt',
+      'deactivated_at',
+      'cardExpiryDate',
+      'card_expiry_date',
+      'expiryDate',
+      'expiry_date',
+      'lastSeen',
+      'last_seen',
+      'lastNotificationSent',
+      'last_notification_sent',
+      'sentAt',
+      'sent_at',
+      'completedAt',
+      'completed_at',
     ];
     
     return dateFields.includes(fieldName) || fieldName.toLowerCase().includes('date') || fieldName.toLowerCase().includes('time');

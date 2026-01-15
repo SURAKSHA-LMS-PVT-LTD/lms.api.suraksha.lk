@@ -18,6 +18,7 @@ import { ImageVerificationStatus } from '../institute_mudules/institue_user/enum
 import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
 import { AdvertisementMatchingService } from '../advertisement/advertisement-matching.service';
+import { getCurrentSriLankaDate, getCurrentSriLankaISO, nowTimestamp, formatSriLankaTime, now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class AttendanceService {
@@ -51,8 +52,8 @@ export class AttendanceService {
   }
 
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
-    const requestId = `ATT_${Date.now()}`;
-    const startTime = Date.now();
+    const requestId = `ATT_${nowTimestamp()}`;
+    const startTime = nowTimestamp();
     
     try {
       // Validate student enrollment if configured
@@ -70,7 +71,7 @@ export class AttendanceService {
       markAttendanceDto.studentName = `${studentData.student.user.firstName} ${studentData.student.user.lastName}`.trim();
 
       if (!markAttendanceDto.date) {
-        markAttendanceDto.date = new Date().toISOString().split('T')[0];
+        markAttendanceDto.date = getCurrentSriLankaDate();
       }
 
       if (!markAttendanceDto.location) {
@@ -132,8 +133,8 @@ export class AttendanceService {
   }
 
   async markBulkAttendance(bulkAttendanceDto: BulkAttendanceDto, markedBy: string): Promise<any> {
-    const requestId = `BULK_ATT_${Date.now()}`;
-    const startTime = Date.now();
+    const requestId = `BULK_ATT_${nowTimestamp()}`;
+    const startTime = nowTimestamp();
     
     try {
       const studentIds = bulkAttendanceDto.students.map(s => s.studentId);
@@ -325,7 +326,7 @@ export class AttendanceService {
         cardId: markAttendanceByCardDto.studentCardId,
         hint: 'Please ensure the RFID card is registered in the users table',
         suggestion: 'Check: SELECT * FROM users WHERE rfid = ?',
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
       this.logger.error(`RFID Card Not Found: ${JSON.stringify(errorDetails)}`);
       throw new Error(errorDetails.message);
@@ -341,7 +342,7 @@ export class AttendanceService {
       className: markAttendanceByCardDto.className || 'Default Class',
       subjectId: markAttendanceByCardDto.subjectId || 'default',
       subjectName: markAttendanceByCardDto.subjectName || 'General',
-      date: new Date().toISOString().split('T')[0],
+      date: getCurrentSriLankaDate(),
       location: markAttendanceByCardDto.address,
       status: markAttendanceByCardDto.status,
       markingMethod: markAttendanceByCardDto.markingMethod
@@ -804,7 +805,7 @@ export class AttendanceService {
         parentTelegramId: data.parentTelegramId,
         attendanceStatus: (markAttendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: markAttendanceDto.date,
-        time: new Date().toISOString(),
+        time: getCurrentSriLankaISO(),
         location: markAttendanceDto.location,
         instituteName: markAttendanceDto.instituteName,
         className: markAttendanceDto.className || null,
@@ -914,7 +915,7 @@ export class AttendanceService {
         parentTelegramId,
         attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: attendanceDto.date,
-        time: new Date().toLocaleTimeString(),
+        time: formatSriLankaTime(now()),
         vehicleNumber: null,
         bookhireName: null,
         subscriptionPlan,
@@ -1000,7 +1001,7 @@ export class AttendanceService {
             parentTelegramId: parentUser.telegramId || null,
             attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
             date: attendanceDto.date,
-            time: new Date().toLocaleTimeString(),
+            time: formatSriLankaTime(now()),
             vehicleNumber: null,
             bookhireName: null,
             subscriptionPlan: parentSubscriptionPlan,
@@ -1360,7 +1361,7 @@ export class AttendanceService {
         instituteId: instituteId,
         hint: 'Please ensure the institute card is registered in the institute_user table',
         suggestion: 'Check: SELECT * FROM institute_user WHERE instituteCardId = ? AND instituteId = ?',
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
       this.logger.error(`Institute Card Not Found: ${JSON.stringify(errorDetails)}`);
       throw new Error(errorDetails.message);
@@ -1546,7 +1547,7 @@ export class AttendanceService {
       subjectName: markAttendanceDto.subjectName || '',
       status: markAttendanceDto.status,
       markingMethod: markAttendanceDto.markingMethod,
-      date: markAttendanceDto.date || new Date().toISOString().split('T')[0],
+      date: markAttendanceDto.date || getCurrentSriLankaDate(),
       location: markAttendanceDto.location || this.generateAddress(
         markAttendanceDto.instituteName,
         markAttendanceDto.className,
@@ -1603,7 +1604,7 @@ export class AttendanceService {
         date: attendanceDto.date,
         location: attendanceDto.location,
         markingMethod: markAttendanceDto.markingMethod,
-        markedAt: new Date().toISOString()
+        markedAt: getCurrentSriLankaISO()
       }
     };
   }

@@ -7,6 +7,7 @@ import { SubmitPaymentDto } from '../dto/submit-payment.dto';
 import { VerifyPaymentDto } from '../dto/verify-payment.dto';
 import { PaymentResponseDto, PaginatedPaymentsResponseDto } from '../dto/response/payment-response.dto';
 import { OrderStatus } from '../enums/order-status.enum';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class CardPaymentService {
@@ -155,7 +156,7 @@ export class CardPaymentService {
     // Update payment status
     payment.paymentStatus = verifyPaymentDto.paymentStatus;
     payment.verifiedBy = adminUserId;
-    payment.verifiedAt = new Date();
+    payment.verifiedAt = now();
 
     if (verifyPaymentDto.rejectionReason) {
       payment.rejectionReason = verifyPaymentDto.rejectionReason;
@@ -198,15 +199,15 @@ export class CardPaymentService {
     return {
       id: payment.id,
       orderId: payment.orderId,
-      submissionUrl: payment.submissionUrl,
+      submissionUrl: payment.submissionUrl || undefined,
       paymentType: payment.paymentType,
       paymentAmount: Number(payment.paymentAmount),
-      paymentReference: payment.paymentReference,
+      paymentReference: payment.paymentReference || undefined,
       paymentStatus: payment.paymentStatus,
-      verifiedBy: payment.verifiedBy,
-      verifiedAt: payment.verifiedAt,
-      rejectionReason: payment.rejectionReason,
-      notes: payment.notes,
+      verifiedBy: payment.verifiedBy || undefined,
+      verifiedAt: payment.verifiedAt || undefined,
+      rejectionReason: payment.rejectionReason || undefined,
+      notes: payment.notes || undefined,
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
       order: payment.order,

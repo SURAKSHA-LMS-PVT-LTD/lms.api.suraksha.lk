@@ -1,0 +1,120 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║            TIMEZONE QUICK REFERENCE - Asia/Colombo (UTC+5:30)    ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📋 IMPORT STATEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+import { 
+  now, 
+  getCurrentSriLankaISO, 
+  nowTimestamp 
+} from './common/utils/timezone.util';
+// Adjust path based on your file location
+
+
+🔄 COMMON REPLACEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ WRONG                              ✅ CORRECT
+───────────────────────────────────────────────────────────────────
+new Date()                        →   now()
+new Date().toISOString()          →   getCurrentSriLankaISO()
+Date.now()                        →   nowTimestamp()
+new Date().getTime()              →   nowTimestamp()
+
+
+📝 USAGE EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣  Creating Timestamps
+   ❌ const timestamp = new Date().toISOString();
+   ✅ const timestamp = getCurrentSriLankaISO();
+
+2️⃣  Getting Current Date
+   ❌ const currentDate = new Date();
+   ✅ const currentDate = now();
+
+3️⃣  Updating Records
+   ❌ { updatedAt: new Date() }
+   ✅ { updatedAt: now() }
+
+4️⃣  Date Comparisons
+   ❌ if (dueDate < new Date()) { }
+   ✅ if (dueDate < now()) { }
+
+5️⃣  Timestamps in Milliseconds
+   ❌ const ms = Date.now();
+   ✅ const ms = nowTimestamp();
+
+6️⃣  Creating Multiple Timestamps
+   ❌ {
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        timestamp: new Date().toISOString()
+      }
+   
+   ✅ {
+        createdAt: now(),
+        updatedAt: now(),
+        timestamp: getCurrentSriLankaISO()
+      }
+
+
+🔧 AVAILABLE FUNCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Function                    Returns              Use Case
+───────────────────────────────────────────────────────────────────
+now()                       Date                 Current time
+getCurrentSriLankaISO()     string (ISO)         Timestamps
+nowTimestamp()              number (ms)          Numeric timestamps
+getCurrentSriLankaDate()    string (YYYY-MM-DD)  Date strings
+getCurrentSriLankaTime()    Date                 Detailed date object
+formatSriLankaDateTime()    string               Formatted display
+
+
+📌 REFERENCE FILES (Good Examples)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ src/modules/user/user.service.ts
+✅ src/modules/user/user.controller.ts
+✅ src/modules/user/services/user-otp.service.ts
+✅ src/modules/user-card-management/services/card-order.service.ts
+
+
+⚡ QUICK CHECK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before committing, search your file for:
+  • "new Date()" - Should use now() or getCurrentSriLankaISO()
+  • "Date.now()" - Should use nowTimestamp()
+
+
+📚 FULL DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• TIMEZONE_AUDIT_REPORT.md - Complete file list
+• TIMEZONE_STATUS_COMPLETE.md - Action plan & status
+• src/common/utils/timezone.util.ts - Full function documentation
+
+
+⚙️ CONFIGURATION STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ main.ts               - Timezone set
+✅ app.module.ts         - Database timezone: +05:30
+✅ data-source.ts        - Database timezone: +05:30
+✅ Dockerfile            - ENV TZ=Asia/Colombo
+✅ cloudbuild.yaml       - TZ=Asia/Colombo
+✅ timezone.util.ts      - All utilities available
+
+
+🎯 REMEMBER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ALWAYS use timezone utility functions for date/time operations!
+This ensures consistency across:
+  • Application code
+  • Database timestamps
+  • Frontend display
+  • User notifications
+  • Payment schedules
+  • Attendance marking
+
+
+═══════════════════════════════════════════════════════════════════
+Timezone: Asia/Colombo (UTC+5:30) | Sri Lanka Standard Time
+═══════════════════════════════════════════════════════════════════

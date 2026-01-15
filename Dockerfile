@@ -1,6 +1,9 @@
 # Multi-stage build for NestJS application
 FROM node:20-alpine AS development
 
+# Set timezone for development stage
+ENV TZ=Asia/Colombo
+
 # Set working directory
 WORKDIR /app
 
@@ -33,6 +36,7 @@ RUN npm run build && \
 FROM node:20-alpine AS production
 
 # Set environment variables for production
+ENV TZ=Asia/Colombo
 ENV PORT=8080
 
 # Set working directory

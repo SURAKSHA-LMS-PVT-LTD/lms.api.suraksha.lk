@@ -11,6 +11,7 @@ import { AssignRfidDto } from '../dto/assign-rfid.dto';
 import { OrderResponseDto, PaginatedOrdersResponseDto } from '../dto/response/order-response.dto';
 import { OrderStatus } from '../enums/order-status.enum';
 import { CardStatus } from '../enums/card-status.enum';
+import { now, getExpiryDate } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class CardOrderService {
@@ -53,8 +54,8 @@ export class CardOrderService {
       );
     }
 
-    // Calculate expiry date
-    const expiryDate = new Date();
+    // Calculate expiry date using Sri Lanka timezone
+    const expiryDate = now();
     expiryDate.setDate(expiryDate.getDate() + card.validityDays);
 
     // Create order
@@ -117,13 +118,13 @@ export class CardOrderService {
     page: number = 1,
     limit: number = 10,
   ): Promise<PaginatedOrdersResponseDto> {
-    // Get ACTIVE and DEACTIVATED cards
+    // Get ALL cards with any status (ACTIVE, DEACTIVATED, LOST, DAMAGED, EXPIRED, REPLACED, etc.)
     const query = this.orderRepository
       .createQueryBuilder('order')
       .leftJoinAndSelect('order.card', 'card')
       .where('order.userId = :userId', { userId })
-      .andWhere('order.status IN (:...statuses)', {
-        statuses: [CardStatus.ACTIVE, CardStatus.DEACTIVATED],
+      .andWhere('order.orderStatus = :orderStatus', {
+        orderStatus: OrderStatus.DELIVERED,
       });
 
     const [orders, total] = await query
@@ -180,11 +181,11 @@ export class CardOrderService {
     order.status = updateCardStatusDto.status;
 
     if (updateCardStatusDto.status === CardStatus.ACTIVE && !order.activatedAt) {
-      order.activatedAt = new Date();
+      order.activatedAt = now();
     }
 
     if (updateCardStatusDto.status === CardStatus.DEACTIVATED) {
-      order.deactivatedAt = new Date();
+      order.deactivatedAt = now();
     }
 
     const updatedOrder = await this.orderRepository.save(order);
@@ -277,19 +278,7 @@ export class CardOrderService {
       }
 
       if (updateOrderStatusDto.orderStatus === OrderStatus.DELIVERED) {
-        order.deliveredAt = new Date();
-        
-        // Auto-update user's rfid column when delivered (if RFID is assigned)
-        if (order.rfidNumber) {
-          const user = await queryRunner.manager.findOne(UserEntity, {
-            where: { id: order.userId },
-          });
-
-          if (user) {
-            user.rfid = order.rfidNumber;
-            await queryRunner.manager.save(user);
-          }
-        }
+        order.deliveredAt = now();
       }
 
       const updatedOrder = await queryRunner.manager.save(order);
@@ -338,9 +327,16 @@ export class CardOrderService {
 
       // Assign RFID to order
       order.rfidNumber = assignRfidDto.rfidNumber;
+      
+      // Activate the card (change status from INACTIVE to ACTIVE)
+      if (order.status === CardStatus.INACTIVE) {
+        order.status = CardStatus.ACTIVE;
+        order.activatedAt = now();
+      }
+      
       await queryRunner.manager.save(order);
 
-      // Auto-update user's rfid column
+      // Auto-update user's rfid column when card becomes ACTIVE
       const user = await queryRunner.manager.findOne(UserEntity, {
         where: { id: order.userId },
       });
@@ -371,24 +367,156 @@ export class CardOrderService {
     orderId: string,
     updateCardStatusDto: UpdateCardStatusDto,
   ): Promise<OrderResponseDto> {
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: ['card'],
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!order) {
-      throw new NotFoundException('Order not found');
+    try {
+      const order = await queryRunner.manager.findOne(UserIdCardOrder, {
+        where: { id: orderId },
+        relations: ['card'],
+      });
+
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
+
+      const previousStatus = order.status;
+      order.status = updateCardStatusDto.status;
+
+      // Handle status changes
+      if (updateCardStatusDto.status === CardStatus.ACTIVE) {
+        // Activating card - update user.rfid if RFID is assigned
+        order.activatedAt = now();
+        
+        if (order.rfidNumber) {
+          const user = await queryRunner.manager.findOne(UserEntity, {
+            where: { id: order.userId },
+          });
+
+          if (user) {
+            user.rfid = order.rfidNumber;
+            await queryRunner.manager.save(user);
+          }
+        }
+      } else {
+        // Deactivating card (LOST, DAMAGED, DEACTIVATED, REPLACED, etc.)
+        order.deactivatedAt = now();
+        
+        // Remove user.rfid if this card's RFID is currently in user table
+        if (order.rfidNumber) {
+          const user = await queryRunner.manager.findOne(UserEntity, {
+            where: { id: order.userId, rfid: order.rfidNumber },
+          });
+
+          if (user) {
+            user.rfid = null;
+            await queryRunner.manager.save(user);
+          }
+        }
+      }
+
+      const updatedOrder = await queryRunner.manager.save(order);
+
+      await queryRunner.commitTransaction();
+
+      return this.toResponseDto(updatedOrder);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
+  }
 
-    order.status = updateCardStatusDto.status;
+  async activateMyCard(userId: string, orderId: string): Promise<OrderResponseDto> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (updateCardStatusDto.status === CardStatus.DEACTIVATED) {
-      order.deactivatedAt = new Date();
+    try {
+      // Get the card order to activate
+      const order = await queryRunner.manager.findOne(UserIdCardOrder, {
+        where: { id: orderId, userId },
+        relations: ['card'],
+      });
+
+      if (!order) {
+        throw new NotFoundException('Card order not found or does not belong to you');
+      }
+
+      // Check if card can be activated by user
+      if (order.status === CardStatus.REPLACED) {
+        throw new BadRequestException('Card has been replaced and cannot be activated');
+      }
+
+      if (order.status !== CardStatus.INACTIVE) {
+        throw new BadRequestException(`Card is already ${order.status.toLowerCase()}`);
+      }
+
+      if (!order.rfidNumber) {
+        throw new BadRequestException('Card does not have an RFID assigned yet. Please contact admin.');
+      }
+
+      if (order.orderStatus !== OrderStatus.DELIVERED) {
+        throw new BadRequestException('Card must be delivered before activation');
+      }
+
+      // Get current user
+      const user = await queryRunner.manager.findOne(UserEntity, {
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Check if user has an existing active RFID
+      if (user.rfid) {
+        // Find the old card order
+        const oldCardOrder = await queryRunner.manager.findOne(UserIdCardOrder, {
+          where: { userId, rfidNumber: user.rfid },
+          relations: ['card'],
+        });
+
+        if (oldCardOrder) {
+          // Check if old card is TEMPORARY type
+          if (oldCardOrder.card.cardType === 'TEMPORARY') {
+            // For TEMPORARY cards, just replace the RFID (no status change needed)
+            // The temporary card stays as-is, we just update user.rfid to new card
+          } else {
+            // For NFC/PVC cards, mark old card as REPLACED
+            oldCardOrder.status = CardStatus.REPLACED;
+            oldCardOrder.deactivatedAt = now();
+            await queryRunner.manager.save(oldCardOrder);
+          }
+        }
+      }
+
+      // Activate the new card
+      order.status = CardStatus.ACTIVE;
+      order.activatedAt = now();
+      await queryRunner.manager.save(order);
+
+      // Update user.rfid to new card's RFID
+      user.rfid = order.rfidNumber;
+      await queryRunner.manager.save(user);
+
+      await queryRunner.commitTransaction();
+
+      // Fetch updated order with relations
+      const updatedOrder = await this.orderRepository.findOne({
+        where: { id: orderId },
+        relations: ['card'],
+      });
+
+      return this.toResponseDto(updatedOrder);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    const updatedOrder = await this.orderRepository.save(order);
-
-    return this.toResponseDto(updatedOrder);
   }
 
   async getStatistics(dateFrom?: Date, dateTo?: Date): Promise<any> {
@@ -429,20 +557,20 @@ export class CardOrderService {
       userId: order.userId,
       cardId: order.cardId,
       cardType: order.cardType,
-      paymentId: order.paymentId,
+      paymentId: order.paymentId || undefined,
       cardExpiryDate: order.cardExpiryDate,
       status: order.status,
       orderStatus: order.orderStatus,
-      rejectedReason: order.rejectedReason,
+      rejectedReason: order.rejectedReason || undefined,
       orderDate: order.orderDate,
       deliveryAddress: order.deliveryAddress,
       contactPhone: order.contactPhone,
-      notes: order.notes,
-      trackingNumber: order.trackingNumber,
-      rfidNumber: order.rfidNumber,
-      deliveredAt: order.deliveredAt,
-      activatedAt: order.activatedAt,
-      deactivatedAt: order.deactivatedAt,
+      notes: order.notes || undefined,
+      trackingNumber: order.trackingNumber || undefined,
+      rfidNumber: order.rfidNumber || undefined,
+      deliveredAt: order.deliveredAt || undefined,
+      activatedAt: order.activatedAt || undefined,
+      deactivatedAt: order.deactivatedAt || undefined,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       card: order.card,

@@ -39,7 +39,7 @@ export class UserIdCardOrder {
   @Column({ name: 'rejected_reason', type: 'text', nullable: true })
   rejectedReason?: string;
 
-  @Column({ name: 'order_date', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ name: 'order_date', type: 'timestamp' })
   orderDate: Date;
 
   @Column({ name: 'delivery_address', type: 'text' })
