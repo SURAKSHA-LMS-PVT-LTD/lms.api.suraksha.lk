@@ -6,6 +6,7 @@ import { ChildrenAccess } from '../../../auth/decorators/children-access.decorat
 import { EnhancedJwtPayload } from '../../../auth/interfaces/enhanced-jwt-payload.interface';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 // Import services and entities
 import { StudentEntity } from '../../student/entities/student.entity';
@@ -142,7 +143,7 @@ export class ParentAccessController {
         bloodGroup: student.bloodGroup,
         isActive: student.isActive
       },
-      accessedAt: new Date().toISOString()
+      accessedAt: getCurrentSriLankaISO()
     };
   }
 
@@ -214,7 +215,7 @@ export class ParentAccessController {
         message: `Student institutes retrieved successfully${activeOnly === 'true' ? ' (active only)' : ''}${verifiedOnly === 'true' ? ' (verified only)' : ''}`,
         institutes: instituteDetails,
         studentId,
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
 
     } catch (error) {
@@ -338,7 +339,7 @@ export class ParentAccessController {
           verifiedOnly: verifiedOnly === 'true',
           activeOnly: activeOnly === 'true'
         },
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
 
     } catch (error) {
@@ -475,7 +476,7 @@ export class ParentAccessController {
           classId,
           activeOnly: activeOnly === 'true'
         },
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
 
     } catch (error) {
@@ -566,7 +567,7 @@ export class ParentAccessController {
           instituteId: instituteId || 'all',
           verifiedOnly: verifiedOnly === 'true'
         },
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
 
     } catch (error) {
@@ -678,7 +679,7 @@ export class ParentAccessController {
           instituteId: instituteId || 'all',
           classId: classId || 'all'
         },
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       };
 
     } catch (error) {
@@ -787,3 +788,4 @@ export class ParentAccessController {
     };
   }
 }
+

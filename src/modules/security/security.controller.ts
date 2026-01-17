@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { SecurityMonitoringService } from '../../common/services/security-monitoring.service';
 import { AdvancedSecurityGuard } from '../../common/guards/advanced-security.guard';
 import { JwtAuthGuard, FlexibleAccessGuard, RequireAnyOfRoles, UserType } from '../../auth/guards';
+import { getCurrentSriLankaISO } from '../../common/utils/timezone.util';
 
 @ApiTags('Security')
 @Controller('api/security')
@@ -21,7 +22,7 @@ export class SecurityController {
     return {
       success: true,
       data: this.securityMonitoringService.getSecurityMetrics(),
-      timestamp: new Date().toISOString()
+      timestamp: getCurrentSriLankaISO()
     };
   }
 
@@ -35,7 +36,7 @@ export class SecurityController {
     return {
       success: true,
       data: this.securityMonitoringService.exportSecurityReport(),
-      timestamp: new Date().toISOString()
+      timestamp: getCurrentSriLankaISO()
     };
   }
 

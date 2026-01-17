@@ -1,5 +1,6 @@
 import { ExceptionFilter, Catch, ArgumentsHost, BadRequestException, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { getCurrentSriLankaISO, nowTimestamp } from '../utils/timezone.util';
 
 @Catch(BadRequestException)
 export class FileUploadExceptionFilter implements ExceptionFilter {
@@ -21,12 +22,12 @@ export class FileUploadExceptionFilter implements ExceptionFilter {
       const errorResponse = {
         success: false,
         statusCode: status,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         path: request.url,
         method: request.method,
         message: `Invalid form field name "${fieldName}". Please use field name "file" for file uploads.`,
         error: 'Bad Request',
-        requestId: `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        requestId: `err_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`,
         details: {
           expectedField: 'file',
           receivedField: fieldName,
@@ -45,12 +46,12 @@ export class FileUploadExceptionFilter implements ExceptionFilter {
       const errorResponse = {
         success: false,
         statusCode: status,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         path: request.url,
         method: request.method,
         message: 'File size exceeds the maximum allowed limit',
         error: 'Bad Request',
-        requestId: `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        requestId: `err_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`,
         details: {
           maxSize: request.url.includes('profile-image') ? '5MB' : '10MB',
           hint: 'Please upload a smaller file'
@@ -67,12 +68,12 @@ export class FileUploadExceptionFilter implements ExceptionFilter {
     const errorResponse = {
       success: false,
       statusCode: status,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
       path: request.url,
       method: request.method,
       message: message,
       error: 'Bad Request',
-      requestId: `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      requestId: `err_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`
     };
 
     this.logger.error(`Request error: ${message}`, exception.stack);

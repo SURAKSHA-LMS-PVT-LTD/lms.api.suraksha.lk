@@ -6,6 +6,7 @@ import { LectureDocumentEntity } from './entities/lecture.entity'; // Both entit
 import { CreateLectureDto, UpdateLectureDto } from './dto/lecture.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { LectureResponseDto, LectureListResponseDto, LectureQueryDto } from './dto/lecture.dto';
+import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class StructuredLecturesServiceTypeorm {
@@ -71,8 +72,8 @@ export class StructuredLecturesServiceTypeorm {
       coverImageUrl: processedCoverImageUrl,
       createdBy: userId,
       updatedBy: userId,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now(),
+      updatedAt: now()
     });
 
     const savedLecture = await this.lectureRepository.save(lecture);

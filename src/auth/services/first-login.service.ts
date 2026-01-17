@@ -70,13 +70,13 @@ export class FirstLoginService {
 
     // Generate OTP
     const otp = this.generateOTP();
-    const expiresAt = now();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes expiry
+    const expiryTimeMs = nowTimestamp() + (15 * 60 * 1000); // 15 minutes in milliseconds
+    const expiresAt = new Date(expiryTimeMs);
 
     // Invalidate any existing tokens for this email
     await this.passwordResetTokenRepository.update(
       { email: dto.email, isUsed: false },
-      { isUsed: true }
+      { isUsed: true, updatedAt: now() }
     );
 
     // Create new token
@@ -85,6 +85,8 @@ export class FirstLoginService {
       otp,
       tokenType: 'FIRST_LOGIN',
       expiresAt,
+      createdAt: now(), // Explicitly set Sri Lanka timezone
+      updatedAt: now(), // Initialize updatedAt
       ipAddress,
       userAgent,
     });
@@ -96,6 +98,7 @@ export class FirstLoginService {
       userId: user.id,
       email: dto.email,
       status: 'OTP_SENT',
+      createdAt: now(), // Explicitly set Sri Lanka timezone
       ipAddress,
       userAgent,
       notes: 'First login OTP sent successfully'
@@ -161,13 +164,13 @@ export class FirstLoginService {
     // Check if token is expired
     const currentTime = now();
     if (currentTime > resetToken.expiresAt) {
-      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true });
+      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
       throw new BadRequestException('OTP has expired. Please request a new one.');
     }
 
     // Check attempt count
     if (resetToken.attemptCount >= 5) {
-      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true });
+      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
       throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
     }
 
@@ -185,6 +188,7 @@ export class FirstLoginService {
     await this.passwordResetTokenRepository.update(resetToken.id, {
       isOtpVerified: true,
       verificationToken,
+      updatedAt: now(),
     });
 
     // Update log (no password needed here - just for logging)
@@ -275,7 +279,7 @@ export class FirstLoginService {
     await this.userRepository.update(user.id, updateData);
 
     // Mark token as used
-    await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true });
+    await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
 
     // CACHE REFRESH: Critical password change requires cache update
     try {
@@ -341,14 +345,13 @@ export class FirstLoginService {
   ): Promise<FirstLoginResponseDto> {
 
     // Check rate limiting - max 3 OTP requests per hour
-    const oneHourAgo = now();
-    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+    const oneHourAgoMs = nowTimestamp() - (60 * 60 * 1000); // 1 hour in milliseconds
 
     const recentTokens = await this.passwordResetTokenRepository.count({
       where: {
         email,
         tokenType: 'FIRST_LOGIN',
-        createdAt: new Date(oneHourAgo.getTime())
+        createdAt: new Date(oneHourAgoMs)
       }
     });
 

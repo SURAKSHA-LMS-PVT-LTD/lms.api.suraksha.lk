@@ -11,6 +11,7 @@ import { UserEntity } from '../user/entities/user.entity';
 // Services
 import { UsersService } from '../user/user.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { now } from '../../common/utils/timezone.util';
 
 // DTOs
 import { CreateParentDto } from './dto/create-parent.dto';
@@ -88,8 +89,8 @@ export class ParentsService {
       const savedUser = {
         id: userResponse.id,
         ...userDataWithNullFields,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: now(),
+        updatedAt: now()
       };
 
       // Create parent with user relation
@@ -258,8 +259,8 @@ export class ParentsService {
     const savedUser = {
       id: userResponse.id,
       ...userDataWithNullFields,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now(),
+      updatedAt: now()
     };
 
     // Create parent
@@ -450,11 +451,11 @@ export class ParentsService {
 
       // 🚀 ULTRA-OPTIMIZED: Build response from existing data instead of unnecessary SELECT
       // Create updated parent with current data + updates
-      const updatedParentEntity = Object.assign({}, parent, parentUpdateData, { updatedAt: new Date() });
+      const updatedParentEntity = Object.assign({}, parent, parentUpdateData, { updatedAt: now() });
       
       // Update user entity if user data was provided
       if (updateParentDto.user) {
-        Object.assign(updatedParentEntity.user, updateParentDto.user, { updatedAt: new Date() });
+        Object.assign(updatedParentEntity.user, updateParentDto.user, { updatedAt: now() });
       }
 
       return this.mapToResponseDto(updatedParentEntity);

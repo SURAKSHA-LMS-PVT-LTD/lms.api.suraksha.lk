@@ -88,9 +88,21 @@ export class SmslenzProvider implements ISmsProvider {
     } catch (error) {
       this.logger.error(`❌ Failed to send SMS to ${request.contact}: ${error.message}`);
       
+      // Detailed error message for timeouts
+      let errorMessage = 'Failed to send SMS';
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = 'SMS service timeout - please check your internet connection and try again';
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMessage = 'SMS service unavailable - please try again later';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'SMS service authentication failed - please contact support';
+      } else if (error.response?.status === 429) {
+        errorMessage = 'SMS rate limit exceeded - please try again later';
+      }
+      
       return {
         success: false,
-        message: 'Failed to send SMS',
+        message: errorMessage,
         error: error.response?.data?.message || error.message,
       };
     }

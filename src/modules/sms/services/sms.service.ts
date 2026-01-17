@@ -842,7 +842,7 @@ export class SmsService {
             isActive: true,
             createdBy: adminUserId,
             approvedBy: adminUserId,
-            approvedAt: new Date(),
+            approvedAt: now(),
           });
           await queryRunner.manager.save(credentials);
         } else {
@@ -856,7 +856,7 @@ export class SmsService {
         await queryRunner.manager.update(InstituteSmsPaymentSubmissionEntity, submissionId, {
           status: PaymentSubmissionStatus.VERIFIED,
           verifiedBy: adminUserId,
-          verifiedAt: new Date(),
+          verifiedAt: now(),
           creditsGranted,
           adminNotes: dto.adminNotes,
         });
@@ -865,7 +865,7 @@ export class SmsService {
         await queryRunner.manager.update(InstituteSmsPaymentSubmissionEntity, submissionId, {
           status: PaymentSubmissionStatus.REJECTED,
           verifiedBy: adminUserId,
-          verifiedAt: new Date(),
+          verifiedAt: now(),
           rejectionReason: dto.rejectionReason,
           adminNotes: dto.adminNotes,
         });
@@ -894,7 +894,7 @@ export class SmsService {
             instituteSystemContactEmail: institute?.systemContactEmail || null,
             instituteSystemContactPhone: institute?.systemContactPhoneNumber || null,
             creditsGranted,
-            verifiedAt: new Date().toISOString(),
+            verifiedAt: getCurrentSriLankaISO(),
             adminNotes: dto.adminNotes || 'Payment verified successfully. Credits have been added to your account.',
           });
           // ✅ Email sent asynchronously - execution continues immediately
@@ -1014,7 +1014,7 @@ export class SmsService {
     // Update status to APPROVED
     message.status = SmsMessageStatus.APPROVED;
     message.approvedBy = adminId;
-    message.approvedAt = new Date();
+    message.approvedAt = now();
     await this.smsMessageRepository.save(message);
 
 

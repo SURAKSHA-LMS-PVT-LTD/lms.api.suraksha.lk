@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { v4 as uuidv4 } from 'uuid';
-import { now } from '../../../common/utils/timezone.util';
+import { now, nowTimestamp } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class PaymentSlipUploadService {
@@ -89,9 +89,10 @@ export class PaymentSlipUploadService {
     }
 
     // Generate signed URL for viewing (expires in 1 hour)
-    const expiresIn = 60 * 60; // 1 hour in seconds
-    const viewUrl = await this.cloudStorageService.getSignedUrl(relativePath, expiresIn);
-    const expiresAt = new Date(now().getTime() + expiresIn * 1000);
+    const expiresInSeconds = 60 * 60; // 1 hour in seconds
+    const viewUrl = await this.cloudStorageService.getSignedUrl(relativePath, expiresInSeconds);
+    const expiresAtMs = nowTimestamp() + (expiresInSeconds * 1000); // Convert seconds to milliseconds
+    const expiresAt = new Date(expiresAtMs);
 
     return {
       viewUrl,

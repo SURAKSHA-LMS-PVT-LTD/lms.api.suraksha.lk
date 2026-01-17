@@ -251,8 +251,12 @@ export class UserNotificationService {
           `✅ Welcome SMS sent successfully to ${phoneNumber} for user ${userId}`
         );
       } else {
+        // Log prominently when SMS fails
         this.logger.error(
-          `❌ SMS provider returned error for user ${userId}: ${smsResponse.error || smsResponse.message}`
+          `❌ [CRITICAL] SMS DELIVERY FAILED for user ${userId}\n` +
+          `   Phone: ${phoneNumber}\n` +
+          `   Error: ${smsResponse.error || smsResponse.message}\n` +
+          `   User created successfully but SMS not delivered`
         );
       }
     } catch (error) {

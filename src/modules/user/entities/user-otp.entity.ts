@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export enum OtpType {
   EMAIL = 'EMAIL',
@@ -54,7 +54,7 @@ export class UserOtpEntity {
   @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
   @Column({ name: 'created_date', type: 'date' })

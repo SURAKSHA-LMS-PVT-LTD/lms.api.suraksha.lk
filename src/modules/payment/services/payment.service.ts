@@ -11,6 +11,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { ConfigService } from '@nestjs/config';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
+import { now, getCurrentSriLankaTime, nowTimestamp } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class PaymentService {
@@ -277,7 +278,7 @@ export class PaymentService {
       await manager.update(PaymentEntity, paymentId, {
         status: newStatus,
         verifiedBy: verifierId,
-        verifiedAt: new Date(),
+        verifiedAt: now(),
         rejectionReason: verifyPaymentDto.rejectionReason,
         notes: verifyPaymentDto.notes || payment.notes,
       });
@@ -286,16 +287,16 @@ export class PaymentService {
 
       // If payment is verified, update user subscription and expiration
       if (newStatus === PaymentStatus.VERIFIED) {
-        // Calculate expiration date
-        const currentDate = new Date();
-        expirationDate = new Date(currentDate);
-        expirationDate.setDate(currentDate.getDate() + paymentValidityDays);
+        // Calculate expiration date using timestamp arithmetic
+        const currentTimeMs = nowTimestamp();
+        const validityMs = paymentValidityDays * 24 * 60 * 60 * 1000; // Convert days to milliseconds
+        expirationDate = new Date(currentTimeMs + validityMs);
 
         // CRITICAL: Update user subscription within the same transaction
         await manager.update(UserEntity, payment.userId, {
           subscriptionPlan: subscriptionPlan,
           paymentExpiresAt: expirationDate,
-          updatedAt: new Date(),
+          updatedAt: now(),
         });
 
         // ✅ MANDATORY: Get updated user data after subscription update for cache refresh
@@ -397,7 +398,7 @@ export class PaymentService {
     const hasPaidSubscription = user.subscriptionPlan !== 'FREE';
 
     return {
-      isPaid: hasPaidSubscription && (!user.paymentExpiresAt || user.paymentExpiresAt > new Date()),
+      isPaid: hasPaidSubscription && (!user.paymentExpiresAt || user.paymentExpiresAt > now()),
       currentMonth,
       paymentExpiresAt: user.paymentExpiresAt,
       subscriptionPlan: user.subscriptionPlan,
@@ -424,10 +425,10 @@ export class PaymentService {
     subscriptionPlan?: SubscriptionPlan,
     validityDays: number = 30
   ): Promise<void> {
-    // Calculate expiration date based on validity days
-    const currentDate = new Date();
-    const expirationDate = new Date(currentDate);
-    expirationDate.setDate(currentDate.getDate() + validityDays);
+    // Calculate expiration date using timestamp arithmetic
+    const currentTimeMs = nowTimestamp();
+    const validityMs = validityDays * 24 * 60 * 60 * 1000; // Convert days to milliseconds
+    const expirationDate = new Date(currentTimeMs + validityMs);
     
     const updateData: any = {
       paymentExpiresAt: expirationDate,
@@ -488,9 +489,9 @@ export class PaymentService {
    * Get current payment month in YYYY-MM format
    */
   private getCurrentPaymentMonth(): string {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const nowDate = getCurrentSriLankaTime();
+    const year = nowDate.getFullYear();
+    const month = String(nowDate.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
   }
 }

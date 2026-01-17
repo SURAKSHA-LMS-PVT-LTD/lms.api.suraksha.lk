@@ -89,11 +89,12 @@ export class PasswordResetService {
     }
 
     // Check rate limiting (max 3 requests per 15 minutes)
+    const fifteenMinutesAgo = nowTimestamp() - (15 * 60 * 1000); // 15 minutes in milliseconds
     const recentTokens = await this.passwordResetTokenRepository.count({
       where: {
         email: dto.email,
         tokenType: 'PASSWORD_RESET',
-        createdAt: new Date(nowTimestamp() - 15 * 60 * 1000) // Last 15 minutes
+        createdAt: new Date(fifteenMinutesAgo)
       }
     });
 
@@ -109,7 +110,7 @@ export class PasswordResetService {
     // Invalidate any existing tokens for this email
     await this.passwordResetTokenRepository.update(
       { email: dto.email, tokenType: 'PASSWORD_RESET', isUsed: false },
-      { isUsed: true }
+      { isUsed: true, updatedAt: now() }
     );
 
     // Create new token
@@ -118,6 +119,8 @@ export class PasswordResetService {
       otp,
       tokenType: 'PASSWORD_RESET',
       expiresAt,
+      createdAt: now(), // Explicitly set Sri Lanka timezone
+      updatedAt: now(), // Initialize updatedAt
       ipAddress,
       userAgent,
     });
@@ -172,17 +175,20 @@ export class PasswordResetService {
 
     const currentTime = now();
     if (resetToken.expiresAt < currentTime) {
-      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true });
+      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
       throw new BadRequestException('OTP code has expired. Please request a new one.');
     }
 
 
+    const remainingTimeMs = resetToken.expiresAt.getTime() - nowTimestamp();
+    const expiresInMinutes = Math.ceil(remainingTimeMs / (60 * 1000)); // Convert ms to minutes
+    
     return {
       success: true,
       message: 'OTP verified successfully. You can now reset your password.',
       data: {
         email: dto.email,
-        expiresInMinutes: Math.ceil((resetToken.expiresAt.getTime() - nowTimestamp()) / (1000 * 60))
+        expiresInMinutes
       }
     };
   }
@@ -351,13 +357,13 @@ export class PasswordResetService {
 
     // Generate OTP
     const otp = this.generateOTP();
-    const expiresAt = now();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes expiry
+    const expiryTimeMs = nowTimestamp() + (15 * 60 * 1000); // 15 minutes in milliseconds
+    const expiresAt = new Date(expiryTimeMs);
 
     // Invalidate any existing tokens for this email
     await this.passwordResetTokenRepository.update(
       { email: user.email, tokenType: 'CHANGE_PASSWORD', isUsed: false },
-      { isUsed: true }
+      { isUsed: true, updatedAt: now() }
     );
 
     // Create new token
@@ -366,6 +372,8 @@ export class PasswordResetService {
       otp,
       tokenType: 'CHANGE_PASSWORD',
       expiresAt,
+      createdAt: now(), // Explicitly set Sri Lanka timezone
+      updatedAt: now(), // Initialize updatedAt
       ipAddress,
       userAgent,
     });

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 @Entity('password_reset_tokens')
 // 🎯 REAL QUERY-BASED INDEXES - Based on actual codebase queries (Nov 2024)
@@ -43,10 +43,10 @@ export class PasswordResetTokenEntity {
   @Column({ type: 'int', default: 0, name: 'attemptCount' })
   attemptCount: number;
 
-  @CreateDateColumn({ name: 'createdAt' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
 }
 
@@ -79,10 +79,10 @@ export class UserFirstLoginLogEntity {
   @Column({ type: 'text', nullable: true, name: 'notes' })
   notes?: string;
 
-  @CreateDateColumn({ name: 'createdAt' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
 }
 
@@ -116,9 +116,9 @@ export class RefreshTokenEntity {
   @Column({ type: 'text', nullable: true })
   userAgent: string;
 
-  @CreateDateColumn()
+  @Column({ type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ type: 'timestamp' })
   updatedAt: Date;
 }

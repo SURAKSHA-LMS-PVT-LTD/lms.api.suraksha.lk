@@ -67,9 +67,8 @@ export class UserOtpService {
    * Get tomorrow's date for retry message
    */
   private getTomorrowDate(): string {
-    const tomorrow = new Date(nowTimestamp() + 24 * 60 * 60 * 1000);
-    tomorrow.setHours(0, 0, 0, 0);
-    return tomorrow.toISOString();
+    const tomorrowMs = nowTimestamp() + (24 * 60 * 60 * 1000);
+    return new Date(tomorrowMs).toISOString();
   }
 
   /**
@@ -135,6 +134,7 @@ export class UserOtpService {
       otpType: OtpType.EMAIL,
       otpPurpose: OtpPurpose.VERIFICATION,
       expiresAt,
+      createdAt: now(), // Explicitly set Sri Lanka timezone
       createdDate: this.getTodayDate(),
       ipAddress,
     });
@@ -267,6 +267,7 @@ export class UserOtpService {
       otpType: OtpType.PHONE,
       otpPurpose: OtpPurpose.VERIFICATION,
       expiresAt,
+      createdAt: now(), // Explicitly set Sri Lanka timezone
       createdDate: this.getTodayDate(),
       ipAddress,
     });

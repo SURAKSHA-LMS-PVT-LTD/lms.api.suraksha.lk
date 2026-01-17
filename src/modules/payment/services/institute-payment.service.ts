@@ -11,6 +11,7 @@ import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums
 import { JwtPayload } from '../../../common/interfaces/jwt-request.interface';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
+import { nowTimestamp } from '../../../common/utils/timezone.util';
 import { 
   CreateInstitutePaymentDto, 
   UpdateInstitutePaymentDto,
@@ -941,8 +942,10 @@ export class InstitutePaymentService {
 
       // Calculate late fee if applicable
       let lateFeeApplied = 0;
-      const now = new Date();
-      const daysOverdue = Math.floor((now.getTime() - payment.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const currentTimeMs = nowTimestamp();
+      const dueDateMs = payment.dueDate.getTime();
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const daysOverdue = Math.floor((currentTimeMs - dueDateMs) / msPerDay);
       
       if (payment.lateFeeAmount && payment.lateFeeAfterDays && daysOverdue > payment.lateFeeAfterDays) {
         lateFeeApplied = payment.lateFeeAmount;
@@ -1628,7 +1631,7 @@ export class InstitutePaymentService {
         // Minimal additional fields
         canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
         canDelete: submission.status === SubmissionStatus.PENDING,
-        daysSinceSubmission: Math.floor((new Date().getTime() - submission.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        daysSinceSubmission: Math.floor((nowTimestamp() - submission.createdAt.getTime()) / (24 * 60 * 60 * 1000))
       }));
 
       // Calculate pagination and summary from DATABASE results with proper numeric aggregation
@@ -1768,8 +1771,8 @@ export class InstitutePaymentService {
         paymentContext: {
           paymentIsActive: submission.payment.isActive,
           paymentStatus: submission.payment.status,
-          daysSinceDue: Math.floor((new Date().getTime() - submission.payment.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
-          daysSinceSubmission: Math.floor((new Date().getTime() - submission.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+          daysSinceDue: Math.floor((nowTimestamp() - submission.payment.dueDate.getTime()) / (24 * 60 * 60 * 1000)),
+          daysSinceSubmission: Math.floor((nowTimestamp() - submission.createdAt.getTime()) / (24 * 60 * 60 * 1000))
         }
       };
 

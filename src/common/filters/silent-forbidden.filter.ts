@@ -1,5 +1,6 @@
 import { ExceptionFilter, Catch, ArgumentsHost, ForbiddenException, HttpException } from '@nestjs/common';
 import { Response } from 'express';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 
 /**
  * 🔒 SILENT FORBIDDEN EXCEPTION FILTER
@@ -32,7 +33,7 @@ export class SilentForbiddenExceptionFilter implements ExceptionFilter {
       const exceptionResponse = exception.getResponse() as any;
       response.status(403).json({
         statusCode: 403,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         path: request.url,
         message: exceptionResponse.message || 'Forbidden',
         error: exceptionResponse.error || 'Forbidden',
