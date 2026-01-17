@@ -24,7 +24,8 @@ import { InstituteEntity } from '../../institute/entities/institute.entity';
 export interface WelcomeNotificationParams {
   email: string;
   phoneNumber?: string;
-  nameWithInitials: string;
+  nameWithInitials?: string;
+  firstName?: string;
   userId: string;
   instituteId?: string;
 }
@@ -61,11 +62,22 @@ export class UserNotificationService {
    */
   async sendWelcomeNotifications(params: WelcomeNotificationParams): Promise<void> {
     try {
-      const { email, phoneNumber, nameWithInitials, userId, instituteId } = params;
+      const { email, phoneNumber, nameWithInitials, firstName, userId, instituteId } = params;
+
+      // Use nameWithInitials if available, otherwise fallback to firstName, or 'User'
+      const displayName = nameWithInitials || firstName || 'User';
+
+      this.logger.log(
+        `📧📱 Starting welcome notifications for user ${userId} ` +
+        `(Email: ${email}, Name: ${displayName}, Phone: ${phoneNumber || 'N/A'})`
+      );
 
       // Validate input parameters
-      if (!email || !nameWithInitials || !userId) {
-        this.logger.warn(`⚠️ Missing required parameters for welcome notifications. UserId: ${userId || 'unknown'}`);
+      if (!email || !userId) {
+        this.logger.warn(
+          `⚠️ Missing required parameters for welcome notifications. ` +
+          `UserId: ${userId || 'MISSING'}, Email: ${email || 'MISSING'}`
+        );
         return; // Silent return - don't throw
       }
 
@@ -76,7 +88,7 @@ export class UserNotificationService {
       // 1. EMAIL (PRIMARY) - Always send
       notifications.push(
         Promise.resolve()
-          .then(() => this.sendWelcomeEmail(email, nameWithInitials, userId))
+          .then(() => this.sendWelcomeEmail(email, displayName, userId))
           .catch((error) => {
             this.logger.error(`❌ Email notification failed for user ${userId}: ${error.message}`);
             // Swallow error - don't propagate
@@ -86,7 +98,7 @@ export class UserNotificationService {
       // 2. SMS (SECONDARY) - Only if phone number provided
       if (phoneNumber) {
         notifications.push(
-          this.sendWelcomeSms(phoneNumber, nameWithInitials, userId, instituteId || 'system')
+          this.sendWelcomeSms(phoneNumber, displayName, userId, instituteId || 'system')
             .catch((error) => {
               this.logger.error(`❌ SMS notification failed for user ${userId}: ${error.message}`);
               // Swallow error - don't propagate
@@ -96,6 +108,8 @@ export class UserNotificationService {
 
       // Execute all notifications in parallel, continue even if some fail
       await Promise.allSettled(notifications);
+      
+      this.logger.log(`✅ Welcome notifications processing completed for user ${userId}`);
     } catch (error) {
       // 🛡️ ULTIMATE CATCH-ALL: Even if something catastrophic happens, log and continue
       this.logger.error(
@@ -231,7 +245,11 @@ export class UserNotificationService {
         message,
       });
 
-      if (!smsResponse.success) {
+      if (smsResponse.success) {
+        this.logger.log(
+          `✅ Welcome SMS sent successfully to ${phoneNumber} for user ${userId}`
+        );
+      } else {
         this.logger.error(
           `❌ SMS provider returned error for user ${userId}: ${smsResponse.error || smsResponse.message}`
         );

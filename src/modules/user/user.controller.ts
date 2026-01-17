@@ -494,15 +494,25 @@ export class UsersController {
 
     // Send welcome notifications
     if (result.success && result.userId && dto.email) {
+      this.logger.log(
+        `[${requestId}] 📧 Sending welcome notifications - ` +
+        `Email: ${dto.email}, Name: ${dto.nameWithInitials || dto.firstName || 'MISSING'}, UserId: ${result.userId}`
+      );
       this.userNotificationService.sendWelcomeNotifications({
         email: dto.email,
         phoneNumber: dto.phoneNumber,
         nameWithInitials: dto.nameWithInitials,
+        firstName: dto.firstName,
         userId: result.userId,
         instituteId: dto.instituteId,
       }).catch((error) => {
         this.logger.warn(`[${requestId}] ⚠️ Failed to send welcome notifications: ${error.message}`);
       });
+    } else {
+      this.logger.warn(
+        `[${requestId}] ⚠️ Skipping welcome notifications - ` +
+        `Success: ${result.success}, UserId: ${result.userId || 'MISSING'}, Email: ${dto.email || 'MISSING'}`
+      );
     }
     
     return result;

@@ -445,6 +445,7 @@ export class SmsService {
         paymentSlipUrl: dto.paymentSlipUrl || null,
         paymentSlipFilename: dto.paymentSlipFilename || null,
         submittedAt: now()
+      });
       const submission = await this.paymentSubmissionRepository.save(submissionEntity);
 
       // 📧 Send payment submission confirmation email (FIRE-AND-FORGET - Zero blocking)

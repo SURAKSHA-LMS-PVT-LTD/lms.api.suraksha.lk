@@ -45,6 +45,7 @@ export class AsyncEmailService {
     // Fire immediately, don't wait
     emailPromise
       .then((result) => {
+        this.logger.log(`✅ ${emailType} email sent successfully to ${recipient}`);
       })
       .catch((error) => {
         this.logger.error(
