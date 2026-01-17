@@ -23,6 +23,7 @@ import { InstituteResponseDto } from './dto/institute-response.dto';
 import { ApiKeyOrJwtGuard } from '../../auth/guards/api-key-or-jwt.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { v4 as uuidv4 } from 'uuid';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 /**
  * 🌐 PUBLIC INSTITUTE CONTROLLER
@@ -313,7 +314,7 @@ export class PublicInstitutesController {
    * Example: INST-20260118-001
    */
   private async generateInstituteCode(): Promise<string> {
-    const today = new Date();
+    const today = getCurrentSriLankaTime();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');

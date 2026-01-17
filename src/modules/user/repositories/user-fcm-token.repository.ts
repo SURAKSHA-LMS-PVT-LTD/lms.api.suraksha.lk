@@ -5,6 +5,7 @@ import { UserFcmTokenEntity } from '../entities/user-fcm-token.entity';
 import { CreateUserFcmTokenDto } from '../dto/create-user-fcm-token.dto';
 import { UpdateUserFcmTokenDto } from '../dto/update-user-fcm-token.dto';
 import { QueryUserFcmTokenDto } from '../dto/query-user-fcm-token.dto';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class UserFcmTokenRepository {
@@ -77,11 +78,11 @@ export class UserFcmTokenRepository {
   }
 
   async updateLastSeen(id: string): Promise<void> {
-    await this.repository.update(id, { lastSeen: new Date() });
+    await this.repository.update(id, { lastSeen: now() });
   }
 
   async updateLastNotificationSent(id: string): Promise<void> {
-    await this.repository.update(id, { lastNotificationSent: new Date() });
+    await this.repository.update(id, { lastNotificationSent: now() });
   }
 
   async deactivateToken(id: string): Promise<void> {
@@ -101,7 +102,7 @@ export class UserFcmTokenRepository {
   }
 
   async cleanupInactiveTokens(daysOld: number = 30): Promise<number> {
-    const cutoffDate = new Date();
+    const cutoffDate = now();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
     
     const result = await this.repository

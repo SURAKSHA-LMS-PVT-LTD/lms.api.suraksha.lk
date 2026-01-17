@@ -2,6 +2,7 @@ import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AppService } from './app.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { getCurrentSriLankaISO } from './common/utils/timezone.util';
 
 @Controller()
 @ApiTags('Application')
@@ -18,7 +19,7 @@ export class AppController {
   healthCheck(): object {
     return {
       status: 'healthy',
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
       environment: process.env.NODE_ENV || 'development'
     };
   }

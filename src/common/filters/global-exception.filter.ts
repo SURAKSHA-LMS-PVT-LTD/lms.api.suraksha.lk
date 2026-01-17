@@ -11,6 +11,7 @@ import { QueryFailedError, EntityNotFoundError } from 'typeorm';
 import { ValidationError } from 'class-validator';
 import { ThrottlerException } from '@nestjs/throttler';
 import { AuditService } from '../services/audit.service';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -24,7 +25,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const errorInfo = this.getErrorInfo(exception);
-    const timestamp = new Date().toISOString();
+    const timestamp = getCurrentSriLankaISO();
     const requestId = this.generateRequestId();
 
     // Log the error with appropriate level based on error type

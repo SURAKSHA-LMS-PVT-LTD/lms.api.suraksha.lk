@@ -1259,7 +1259,7 @@ export class AuthService {
       }
 
       // Check if token is expired
-      if (new Date() > tokenRecord.expiresAt) {
+      if (now() > tokenRecord.expiresAt) {
         throw new UnauthorizedException('Refresh token expired');
       }
 

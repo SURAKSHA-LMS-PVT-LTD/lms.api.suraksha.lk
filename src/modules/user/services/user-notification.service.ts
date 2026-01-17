@@ -6,6 +6,7 @@ import { AsyncEmailService } from '../../../common/services/async-email.service'
 import { InstantSmsService } from '../../sms/services/instant-sms.service';
 import { SmslenzProvider } from '../../sms/providers/smslenz.provider';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 /**
  * 📧📱 USER NOTIFICATION SERVICE
@@ -146,7 +147,7 @@ export class UserNotificationService {
         userEmail: email,
         userName: nameWithInitials,
         accountEmail: email,
-        registrationDate: new Date().toISOString(),
+        registrationDate: getCurrentSriLankaISO(),
         studentId: userId, // Include User ID in email
       });
     } catch (error) {
