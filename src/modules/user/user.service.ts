@@ -551,10 +551,16 @@ export class UsersService {
       }
 
       // ============================================
-      // STEP 5.5: Auto-Enroll to Institute (if provided)
+      // STEP 5.5: Auto-Enroll to Institute (OPTIONAL - if provided)
       // ============================================
-      if (dto.institute?.instituteCode) {
-        this.logger.log(`🏫 Institute enrollment requested with code: ${dto.institute.instituteCode}`);
+      // Only execute if institute object exists AND instituteCode is provided with valid value
+      // Skips completely if institute is not provided or instituteCode is empty/null
+      if (dto.institute?.instituteCode && 
+          typeof dto.institute.instituteCode === 'string' && 
+          dto.institute.instituteCode.trim() !== '') {
+        
+        const instituteCode = dto.institute.instituteCode.trim();
+        this.logger.log(`🏫 Institute enrollment requested with code: ${instituteCode}`);
         
         try {
           // Import Institute entities dynamically
@@ -564,14 +570,14 @@ export class UsersService {
           // Validate institute exists and is active
           const institute = await queryRunner.manager.findOne(InstituteEntity, {
             where: { 
-              code: dto.institute.instituteCode,
+              code: instituteCode,
               isActive: true 
             }
           });
           
           if (!institute) {
             throw new BadRequestException({
-              message: `Institute with code '${dto.institute.instituteCode}' not found or is inactive`,
+              message: `Institute with code '${instituteCode}' not found or is inactive`,
               field: 'instituteCode',
               suggestion: 'Please verify the institute code is correct and the institute is active'
             });
