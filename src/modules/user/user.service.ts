@@ -579,6 +579,24 @@ export class UsersService {
           
           this.logger.log(`✅ Institute found: ${institute.name} (ID: ${institute.id})`);
           
+          // ============================================
+          // SECURITY CHECK: Block self-enrollment if institute has pinCode
+          // ============================================
+          // If institute has a pinCode set (not null, not empty string), it means
+          // the institute requires special authorization/verification for enrollment
+          // Self-enrollment through this public API is NOT allowed
+          if (institute.pinCode && typeof institute.pinCode === 'string' && institute.pinCode.trim() !== '') {
+            this.logger.warn(`🚫 Self-enrollment blocked: Institute ${institute.name} has pinCode protection (${institute.pinCode.substring(0, 4)}...)`);
+            throw new BadRequestException({
+              message: `This institute requires special authorization for enrollment`,
+              field: 'instituteCode',
+              detail: `Institute '${institute.name}' does not allow self-enrollment. Please contact the institute administration for enrollment.`,
+              suggestion: 'Contact the institute directly to request enrollment with proper authorization'
+            });
+          }
+          
+          this.logger.log(`✅ Institute allows self-enrollment (no pinCode restriction)`);
+          
           // Check if user is already enrolled
           const existingEnrollment = await queryRunner.manager.findOne(InstituteUserEntity, {
             where: {

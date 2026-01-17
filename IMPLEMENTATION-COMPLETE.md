@@ -127,13 +127,24 @@ All features have been successfully implemented and verified:
    - ✅ Institute must exist and be active
    - ✅ Enrollment happens automatically after user creation succeeds
    - ❌ Cannot enroll as TEACHER, ADMIN, or other types through this API
+   - 🔒 **CRITICAL: Self-enrollment BLOCKED if institute has pinCode** - If institute.pinCode is set (not empty), enrollment is rejected
 
-4. **Example Flow**:
+4. **Example Flow (Successful)**:
    ```
    Step 1: User created successfully → User ID: 12345
    Step 2: Institute code validated → Institute found: "Royal College"
-   Step 3: Auto-enrollment → User 12345 enrolled as STUDENT in Royal College
-   Step 4: Response returned with user data + enrollment confirmation
+   Step 3: PinCode check → No pinCode set, self-enrollment allowed
+   Step 4: Auto-enrollment → User 12345 enrolled as STUDENT in Royal College
+   Step 5: Response returned with user data + enrollment confirmation
+   ```
+
+5. **Example Flow (Blocked by PinCode)**:
+   ```
+   Step 1: User created successfully → User ID: 12345
+   Step 2: Institute code validated → Institute found: "Private Academy"
+   Step 3: PinCode check → PinCode "ABC123XYZ" found
+   Step 4: ENROLLMENT BLOCKED → Error: "This institute requires special authorization"
+   Step 5: User created but NOT enrolled → Must contact institute admin
    ```
 
 ---
@@ -231,12 +242,27 @@ The comprehensive user create API is now fully functional with:
 - ❌ **Cannot enroll as ADMIN** through this API
 - ❌ **Cannot enroll as PARENT** through this API
 - ✅ **Only STUDENT enrollment allowed** for security and data integrity
+- 🔒 **Self-enrollment BLOCKED if institute has pinCode set**
 
-**Why this restriction?**
+**PinCode Security (NEW)**:
+- If institute has `pinCode` field set (not empty, not null)
+- Self-enrollment is **AUTOMATICALLY REJECTED**
+- User will receive error: "This institute requires special authorization for enrollment"
+- Empty strings ("") or null values = enrollment allowed
+- Real pinCode values (e.g., "2894y8nsjfk") = enrollment blocked
+
+**Why these restrictions?**
 - Teachers and admins should be enrolled through separate administrative processes
 - Prevents unauthorized privilege escalation
 - Maintains proper role-based access control
 - Ensures only students can self-register or be registered publicly
+- PinCode protection allows institutes to control who can self-enroll
+- Institutes with pinCode require manual enrollment by administrators
+
+**For restricted institutes (with pinCode):**
+- Contact institute administration directly
+- Request enrollment through official channels
+- Administrator must enroll users manually with proper authorization
 
 **For other user types:**
 - Use dedicated admin APIs for teacher enrollment
