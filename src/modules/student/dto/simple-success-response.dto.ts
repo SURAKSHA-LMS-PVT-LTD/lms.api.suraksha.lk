@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { now } from '../../../common/utils/timezone.util';
 
 export class SimpleSuccessResponseDto {
   @ApiProperty({

@@ -235,8 +235,8 @@ export class StructuredLecturesServiceTypeorm {
     const lecture = this.lectureRepository.create({
       ...createLectureDto,
       coverImageUrl: processedCoverImageUrl,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now(),
+      updatedAt: now()
     });
 
     const savedLecture = await this.lectureRepository.save(lecture);
@@ -479,7 +479,7 @@ export class StructuredLecturesServiceTypeorm {
     // Update lecture
     await this.lectureRepository.update(id, {
       ...updateLectureDto,
-      updatedAt: new Date()
+      updatedAt: now()
     });
 
     // Fetch updated lecture with relations
@@ -515,8 +515,8 @@ export class StructuredLecturesServiceTypeorm {
     const document = this.lectureDocumentRepository.create({
       ...documentData,
       lectureId,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now(),
+      updatedAt: now()
     });
 
     const savedDocument = await this.lectureDocumentRepository.save(document);
@@ -702,7 +702,7 @@ export class StructuredLecturesServiceTypeorm {
 
     await this.lectureRepository.update(id, {
       isActive: !lecture.isActive,
-      updatedAt: new Date()
+      updatedAt: now()
     });
 
     const updatedLecture = await this.lectureRepository.findOne({
@@ -728,7 +728,7 @@ export class StructuredLecturesServiceTypeorm {
       { id: In(lectureIds) },
       {
         ...updateData,
-        updatedAt: new Date()
+        updatedAt: now()
       }
     );
 
@@ -824,7 +824,7 @@ export class StructuredLecturesServiceTypeorm {
       ...updateLectureDto,
       ...(processedCoverImageUrl !== undefined && { coverImageUrl: processedCoverImageUrl }),
       updatedBy: userId,
-      updatedAt: new Date()
+      updatedAt: now()
     });
 
     // Handle document URLs if provided
@@ -839,7 +839,7 @@ export class StructuredLecturesServiceTypeorm {
           documentName: `Document ${index + 1}`,
           documentUrl: docUrl,
           documentDescription: `Lecture document ${index + 1}`,
-          uploadedAt: new Date(),
+          uploadedAt: now(),
         });
         await this.lectureDocumentRepository.save(document);
       }
@@ -876,7 +876,7 @@ export class StructuredLecturesServiceTypeorm {
     await this.lectureRepository.update(id, {
       isActive: false,
       updatedBy: userId,
-      updatedAt: new Date()
+      updatedAt: now()
     });
 
     return {

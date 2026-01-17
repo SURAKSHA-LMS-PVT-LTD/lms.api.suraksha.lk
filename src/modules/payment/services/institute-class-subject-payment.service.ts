@@ -12,6 +12,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { UserType } from '../../user/enums/user-type.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class InstituteClassSubjectPaymentService {
@@ -164,7 +165,7 @@ export class InstituteClassSubjectPaymentService {
     }
 
     // Check if last date has passed
-    if (new Date() > payment.lastDate) {
+    if (now() > payment.lastDate) {
       throw new BadRequestException({
         success: false,
         message: 'Payment submission deadline has passed',

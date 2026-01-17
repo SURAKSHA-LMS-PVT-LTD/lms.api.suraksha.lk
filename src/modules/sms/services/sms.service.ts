@@ -908,7 +908,7 @@ export class SmsService {
             instituteSystemContactEmail: institute?.systemContactEmail || null,
             instituteSystemContactPhone: institute?.systemContactPhoneNumber || null,
             rejectionReason: dto.rejectionReason || 'Payment verification failed',
-            verifiedAt: new Date().toISOString(),
+            verifiedAt: getCurrentSriLankaISO(),
             adminNotes: dto.adminNotes || 'Please resubmit your payment with correct documentation.',
           });
           // ✅ Email sent asynchronously - execution continues immediately
@@ -923,7 +923,7 @@ export class SmsService {
         message: dto.action === 'APPROVE' 
           ? `Payment approved and ${creditsGranted} credits granted`
           : 'Payment submission rejected',
-        verifiedAt: new Date().toISOString()
+        verifiedAt: getCurrentSriLankaISO()
       };
 
     } catch (error) {
@@ -1337,7 +1337,7 @@ export class SmsService {
     try {
       // 1. Message is already APPROVED, just set sentAt timestamp
       await this.smsMessageRepository.update(messageId, {
-        sentAt: new Date()
+        sentAt: now()
       });
 
       // 2. Fire-and-forget DynamoDB logging
@@ -1362,7 +1362,7 @@ export class SmsService {
       await this.smsMessageRepository.update(messageId, {
         status: SmsMessageStatus.FAILED,
         errorMessage: error.message,
-        completedAt: new Date()
+        completedAt: now()
       });
     }
   }
@@ -1691,7 +1691,7 @@ export class SmsService {
     messageEntity.maskIdUsed = context.requestedMaskId;
     messageEntity.filterCriteria = context.filterCriteria;
     messageEntity.scheduledAt = context.scheduledAt;
-    messageEntity.createdAt = new Date();
+    messageEntity.createdAt = now();
 
     return await this.smsMessageRepository.save(messageEntity);
   }
@@ -2367,7 +2367,7 @@ export class SmsService {
       successfulSends: result.successful,
       failedSends: result.failed,
       creditsUsed: result.successful,
-      completedAt: new Date()
+      completedAt: now()
     });
   }
 
@@ -2433,7 +2433,7 @@ export class SmsService {
         paymentReference: 'TEST-REF-' + Date.now(),
         submissionNotes: 'This is a test payment submission email',
         paymentSlipUrl: '',
-        submittedAt: new Date().toISOString(),
+        submittedAt: getCurrentSriLankaISO(),
       });
 
       if (result) {
@@ -2470,7 +2470,7 @@ export class SmsService {
         submissionId: 'TEST-' + Date.now(),
         instituteId: 'TEST-INSTITUTE',
         creditsGranted: 5000,
-        verifiedAt: new Date().toISOString(),
+        verifiedAt: getCurrentSriLankaISO(),
         adminNotes: 'This is a test payment approved email. Your payment has been verified and credits have been added to your account.',
       });
 
@@ -2508,7 +2508,7 @@ export class SmsService {
         submissionId: 'TEST-' + Date.now(),
         instituteId: 'TEST-INSTITUTE',
         rejectionReason: 'Unclear payment slip - Unable to verify transaction details',
-        verifiedAt: new Date().toISOString(),
+        verifiedAt: getCurrentSriLankaISO(),
         adminNotes: 'This is a test payment rejected email. Please resubmit with a clear payment slip showing: Transaction ID, Amount, Date, and Bank details.',
       });
 

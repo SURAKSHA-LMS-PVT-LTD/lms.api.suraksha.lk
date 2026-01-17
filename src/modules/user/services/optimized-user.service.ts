@@ -11,6 +11,7 @@ import {
   UserAdminResponseDto
 } from '../dto/secure-user-response.dto';
 import { formatDate } from '../../../common/validators/date-format.validator';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class OptimizedUserService {
@@ -234,7 +235,7 @@ export class OptimizedUserService {
   async updateLastLogin(id: string): Promise<void> {
     await this.userRepository.update(
       { id },
-      { updatedAt: new Date() }
+      { updatedAt: now() }
     );
   }
 

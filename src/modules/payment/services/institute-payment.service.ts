@@ -11,7 +11,7 @@ import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums
 import { JwtPayload } from '../../../common/interfaces/jwt-request.interface';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
-import { nowTimestamp } from '../../../common/utils/timezone.util';
+import { nowTimestamp, now } from '../../../common/utils/timezone.util';
 import { 
   CreateInstitutePaymentDto, 
   UpdateInstitutePaymentDto,
@@ -583,7 +583,7 @@ export class InstitutePaymentService {
         ...updateDto,
         id: paymentId, // Ensure ID doesn't change
         instituteId, // Ensure institute ID doesn't change
-        updatedAt: new Date()
+        updatedAt: now()
       });
 
       // Load updated payment with relations
@@ -848,7 +848,7 @@ export class InstitutePaymentService {
         .filter(payment => {
           const userSubmission = userSubmissionsByPayment[payment.id];
           return (!userSubmission || userSubmission.status !== SubmissionStatus.VERIFIED) && 
-                 payment.dueDate > new Date();
+                 payment.dueDate > now();
         })
         .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
         .slice(0, 3)
