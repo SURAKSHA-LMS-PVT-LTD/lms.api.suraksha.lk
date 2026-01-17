@@ -2,7 +2,7 @@ const dateTransformer = {
   to: (value: Date | string | undefined) => value instanceof Date ? value : value ? new Date(value) : null,
   from: (value: Date | string | undefined) => value instanceof Date ? value : value ? new Date(value) : null,
 };
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 
@@ -71,10 +71,10 @@ export class InstituteSmsPaymentSubmissionEntity {
   @Column({ name: 'submitted_at', type: 'timestamp', transformer: dateTransformer })
   submittedAt: Date;
 
-   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
   toJSON() {
     return {

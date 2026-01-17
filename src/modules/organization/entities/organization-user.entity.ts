@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, PrimaryColumn, Column,  ManyToOne, JoinColumn, Index } from 'typeorm';
 import { OrganizationEntity } from './organization.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 
@@ -31,10 +31,10 @@ export class OrganizationUserEntity {
   @Column({ type: 'datetime', nullable: true, name: 'verifiedAt' })
   verifiedAt?: Date;
 
-  @CreateDateColumn({ type: 'datetime', precision: 3, name: 'createdAt' })
+  @Column({ type: 'datetime', precision: 3, name: 'createdAt' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 3, name: 'updatedAt' })
+  @Column({ type: 'datetime', precision: 3, name: 'updatedAt' })
   updatedAt: Date;
 
   // Relations

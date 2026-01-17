@@ -111,7 +111,7 @@ export class SecurityController {
           highRiskIPs: metrics.topThreats.filter(t => t.riskScore > 70).length
         }
       },
-      timestamp: new Date().toISOString()
+      timestamp: getCurrentSriLankaISO()
     };
   }
 

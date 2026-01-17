@@ -97,10 +97,10 @@ export class InstitutePaymentSubmission {
   @Column({ name: 'total_amount_paid', type: 'decimal', precision: 10, scale: 2 })
   totalAmountPaid: number;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relationships

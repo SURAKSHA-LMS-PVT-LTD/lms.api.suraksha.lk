@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  Index } from 'typeorm';
 import { SmsProviderResponse } from '../interfaces/sms-provider.interface';
 
 export enum SmsCampaignStatus {
@@ -71,10 +71,10 @@ export class SmsCampaignEntity {
   @Column({ name: 'initiated_by', type: 'bigint' })
   initiatedBy: string; // User ID who initiated the campaign
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   @Column({ name: 'sent_at', type: 'timestamp', nullable: true })

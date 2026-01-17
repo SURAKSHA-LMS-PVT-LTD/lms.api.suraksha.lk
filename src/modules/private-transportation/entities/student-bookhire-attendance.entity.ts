@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export enum AttendanceStatus {
   PRESENT = 'present',
@@ -53,9 +53,9 @@ export class StudentBookhireAttendanceEntity {
   @Column({ type: 'text', nullable: true })
   notes?: string;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

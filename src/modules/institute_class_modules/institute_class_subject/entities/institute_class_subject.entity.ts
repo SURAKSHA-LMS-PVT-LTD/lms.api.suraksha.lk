@@ -1,4 +1,4 @@
-  import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, PrimaryColumn, Index } from 'typeorm';
+  import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, PrimaryColumn, Index } from 'typeorm';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
@@ -60,10 +60,10 @@ export class InstituteClassSubjectEntity {
   @Column({ name: 'enrollment_key', type: 'varchar', length: 50, nullable: true, comment: 'Unique key for self-enrollment. Generated when enrollment is enabled' })
   enrollmentKey?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
 }

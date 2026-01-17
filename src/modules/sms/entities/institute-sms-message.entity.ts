@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index } from 'typeorm';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 
@@ -130,10 +130,10 @@ export class InstituteSmsMessageEntity {
   @Column({ name: 'notification_logged', type: 'boolean', default: false })
   notificationLogged: boolean; // Track if logged to InstituteNotifications
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relations

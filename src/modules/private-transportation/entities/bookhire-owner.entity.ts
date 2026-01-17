@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  Index, OneToMany } from 'typeorm';
 import { BookhireEntity } from './bookhire.entity';
 
 @Entity('bookhire_owners')
@@ -42,10 +42,10 @@ export class BookhireOwnerEntity {
   @Column({ type: 'timestamp', nullable: true })
   resetPasswordExpires?: Date;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relations

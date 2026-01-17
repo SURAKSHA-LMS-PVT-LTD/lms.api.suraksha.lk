@@ -1,5 +1,5 @@
 // src/students/entities/student.entity.ts
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToOne, Index } from 'typeorm';
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, OneToOne, Index } from 'typeorm';
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { BloodGroup } from '../enums/blood-group.enum';
@@ -48,10 +48,10 @@ export class StudentEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relations

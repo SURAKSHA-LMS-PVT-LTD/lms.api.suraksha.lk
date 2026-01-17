@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryColumn, Column,  Index } from 'typeorm';
 
 /**
  * SMS Credit Entity
@@ -27,9 +27,9 @@ export class SmsCreditEntity {
   @Column({ name: 'last_topup_at', type: 'timestamp', nullable: true })
   lastTopupAt: Date;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

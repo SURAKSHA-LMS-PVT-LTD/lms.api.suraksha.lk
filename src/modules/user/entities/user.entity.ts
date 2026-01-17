@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad } from 'typeorm';
 import { UserType } from '../enums/user-type.enum';
 import { Gender } from '../enums/gender.enum';
 import { SubscriptionPlan } from '../enums/subscription-plan.enum';
@@ -91,10 +91,10 @@ export class UserEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   @Column({ name: 'image_url', type: 'varchar', length: 255, nullable: true })

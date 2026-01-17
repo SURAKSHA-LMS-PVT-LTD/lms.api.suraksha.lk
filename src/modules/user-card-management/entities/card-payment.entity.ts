@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
 import { UserIdCardOrder } from './user-id-card-order.entity';
 import { CardPaymentType } from '../enums/payment-type.enum';
@@ -39,10 +39,10 @@ export class CardPayment {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relations

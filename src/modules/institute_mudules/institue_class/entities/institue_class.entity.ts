@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { Transform } from 'class-transformer';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
@@ -87,11 +87,11 @@ export class InstituteClassEntity {
   @Column({ name: 'require_teacher_verification', type: 'boolean', default: true })
   requireTeacherVerification: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   @Transform(({ value }) => value instanceof Date ? value.toISOString() : value)
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   @Transform(({ value }) => value instanceof Date ? value.toISOString() : value)
   updatedAt: Date;
 

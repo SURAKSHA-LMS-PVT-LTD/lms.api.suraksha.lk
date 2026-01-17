@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, OneToMany, Index } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
 import { Card } from './card.entity';
 import { CardPayment } from './card-payment.entity';
@@ -39,7 +39,7 @@ export class UserIdCardOrder {
   @Column({ name: 'rejected_reason', type: 'text', nullable: true })
   rejectedReason?: string;
 
-  @CreateDateColumn({ name: 'order_date', type: 'timestamp' })
+  @Column({ name: 'order_date', type: 'timestamp' })
   orderDate: Date;
 
   @Column({ name: 'delivery_address', type: 'text' })
@@ -66,10 +66,10 @@ export class UserIdCardOrder {
   @Column({ name: 'deactivated_at', type: 'timestamp', nullable: true })
   deactivatedAt?: Date;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relations

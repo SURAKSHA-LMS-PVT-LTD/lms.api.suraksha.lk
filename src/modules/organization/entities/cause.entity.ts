@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { OrganizationEntity } from './organization.entity';
 
 @Entity({ name: 'org_causes', synchronize: false }) // Don't modify existing table
@@ -26,10 +26,10 @@ export class CauseEntity {
   @Column({ type: 'bigint', name: 'organizationId' })
   organizationId: string;
 
-  @CreateDateColumn({ type: 'datetime', precision: 3, name: 'createdAt' })
+  @Column({ type: 'datetime', precision: 3, name: 'createdAt' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 3, name: 'updatedAt' })
+  @Column({ type: 'datetime', precision: 3, name: 'updatedAt' })
   updatedAt: Date;
 
   // Relations

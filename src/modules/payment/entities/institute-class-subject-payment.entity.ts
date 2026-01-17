@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany, ValueTransformer, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, OneToMany, ValueTransformer, AfterLoad } from 'typeorm';
 
 // Date transformer for ISO serialization
 const dateTransformer: ValueTransformer = {
@@ -72,10 +72,10 @@ export class InstituteClassSubjectPayment {
   @Column({ type: 'text', nullable: true })
   notes?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp', transformer: dateTransformer })
+  @Column({ name: 'created_at', type: 'timestamp', transformer: dateTransformer })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp', transformer: dateTransformer })
+  @Column({ name: 'updated_at', type: 'timestamp', transformer: dateTransformer })
   updatedAt: Date;
 
   // Relations

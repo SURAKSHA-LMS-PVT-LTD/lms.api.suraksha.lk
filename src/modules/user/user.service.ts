@@ -199,6 +199,11 @@ export class UsersService {
         userData.dateOfBirth = parsedDate;
       }
 
+      // Set Sri Lanka timezone timestamps
+      const timestamp = now();
+      userData.createdAt = timestamp;
+      userData.updatedAt = timestamp;
+
       // ✅ OPTIMIZED: Streamlined user creation 
       const user = transactionQueryRunner.manager.create(UserEntity, userData as any);
       const savedEntity = await transactionQueryRunner.manager.save(UserEntity, user);
@@ -376,6 +381,8 @@ export class UsersService {
         password: null, // Always NULL for new users
         imageUrl: null, // Always NULL initially
         isActive: dto.isActive === true || dto.isActive === false ? dto.isActive : true, // Ensure boolean, default true
+        createdAt: now(), // Sri Lanka timezone
+        updatedAt: now(), // Sri Lanka timezone
       };
 
       const userEntity = queryRunner.manager.create(UserEntity, userData as any);
@@ -447,6 +454,8 @@ export class UsersService {
           fatherId: cleanOptionalField(dto.studentData?.fatherId),
           motherId: cleanOptionalField(dto.studentData?.motherId),
           guardianId: cleanOptionalField(dto.studentData?.guardianId),
+          createdAt: now(), // Sri Lanka timezone
+          updatedAt: now(), // Sri Lanka timezone
         } as any;
 
         const studentEntity = queryRunner.manager.create(StudentEntity, studentData as any);
@@ -463,7 +472,9 @@ export class UsersService {
             userId: userId,
             parentType: ParentType.FATHER,
             reason: dto.studentData.fatherSkipReason,
-            isActive: true
+            isActive: true,
+            createdAt: now(),
+            updatedAt: now()
           });
           await queryRunner.manager.save(fatherSkipRecord);
         }
@@ -474,7 +485,9 @@ export class UsersService {
             userId: userId,
             parentType: ParentType.MOTHER,
             reason: dto.studentData.motherSkipReason,
-            isActive: true
+            isActive: true,
+            createdAt: now(),
+            updatedAt: now()
           });
           await queryRunner.manager.save(motherSkipRecord);
         }
@@ -485,7 +498,9 @@ export class UsersService {
             userId: userId,
             parentType: ParentType.GUARDIAN,
             reason: dto.studentData.guardianSkipReason,
-            isActive: true
+            isActive: true,
+            createdAt: now(),
+            updatedAt: now()
           });
           await queryRunner.manager.save(guardianSkipRecord);
         }
@@ -517,6 +532,8 @@ export class UsersService {
           workplace: cleanOptionalField(dto.parentData?.workplace),
           workPhone: cleanOptionalField(dto.parentData?.workPhone),
           educationLevel: cleanOptionalField(dto.parentData?.educationLevel),
+          createdAt: now(), // Sri Lanka timezone
+          updatedAt: now(), // Sri Lanka timezone
         } as any; // Using 'as any' temporarily for ParentEntity compatibility
 
         const parentEntity = queryRunner.manager.create(ParentEntity, parentData as any);
@@ -1297,6 +1314,7 @@ export class UsersService {
     }
     
     user.isActive = false;
+    user.updatedAt = now();
     const updatedUser = await this.userRepository.save(user);
 
     // 🔄 CRITICAL FIX: Refresh user cache after soft delete/deactivation
@@ -1316,6 +1334,7 @@ export class UsersService {
     }
     
     user.isActive = true;
+    user.updatedAt = now();
     const updatedUser = await this.userRepository.save(user);
 
     // 🔄 CRITICAL FIX: Refresh user cache after activation

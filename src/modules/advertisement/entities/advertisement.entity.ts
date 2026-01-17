@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn,  Index, AfterLoad } from 'typeorm';
 import { UserType } from '../../user/enums/user-type.enum';
 import { Gender } from '../../user/enums/gender.enum';
 import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
@@ -168,10 +168,10 @@ export class AdvertisementEntity {
   @Column({ type: 'varchar', length: 36, nullable: true })
   createdBy?: string;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // 🎯 Automatic URL transformation hook

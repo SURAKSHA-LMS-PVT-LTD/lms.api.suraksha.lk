@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  Index, AfterLoad } from 'typeorm';
 
 @Entity('lecture_documents')
 export class LectureDocumentEntity {
@@ -20,10 +20,10 @@ export class LectureDocumentEntity {
   @Column({ name: 'uploaded_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   uploadedAt: Date;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // 🎯 Automatic URL transformation hook
@@ -90,10 +90,10 @@ export class LectureEntity {
   @Column({ type: 'varchar', length: 36, nullable: true })
   createdBy?: string;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Additional fields for structured lectures

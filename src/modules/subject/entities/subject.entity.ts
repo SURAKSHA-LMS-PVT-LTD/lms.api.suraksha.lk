@@ -1,5 +1,5 @@
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  OneToMany, AfterLoad } from 'typeorm';
 
 export enum SubjectType {
   MAIN = 'MAIN',
@@ -52,10 +52,10 @@ export class SubjectEntity {
   @Column({ name: 'img_url', type: 'varchar', length: 255, nullable: true })
   imgUrl?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relationships

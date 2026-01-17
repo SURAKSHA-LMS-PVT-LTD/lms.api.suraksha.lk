@@ -1,7 +1,7 @@
 //this is file for manage relation betwween user and isntitute
 //this is specilaly need [get all institeues by user id,get all users by institute id,get all users by institue id filtering user type,assign user to institute,assign institute to user]
 //manage here status of user and institute like active,former,etc 
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn,  Index, AfterLoad } from 'typeorm';
 import { UserEntity } from '../../../user/entities/user.entity';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteUserStatus } from '../enums/institute-user-status.enum';
@@ -72,10 +72,10 @@ export class InstituteUserEntity {
   @Column({ name: 'image_verified_by', type: 'bigint', nullable: true })
   imageVerifiedBy?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })

@@ -2,7 +2,7 @@ const dateTransformer = {
   to: (value: Date | string | undefined) => value instanceof Date ? value : value ? new Date(value) : null,
   from: (value: Date | string | undefined) => value instanceof Date ? value : value ? new Date(value) : null,
 };
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteClassSubjectPayment } from './institute-class-subject-payment.entity';
 import { UserType } from '../../user/enums/user-type.enum';
@@ -61,10 +61,10 @@ export class InstituteClassSubjectPaymentSubmission {
   @Column({ type: 'text', nullable: true })
   notes?: string;
 
-  @CreateDateColumn({ name: 'uploaded_at', type: 'timestamp' })
+  @Column({ name: 'uploaded_at', type: 'timestamp' })
   uploadedAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
   toJSON() {
     return {

@@ -23,6 +23,6 @@ export class SimpleSuccessResponseDto {
   constructor(message: string) {
     this.success = true;
     this.message = message;
-    this.timestamp = new Date();
+    this.timestamp = now();
   }
 }

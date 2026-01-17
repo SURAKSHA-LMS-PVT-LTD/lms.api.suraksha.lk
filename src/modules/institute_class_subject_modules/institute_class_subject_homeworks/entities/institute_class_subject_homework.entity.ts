@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, ValueTransformer } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer } from 'typeorm';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
@@ -69,10 +69,10 @@ export class InstituteClassSubjectHomework {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp', transformer: dateTransformer })
+  @Column({ name: 'created_at', type: 'timestamp', transformer: dateTransformer })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp', transformer: dateTransformer })
+  @Column({ name: 'updated_at', type: 'timestamp', transformer: dateTransformer })
   updatedAt: Date;
 
   // Ensure dates are properly serialized when converting to JSON

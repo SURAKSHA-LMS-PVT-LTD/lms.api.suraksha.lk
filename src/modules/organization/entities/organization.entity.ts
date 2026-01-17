@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, OneToMany, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 
 export enum OrganizationType {
@@ -38,10 +38,10 @@ export class OrganizationEntity {
   @Column({ type: 'bigint', nullable: true, name: 'instituteId' })
   instituteId?: string;
 
-  @CreateDateColumn({ type: 'datetime', precision: 3, name: 'createdAt' })
+  @Column({ type: 'datetime', precision: 3, name: 'createdAt' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 3, name: 'updatedAt' })
+  @Column({ type: 'datetime', precision: 3, name: 'updatedAt' })
   updatedAt: Date;
 
   // Relations

@@ -647,7 +647,7 @@ export class InstitutePaymentService {
       const expiredPayments = await this.paymentRepository.count({
         where: { 
           instituteId,
-          dueDate: LessThan(new Date()),
+          dueDate: LessThan(now()),
           status: PaymentRequestStatus.ACTIVE
         }
       });
@@ -1447,13 +1447,13 @@ export class InstitutePaymentService {
     }
 
     // Update submission with verification details
-    const now = new Date();
+    const currentTime = now();
     submission.status = verifyDto.status as any;
     submission.verifiedBy = user.s;
-    submission.verifiedAt = now;
+    submission.verifiedAt = currentTime;
     submission.rejectionReason = verifyDto.status === 'REJECTED' ? verifyDto.rejectionReason : null;
     submission.notes = verifyDto.notes || null;
-    submission.updatedAt = now;
+    submission.updatedAt = currentTime;
 
     // Save the updated submission
     const updatedSubmission = await this.submissionRepository.save(submission);

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  Index, AfterLoad } from 'typeorm';
 
 @Entity('structured_lectures')
 @Index('idx_lecture_subject_grade', ['subjectId', 'grade'])
@@ -52,10 +52,10 @@ export class StructuredLectureEntity {
   @Column({ type: 'varchar', length: 36, nullable: true })
   createdBy?: string;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // 🎯 Automatic URL transformation hook

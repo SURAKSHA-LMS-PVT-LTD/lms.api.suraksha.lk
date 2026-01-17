@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  Index, ManyToOne, JoinColumn, AfterLoad } from 'typeorm';
 import { BookhireOwnerEntity } from './bookhire-owner.entity';
 
 @Entity('bookhires')
@@ -61,10 +61,10 @@ export class BookhireEntity {
   @Column({ type: 'text', nullable: true })
   rejectionReason?: string;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // Relation to BookhireOwner

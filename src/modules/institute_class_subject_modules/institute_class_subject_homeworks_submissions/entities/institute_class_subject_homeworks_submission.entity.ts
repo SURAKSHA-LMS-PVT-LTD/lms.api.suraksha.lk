@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, ValueTransformer, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer, AfterLoad } from 'typeorm';
 // Date transformer for ISO serialization
 const dateTransformer: ValueTransformer = {
   to: (value: Date | string | null) => value,
@@ -64,10 +64,10 @@ export class InstituteClassSubjectHomeworksSubmission {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
+  @Column({ name: 'created_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
   createdAt?: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
+  @Column({ name: 'updated_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
   updatedAt?: Date;
 
   toJSON() {
