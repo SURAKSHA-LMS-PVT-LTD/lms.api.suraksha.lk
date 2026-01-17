@@ -18,6 +18,7 @@ import { InstituteClassStudentEntity } from '../modules/institute_class_modules/
 import { StudentEntity } from '../modules/student/entities/student.entity';
 import { ParentEntity } from '../modules/parent/entities/parent.entity';
 import { InstituteUserStatus } from '../modules/institute_mudules/institue_user/enums/institute-user-status.enum';
+import { now } from '../common/utils/timezone.util';
 import {
   toCompactUserType,
 } from './interfaces/jwt-payload.interface';
@@ -1192,7 +1193,7 @@ export class AuthService {
     });
 
     // Calculate expiry date
-    const expiresAt = new Date();
+    const expiresAt = now();
     const daysMatch = refreshExpiresIn.match(/(\d+)d/);
     if (daysMatch) {
       expiresAt.setDate(expiresAt.getDate() + parseInt(daysMatch[1]));
@@ -1388,7 +1389,7 @@ export class AuthService {
   async cleanupExpiredTokens(): Promise<void> {
     try {
       await this.refreshTokenRepository.delete({
-        expiresAt: LessThan(new Date())
+        expiresAt: LessThan(now())
       });
     } catch (error) {
       this.logger.error(`Failed to cleanup expired tokens: ${error.message}`);

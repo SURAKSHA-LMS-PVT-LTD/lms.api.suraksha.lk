@@ -7,6 +7,7 @@ import { UserEntity } from '../../modules/user/entities/user.entity';
 import { PasswordResetTokenEntity } from '../entities/password-reset.entity';
 import { AsyncEmailService } from '../../common/services/async-email.service';
 import { AuthService } from '../auth.service';
+import { now, nowTimestamp } from '../../common/utils/timezone.util';
 
 export interface InitiatePasswordResetDto {
   email: string;
@@ -92,7 +93,7 @@ export class PasswordResetService {
       where: {
         email: dto.email,
         tokenType: 'PASSWORD_RESET',
-        createdAt: new Date(Date.now() - 15 * 60 * 1000) // Last 15 minutes
+        createdAt: new Date(nowTimestamp() - 15 * 60 * 1000) // Last 15 minutes
       }
     });
 
@@ -102,7 +103,7 @@ export class PasswordResetService {
 
     // Generate OTP
     const otp = this.generateOTP();
-    const expiresAt = new Date();
+    const expiresAt = now();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes expiry
 
     // Invalidate any existing tokens for this email
@@ -169,7 +170,8 @@ export class PasswordResetService {
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
-    if (resetToken.expiresAt < new Date()) {
+    const currentTime = now();
+    if (resetToken.expiresAt < currentTime) {
       await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true });
       throw new BadRequestException('OTP code has expired. Please request a new one.');
     }
@@ -180,7 +182,7 @@ export class PasswordResetService {
       message: 'OTP verified successfully. You can now reset your password.',
       data: {
         email: dto.email,
-        expiresInMinutes: Math.ceil((resetToken.expiresAt.getTime() - Date.now()) / (1000 * 60))
+        expiresInMinutes: Math.ceil((resetToken.expiresAt.getTime() - nowTimestamp()) / (1000 * 60))
       }
     };
   }
@@ -212,7 +214,8 @@ export class PasswordResetService {
       }
     });
 
-    if (!resetToken || resetToken.expiresAt < new Date()) {
+    const currentTime = now();
+    if (!resetToken || resetToken.expiresAt < currentTime) {
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
@@ -236,7 +239,7 @@ export class PasswordResetService {
     // Mark token as used
     await this.passwordResetTokenRepository.update(resetToken.id, {
       isUsed: true,
-      usedAt: new Date(),
+      usedAt: now(),
       ipAddress,
       userAgent
     });
@@ -311,7 +314,7 @@ export class PasswordResetService {
       success: true,
       message: 'Password changed successfully.',
       data: {
-        changedAt: new Date()
+        changedAt: now()
       }
     };
   }
@@ -348,7 +351,7 @@ export class PasswordResetService {
 
     // Generate OTP
     const otp = this.generateOTP();
-    const expiresAt = new Date();
+    const expiresAt = now();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes expiry
 
     // Invalidate any existing tokens for this email
@@ -431,7 +434,8 @@ export class PasswordResetService {
       }
     });
 
-    if (!resetToken || resetToken.expiresAt < new Date()) {
+    const currentTime = now();
+    if (!resetToken || resetToken.expiresAt < currentTime) {
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
@@ -454,7 +458,7 @@ export class PasswordResetService {
     // Mark token as used
     await this.passwordResetTokenRepository.update(resetToken.id, {
       isUsed: true,
-      usedAt: new Date(),
+      usedAt: now(),
       ipAddress,
       userAgent
     });
@@ -467,7 +471,7 @@ export class PasswordResetService {
       success: true,
       message: 'Password changed successfully.',
       data: {
-        changedAt: new Date()
+        changedAt: now()
       }
     };
   }
@@ -510,7 +514,7 @@ export class PasswordResetService {
   async cleanupExpiredTokens(): Promise<number> {
     
     const result = await this.passwordResetTokenRepository.delete({
-      expiresAt: new Date()
+      expiresAt: now()
     });
 
     return result.affected || 0;

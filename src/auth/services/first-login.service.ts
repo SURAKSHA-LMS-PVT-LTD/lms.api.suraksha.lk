@@ -12,6 +12,7 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
 // ✅ CACHING SERVICES
 import { UserManagementService } from '../../common/services/cache-user-management.service';
 import { CacheService } from '../../common/services/cache.service';
+import { now, nowTimestamp } from '../../common/utils/timezone.util';
 import { 
   InitiateFirstLoginDto, 
   VerifyOtpDto, 
@@ -69,7 +70,7 @@ export class FirstLoginService {
 
     // Generate OTP
     const otp = this.generateOTP();
-    const expiresAt = new Date();
+    const expiresAt = now();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes expiry
 
     // Invalidate any existing tokens for this email
@@ -158,7 +159,8 @@ export class FirstLoginService {
     }
 
     // Check if token is expired
-    if (new Date() > resetToken.expiresAt) {
+    const currentTime = now();
+    if (currentTime > resetToken.expiresAt) {
       await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true });
       throw new BadRequestException('OTP has expired. Please request a new one.');
     }
@@ -262,7 +264,7 @@ export class FirstLoginService {
     // Update user with password
     const updateData: Partial<UserEntity> = {
       password: hashedPassword,
-      updatedAt: new Date()
+      updatedAt: now()
     };
 
     // Phone number is completely optional now
@@ -339,7 +341,7 @@ export class FirstLoginService {
   ): Promise<FirstLoginResponseDto> {
 
     // Check rate limiting - max 3 OTP requests per hour
-    const oneHourAgo = new Date();
+    const oneHourAgo = now();
     oneHourAgo.setHours(oneHourAgo.getHours() - 1);
 
     const recentTokens = await this.passwordResetTokenRepository.count({
@@ -401,7 +403,7 @@ export class FirstLoginService {
     // Create simple JWT with only user ID
     const simplePayload = {
       sub: user.id,  // Standard JWT subject claim
-      iat: Math.floor(Date.now() / 1000)
+      iat: Math.floor(nowTimestamp() / 1000)
     };
 
     const access_token = this.jwtService.sign(simplePayload, { expiresIn: '30d' }); // 30 days for profile completion
@@ -575,7 +577,7 @@ export class FirstLoginService {
       updateData.password = await this.authService.hashPassword(dto.password);
     }
 
-    updateData.updatedAt = new Date();
+    updateData.updatedAt = now();
 
     // Update user
     await this.userRepository.update(userId, updateData);
@@ -711,7 +713,7 @@ export class FirstLoginService {
       updateData.imageUrl = imageUrl;
     }
 
-    updateData.updatedAt = new Date();
+    updateData.updatedAt = now();
 
     // Update user
     await this.userRepository.update(userId, updateData);
@@ -734,7 +736,7 @@ export class FirstLoginService {
     // Create simple JWT with only user ID
     const simplePayload = {
       sub: userId,  // Standard JWT subject claim
-      iat: Math.floor(Date.now() / 1000)
+      iat: Math.floor(nowTimestamp() / 1000)
     };
 
     const access_token = this.jwtService.sign(simplePayload, { expiresIn: '30d' });

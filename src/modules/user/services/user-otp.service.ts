@@ -259,7 +259,7 @@ export class UserOtpService {
 
     // Generate new OTP
     const otpCode = this.generateOtpCode();
-    const expiresAt = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
 
     const otp = this.otpRepository.create({
       phoneNumber: normalizedPhone,
