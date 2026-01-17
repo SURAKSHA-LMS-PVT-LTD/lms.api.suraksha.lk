@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InstitutesService } from './institute.service';
 import { InstitutesController } from './institute.controller';
+import { PublicInstitutesController } from './public-institute.controller';
 import { InstituteEntity } from './entities/institute.entity';
 import { InstitueClassService } from '../institute_mudules/institue_class/institue_class.service';
 import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
@@ -14,7 +15,7 @@ import { CacheModule } from '../../common/modules/cache.module';
     TypeOrmModule.forFeature([InstituteEntity, InstituteClassEntity]),
     CacheModule
   ],
-  controllers: [InstitutesController],
+  controllers: [InstitutesController, PublicInstitutesController],
   providers: [InstitutesService, InstitueClassService, InstituteClassRepository],
   exports: [InstitutesService], // Export service if other modules need it
 })
