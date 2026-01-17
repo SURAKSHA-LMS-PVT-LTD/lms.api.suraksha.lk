@@ -565,7 +565,7 @@ export class UsersService {
         try {
           // Import Institute entities dynamically
           const { InstituteEntity } = await import('../institute/entities/institute.entity');
-          const { InstituteUserEntity } = await import('../institute/entities/institute-user.entity');
+          const { InstituteUserEntity } = await import('../institute_mudules/institue_user/entities/institue_user.entity');
           
           // Validate institute exists and is active
           const institute = await queryRunner.manager.findOne(InstituteEntity, {

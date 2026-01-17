@@ -33,7 +33,29 @@ import { IsAllowedUserType } from '../../../common/validators/allowed-user-type.
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
 
 /**
- * 🎓 Student-specific data
+ * � Institute enrollment data
+ * When provided, user is automatically enrolled to institute as STUDENT after creation
+ * 
+ * SECURITY: User type is LOCKED as STUDENT - cannot enroll as other types
+ */
+export class InstituteEnrollmentDto {
+  @ApiProperty({ 
+    description: '🏫 Institute code (auto-generated format: INST-YYYYMMDD-XXX). User will be enrolled as STUDENT ONLY.',
+    example: 'INST-20260118-001',
+    maxLength: 50
+  })
+  @IsNotEmpty({ message: 'Institute code is required for enrollment' })
+  @IsString({ message: 'Institute code must be a string' })
+  @MaxLength(50, { message: 'Institute code cannot exceed 50 characters' })
+  @Transform(({ value }) => {
+    if (!value || typeof value !== 'string') return value;
+    return value.trim();
+  })
+  instituteCode: string;
+}
+
+/**
+ * �🎓 Student-specific data
  * Used when userType = USER or USER_WITHOUT_PARENT
  */
 export class StudentDataDto {
@@ -623,26 +645,4 @@ export class CreateUserComprehensiveDto {
   @Type(() => InstituteEnrollmentDto)
   @IsObject({ message: 'institute must be an object' })
   institute?: InstituteEnrollmentDto;
-}
-
-/**
- * 🏫 Institute enrollment data
- * When provided, user is automatically enrolled to institute as STUDENT after creation
- * 
- * SECURITY: User type is LOCKED as STUDENT - cannot enroll as other types
- */
-export class InstituteEnrollmentDto {
-  @ApiProperty({ 
-    description: '🏫 Institute code (auto-generated format: INST-YYYYMMDD-XXX). User will be enrolled as STUDENT ONLY.',
-    example: 'INST-20260118-001',
-    maxLength: 50
-  })
-  @IsNotEmpty({ message: 'Institute code is required for enrollment' })
-  @IsString({ message: 'Institute code must be a string' })
-  @MaxLength(50, { message: 'Institute code cannot exceed 50 characters' })
-  @Transform(({ value }) => {
-    if (!value || typeof value !== 'string') return value;
-    return value.trim();
-  })
-  instituteCode: string;
 }
