@@ -46,9 +46,9 @@ This public API allows external partners and applications to register educationa
 ## 🔒 Security Features
 
 ### 1. API Key Authentication
-All requests require a valid API key in the header:
+All requests require a valid API key in the Authorization header as a Bearer token:
 ```http
-x-api-key: your-api-key-here
+Authorization: Bearer your-api-key-here
 ```
 
 ### 2. Rate Limiting (Throttling)
@@ -94,16 +94,16 @@ Include the API key in every request header:
 
 **cURL:**
 ```bash
-curl -X POST https://your-api.com/api/public/institutes \
-  -H "x-api-key: YOUR_API_KEY" \
+curl -X POST https://your-api.com/public/institutes \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json"
 ```
 
 **JavaScript:**
 ```javascript
-fetch('https://your-api.com/api/public/institutes', {
+fetch('https://your-api.com/public/institutes', {
   headers: {
-    'x-api-key': 'YOUR_API_KEY',
+    'Authorization': 'Bearer YOUR_API_KEY',
     'Content-Type': 'application/json'
   }
 })
@@ -112,10 +112,10 @@ fetch('https://your-api.com/api/public/institutes', {
 **Python:**
 ```python
 headers = {
-    'x-api-key': 'YOUR_API_KEY',
+    'Authorization': 'Bearer YOUR_API_KEY',
     'Content-Type': 'application/json'
 }
-requests.post('https://your-api.com/api/public/institutes', headers=headers)
+requests.post('https://your-api.com/public/institutes', headers=headers)
 ```
 
 ---
@@ -138,16 +138,16 @@ requests.post('https://your-api.com/api/public/institutes', headers=headers)
 
 ```
 1. Get signed upload URL
-   POST /api/public/upload/signed-url
+   POST /public/upload/generate-signed-url
    ↓
-2. Upload file to Google Cloud Storage
-   PUT <signed-url>
+2. Upload file to AWS S3
+   POST <uploadUrl> (multipart/form-data)
    ↓
 3. Verify and publish the file
-   POST /api/public/upload/verify
+   POST /public/upload/verify-and-publish
    ↓
 4. Create institute with image URLs
-   POST /api/public/institutes
+   POST /public/institutes
    ↓
 5. ✅ Registration complete!
 ```
@@ -158,11 +158,11 @@ requests.post('https://your-api.com/api/public/institutes', headers=headers)
 
 ### 1. Create Institute
 
-**Endpoint:** `POST /api/public/institutes`
+**Endpoint:** `POST /public/institutes`
 
 **Headers:**
 ```http
-x-api-key: YOUR_API_KEY
+Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -175,12 +175,24 @@ Content-Type: application/json
   "systemContactPhoneNumber": "+94712345678",
   "systemContactEmail": "system@royalcollege.lk",
   "address": "123 Galle Road",
+  "city": "Colombo",
+  "state": "Western Province",
   "district": "COLOMBO",
   "province": "WESTERN",
-  "country": "SRI_LANKA",
-  "logoUrl": "https://storage.googleapis.com/...",
-  "loadingGifUrl": "https://storage.googleapis.com/...",
-  "imageUrl": "https://storage.googleapis.com/..."
+  "country": "Sri Lanka",
+  "pinCode": "00700",
+  "shortName": "RCC",
+  "phone": "+94112345678",
+  "logoUrl": "https://your-cdn.com/logo.png",
+  "loadingGifUrl": "https://your-cdn.com/loading.gif",
+  "imageUrl": "https://your-cdn.com/banner.jpg",
+  "primaryColorCode": "#003366",
+  "secondaryColorCode": "#FFD700",
+  "vision": "To be the leading educational institution",
+  "mission": "Providing quality education for all",
+  "websiteUrl": "https://royalcollege.lk",
+  "facebookPageUrl": "https://facebook.com/royalcollege",
+  "youtubeChannelUrl": "https://youtube.com/@royalcollege"
 }
 ```
 
@@ -191,40 +203,69 @@ Content-Type: application/json
 - `systemContactEmail` - System notification email
 
 **Optional Fields:**
-- `logoUrl` - Institute logo URL
-- `loadingGifUrl` - Loading animation URL
-- `imageUrl` - Banner/cover image URL
-- `address` - Physical address
-- `district` - District from enum (COLOMBO, GAMPAHA, etc.)
-- `province` - Province from enum (WESTERN, CENTRAL, etc.)
-- `country` - Country from enum (default: SRI_LANKA)
+- `shortName` - Short name (max 20 characters)
+- `phone` - Primary phone number
+- `address` - Physical address (max 200 characters)
+- `city` - City name (max 50 characters)
+- `state` - State/Province name (max 50 characters)
+- `district` - District from enum (COLOMBO, GAMPAHA, KANDY, etc.)
+- `province` - Province from enum (WESTERN, CENTRAL, SOUTHERN, etc.)
+- `country` - Country from enum (use: "Sri Lanka" not "SRI_LANKA")
+- `pinCode` - Postal/ZIP code (max 10 characters)
+- `logoUrl` - Institute logo URL (max 255 characters)
+- `loadingGifUrl` - Loading animation URL (max 255 characters)
+- `imageUrl` - Banner/cover image URL (max 255 characters)
+- `primaryColorCode` - Primary theme color (hex format: #RRGGBB)
+- `secondaryColorCode` - Secondary theme color (hex format: #RRGGBB)
+- `vision` - Institute vision statement (text)
+- `mission` - Institute mission statement (text)
+- `websiteUrl` - Official website URL (max 255 characters)
+- `facebookPageUrl` - Facebook page URL (max 255 characters)
+- `youtubeChannelUrl` - YouTube channel URL (max 255 characters)
 
 **Success Response (201 Created):**
 ```json
 {
   "success": true,
-  "message": "Institute created successfully",
-  "requestId": "uuid-v4-here",
+  "message": "Institute created successfully with auto-generated code",
+  "requestId": "CREATE-INST-A3318EB0",
   "data": {
-    "institute": {
-      "id": 123,
-      "code": "INST-20250120-001",
-      "name": "Royal College Colombo",
-      "email": "admin@royalcollege.lk",
-      "systemContactPhoneNumber": "+94712345678",
-      "systemContactEmail": "system@royalcollege.lk",
-      "logoUrl": "https://storage.googleapis.com/...",
-      "loadingGifUrl": null,
-      "imageUrl": null,
-      "address": "123 Galle Road",
-      "district": "COLOMBO",
-      "province": "WESTERN",
-      "country": "SRI_LANKA",
-      "createdAt": "2025-01-20T10:30:00.000Z"
-    }
+    "name": "Royal College Colombo",
+    "code": "INST-20250120-001",
+    "email": "admin@royalcollege.lk",
+    "systemContactEmail": "s***m@royalcollege.lk",
+    "systemContactPhoneNumber": "+947*****678",
+    "country": "Sri Lanka",
+    "district": "COLOMBO",
+    "province": "WESTERN",
+    "logoUrl": null,
+    "loadingGifUrl": null,
+    "imageUrls": null,
+    "imageUrl": null,
+    "shortName": null,
+    "phone": null,
+    "address": "123 Galle Road",
+    "city": null,
+    "state": null,
+    "pinCode": null,
+    "primaryColorCode": null,
+    "secondaryColorCode": null,
+    "vision": null,
+    "mission": null,
+    "websiteUrl": null,
+    "facebookPageUrl": null,
+    "youtubeChannelUrl": null,
+    "id": "103",
+    "type": "school",
+    "isDefault": false,
+    "isActive": true,
+    "createdAt": null,
+    "updatedAt": null
   }
 }
 ```
+
+**Note:** Sensitive fields (email, phone) are partially masked in responses for security.
 
 **Error Response (400 Bad Request):**
 ```json
@@ -253,11 +294,11 @@ Content-Type: application/json
 
 ### 2. Get Signed Upload URL
 
-**Endpoint:** `POST /api/public/upload/signed-url` or `GET /api/public/upload/signed-url`
+**Endpoint:** `POST /public/upload/generate-signed-url` or `GET /public/upload/get-signed-url`
 
 **Headers:**
 ```http
-x-api-key: YOUR_API_KEY
+Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -283,16 +324,19 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "signedUrl": "https://storage.googleapis.com/bucket/institute-images/uuid.png?X-Goog-Signature=...",
-  "publicUrl": "https://storage.googleapis.com/bucket/institute-images/uuid.png",
+  "uploadUrl": "https://bucket.s3.region.amazonaws.com/",
+  "publicUrl": "https://your-cdn.com/institute-images/uuid.png",
   "relativePath": "institute-images/uuid.png",
-  "expiresIn": 600000,
-  "uploadInstructions": {
-    "method": "PUT",
-    "headers": {
-      "Content-Type": "image/png"
-    },
-    "maxSize": 5242880
+  "fields": {
+    "key": "institute-images/uuid.png",
+    "Content-Type": "image/png",
+    "Policy": "base64-encoded-policy",
+    "X-Amz-Signature": "signature"
+  },
+  "instructions": {
+    "step1": "POST uploadUrl with multipart/form-data",
+    "step2": "Include all fields + file",
+    "step3": "Call verify-and-publish with relativePath"
   }
 }
 ```
@@ -303,29 +347,32 @@ Content-Type: application/json
 
 ---
 
-### 3. Upload File to Cloud Storage
+### 3. Upload File to AWS S3
 
-**Endpoint:** Use the `signedUrl` from previous step
+**Endpoint:** Use the `uploadUrl` from previous step
 
-**Method:** `PUT`
+**Method:** `POST`
 
-**Headers:**
-```http
-Content-Type: image/png
-```
+**Content-Type:** `multipart/form-data`
 
-**Body:** Binary file data
+**Body:** Form data with all fields + file
 
 **Example (JavaScript):**
 ```javascript
 const file = document.getElementById('fileInput').files[0];
+const formData = new FormData();
 
-const uploadResponse = await fetch(signedUrl, {
-  method: 'PUT',
-  headers: {
-    'Content-Type': file.type
-  },
-  body: file
+// Add all fields from response
+Object.keys(response.fields).forEach(key => {
+  formData.append(key, response.fields[key]);
+});
+
+// Add file last
+formData.append('file', file);
+
+const uploadResponse = await fetch(response.uploadUrl, {
+  method: 'POST',
+  body: formData
 });
 
 if (uploadResponse.ok) {
@@ -337,11 +384,11 @@ if (uploadResponse.ok) {
 
 ### 4. Verify and Publish Upload
 
-**Endpoint:** `POST /api/public/upload/verify`
+**Endpoint:** `POST /public/upload/verify-and-publish`
 
 **Headers:**
 ```http
-x-api-key: YOUR_API_KEY
+Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -374,8 +421,8 @@ Content-Type: application/json
 
 **cURL:**
 ```bash
-curl -X POST https://your-api.com/api/public/institutes \
-  -H "x-api-key: YOUR_API_KEY" \
+curl -X POST https://your-api.com/public/institutes \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Institute",
@@ -385,7 +432,7 @@ curl -X POST https://your-api.com/api/public/institutes \
     "address": "Colombo",
     "district": "COLOMBO",
     "province": "WESTERN",
-    "country": "SRI_LANKA"
+    "country": "Sri Lanka"
   }'
 ```
 
@@ -1367,10 +1414,10 @@ This API is proprietary. Unauthorized use, distribution, or reverse engineering 
 ## 🎓 Quick Reference Card
 
 ```
-BASE URL: https://your-api.com/api/public
+BASE URL: https://your-api.com/public
 
 AUTHENTICATION:
-Header: x-api-key: YOUR_API_KEY
+Header: Authorization: Bearer YOUR_API_KEY
 
 RATE LIMITS:
 - Create Institute: 3/min
@@ -1384,23 +1431,28 @@ REQUIRED FIELDS:
 ✓ systemContactEmail
 
 OPTIONAL FIELDS:
-□ logoUrl
-□ loadingGifUrl
-□ imageUrl
-□ address
-□ district
-□ province
-□ country (default: SRI_LANKA)
+□ Basic Info: shortName, phone, pinCode
+□ Location: address, city, state, district, province, country
+□ Branding: logoUrl, loadingGifUrl, imageUrl
+□ Theme: primaryColorCode, secondaryColorCode
+□ About: vision, mission
+□ Social: websiteUrl, facebookPageUrl, youtubeChannelUrl
 
 ENDPOINTS:
-POST   /institutes          Create institute
-POST   /upload/signed-url   Get upload URL
-POST   /upload/verify       Verify upload
+POST   /institutes                      Create institute
+POST   /upload/generate-signed-url      Get upload URL
+GET    /upload/get-signed-url           Get upload URL (query params)
+POST   /upload/verify-and-publish       Verify upload
 
 FILE LIMITS:
 - Max size: 5MB
 - Types: jpg, png, gif, webp, svg
 - Expiry: 10 minutes
+- Upload: AWS S3 multipart/form-data
+
+RESPONSE FIELDS:
+All fields returned including: id, code, type, isActive, isDefault,
+createdAt, updatedAt (sensitive fields partially masked)
 ```
 
 ---

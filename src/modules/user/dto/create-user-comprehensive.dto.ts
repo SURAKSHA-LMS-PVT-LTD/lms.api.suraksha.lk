@@ -609,4 +609,40 @@ export class CreateUserComprehensiveDto {
   @Type(() => ParentDataDto)
   @IsObject({ message: 'parentData must be an object' })
   parentData?: ParentDataDto;
+
+  // ============================================
+  // INSTITUTE ENROLLMENT (Optional - Auto-enrolls user as STUDENT)
+  // ============================================
+  
+  @ApiPropertyOptional({ 
+    description: '🏫 Institute enrollment data (OPTIONAL - If provided, user will be auto-enrolled as STUDENT)',
+    type: InstituteEnrollmentDto
+  })
+  @IsOptional()
+  @ValidateNested({ message: 'institute must be a valid object' })
+  @Type(() => InstituteEnrollmentDto)
+  @IsObject({ message: 'institute must be an object' })
+  institute?: InstituteEnrollmentDto;
+}
+
+/**
+ * 🏫 Institute enrollment data
+ * When provided, user is automatically enrolled to institute as STUDENT after creation
+ * 
+ * SECURITY: User type is LOCKED as STUDENT - cannot enroll as other types
+ */
+export class InstituteEnrollmentDto {
+  @ApiProperty({ 
+    description: '🏫 Institute code (auto-generated format: INST-YYYYMMDD-XXX). User will be enrolled as STUDENT ONLY.',
+    example: 'INST-20260118-001',
+    maxLength: 50
+  })
+  @IsNotEmpty({ message: 'Institute code is required for enrollment' })
+  @IsString({ message: 'Institute code must be a string' })
+  @MaxLength(50, { message: 'Institute code cannot exceed 50 characters' })
+  @Transform(({ value }) => {
+    if (!value || typeof value !== 'string') return value;
+    return value.trim();
+  })
+  instituteCode: string;
 }

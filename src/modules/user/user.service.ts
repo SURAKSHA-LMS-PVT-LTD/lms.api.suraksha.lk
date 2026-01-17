@@ -551,6 +551,78 @@ export class UsersService {
       }
 
       // ============================================
+      // STEP 5.5: Auto-Enroll to Institute (if provided)
+      // ============================================
+      if (dto.institute?.instituteCode) {
+        this.logger.log(`🏫 Institute enrollment requested with code: ${dto.institute.instituteCode}`);
+        
+        try {
+          // Import Institute entities dynamically
+          const { InstituteEntity } = await import('../institute/entities/institute.entity');
+          const { InstituteUserEntity } = await import('../institute/entities/institute-user.entity');
+          
+          // Validate institute exists and is active
+          const institute = await queryRunner.manager.findOne(InstituteEntity, {
+            where: { 
+              code: dto.institute.instituteCode,
+              isActive: true 
+            }
+          });
+          
+          if (!institute) {
+            throw new BadRequestException({
+              message: `Institute with code '${dto.institute.instituteCode}' not found or is inactive`,
+              field: 'instituteCode',
+              suggestion: 'Please verify the institute code is correct and the institute is active'
+            });
+          }
+          
+          this.logger.log(`✅ Institute found: ${institute.name} (ID: ${institute.id})`);
+          
+          // Check if user is already enrolled
+          const existingEnrollment = await queryRunner.manager.findOne(InstituteUserEntity, {
+            where: {
+              userId: userId,
+              instituteId: institute.id
+            }
+          });
+          
+          if (existingEnrollment) {
+            this.logger.warn(`⚠️ User ${userId} is already enrolled in institute ${institute.id}`);
+          } else {
+            // Create enrollment record - FIXED as STUDENT type
+            // SECURITY: User type is LOCKED as STUDENT - cannot enroll as other types
+            const enrollmentData = {
+              userId: userId,
+              instituteId: institute.id,
+              userType: 'student', // FIXED: Always enroll as STUDENT
+              isActive: true
+            };
+            
+            const enrollment = queryRunner.manager.create(InstituteUserEntity, enrollmentData);
+            await queryRunner.manager.save(enrollment);
+            
+            this.logger.log(`✅ User ${userId} successfully enrolled as STUDENT in institute ${institute.name} (${dto.institute.instituteCode})`);
+          }
+          
+        } catch (enrollmentError) {
+          this.logger.error(`❌ Institute enrollment failed: ${enrollmentError.message}`);
+          
+          // Re-throw BadRequestException as-is
+          if (enrollmentError instanceof BadRequestException) {
+            throw enrollmentError;
+          }
+          
+          // Wrap other errors
+          throw new BadRequestException({
+            message: `Failed to enroll user to institute`,
+            detail: enrollmentError.message,
+            suggestion: 'Please verify the institute code is valid and try again'
+          });
+        }
+      }
+
+      // ============================================
       // STEP 6: Commit transaction
       // ============================================
       await queryRunner.commitTransaction();

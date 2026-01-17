@@ -76,6 +76,10 @@ All features have been successfully implemented and verified:
     "workplace": "ABC Corporation",
     "workPhone": "+94112345678",
     "educationLevel": "Bachelor of Engineering"
+  },
+  
+  "institute": {
+    "instituteCode": "INST-20260118-001"
   }
 }
 ```
@@ -102,6 +106,35 @@ All features have been successfully implemented and verified:
    - Mother skip reason provided → Record created with `parent_type='mother'`
    - Guardian skip reason provided → Record created with `parent_type='guardian'`
    - Multiple skip reasons → Multiple records created
+
+---
+
+### Institute Enrollment Logic:
+
+1. **When creating a comprehensive user**, if `institute.instituteCode` is provided:
+   - System validates the institute code exists
+   - User is created first with all provided data
+   
+2. **After successful user creation**, the service automatically:
+   - Enrolls the user to the specified institute
+   - **User type is FIXED as STUDENT** (cannot enroll as other types)
+   - Creates enrollment record linking user to institute
+   - Activates the enrollment immediately
+
+3. **Important Rules**:
+   - ✅ **Only STUDENT enrollment allowed** - No matter what userType is provided, institute enrollment is always as STUDENT
+   - ✅ Institute code must be valid (e.g., INST-20260118-001)
+   - ✅ Institute must exist and be active
+   - ✅ Enrollment happens automatically after user creation succeeds
+   - ❌ Cannot enroll as TEACHER, ADMIN, or other types through this API
+
+4. **Example Flow**:
+   ```
+   Step 1: User created successfully → User ID: 12345
+   Step 2: Institute code validated → Institute found: "Royal College"
+   Step 3: Auto-enrollment → User 12345 enrolled as STUDENT in Royal College
+   Step 4: Response returned with user data + enrollment confirmation
+   ```
 
 ---
 
@@ -135,6 +168,13 @@ CREATE TABLE reason_of_parent_skip (
 - `fatherSkipReason` (string, text) - Reason for not providing father info
 - `motherSkipReason` (string, text) - Reason for not providing mother info
 - `guardianSkipReason` (string, text) - Reason for not providing guardian info
+
+### Optional Fields Added (Institute Enrollment):
+- `institute.instituteCode` (string) - Institute code for auto-enrollment (e.g., "INST-20260118-001")
+  - **Automatically enrolls user as STUDENT to the specified institute**
+  - **Enrollment type is FIXED as STUDENT** - no other types allowed
+  - Institute must exist and be active
+  - Creates enrollment record after successful user creation
 
 ---
 
@@ -173,6 +213,32 @@ CREATE TABLE reason_of_parent_skip (
 The comprehensive user create API is now fully functional with:
 - ✅ Name with initials support
 - ✅ Parent skip reason tracking
+- ✅ **Auto-enrollment to institute as STUDENT**
+- ✅ **Fixed enrollment type (STUDENT only)** - security enforced
 - ✅ Complete validation
 - ✅ Database integrity maintained
 - ✅ All error handling in place
+
+---
+
+## 🔐 Security & Business Rules
+
+### Institute Enrollment Security:
+
+**CRITICAL RULE**: When enrolling via comprehensive user create:
+- ✅ **User type is LOCKED as STUDENT**
+- ❌ **Cannot enroll as TEACHER** through this API
+- ❌ **Cannot enroll as ADMIN** through this API
+- ❌ **Cannot enroll as PARENT** through this API
+- ✅ **Only STUDENT enrollment allowed** for security and data integrity
+
+**Why this restriction?**
+- Teachers and admins should be enrolled through separate administrative processes
+- Prevents unauthorized privilege escalation
+- Maintains proper role-based access control
+- Ensures only students can self-register or be registered publicly
+
+**For other user types:**
+- Use dedicated admin APIs for teacher enrollment
+- Use dedicated admin APIs for staff enrollment
+- Use role-specific enrollment endpoints with proper authorization
