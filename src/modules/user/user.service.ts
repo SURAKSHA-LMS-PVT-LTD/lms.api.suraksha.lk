@@ -352,32 +352,93 @@ export class UsersService {
       // 🔧 CRITICAL FIX: Convert empty strings to null for unique fields
       // MySQL unique indexes treat empty strings as duplicate values
       
-      // Helper function to clean unique field values
-      const cleanUniqueField = (value: any): string | null => {
+      // Helper function to clean ALL field values - convert empty strings to null
+      const cleanToNull = (value: any): any => {
         if (value === null || value === undefined) return null;
-        const stringValue = String(value).trim();
-        return stringValue === '' || stringValue === '0' ? null : stringValue;
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          return trimmed === '' || trimmed === '0' ? null : trimmed;
+        }
+        return value;
       };
+      
+      // Alias for backward compatibility with unique fields
+      const cleanUniqueField = cleanToNull;
+
+      // 🔧 FIX: Ensure nameWithInitials is ALWAYS valid - with multiple fallback layers
+      let nameWithInitials = dto.nameWithInitials;
+      
+      // Layer 1: Check if provided value is valid (not empty after cleaning)
+      if (!nameWithInitials || (typeof nameWithInitials === 'string' && nameWithInitials.trim() === '')) {
+        this.logger.warn(`⚠️ SERVICE FALLBACK: nameWithInitials is empty, attempting to generate...`);
+        
+        // Layer 2: Try to generate from firstName + lastName
+        const firstName = dto.firstName?.trim();
+        const lastName = dto.lastName?.trim();
+        
+        if (firstName && lastName) {
+          // 🔧 IMPROVED: Sri Lankan naming convention
+          // "anura kumara" + "disse aiya kumara" -> "A.K.D.A. Kumara"
+          // All words become initials EXCEPT the last word which is shown in full
+          
+          // Get all words from firstName and lastName
+          const firstNameWords = firstName.split(/\s+/).filter(word => word.length > 0);
+          const lastNameWords = lastName.split(/\s+/).filter(word => word.length > 0);
+          
+          // Generate initials from firstName
+          const firstNameInitials = firstNameWords
+            .map(word => word.charAt(0).toUpperCase() + '.')
+            .join('');
+          
+          // Generate initials from lastName EXCEPT the last word
+          const lastNameInitials = lastNameWords.slice(0, -1)
+            .map(word => word.charAt(0).toUpperCase() + '.')
+            .join('');
+          
+          // Get the last word of lastName in full (capitalized)
+          const finalWord = lastNameWords[lastNameWords.length - 1];
+          const capitalizedFinalWord = finalWord.charAt(0).toUpperCase() + finalWord.slice(1).toLowerCase();
+          
+          // Combine all parts
+          const allInitials = firstNameInitials + lastNameInitials;
+          nameWithInitials = `${allInitials} ${capitalizedFinalWord}`;
+          
+          this.logger.warn(`⚠️ SERVICE FALLBACK: Auto-generated nameWithInitials: "${nameWithInitials}" from firstName + lastName`);
+        } else if (firstName) {
+          // Layer 3: Use firstName only if lastName is missing
+          nameWithInitials = firstName;
+          this.logger.warn(`⚠️ SERVICE FALLBACK: Using firstName as nameWithInitials: "${nameWithInitials}"`);
+        } else {
+          // Layer 4: Critical failure - cannot proceed
+          throw new BadRequestException(
+            'nameWithInitials is required and cannot be generated. Please provide either nameWithInitials or firstName in the request.'
+          );
+        }
+      } else {
+        // Value provided from controller - just trim it
+        nameWithInitials = typeof nameWithInitials === 'string' ? nameWithInitials.trim() : nameWithInitials;
+        this.logger.log(`✅ Using nameWithInitials from request: "${nameWithInitials}"`);
+      }
 
       const userData: UserData = {
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        nameWithInitials: dto.nameWithInitials,
-        email: dto.email?.toLowerCase().trim(),
-        phoneNumber: dto.phoneNumber,
+        firstName: cleanToNull(dto.firstName),
+        lastName: cleanToNull(dto.lastName),
+        nameWithInitials: cleanToNull(nameWithInitials),
+        email: dto.email ? cleanToNull(dto.email.toLowerCase().trim()) : null,
+        phoneNumber: cleanToNull(dto.phoneNumber),
         userType: dto.userType,
         dateOfBirth: dto.dateOfBirth ? (typeof dto.dateOfBirth === 'string' ? parseDate(dto.dateOfBirth) : dto.dateOfBirth) : undefined,
-        gender: dto.gender,
-        nic: cleanUniqueField(dto.nic), // ✅ Convert empty to null
-        birthCertificateNo: cleanUniqueField(dto.birthCertificateNo), // ✅ Convert empty to null
-        addressLine1: dto.addressLine1,
-        addressLine2: dto.addressLine2,
-        city: dto.city,
-        district: dto.district,
-        province: dto.province,
-        postalCode: dto.postalCode,
-        country: dto.country,
-        idUrl: dto.idUrl,
+        gender: cleanToNull(dto.gender),
+        nic: cleanToNull(dto.nic), // ✅ Convert empty to null
+        birthCertificateNo: cleanToNull(dto.birthCertificateNo), // ✅ Convert empty to null
+        addressLine1: cleanToNull(dto.addressLine1),
+        addressLine2: cleanToNull(dto.addressLine2),
+        city: cleanToNull(dto.city),
+        district: cleanToNull(dto.district),
+        province: cleanToNull(dto.province),
+        postalCode: cleanToNull(dto.postalCode),
+        country: cleanToNull(dto.country),
+        idUrl: cleanToNull(dto.idUrl),
         password: null, // Always NULL for new users
         imageUrl: null, // Always NULL initially
         isActive: dto.isActive === true || dto.isActive === false ? dto.isActive : true, // Ensure boolean, default true
@@ -430,30 +491,19 @@ export class UsersService {
         // ⚡ OPTIMIZED: Use provided parent IDs directly, let database validate foreign keys
         // No unnecessary SELECT queries - database will throw error if IDs are invalid
         
-        // Handle blood group - the DTO already normalizes it to the correct format
-        let bloodGroupValue = null;
-        if (dto.studentData?.bloodGroup) {
-          // DTO transformer already converted it to the correct format (A+, B+, etc.)
-          bloodGroupValue = dto.studentData.bloodGroup;
-        }
-        
-        // Clean parent IDs and phone numbers - DTO transformers should handle this, but double-check
-        const cleanOptionalField = (value: any): string | null => {
-          if (!value || value === 'null' || value === 'undefined') return null;
-          const cleaned = String(value).trim();
-          return cleaned === '' ? null : cleaned;
-        };
+        // Handle blood group - clean empty strings
+        let bloodGroupValue = cleanToNull(dto.studentData?.bloodGroup);
         
         const studentData: StudentData = {
           userId: userId,
-          studentId: cleanOptionalField(dto.studentData?.studentId),
-          emergencyContact: cleanOptionalField(dto.studentData?.emergencyContact),
-          medicalConditions: dto.studentData?.medicalConditions || null,
-          allergies: dto.studentData?.allergies || null,
+          studentId: cleanToNull(dto.studentData?.studentId),
+          emergencyContact: cleanToNull(dto.studentData?.emergencyContact),
+          medicalConditions: cleanToNull(dto.studentData?.medicalConditions),
+          allergies: cleanToNull(dto.studentData?.allergies),
           bloodGroup: bloodGroupValue,
-          fatherId: cleanOptionalField(dto.studentData?.fatherId),
-          motherId: cleanOptionalField(dto.studentData?.motherId),
-          guardianId: cleanOptionalField(dto.studentData?.guardianId),
+          fatherId: cleanToNull(dto.studentData?.fatherId),
+          motherId: cleanToNull(dto.studentData?.motherId),
+          guardianId: cleanToNull(dto.studentData?.guardianId),
           createdAt: now(), // Sri Lanka timezone
           updatedAt: now(), // Sri Lanka timezone
         } as any;
@@ -466,12 +516,13 @@ export class UsersService {
         // ============================================
         const { ReasonOfParentSkipEntity, ParentType } = await import('../student/entities/reason-of-parent-skip.entity');
         
-        // Father skip reason
-        if (dto.studentData?.fatherSkipReason) {
+        // Father skip reason - clean and check if not empty
+        const fatherSkipReason = cleanToNull(dto.studentData?.fatherSkipReason);
+        if (fatherSkipReason) {
           const fatherSkipRecord = queryRunner.manager.create(ReasonOfParentSkipEntity, {
             userId: userId,
             parentType: ParentType.FATHER,
-            reason: dto.studentData.fatherSkipReason,
+            reason: fatherSkipReason,
             isActive: true,
             createdAt: now(),
             updatedAt: now()
@@ -479,12 +530,13 @@ export class UsersService {
           await queryRunner.manager.save(fatherSkipRecord);
         }
 
-        // Mother skip reason
-        if (dto.studentData?.motherSkipReason) {
+        // Mother skip reason - clean and check if not empty
+        const motherSkipReason = cleanToNull(dto.studentData?.motherSkipReason);
+        if (motherSkipReason) {
           const motherSkipRecord = queryRunner.manager.create(ReasonOfParentSkipEntity, {
             userId: userId,
             parentType: ParentType.MOTHER,
-            reason: dto.studentData.motherSkipReason,
+            reason: motherSkipReason,
             isActive: true,
             createdAt: now(),
             updatedAt: now()
@@ -492,12 +544,13 @@ export class UsersService {
           await queryRunner.manager.save(motherSkipRecord);
         }
 
-        // Guardian skip reason
-        if (dto.studentData?.guardianSkipReason) {
+        // Guardian skip reason - clean and check if not empty
+        const guardianSkipReason = cleanToNull(dto.studentData?.guardianSkipReason);
+        if (guardianSkipReason) {
           const guardianSkipRecord = queryRunner.manager.create(ReasonOfParentSkipEntity, {
             userId: userId,
             parentType: ParentType.GUARDIAN,
-            reason: dto.studentData.guardianSkipReason,
+            reason: guardianSkipReason,
             isActive: true,
             createdAt: now(),
             updatedAt: now()
@@ -515,23 +568,19 @@ export class UsersService {
         // Convert occupation from enum key to value, or set to null if invalid
         let occupationValue = null;
         if (dto.parentData?.occupation) {
-          const occupationKey = dto.parentData.occupation.toUpperCase().trim();
-          occupationValue = Occupation[occupationKey as keyof typeof Occupation] || null;
+          const cleanedOccupation = cleanToNull(dto.parentData.occupation);
+          if (cleanedOccupation) {
+            const occupationKey = cleanedOccupation.toUpperCase().trim();
+            occupationValue = Occupation[occupationKey as keyof typeof Occupation] || null;
+          }
         }
-        
-        // Clean optional fields helper (reuse from student section)
-        const cleanOptionalField = (value: any): string | null => {
-          if (!value || value === 'null' || value === 'undefined') return null;
-          const cleaned = String(value).trim();
-          return cleaned === '' ? null : cleaned;
-        };
         
         const parentData: ParentData = {
           userId: userId, // 🔧 FIX: Set the userId to link parent to user
           occupation: occupationValue,
-          workplace: cleanOptionalField(dto.parentData?.workplace),
-          workPhone: cleanOptionalField(dto.parentData?.workPhone),
-          educationLevel: cleanOptionalField(dto.parentData?.educationLevel),
+          workplace: cleanToNull(dto.parentData?.workplace),
+          workPhone: cleanToNull(dto.parentData?.workPhone),
+          educationLevel: cleanToNull(dto.parentData?.educationLevel),
           createdAt: now(), // Sri Lanka timezone
           updatedAt: now(), // Sri Lanka timezone
         } as any; // Using 'as any' temporarily for ParentEntity compatibility

@@ -400,19 +400,140 @@ export class UsersController {
     // Helper function to clean empty strings to null or undefined
     const cleanField = (value: any): any => {
       try {
+        // Handle explicit null/undefined/empty string values
         if (value === '' || value === null || value === undefined || value === 'null' || value === 'undefined') {
           return undefined; // undefined so it won't be saved to DB
         }
         if (typeof value === 'string') {
           const trimmed = value.trim();
+          // Return undefined for empty strings after trimming
           return trimmed === '' ? undefined : trimmed;
         }
+        // For booleans, numbers, etc., return as-is
         return value;
       } catch (error) {
         this.logger.warn(`[${requestId}] Failed to clean field value, returning undefined: ${error.message}`);
         return undefined;
       }
     };
+    
+    // Helper to recursively clean all fields in an object
+    const cleanObject = (obj: any): any => {
+      if (!obj || typeof obj !== 'object') return obj;
+      const cleaned: any = {};
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          cleaned[key] = cleanField(obj[key]);
+        }
+      }
+      return cleaned;
+    };
+    
+    // 🔧 CRITICAL: Clean firstName and lastName FIRST before using them
+    dto.firstName = cleanField(dto.firstName);
+    dto.lastName = cleanField(dto.lastName);
+    
+    // 🔧 FIX: Clean and validate nameWithInitials - auto-generate if empty
+    dto.nameWithInitials = cleanField(dto.nameWithInitials);
+    if (!dto.nameWithInitials) {
+      const firstName = dto.firstName || '';
+      const lastName = dto.lastName || '';
+      
+      if (firstName && lastName) {
+        // 🔧 IMPROVED: Sri Lankan naming convention
+        // "anura kumara" + "disse aiya kumara" -> "A.K.D.A. Kumara"
+        // All words become initials EXCEPT the last word which is shown in full
+        
+        // Get all words from firstName and lastName
+        const firstNameWords = firstName.split(/\s+/).filter(word => word.length > 0);
+        const lastNameWords = lastName.split(/\s+/).filter(word => word.length > 0);
+        
+        // Generate initials from firstName
+        const firstNameInitials = firstNameWords
+          .map(word => word.charAt(0).toUpperCase() + '.')
+          .join('');
+        
+        // Generate initials from lastName EXCEPT the last word
+        const lastNameInitials = lastNameWords.slice(0, -1)
+          .map(word => word.charAt(0).toUpperCase() + '.')
+          .join('');
+        
+        // Get the last word of lastName in full (capitalized)
+        const finalWord = lastNameWords[lastNameWords.length - 1];
+        const capitalizedFinalWord = finalWord.charAt(0).toUpperCase() + finalWord.slice(1).toLowerCase();
+        
+        // Combine all parts
+        const allInitials = firstNameInitials + lastNameInitials;
+        dto.nameWithInitials = `${allInitials} ${capitalizedFinalWord}`;
+        
+        this.logger.log(
+          `[${requestId}] 🔧 AUTO-GENERATED nameWithInitials: "${dto.nameWithInitials}" from firstName "${firstName}" and lastName "${lastName}"`
+        );
+      } else if (firstName) {
+        dto.nameWithInitials = firstName;
+        this.logger.log(
+          `[${requestId}] 🔧 Using firstName as nameWithInitials: "${dto.nameWithInitials}"`
+        );
+      } else {
+        throw new BadRequestException('nameWithInitials is empty and cannot be generated - firstName is required');
+      }
+    } else {
+      this.logger.log(
+        `[${requestId}] ✅ nameWithInitials received from request: "${dto.nameWithInitials}"`
+      );
+    }
+    
+    // 🔧 Clean other main user fields - convert empty strings to undefined
+    dto.email = cleanField(dto.email);
+    dto.phoneNumber = cleanField(dto.phoneNumber);
+    dto.nic = cleanField(dto.nic);
+    dto.birthCertificateNo = cleanField(dto.birthCertificateNo);
+    dto.dateOfBirth = cleanField(dto.dateOfBirth);
+    dto.addressLine1 = cleanField(dto.addressLine1);
+    dto.addressLine2 = cleanField(dto.addressLine2);
+    dto.city = cleanField(dto.city);
+    dto.postalCode = cleanField(dto.postalCode);
+    dto.imageUrl = cleanField(dto.imageUrl);
+    dto.idUrl = cleanField(dto.idUrl);
+    dto.instituteId = cleanField(dto.instituteId);
+    
+    // 🔧 FIX: Normalize enum values to match backend expectations
+    // Clean enum fields first to handle empty strings
+    dto.district = cleanField(dto.district);
+    dto.province = cleanField(dto.province);
+    dto.country = cleanField(dto.country);
+    dto.language = cleanField(dto.language);
+    dto.gender = cleanField(dto.gender);
+    
+    // District: Must be uppercase (e.g., "Colombo" -> "COLOMBO")
+    if (dto.district && typeof dto.district === 'string') {
+      dto.district = dto.district.toUpperCase().replace(/\s+/g, '_');
+    }
+    
+    // Province: Must be uppercase with underscores (e.g., "Western" -> "WESTERN")
+    if (dto.province && typeof dto.province === 'string') {
+      dto.province = dto.province.toUpperCase().replace(/\s+/g, '_');
+    }
+    
+    // Country: Backend expects "Sri Lanka" (with space, proper case)
+    if (dto.country && typeof dto.country === 'string') {
+      const countryLower = dto.country.toLowerCase().trim();
+      if (countryLower === 'sri lanka' || countryLower === 'srilanka' || countryLower === 'sri_lanka') {
+        dto.country = 'Sri Lanka';
+      }
+    }
+    
+    // Language: Should already be E, S, or T (single letter)
+    if (dto.language && typeof dto.language === 'string') {
+      dto.language = dto.language.toUpperCase().trim();
+      // If still empty after trim, set to undefined
+      if (dto.language === '') dto.language = undefined;
+    }
+    
+    // Gender: Should be MALE, FEMALE, or OTHER
+    if (dto.gender && typeof dto.gender === 'string') {
+      dto.gender = dto.gender.toUpperCase().trim();
+    }
     
     if (!dto.studentData && (dto.userType === UserType.USER || dto.userType === UserType.USER_WITHOUT_PARENT)) {
       try {
@@ -426,6 +547,12 @@ export class UsersController {
           fatherId: cleanField(dto.fatherId),
           motherId: cleanField(dto.motherId),
           guardianId: cleanField(dto.guardianId),
+          fatherPhoneNumber: cleanField(dto.fatherPhoneNumber),
+          motherPhoneNumber: cleanField(dto.motherPhoneNumber),
+          guardianPhoneNumber: cleanField(dto.guardianPhoneNumber),
+          fatherSkipReason: cleanField(dto.fatherSkipReason),
+          motherSkipReason: cleanField(dto.motherSkipReason),
+          guardianSkipReason: cleanField(dto.guardianSkipReason),
         };
         // Clean up flat fields
         delete dto.studentId;
@@ -466,6 +593,17 @@ export class UsersController {
         this.logger.error(`[${requestId}] Failed to restructure parentData: ${error.message}`);
         throw new BadRequestException('Failed to process parent data - please check your input format');
       }
+    }
+    
+    // 🔧 Clean nested objects if they exist (when sent as JSON)
+    if (dto.studentData && typeof dto.studentData === 'object') {
+      dto.studentData = cleanObject(dto.studentData);
+    }
+    if (dto.parentData && typeof dto.parentData === 'object') {
+      dto.parentData = cleanObject(dto.parentData);
+    }
+    if (dto.institute && typeof dto.institute === 'object') {
+      dto.institute = cleanObject(dto.institute);
     }
     
     // Validate userType-specific data requirements
