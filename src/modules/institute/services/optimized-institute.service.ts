@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { InstituteEntity } from '../entities/institute.entity';
+import { now } from '../../../common/utils/timezone.util';
 import { Country } from '../../user/enums/country.enum';
 import {
   CreateInstituteDto,
@@ -195,7 +196,12 @@ export class OptimizedInstituteService {
       }
     }
 
-    const institute = this.instituteRepository.create(createInstituteDto);
+    const timestamp = now();
+    const institute = this.instituteRepository.create({
+      ...createInstituteDto,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
     const savedInstitute = await this.instituteRepository.save(institute);
     
     return new InstituteDetailResponseDto(savedInstitute);

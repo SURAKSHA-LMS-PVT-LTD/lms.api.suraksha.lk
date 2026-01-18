@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Like } from 'typeorm';
 import { InstituteClassSubjectLecture } from '../entities/institute_class_subject_lecture.entity';
+import { now } from '../../../../common/utils/timezone.util';
 import { 
   ILectureRepository,
   ILectureCriteria,
@@ -70,6 +71,7 @@ export class LectureRepository implements ILectureRepository {
   }
 
   async create(data: ICreateLecture): Promise<InstituteClassSubjectLecture> {
+    const timestamp = now();
     const entity = this.repository.create({
       ...data,
       startTime: new Date(data.startTime),
@@ -78,6 +80,8 @@ export class LectureRepository implements ILectureRepository {
       lectureType: data.lectureType || 'physical',
       isRecorded: data.isRecorded || false,
       isActive: data.isActive !== undefined ? data.isActive : true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     return await this.repository.save(entity);
   }
@@ -119,6 +123,7 @@ export class LectureRepository implements ILectureRepository {
   }
 
   async bulkCreate(data: ICreateLecture[]): Promise<InstituteClassSubjectLecture[]> {
+    const timestamp = now();
     const entities = data.map(item => 
       this.repository.create({
         ...item,
@@ -128,6 +133,8 @@ export class LectureRepository implements ILectureRepository {
         lectureType: item.lectureType || 'physical',
         isRecorded: item.isRecorded || false,
         isActive: item.isActive !== undefined ? item.isActive : true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       })
     );
     return await this.repository.save(entities);

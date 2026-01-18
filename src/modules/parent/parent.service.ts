@@ -95,10 +95,13 @@ export class ParentsService {
 
       // Create parent with user relation
       const { user, ...parentData } = createParentDto;
+      const timestamp = now();
       const parentEntity = this.parentRepository.create({ 
         ...parentData, 
         userId: savedUser.id,
-        user: savedUser 
+        user: savedUser,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
       const savedParent = await queryRunner.manager.save(ParentEntity, parentEntity);
 
@@ -265,9 +268,12 @@ export class ParentsService {
 
     // Create parent
     const { user, ...parentData } = createParentDto;
+    const timestamp = now();
     const parentEntity = this.parentRepository.create({ 
       ...parentData, 
-      userId: savedUser.id
+      userId: savedUser.id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     const savedParent = await queryRunner.manager.save(ParentEntity, parentEntity);
 

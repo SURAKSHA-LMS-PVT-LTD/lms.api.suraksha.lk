@@ -50,6 +50,7 @@ export class CardPaymentService {
     }
 
     // Create payment submission
+    const timestamp = now();
     const payment = this.paymentRepository.create({
       orderId,
       submissionUrl: submitPaymentDto.submissionUrl,
@@ -58,6 +59,8 @@ export class CardPaymentService {
       paymentReference: submitPaymentDto.paymentReference,
       notes: submitPaymentDto.notes,
       paymentStatus: 'PENDING',
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
 
     const savedPayment = await this.paymentRepository.save(payment);

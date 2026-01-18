@@ -5,6 +5,7 @@ import { InstituteClassEntity } from '../entities/institue_class.entity';
 import { IInstituteClass, IInstituteClassRepository } from '../interfaces/institute-class.interface';
 import { ClassFilterDto } from '../dto/class-filter.dto';
 import { PaginatedResponseDto } from '@common/dto/paginated-response.dto';
+import { now } from '../../../../common/utils/timezone.util';
 
 
 @Injectable()
@@ -15,7 +16,12 @@ export class InstituteClassRepository implements IInstituteClassRepository {
   ) {}
 
   async create(instituteClass: Partial<IInstituteClass>): Promise<IInstituteClass> {
-    const newClass = this.classRepository.create(instituteClass);
+    const timestamp = now();
+    const newClass = this.classRepository.create({
+      ...instituteClass,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
     return await this.classRepository.save(newClass);
   }
 

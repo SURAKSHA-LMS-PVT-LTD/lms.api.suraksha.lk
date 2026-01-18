@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectResaultDto } from './dto/create-institute_class_subject_resault.dto';
 import { CreateBulkResultsDto } from './dto/create-bulk-results.dto';
 import { UpdateInstituteClassSubjectResaultDto } from './dto/update-institute_class_subject_resault.dto';
@@ -18,6 +19,7 @@ export class InstituteClassSubjectResaultsService {
 
   async create(createDto: CreateInstituteClassSubjectResaultDto): Promise<InstituteClassSubjectResaultResponseDto> {
     try {
+      const timestamp = now();
       const resultData = {
         instituteId: createDto.instituteId,
         classId: createDto.classId,
@@ -28,6 +30,8 @@ export class InstituteClassSubjectResaultsService {
         grade: createDto.grade,
         remarks: createDto.remarks,
         isActive: createDto.isActive ?? true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       };
 
       const result = this.resultRepository.create(resultData);
@@ -239,6 +243,7 @@ export class InstituteClassSubjectResaultsService {
       }
 
       // Create individual result objects from bulk structure
+      const timestamp = now();
       const resultPromises = bulkDto.results.map(async (studentResult) => {
         const resultData = {
           instituteId: bulkDto.instituteId,
@@ -250,6 +255,8 @@ export class InstituteClassSubjectResaultsService {
           grade: studentResult.grade,
           remarks: studentResult.remarks,
           isActive: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
 
         const result = this.resultRepository.create(resultData);

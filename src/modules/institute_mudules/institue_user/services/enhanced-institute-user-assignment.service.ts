@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity } from '../../../user/entities/user.entity';
+import { now } from '../../../../common/utils/timezone.util';
 import { UserRoleValidationService } from '../../../user/services/user-role-validation.service';
 import { InstituteUserEntity } from '../entities/institue_user.entity';
 import { InstituteUserType } from '../enums/institute-user-type.enum';
@@ -84,11 +85,14 @@ export class EnhancedInstituteUserAssignmentService {
     }
     
     // Create new assignment
+    const timestamp = now();
     const newAssignment = this.instituteUserRepository.create({
       userId,
       instituteId,
       instituteUserType,
-      status
+      status,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     
     const saved = await this.instituteUserRepository.save(newAssignment);

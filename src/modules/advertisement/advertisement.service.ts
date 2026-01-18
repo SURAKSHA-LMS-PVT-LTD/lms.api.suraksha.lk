@@ -14,6 +14,7 @@ import { ParentEntity } from '../parent/entities/parent.entity';
 import { AttendanceNotificationService } from '../attendance/services/attendance-notification.service';
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class AdvertisementService {
@@ -103,6 +104,7 @@ export class AdvertisementService {
 
   async create(createDto: CreateAdvertisementDto): Promise<AdvertisementEntity> {
     try {
+      const timestamp = now();
       const advertisement = this.advertisementRepository.create({
         title: createDto.title,
         accessKey: createDto.accessKey,
@@ -133,6 +135,8 @@ export class AdvertisementService {
         budget: createDto.budget,
         costPerClick: createDto.costPerClick,
         costPerImpression: createDto.costPerImpression,
+        createdAt: timestamp,
+        updatedAt: timestamp,
         createdBy: createDto.createdBy || 'system'
       });
 

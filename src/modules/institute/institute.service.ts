@@ -12,6 +12,7 @@ import {
   PaginatedInstituteResponseDto
 } from './dto/index.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class InstitutesService {
@@ -58,12 +59,15 @@ export class InstitutesService {
       ...instituteData
     } = createInstituteDto;
 
+    const timestamp = now();
     const institute = this.instituteRepository.create({
       ...instituteData,
       imageUrl: dtoImageUrl || imageUrl || null,
       imageUrls: dtoImageUrls || imageUrls || null,
       logoUrl: dtoLogoUrl || logoUrl || null,
       loadingGifUrl: dtoLoadingGifUrl || loadingGifUrl || null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     return this.instituteRepository.save(institute);
   }

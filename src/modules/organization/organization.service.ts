@@ -15,6 +15,7 @@ import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/in
 import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { EnhancedJwtPayload, ROLE_BITMASKS, USER_TYPE_COMPACT } from '../../auth/interfaces/enhanced-jwt-payload.interface';
+import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class OrganizationService {
@@ -348,6 +349,7 @@ export class OrganizationService {
     }
 
     // Create organization
+    const timestamp = now();
     const organization = this.organizationRepository.create({
       name,
       type,
@@ -357,6 +359,8 @@ export class OrganizationService {
       enabledEnrollments: enabledEnrollments ?? true,
       imageUrl: finalImageUrl, // Use uploaded image URL from DTO or parameter
       instituteId: instituteId || null,
+      createdAt: timestamp,
+      updatedAt: timestamp
     });
 
     const savedOrganization = await this.organizationRepository.save(organization);
@@ -372,11 +376,14 @@ export class OrganizationService {
         throw new BadRequestException(`Creator user with ID ${userId} not found`);
       }
 
+      const timestamp2 = now();
       const orgUser = this.organizationUserRepository.create({
         organizationId: savedOrganization.organizationId,
         userId: userId,
         role: OrganizationRole.MEMBER,
         isVerified: true,
+        createdAt: timestamp2,
+        updatedAt: timestamp2
       });
 
       await this.organizationUserRepository.save(orgUser);
@@ -387,21 +394,27 @@ export class OrganizationService {
       });
 
       if (!omSystemUser) {
+        const timestamp3 = now();
         omSystemUser = this.userRepository.create({
           email: 'org.manager@system.local',
           firstName: 'Organization',
           lastName: 'Manager',
           isActive: true,
           password: null,
+          createdAt: timestamp3,
+          updatedAt: timestamp3
         });
         await this.userRepository.save(omSystemUser);
       }
 
+      const timestamp4 = now();
       const orgUser = this.organizationUserRepository.create({
         organizationId: savedOrganization.organizationId,
         userId: omSystemUser.id,
         role: OrganizationRole.PRESIDENT,
         isVerified: true,
+        createdAt: timestamp4,
+        updatedAt: timestamp4
       });
 
       await this.organizationUserRepository.save(orgUser);
@@ -1196,6 +1209,7 @@ export class OrganizationService {
 
     // Step 6: Create institute user assignment
     try {
+      const timestamp = now();
       const instituteUser = this.instituteUserRepository.create({
         userId,
         instituteId,
@@ -1204,6 +1218,8 @@ export class OrganizationService {
         status: shouldAutoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
         verifiedBy: shouldAutoVerify ? requestingUserId : null,
         verifiedAt: shouldAutoVerify ? new Date() : null,
+        createdAt: timestamp,
+        updatedAt: timestamp
       });
 
       const savedAssignment = await this.instituteUserRepository.save(instituteUser);
@@ -1355,6 +1371,7 @@ export class OrganizationService {
         }
 
         // Create assignment
+        const timestamp = now();
         const instituteUser = this.instituteUserRepository.create({
           userId,
           instituteId,
@@ -1362,6 +1379,8 @@ export class OrganizationService {
           status: shouldAutoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
           verifiedBy: shouldAutoVerify ? requestingUserId : null,
           verifiedAt: shouldAutoVerify ? new Date() : null,
+          createdAt: timestamp,
+          updatedAt: timestamp
         });
 
         await this.instituteUserRepository.save(instituteUser);

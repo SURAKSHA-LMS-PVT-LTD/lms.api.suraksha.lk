@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, Not, IsNull } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectHomeworksSubmissionDto } from './dto/create-institute_class_subject_homeworks_submission.dto';
 import { UpdateInstituteClassSubjectHomeworksSubmissionDto } from './dto/update-institute_class_subject_homeworks_submission.dto';
 import { QueryInstituteClassSubjectHomeworksSubmissionDto } from './dto/query-institute_class_subject_homeworks_submission.dto';
@@ -23,6 +24,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
   async create(createDto: CreateInstituteClassSubjectHomeworksSubmissionDto): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
     try {
+      const timestamp = now();
       const submissionData = {
         homeworkId: createDto.homeworkId,
         studentId: createDto.studentId,
@@ -31,6 +33,8 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         teacherCorrectionFileUrl: createDto.teacherCorrectionFileUrl || '',
         remarks: createDto.remarks || null,
         isActive: createDto.isActive ?? true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       };
 
       const submission = this.submissionRepository.create(submissionData);
@@ -376,12 +380,15 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission, this.cloudStorageService);
       } else {
         // Create new submission
+        const timestamp = now();
         const newSubmission = this.submissionRepository.create({
           homeworkId: submissionData.homeworkId,
           studentId: submissionData.studentId,
           fileUrl: submissionData.fileUrl,
           submissionDate: submissionData.submissionDate,
-          isActive: submissionData.isActive
+          isActive: submissionData.isActive,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         });
 
         const savedSubmission = await this.submissionRepository.save(newSubmission);

@@ -13,6 +13,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from '../../../auth/auth.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class BookhireOwnerService {
@@ -49,12 +50,15 @@ export class BookhireOwnerService {
     const hashedPassword = await this.authService.hashPassword(createBookhireOwnerDto.password);
 
     // Create owner with proper field mapping
+    const timestamp = now();
     const owner = this.bookhireOwnerRepository.create({
       name: createBookhireOwnerDto.ownerName, // Map ownerName to name
       phone: createBookhireOwnerDto.phoneNumber, // Map phoneNumber to phone
       email: createBookhireOwnerDto.email.toLowerCase(),
       password: hashedPassword,
       address: createBookhireOwnerDto.address,
+      createdAt: timestamp,
+      updatedAt: timestamp
       // Note: businessName, city, state, pincode, businessLicense are not in entity
     });
 

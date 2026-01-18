@@ -7,6 +7,7 @@ import { UserEntity } from '../../user/entities/user.entity';
 import { AssignStudentSubjectsDto, AssignBasketSubjectDto } from '../dto/assign-student-subjects.dto';
 import { StudentSubjectAssignmentResponseDto, StudentSubjectsResponseDto } from '../dto/student-subject-response.dto';
 import { SubjectResponseDto } from '../dto/subject-response.dto';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class StudentSubjectService {
@@ -54,12 +55,15 @@ export class StudentSubjectService {
       });
 
       if (!existing) {
+        const timestamp = now();
         const assignment = this.assignmentRepository.create({
           studentId: dto.studentId,
           instituteId: dto.instituteId,
           classId: dto.classId,
           subjectId: subject.id,
-          isActive: true
+          isActive: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         });
         assignments.push(assignment);
       }
@@ -113,12 +117,15 @@ export class StudentSubjectService {
       });
     } else {
       // Create new assignment
+      const timestamp = now();
       const assignment = this.assignmentRepository.create({
         studentId: dto.studentId,
         instituteId: dto.instituteId,
         classId: dto.classId,
         subjectId: dto.selectedSubjectId,
-        isActive: true
+        isActive: true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       const savedAssignment = await this.assignmentRepository.save(assignment);

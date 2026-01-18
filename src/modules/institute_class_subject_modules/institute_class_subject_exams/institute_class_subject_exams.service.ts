@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { plainToClass } from 'class-transformer';
 import { CreateInstituteClassSubjectExamDto } from './dto/create-institute_class_subject_exam.dto';
 import { UpdateInstituteClassSubjectExamDto } from './dto/update-institute_class_subject_exam.dto';
@@ -96,6 +97,7 @@ export class InstituteClassSubjectExamsService {
       }
 
       // Create exam entity
+      const timestamp = now();
       const exam = this.examRepository.create({
         instituteId: createDto.instituteId,
         classId: createDto.classId,
@@ -116,6 +118,8 @@ export class InstituteClassSubjectExamsService {
         createdBy: validatedCreatedBy,
         toWhom: createDto.toWhom || 'everyone',
         isActive: createDto.isActive ?? true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       const savedExam = await this.examRepository.save(exam);

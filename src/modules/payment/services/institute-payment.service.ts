@@ -168,6 +168,7 @@ export class InstitutePaymentService {
     const userEntity = await this.getUserEntity(user);
 
     // Create real payment entity with security validation
+    const timestamp = now();
     const payment = this.paymentRepository.create({
       instituteId,
       createdBy: userId,
@@ -183,6 +184,8 @@ export class InstitutePaymentService {
       lateFeeAmount: createDto.lateFeeAmount,
       lateFeeAfterDays: createDto.lateFeeAfterDays,
       autoReminderEnabled: createDto.autoReminderEnabled ?? true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
       reminderDaysBefore: createDto.reminderDaysBefore ?? 3,
       notes: createDto.notes,
       isActive: true
@@ -956,6 +959,7 @@ export class InstitutePaymentService {
       const receiptFileName = receiptFileUrl ? receiptFileUrl.split('/').pop() : undefined;
 
       // Create submission - ALWAYS defaults to PENDING - NEVER auto-verified
+      const timestamp = now();
       const submission = this.submissionRepository.create({
         paymentId,
         submittedBy: user.s,
@@ -970,7 +974,9 @@ export class InstitutePaymentService {
         status: SubmissionStatus.PENDING, // ALWAYS PENDING - never auto-verified
         lateFeeApplied,
         totalAmountPaid: createSubmissionDto.paymentAmount + lateFeeApplied,
-        paymentRemarks: createSubmissionDto.paymentRemarks
+        paymentRemarks: createSubmissionDto.paymentRemarks,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       const savedSubmission = await this.submissionRepository.save(submission);

@@ -11,6 +11,7 @@ import {
   StudentBookhireEnrollmentListResponseDto
 } from '../dto/student-bookhire-enrollment.dto';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { now } from '../../../common/utils/timezone.util';
 @Injectable()
 export class StudentBookhireEnrollmentService {
   constructor(
@@ -46,6 +47,7 @@ export class StudentBookhireEnrollmentService {
     if (existingEnrollment) {
       throw new ConflictException('Student is already enrolled in this bookhire');
     }
+    const timestamp = now();
     const enrollment = this.enrollmentRepository.create({
       studentId: createEnrollmentDto.studentId,
       bookhireId: createEnrollmentDto.bookhireId,
@@ -56,7 +58,9 @@ export class StudentBookhireEnrollmentService {
       monthlyFee: createEnrollmentDto.monthlyFee || bookhire.pricePerMonth || 0,
       isActive: true,
       approvedAt: new Date(), // Set approval timestamp
-      approvedBy: createEnrollmentDto.studentId // Auto-approved by system
+      approvedBy: createEnrollmentDto.studentId, // Auto-approved by system
+      createdAt: timestamp,
+      updatedAt: timestamp
     });
     const savedEnrollment = await this.enrollmentRepository.save(enrollment);
     return savedEnrollment;

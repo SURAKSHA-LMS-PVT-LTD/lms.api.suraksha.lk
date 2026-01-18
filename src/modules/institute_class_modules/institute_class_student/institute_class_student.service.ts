@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassStudentDto, BulkCreateInstituteClassStudentDto } from './dto/create-institute_class_student.dto';
 import { UpdateInstituteClassStudentDto } from './dto/update-institute_class_student.dto';
 import { ClassParentResponseDto, ClassParentQueryDto, PaginatedClassParentResponseDto } from './dto/class-parent-response.dto';
@@ -276,13 +277,16 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     }
 
     try {
+      const timestamp = now();
       const enrollmentDataToSave = {
         instituteId,
         classId,
         studentUserId,
         isActive: true,
         isVerified: false, // Always requires verification for self-enrollment
-        enrollmentMethod: 'self_enrollment'
+        enrollmentMethod: 'self_enrollment',
+        createdAt: timestamp,
+        updatedAt: timestamp,
       };
 
       return await this.repository.create(enrollmentDataToSave);
@@ -357,6 +361,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         }
 
         // Assign student with automatic verification for admin/teacher assignments
+        const timestamp = now();
         const enrollmentData = {
           instituteId,
           classId,
@@ -365,7 +370,9 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
           isVerified: options?.skipVerification !== false, // Default to verified for admin assignments
           enrollmentMethod: 'teacher_assigned',
           verifiedBy: assignedBy,
-          verifiedAt: new Date()
+          verifiedAt: new Date(),
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
 
         await this.repository.create(enrollmentData);
@@ -563,13 +570,16 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     }
 
     try {
+      const timestamp = now();
       const enrollmentData = {
         instituteId,
         classId,
         studentUserId,
         isActive: true,
         isVerified: false, // Requires verification for self-enrollment
-        enrollmentMethod: 'self_enrollment'
+        enrollmentMethod: 'self_enrollment',
+        createdAt: timestamp,
+        updatedAt: timestamp,
       };
 
       return await this.repository.create(enrollmentData);

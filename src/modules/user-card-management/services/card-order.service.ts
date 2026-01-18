@@ -59,6 +59,7 @@ export class CardOrderService {
     expiryDate.setDate(expiryDate.getDate() + card.validityDays);
 
     // Create order
+    const timestamp = now();
     const order = this.orderRepository.create({
       userId,
       cardId: card.id,
@@ -68,6 +69,9 @@ export class CardOrderService {
       contactPhone: createOrderDto.contactPhone,
       notes: createOrderDto.notes,
       status: CardStatus.INACTIVE,
+      orderDate: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
       orderStatus: OrderStatus.PENDING_PAYMENT,
     });
 

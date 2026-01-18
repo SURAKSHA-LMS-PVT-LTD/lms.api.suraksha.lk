@@ -194,10 +194,13 @@ export class StudentsService {
         ...otherProps
       };
 
+      const timestamp = now();
       const studentEntity = this.studentRepository.create({ 
         ...studentData, 
         userId: userResponse.id,
-        bloodGroup: studentData.bloodGroup as BloodGroup  // Cast to enum
+        bloodGroup: studentData.bloodGroup as BloodGroup,  // Cast to enum
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
       const savedStudent = await queryRunner.manager.save(StudentEntity, studentEntity);
 
@@ -486,6 +489,7 @@ export class StudentsService {
       ...otherProps
     };
 
+    const timestamp = now();
     const studentEntity = this.studentRepository.create({ 
       userId: savedUser.id,
       fatherId: processedFatherId?.toString() || null,
@@ -496,7 +500,9 @@ export class StudentsService {
       medicalConditions,
       allergies,
       bloodGroup: bloodGroup as BloodGroup,
-      isActive: isActive ?? true
+      isActive: isActive ?? true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     const savedStudent = await queryRunner.manager.save(StudentEntity, studentEntity);
 

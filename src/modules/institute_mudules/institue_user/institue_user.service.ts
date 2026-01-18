@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, In } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { ConfigService } from '@nestjs/config';
 
 // DTOs
@@ -194,11 +195,14 @@ export class InstitueUserService {
       }
 
       // Create new institute user relationship
+      const timestamp = now();
       const newInstituteUser = this.instituteUserRepository.create({
         userId: userId,
         instituteId: instituteId,
         userIdByInstitute: createInstitueUserDto.userIdByInstitute,
         status: createInstitueUserDto.status || InstituteUserStatus.PENDING,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       await this.instituteUserRepository.save(newInstituteUser);
@@ -2511,6 +2515,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
+      const timestamp = now();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: safeUserId,
@@ -2519,7 +2524,9 @@ export class InstitueUserService {
         status: InstituteUserStatus.ACTIVE,
         instituteUserImageUrl: imageUrl,
         imageVerificationStatus: imageUrl ? imageStatus : null,
-        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null
+        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       await this.instituteUserRepository.save(assignment);
@@ -2742,6 +2749,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
+      const timestamp = now();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: safeUserId,
@@ -2751,7 +2759,9 @@ export class InstitueUserService {
         status: InstituteUserStatus.ACTIVE,
         instituteUserImageUrl: imageUrl,
         imageVerificationStatus: imageUrl ? imageStatus : null,
-        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null
+        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       await this.instituteUserRepository.save(assignment);
@@ -2853,6 +2863,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
+      const timestamp = now();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: safeUserId,
@@ -2862,7 +2873,9 @@ export class InstitueUserService {
         status: InstituteUserStatus.ACTIVE,
         instituteUserImageUrl: imageUrl,
         imageVerificationStatus: imageUrl ? imageStatus : null,
-        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null
+        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       await this.instituteUserRepository.save(assignment);
@@ -2963,6 +2976,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
+      const timestamp = now();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: student.id,
@@ -2971,7 +2985,9 @@ export class InstitueUserService {
         status: InstituteUserStatus.ACTIVE,
         instituteUserImageUrl: imageUrl,
         imageVerificationStatus: imageUrl ? imageStatus : null,
-        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null
+        imageVerifiedBy: (imageUrl && verifiedById) ? verifiedById : null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       await this.instituteUserRepository.save(assignment);
@@ -3701,6 +3717,7 @@ export class InstitueUserService {
       }
 
       // Step 7: Create institute user assignment
+      const timestamp = now();
       const instituteUser = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: user.id,
@@ -3710,7 +3727,9 @@ export class InstitueUserService {
         instituteCardId: assignDto.instituteCardId || null,
         instituteUserImageUrl: imageUrl,
         imageVerificationStatus: imageUrl ? imageVerified : null,
-        imageVerifiedBy: imageVerifiedBy
+        imageVerifiedBy: imageVerifiedBy,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       const savedAssignment = await this.instituteUserRepository.save(instituteUser);

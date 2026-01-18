@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException, NotFoundException, BadRequestEx
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SenderMaskEntity, SenderMaskStatus } from '../entities/sender-mask.entity';
+import { now } from '../../../common/utils/timezone.util';
 
 /**
  * Sender Mask Validation Service
@@ -171,12 +172,15 @@ export class SenderMaskValidationService {
       );
     }
 
+    const timestamp = now();
     const newMask = this.senderMaskRepository.create({
       instituteId,
       maskId,
       displayName,
       notes,
       status: SenderMaskStatus.PENDING,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
 
     await this.senderMaskRepository.save(newMask);

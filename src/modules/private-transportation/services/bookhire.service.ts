@@ -6,6 +6,7 @@ import { BookhireOwnerEntity } from '../entities/bookhire-owner.entity';
 import { StudentBookhireEnrollmentEntity } from '../entities/student-bookhire-enrollment.entity';
 import { CreateBookhireDto, UpdateBookhireDto, BookhireResponseDto, BookhireListResponseDto } from '../dto/bookhire.dto';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class BookhireService {
@@ -24,6 +25,7 @@ export class BookhireService {
     // No uniqueness constraint on vehicle number
     
     // Map DTO fields to entity fields properly
+    const timestamp = now();
     const bookhire = this.bookhireRepository.create({
       ownerId,
       vehicleNumber: createBookhireDto.vehicleNumber.toUpperCase(),
@@ -34,6 +36,8 @@ export class BookhireService {
       pricePerMonth: 1000, // Default price since not in DTO - should be updated by owner later
       availableSeats: createBookhireDto.capacity || 20,
       vehicleImages: createBookhireDto.imageUrl ? [createBookhireDto.imageUrl] : [],
+      createdAt: timestamp,
+      updatedAt: timestamp
       // Note: description field exists in DTO but not in entity
     });
 

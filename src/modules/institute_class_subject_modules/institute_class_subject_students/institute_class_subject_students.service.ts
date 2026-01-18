@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectStudentDto } from './dto/create-institute_class_subject_student.dto';
 import { UpdateInstituteClassSubjectStudentDto } from './dto/update-institute_class_subject_student.dto';
 import { QueryInstituteClassSubjectStudentDto, BulkEnrollStudentsDto } from './dto/query-institute_class_subject_student.dto';
@@ -59,12 +60,15 @@ export class InstituteClassSubjectStudentsService {
         throw new ConflictException('Student is already enrolled in this class subject');
       }
 
+      const timestamp = now();
       const studentData = {
         instituteId: createDto.instituteId,
         classId: createDto.classId,
         subjectId: createDto.subjectId,
         studentId: createDto.studentId,
         isActive: createDto.isActive ?? true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       };
 
       const student = this.studentRepository.create(studentData);
@@ -246,6 +250,7 @@ export class InstituteClassSubjectStudentsService {
       // Access control will be handled by decorators
       enrollmentMethod = 'teacher_assigned'; // Keep the enum value valid
 
+      const timestamp = now();
       const enrollments = bulkDto.studentIds.map(studentId => {
         const enrollmentData = {
           instituteId: bulkDto.instituteId,
@@ -255,6 +260,8 @@ export class InstituteClassSubjectStudentsService {
           isActive: bulkDto.isActive ?? true,
           enrollmentMethod: enrollmentMethod,
           enrolledBy: user.userId, // Track who performed the enrollment (from JWT)
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
         return this.studentRepository.create(enrollmentData);
       });
@@ -850,6 +857,7 @@ export class InstituteClassSubjectStudentsService {
       }
 
       // Create enrollment
+      const timestamp = now();
       const enrollment = this.studentRepository.create({
         instituteId: classSubject.instituteId,
         classId: classSubject.classId,
@@ -858,6 +866,8 @@ export class InstituteClassSubjectStudentsService {
         enrollmentMethod: 'self_enrolled',
         enrolledBy: null, // Self-enrolled
         isActive: true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
 
       await this.studentRepository.save(enrollment);
@@ -959,6 +969,7 @@ export class InstituteClassSubjectStudentsService {
           }
 
           // Create enrollment
+          const timestamp = now();
           const enrollment = this.studentRepository.create({
             instituteId,
             classId,
@@ -967,6 +978,8 @@ export class InstituteClassSubjectStudentsService {
             enrollmentMethod: 'teacher_assigned',
             enrolledBy: teacherId,
             isActive: true,
+            createdAt: timestamp,
+            updatedAt: timestamp,
           });
 
           await this.studentRepository.save(enrollment);

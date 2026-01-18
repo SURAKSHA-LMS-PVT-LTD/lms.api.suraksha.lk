@@ -10,6 +10,7 @@ import { ISubjectStats, ISubjectCategoryStats } from './interfaces/subject.inter
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { JwtPayload } from '../../common/interfaces/jwt-request.interface';
 import { UserType } from '../user/enums/user-type.enum';
+import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class SubjectService {

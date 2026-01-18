@@ -15,7 +15,12 @@ export class UserFcmTokenRepository {
   ) {}
 
   async create(createDto: CreateUserFcmTokenDto): Promise<UserFcmTokenEntity> {
-    const fcmToken = this.repository.create(createDto);
+    const timestamp = now();
+    const fcmToken = this.repository.create({
+      ...createDto,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
     return await this.repository.save(fcmToken);
   }
 

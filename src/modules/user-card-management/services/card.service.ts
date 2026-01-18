@@ -5,6 +5,7 @@ import { Card } from '../entities/card.entity';
 import { CreateCardDto } from '../dto/create-card.dto';
 import { UpdateCardDto } from '../dto/update-card.dto';
 import { CardResponseDto, PaginatedCardsResponseDto } from '../dto/response/card-response.dto';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class CardService {
@@ -14,7 +15,12 @@ export class CardService {
   ) {}
 
   async create(createCardDto: CreateCardDto): Promise<CardResponseDto> {
-    const card = this.cardRepository.create(createCardDto);
+    const timestamp = now();
+    const card = this.cardRepository.create({
+      ...createCardDto,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
     const savedCard = await this.cardRepository.save(card);
     return this.toResponseDto(savedCard);
   }

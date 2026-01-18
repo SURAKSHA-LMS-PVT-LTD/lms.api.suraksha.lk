@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { now } from '../../../common/utils/timezone.util';
 import { CreateInstitueLectureDto } from './dto/create-institue_lecture.dto';
 import { UpdateInstitueLectureDto } from './dto/update-institue_lecture.dto';
 import { InstituteLectureRepository } from './repositories/institute-lecture.repository';
@@ -21,7 +22,12 @@ export class InstitueLecturesService {
   ) {}
 
   async create(createInstitueLectureDto: CreateInstitueLectureDto) {
-    return await this.lectureRepository.create(createInstitueLectureDto);
+    const timestamp = now();
+    return await this.lectureRepository.create({
+      ...createInstitueLectureDto,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
   }
 
   async findAll(filterDto: LectureFilterDto = {}) {

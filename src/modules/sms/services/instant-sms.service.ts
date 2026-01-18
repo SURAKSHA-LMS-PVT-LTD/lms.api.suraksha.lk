@@ -9,6 +9,7 @@ import { SendSingleSmsDto, SendInstantBulkSmsDto, InstantSmsResponseDto, CreditB
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { SenderMaskValidationService } from './sender-mask-validation.service';
+import { now } from '../../../common/utils/timezone.util';
 
 /**
  * Simplified SMS Service
@@ -65,6 +66,7 @@ export class InstantSmsService {
       await this.deductCredits(dto.instituteId, this.costPerMessage);
 
       // Create campaign record with validated mask
+      const timestamp = now();
       const campaign = this.campaignRepository.create({
         instituteId: dto.instituteId,
         senderId: validatedMask.maskId, // Use validated mask ID
@@ -75,6 +77,8 @@ export class InstantSmsService {
         creditsDeducted: this.costPerMessage,
         initiatedBy,
         providerName: this.smsProvider.getProviderName(),
+        createdAt: timestamp,
+        updatedAt: timestamp
       });
 
       const savedCampaign = await this.campaignRepository.save(campaign);
@@ -128,6 +132,7 @@ export class InstantSmsService {
       await this.deductCredits(dto.instituteId, requiredCredits);
 
       // Create campaign record with validated mask
+      const timestamp = now();
       const campaign = this.campaignRepository.create({
         instituteId: dto.instituteId,
         senderId: validatedMask.maskId, // Use validated mask ID
@@ -138,6 +143,8 @@ export class InstantSmsService {
         creditsDeducted: requiredCredits,
         initiatedBy,
         providerName: this.smsProvider.getProviderName(),
+        createdAt: timestamp,
+        updatedAt: timestamp
       });
 
       const savedCampaign = await this.campaignRepository.save(campaign);
@@ -377,11 +384,14 @@ export class InstantSmsService {
 
     if (!credit) {
       // Initialize credit account if it doesn't exist
+      const timestamp = now();
       const newCredit = this.creditRepository.create({
         instituteId,
         balance: 0,
         totalPurchased: 0,
         totalUsed: 0,
+        createdAt: timestamp,
+        updatedAt: timestamp
       });
       await this.creditRepository.save(newCredit);
 
@@ -414,11 +424,14 @@ export class InstantSmsService {
       let credit = await queryRunner.manager.findOne(SmsCreditEntity, { where: { instituteId } });
 
       if (!credit) {
+        const timestamp = now();
         credit = queryRunner.manager.create(SmsCreditEntity, {
           instituteId,
           balance: 0,
           totalPurchased: 0,
           totalUsed: 0,
+          createdAt: timestamp,
+          updatedAt: timestamp
         });
       }
 

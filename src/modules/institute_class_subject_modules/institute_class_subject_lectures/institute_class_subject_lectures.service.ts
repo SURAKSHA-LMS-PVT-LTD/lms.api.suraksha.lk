@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectLectureDto } from './dto/create-institute_class_subject_lecture.dto';
 import { UpdateInstituteClassSubjectLectureDto } from './dto/update-institute-class-subject-lecture.dto';
 import { InstituteClassSubjectLecture } from './entities/institute_class_subject_lecture.entity';
@@ -33,6 +34,7 @@ export class InstituteClassSubjectLecturesService {
 
   async create(createDto: CreateInstituteClassSubjectLectureDto): Promise<InstituteClassSubjectLecture> {
     try {
+      const timestamp = now();
       const lectureData = {
         instituteId: createDto.instituteId,
         classId: createDto.classId,
@@ -52,6 +54,8 @@ export class InstituteClassSubjectLecturesService {
         isRecorded: createDto.isRecorded ?? false,
         maxParticipants: createDto.maxParticipants,
         isActive: createDto.isActive ?? true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       };
 
       const lecture = this.lectureRepository.create(lectureData);
@@ -364,6 +368,7 @@ export class InstituteClassSubjectLecturesService {
 
   async createBulk(createDtos: CreateInstituteClassSubjectLectureDto[]): Promise<InstituteClassSubjectLecture[]> {
     try {
+      const timestamp = now();
       const lectures = createDtos.map(dto => {
         const lectureData = {
           instituteId: dto.instituteId,
@@ -384,6 +389,8 @@ export class InstituteClassSubjectLecturesService {
           isRecorded: dto.isRecorded ?? false,
           maxParticipants: dto.maxParticipants,
           isActive: dto.isActive ?? true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
         return this.lectureRepository.create(lectureData);
       });

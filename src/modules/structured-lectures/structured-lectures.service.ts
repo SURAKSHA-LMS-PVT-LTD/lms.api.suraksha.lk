@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StructuredLectureEntity } from './entities/structured-lecture.entity';
 import { LectureResponseDto, LectureListResponseDto, CreateLectureDto, UpdateLectureDto, LectureQueryDto } from './dto/lecture.dto';
+import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class StructuredLecturesService {
@@ -53,7 +54,12 @@ export class StructuredLecturesService {
   }
 
   async create(data: any) {
-    const lecture = this.lectureRepository.create(data);
+    const timestamp = now();
+    const lecture = this.lectureRepository.create({
+      ...data,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
     return this.lectureRepository.save(lecture);
   }
 
@@ -69,7 +75,13 @@ export class StructuredLecturesService {
 
   // Additional methods expected by controller
   async createLecture(lectureData: any, userId: string) {
-    const lecture = this.lectureRepository.create({ ...lectureData, createdBy: userId });
+    const timestamp = now();
+    const lecture = this.lectureRepository.create({ 
+      ...lectureData, 
+      createdBy: userId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
     return this.lectureRepository.save(lecture);
   }
 
@@ -244,6 +256,7 @@ export class StructuredLecturesService {
       }));
     }
     
+    const timestamp = now();
     const lecture = this.lectureRepository.create({ 
       ...rest,
       thumbnailUrl: coverImageUrl, // Map coverImageUrl ? thumbnailUrl
@@ -251,6 +264,8 @@ export class StructuredLecturesService {
       attachments,
       createdBy: userId,
       updatedBy: userId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     const result = await this.lectureRepository.save(lecture);
     const savedEntity = Array.isArray(result) ? result[0] : result;

@@ -72,6 +72,7 @@ export class PaymentService {
     // No need to validate here as file is now a URL string
 
     // Create payment entity
+    const timestamp = now();
     const payment = this.paymentRepository.create({
       userId,
       paymentAmount: createPaymentDto.paymentAmount,
@@ -81,6 +82,8 @@ export class PaymentService {
       paymentMonth: createPaymentDto.paymentMonth,
       notes: createPaymentDto.notes,
       status: PaymentStatus.PENDING,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
 
     // ✅ Handle paymentSlipUrl from DTO or file parameter (backward compatibility)

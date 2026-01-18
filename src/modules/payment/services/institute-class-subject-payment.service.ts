@@ -50,6 +50,7 @@ export class InstituteClassSubjectPaymentService {
     }
 
     // Create payment
+    const timestamp = now();
     const payment = this.paymentRepository.create({
       instituteId,
       classId,
@@ -64,6 +65,8 @@ export class InstituteClassSubjectPaymentService {
       lastDate: new Date(createPaymentDto.lastDate),
       notes: createPaymentDto.notes,
       status: PaymentStatus.ACTIVE,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
 
     const savedPayment = await this.paymentRepository.save(payment);
@@ -219,6 +222,7 @@ export class InstituteClassSubjectPaymentService {
 
     // Create submission - ALWAYS defaults to PENDING status
     // IMPORTANT: Submissions can NEVER be auto-verified - they must be manually verified by humans
+    const timestamp = now();
     const submission = this.submissionRepository.create({
       paymentId,
       userId: user.s,
@@ -231,6 +235,8 @@ export class InstituteClassSubjectPaymentService {
       submittedAmount: createSubmissionDto.submittedAmount,
       notes: createSubmissionDto.notes,
       status: SubmissionStatus.PENDING, // ALWAYS PENDING - never auto-verified
+      uploadedAt: timestamp,
+      updatedAt: timestamp,
     });
 
     const savedSubmission = await this.submissionRepository.save(submission);

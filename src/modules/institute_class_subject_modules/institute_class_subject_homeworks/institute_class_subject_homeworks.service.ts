@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { now } from '../../../common/utils/timezone.util';
 import { plainToClass } from 'class-transformer';
 import { CreateInstituteClassSubjectHomeworkDto } from './dto/create-institute_class_subject_homework.dto';
 import { UpdateInstituteClassSubjectHomeworkDto } from './dto/update-institute_class_subject_homework.dto';
@@ -48,11 +49,14 @@ export class InstituteClassSubjectHomeworksService {
   async create(createDto: CreateInstituteClassSubjectHomeworkDto): Promise<InstituteClassSubjectHomeworkResponseDto> {
     try {
       
+      const timestamp = now();
       const homework = this.homeworkRepository.create({
         ...createDto,
         startDate: new Date(createDto.startDate),
         endDate: createDto.endDate ? new Date(createDto.endDate) : undefined,
         isActive: createDto.isActive ?? true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       });
       
       const savedHomework = await this.homeworkRepository.save(homework);

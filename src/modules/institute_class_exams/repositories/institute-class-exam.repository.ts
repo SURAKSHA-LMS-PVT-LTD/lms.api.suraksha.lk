@@ -5,6 +5,7 @@ import { InstituteClassExamEntity } from '../entities/institute-class-exam.entit
 import { CreateExamDto } from '../dto/create-exam.dto';
 import { UpdateExamDto } from '../dto/update-exam.dto';
 import { ExamStatus, ExamType } from '../enums/exam.enum';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class InstituteClassExamRepository {
@@ -14,12 +15,15 @@ export class InstituteClassExamRepository {
   ) {}
 
   async create(createExamDto: CreateExamDto): Promise<InstituteClassExamEntity> {
+    const timestamp = now();
     const exam = this.examRepository.create({
       ...createExamDto,
       status: ExamStatus.DRAFT,
       startDate: new Date(createExamDto.startDate),
       endDate: new Date(createExamDto.endDate),
       isResultsPublished: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     return this.examRepository.save(exam);
   }

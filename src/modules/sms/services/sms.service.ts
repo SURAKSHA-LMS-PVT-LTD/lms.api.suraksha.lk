@@ -433,6 +433,7 @@ export class SmsService {
       }
 
       // Create payment submission entity
+      const timestamp = now();
       const submissionEntity = this.paymentSubmissionRepository.create({
         instituteId,
         submittedBy: userId,
@@ -444,7 +445,9 @@ export class SmsService {
         status: PaymentSubmissionStatus.PENDING,
         paymentSlipUrl: dto.paymentSlipUrl || null,
         paymentSlipFilename: dto.paymentSlipFilename || null,
-        submittedAt: now()
+        submittedAt: now(),
+        createdAt: timestamp,
+        updatedAt: timestamp
       });
       const submission = await this.paymentSubmissionRepository.save(submissionEntity);
 
@@ -830,6 +833,7 @@ export class SmsService {
         if (!credentials) {
           // Generate UUID for the credentials record (database uses VARCHAR(36) UUIDs, not auto-increment)
           const credentialsId = uuidv4();
+          const timestamp = now();
           
           // Create new credentials if they don't exist
           credentials = queryRunner.manager.create(InstituteSmsCredentialsEntity, {
@@ -843,6 +847,8 @@ export class SmsService {
             createdBy: adminUserId,
             approvedBy: adminUserId,
             approvedAt: now(),
+            createdAt: timestamp,
+            updatedAt: timestamp
           });
           await queryRunner.manager.save(credentials);
         } else {
