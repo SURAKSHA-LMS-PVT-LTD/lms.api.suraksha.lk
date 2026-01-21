@@ -49,6 +49,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PrivateTransportationModule } from './modules/private-transportation/private-transportation.module';
 import { StructuredLecturesModule } from './modules/structured-lectures/structured-lectures.module';
 import { UserCardManagementModule } from './modules/user-card-management/user-card-management.module';
+import { PushNotificationModule } from './modules/push-notifications/push-notification.module';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
@@ -159,6 +160,7 @@ import { AppService } from './app.service';
     PrivateTransportationModule, // Add private transportation (bookhire) module
     StructuredLecturesModule, // Add structured lectures module for educational content
     UserCardManagementModule, // Add user card management for NFC/PVC/Temporary cards with RFID
+    PushNotificationModule, // Add push notification module for FCM notifications
   ],
   controllers: [AppController],
   providers: [
