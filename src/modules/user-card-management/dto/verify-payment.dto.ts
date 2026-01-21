@@ -1,7 +1,7 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class VerifyPaymentDto {
+export class VerifyCardPaymentDto {
   @ApiProperty({ description: 'Payment verification status', enum: ['VERIFIED', 'REJECTED'] })
   @IsEnum(['VERIFIED', 'REJECTED'])
   paymentStatus: 'VERIFIED' | 'REJECTED';

@@ -488,6 +488,233 @@ export class UsersService {
       // ============================================
       if (dto.userType === UserType.USER || dto.userType === UserType.USER_WITHOUT_PARENT) {
         
+        // ============================================
+        // STEP 2.1: Detect and Convert Phone Numbers in ID Fields
+        // ============================================
+        // If fatherId/motherId/guardianId look like phone numbers (numeric, length != 6),
+        // treat them as phone numbers and lookup the actual user ID
+        
+        let fatherIdResolved = cleanToNull(dto.studentData?.fatherId);
+        let motherIdResolved = cleanToNull(dto.studentData?.motherId);
+        let guardianIdResolved = cleanToNull(dto.studentData?.guardianId);
+
+        // Helper function to check if string looks like a phone number
+        const looksLikePhoneNumber = (value: string | null): boolean => {
+          if (!value) return false;
+          // Check if numeric and length != 6 (6 might be actual IDs)
+          const trimmed = value.trim();
+          const isNumeric = /^[0-9+]+$/.test(trimmed);
+          return isNumeric && trimmed.length !== 6;
+        };
+
+        // Check fatherId - if it looks like phone number, convert it
+        if (fatherIdResolved && looksLikePhoneNumber(fatherIdResolved)) {
+          const phoneNumber = fatherIdResolved.startsWith('+') ? fatherIdResolved : `+94${fatherIdResolved}`;
+          this.logger.log(`🔄 fatherId looks like phone number (${fatherIdResolved}), converting to: ${phoneNumber}`);
+          
+          const fatherUser = await queryRunner.manager.findOne(UserEntity, {
+            where: { 
+              phoneNumber: phoneNumber,
+              isActive: true
+            },
+            select: ['id', 'userType']
+          });
+
+          if (fatherUser && (fatherUser.userType === UserType.USER || fatherUser.userType === UserType.USER_WITHOUT_STUDENT)) {
+            const { ParentEntity } = await import('../parent/entities/parent.entity');
+            const parentExists = await queryRunner.manager.exists(ParentEntity, {
+              where: { userId: fatherUser.id }
+            });
+            
+            if (parentExists) {
+              fatherIdResolved = fatherUser.id;
+              this.logger.log(`✅ Father converted from phone ${phoneNumber} to User ID ${fatherUser.id}`);
+            } else {
+              this.logger.warn(`⚠️ Phone ${phoneNumber} found but no parent record exists`);
+              fatherIdResolved = null;
+            }
+          } else {
+            this.logger.warn(`⚠️ No valid parent user found with phone ${phoneNumber}`);
+            fatherIdResolved = null;
+          }
+        }
+
+        // Check motherId - if it looks like phone number, convert it
+        if (motherIdResolved && looksLikePhoneNumber(motherIdResolved)) {
+          const phoneNumber = motherIdResolved.startsWith('+') ? motherIdResolved : `+94${motherIdResolved}`;
+          this.logger.log(`🔄 motherId looks like phone number (${motherIdResolved}), converting to: ${phoneNumber}`);
+          
+          const motherUser = await queryRunner.manager.findOne(UserEntity, {
+            where: { 
+              phoneNumber: phoneNumber,
+              isActive: true
+            },
+            select: ['id', 'userType']
+          });
+
+          if (motherUser && (motherUser.userType === UserType.USER || motherUser.userType === UserType.USER_WITHOUT_STUDENT)) {
+            const { ParentEntity } = await import('../parent/entities/parent.entity');
+            const parentExists = await queryRunner.manager.exists(ParentEntity, {
+              where: { userId: motherUser.id }
+            });
+            
+            if (parentExists) {
+              motherIdResolved = motherUser.id;
+              this.logger.log(`✅ Mother converted from phone ${phoneNumber} to User ID ${motherUser.id}`);
+            } else {
+              this.logger.warn(`⚠️ Phone ${phoneNumber} found but no parent record exists`);
+              motherIdResolved = null;
+            }
+          } else {
+            this.logger.warn(`⚠️ No valid parent user found with phone ${phoneNumber}`);
+            motherIdResolved = null;
+          }
+        }
+
+        // Check guardianId - if it looks like phone number, convert it
+        if (guardianIdResolved && looksLikePhoneNumber(guardianIdResolved)) {
+          const phoneNumber = guardianIdResolved.startsWith('+') ? guardianIdResolved : `+94${guardianIdResolved}`;
+          this.logger.log(`🔄 guardianId looks like phone number (${guardianIdResolved}), converting to: ${phoneNumber}`);
+          
+          const guardianUser = await queryRunner.manager.findOne(UserEntity, {
+            where: { 
+              phoneNumber: phoneNumber,
+              isActive: true
+            },
+            select: ['id', 'userType']
+          });
+
+          if (guardianUser && (guardianUser.userType === UserType.USER || guardianUser.userType === UserType.USER_WITHOUT_STUDENT)) {
+            const { ParentEntity } = await import('../parent/entities/parent.entity');
+            const parentExists = await queryRunner.manager.exists(ParentEntity, {
+              where: { userId: guardianUser.id }
+            });
+            
+            if (parentExists) {
+              guardianIdResolved = guardianUser.id;
+              this.logger.log(`✅ Guardian converted from phone ${phoneNumber} to User ID ${guardianUser.id}`);
+            } else {
+              this.logger.warn(`⚠️ Phone ${phoneNumber} found but no parent record exists`);
+              guardianIdResolved = null;
+            }
+          } else {
+            this.logger.warn(`⚠️ No valid parent user found with phone ${phoneNumber}`);
+            guardianIdResolved = null;
+          }
+        }
+
+        // ============================================
+        // STEP 2.2: Lookup Parents by Phone Number Fields (if provided)
+        // ============================================
+
+        // Father phone number lookup (only if not already resolved from ID field)
+        if (!fatherIdResolved && dto.studentData?.fatherPhoneNumber) {
+          const fatherPhone = cleanToNull(dto.studentData.fatherPhoneNumber);
+          if (fatherPhone) {
+            const fatherUser = await queryRunner.manager.findOne(UserEntity, {
+              where: { 
+                phoneNumber: fatherPhone,
+                isActive: true
+              },
+              select: ['id', 'userType']
+            });
+
+            if (fatherUser) {
+              // Validate user type - must be USER or USER_WITHOUT_STUDENT
+              if (fatherUser.userType === UserType.USER || fatherUser.userType === UserType.USER_WITHOUT_STUDENT) {
+                // Check if parent record exists
+                const { ParentEntity } = await import('../parent/entities/parent.entity');
+                const parentExists = await queryRunner.manager.exists(ParentEntity, {
+                  where: { userId: fatherUser.id }
+                });
+                
+                if (parentExists) {
+                  fatherIdResolved = fatherUser.id;
+                  this.logger.log(`✅ Father found by phone ${fatherPhone}: User ID ${fatherUser.id}`);
+                } else {
+                  this.logger.warn(`⚠️ User found with phone ${fatherPhone} but no parent record exists`);
+                }
+              } else {
+                this.logger.warn(`⚠️ User found with phone ${fatherPhone} but has invalid type: ${fatherUser.userType}`);
+              }
+            } else {
+              this.logger.warn(`⚠️ No user found with father phone number: ${fatherPhone}`);
+            }
+          }
+        }
+
+        // Mother phone number lookup
+        if (!motherIdResolved && dto.studentData?.motherPhoneNumber) {
+          const motherPhone = cleanToNull(dto.studentData.motherPhoneNumber);
+          if (motherPhone) {
+            const motherUser = await queryRunner.manager.findOne(UserEntity, {
+              where: { 
+                phoneNumber: motherPhone,
+                isActive: true
+              },
+              select: ['id', 'userType']
+            });
+
+            if (motherUser) {
+              // Validate user type - must be USER or USER_WITHOUT_STUDENT
+              if (motherUser.userType === UserType.USER || motherUser.userType === UserType.USER_WITHOUT_STUDENT) {
+                // Check if parent record exists
+                const { ParentEntity } = await import('../parent/entities/parent.entity');
+                const parentExists = await queryRunner.manager.exists(ParentEntity, {
+                  where: { userId: motherUser.id }
+                });
+                
+                if (parentExists) {
+                  motherIdResolved = motherUser.id;
+                  this.logger.log(`✅ Mother found by phone ${motherPhone}: User ID ${motherUser.id}`);
+                } else {
+                  this.logger.warn(`⚠️ User found with phone ${motherPhone} but no parent record exists`);
+                }
+              } else {
+                this.logger.warn(`⚠️ User found with phone ${motherPhone} but has invalid type: ${motherUser.userType}`);
+              }
+            } else {
+              this.logger.warn(`⚠️ No user found with mother phone number: ${motherPhone}`);
+            }
+          }
+        }
+
+        // Guardian phone number lookup
+        if (!guardianIdResolved && dto.studentData?.guardianPhoneNumber) {
+          const guardianPhone = cleanToNull(dto.studentData.guardianPhoneNumber);
+          if (guardianPhone) {
+            const guardianUser = await queryRunner.manager.findOne(UserEntity, {
+              where: { 
+                phoneNumber: guardianPhone,
+                isActive: true
+              },
+              select: ['id', 'userType']
+            });
+
+            if (guardianUser) {
+              // Validate user type - must be USER or USER_WITHOUT_STUDENT
+              if (guardianUser.userType === UserType.USER || guardianUser.userType === UserType.USER_WITHOUT_STUDENT) {
+                // Check if parent record exists
+                const { ParentEntity } = await import('../parent/entities/parent.entity');
+                const parentExists = await queryRunner.manager.exists(ParentEntity, {
+                  where: { userId: guardianUser.id }
+                });
+                
+                if (parentExists) {
+                  guardianIdResolved = guardianUser.id;
+                  this.logger.log(`✅ Guardian found by phone ${guardianPhone}: User ID ${guardianUser.id}`);
+                } else {
+                  this.logger.warn(`⚠️ User found with phone ${guardianPhone} but no parent record exists`);
+                }
+              } else {
+                this.logger.warn(`⚠️ User found with phone ${guardianPhone} but has invalid type: ${guardianUser.userType}`);
+              }
+            } else {
+              this.logger.warn(`⚠️ No user found with guardian phone number: ${guardianPhone}`);
+            }
+          }
+        }
+        
         // ⚡ OPTIMIZED: Use provided parent IDs directly, let database validate foreign keys
         // No unnecessary SELECT queries - database will throw error if IDs are invalid
         
@@ -501,9 +728,9 @@ export class UsersService {
           medicalConditions: cleanToNull(dto.studentData?.medicalConditions),
           allergies: cleanToNull(dto.studentData?.allergies),
           bloodGroup: bloodGroupValue,
-          fatherId: cleanToNull(dto.studentData?.fatherId),
-          motherId: cleanToNull(dto.studentData?.motherId),
-          guardianId: cleanToNull(dto.studentData?.guardianId),
+          fatherId: fatherIdResolved,
+          motherId: motherIdResolved,
+          guardianId: guardianIdResolved,
           createdAt: now(), // Sri Lanka timezone
           updatedAt: now(), // Sri Lanka timezone
         } as any;

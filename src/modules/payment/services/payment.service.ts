@@ -5,7 +5,7 @@ import { PaymentEntity, PaymentStatus } from '../entities/payment.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
-import { VerifyPaymentDto } from '../dto/verify-payment.dto';
+import { VerifyInstitutePaymentDto } from '../dto/verify-payment.dto';
 import { PaymentResponseDto, PaymentListResponseDto, PaymentVerificationResponseDto, PaymentCreationResponseDto } from '../dto/payment-response.dto';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { ConfigService } from '@nestjs/config';
@@ -248,7 +248,7 @@ export class PaymentService {
 
   async verifyPayment(
     paymentId: string,
-    verifyPaymentDto: VerifyPaymentDto,
+    verifyPaymentDto: VerifyInstitutePaymentDto,
     verifierId: string,
   ): Promise<PaymentVerificationResponseDto> {
     // Use database transaction for secure payment verification process

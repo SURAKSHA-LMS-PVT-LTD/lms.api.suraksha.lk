@@ -3,7 +3,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentStatus } from '../entities/payment.entity';
 import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
 
-export class VerifyPaymentDto {
+export class VerifyInstitutePaymentDto {
   @ApiPropertyOptional({ 
     description: 'Payment verification status',
     enum: PaymentStatus,

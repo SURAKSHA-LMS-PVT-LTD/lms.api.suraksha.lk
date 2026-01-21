@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CardPayment } from '../entities/card-payment.entity';
 import { UserIdCardOrder } from '../entities/user-id-card-order.entity';
 import { SubmitPaymentDto } from '../dto/submit-payment.dto';
-import { VerifyPaymentDto } from '../dto/verify-payment.dto';
+import { VerifyCardPaymentDto } from '../dto/verify-payment.dto';
 import { PaymentResponseDto, PaginatedPaymentsResponseDto } from '../dto/response/payment-response.dto';
 import { OrderStatus } from '../enums/order-status.enum';
 import { now } from '../../../common/utils/timezone.util';
@@ -140,7 +140,7 @@ export class CardPaymentService {
 
   async verifyPayment(
     paymentId: string,
-    verifyPaymentDto: VerifyPaymentDto,
+    verifyPaymentDto: VerifyCardPaymentDto,
     adminUserId: string,
   ): Promise<PaymentResponseDto> {
     const payment = await this.paymentRepository.findOne({

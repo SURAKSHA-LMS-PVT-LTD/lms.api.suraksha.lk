@@ -88,6 +88,35 @@ All features have been successfully implemented and verified:
 
 ## 🔄 How It Works
 
+### Parent Lookup by Phone Number (NEW ✨):
+
+When creating a comprehensive user with `studentData`, the system supports **automatic parent linking by phone number**:
+
+1. **If phone numbers are provided** (instead of IDs):
+   - `studentData.fatherPhoneNumber`
+   - `studentData.motherPhoneNumber`
+   - `studentData.guardianPhoneNumber`
+
+2. **The service automatically**:
+   - Searches for existing users with matching phone numbers
+   - Validates the user has correct type (`USER` or `USER_WITHOUT_STUDENT`)
+   - Checks if a parent record exists for that user
+   - Links the parent to the student by setting `fatherId`/`motherId`/`guardianId`
+   - Logs warnings if user not found or has invalid type
+
+3. **Priority**: If both ID and phone number are provided, ID takes precedence
+
+4. **Example Use Case**:
+   ```json
+   {
+     "studentData": {
+       "fatherPhoneNumber": "+94771234567",  // System will find father by phone
+       "motherId": "existing-uuid",           // Direct ID link (takes priority)
+       "guardianPhoneNumber": "+94773333333" // System will find guardian by phone
+     }
+   }
+   ```
+
 ### Parent Skip Reason Logic:
 
 1. **When creating a comprehensive user**, if any of these fields are provided:

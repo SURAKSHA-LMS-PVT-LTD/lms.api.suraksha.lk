@@ -9,7 +9,7 @@ import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.deco
 import { UserType } from '../../user/enums/user-type.enum';
 import { PaymentService } from '../services/payment.service';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
-import { VerifyPaymentDto } from '../dto/verify-payment.dto';
+import { VerifyInstitutePaymentDto } from '../dto/verify-payment.dto';
 import { PaymentResponseDto, PaymentListResponseDto, PaymentVerificationResponseDto, PaymentCreationResponseDto } from '../dto/payment-response.dto';
 import { PaymentStatus } from '../entities/payment.entity';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
@@ -107,7 +107,7 @@ export class PaymentController {
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async verifyPayment(
     @Param('id', ParseBigIntPipe) id: string,
-    @Body() verifyPaymentDto: VerifyPaymentDto,
+    @Body() verifyPaymentDto: VerifyInstitutePaymentDto,
     @Request() req: JwtRequest,
   ): Promise<PaymentVerificationResponseDto> {
     const verifierId = req.user.s;

@@ -56,6 +56,15 @@ export class FcmNotificationService implements OnModuleInit {
         return;
       }
 
+      // Check if Firebase app already exists (avoid duplicate initialization)
+      const existingApps = admin.apps;
+      if (existingApps && existingApps.length > 0) {
+        this.firebaseApp = existingApps[0];
+        this.isInitialized = true;
+        this.logger.log('✅ Firebase Admin SDK already initialized, reusing existing instance');
+        return;
+      }
+
       // Initialize Firebase Admin SDK
       this.firebaseApp = admin.initializeApp({
         credential: admin.credential.cert({
@@ -66,6 +75,7 @@ export class FcmNotificationService implements OnModuleInit {
       });
 
       this.isInitialized = true;
+      this.logger.log('✅ Firebase Admin SDK initialized successfully');
     } catch (error) {
       this.logger.error(`❌ Failed to initialize Firebase Admin SDK: ${error.message}`);
     }

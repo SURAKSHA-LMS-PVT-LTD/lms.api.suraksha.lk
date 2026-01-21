@@ -12,25 +12,47 @@ export const TIMEZONE = {
 
 /**
  * Get current date/time in Sri Lanka timezone
- * This ensures we always get the correct Sri Lanka time regardless of system timezone
+ * Returns a Date object that when saved to database shows Sri Lanka local time
+ * This is the CORRECT implementation for database storage
  */
 export function getCurrentSriLankaTime(): Date {
-  // Get current UTC time
-  const now = new Date();
-  const utcTime = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    now.getUTCHours(),
-    now.getUTCMinutes(),
-    now.getUTCSeconds(),
-    now.getUTCMilliseconds()
+  // Get current time in Sri Lanka timezone using Intl API
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE.name,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(new Date());
+  const values: Record<string, string> = {};
+  parts.forEach(part => {
+    if (part.type !== 'literal') {
+      values[part.type] = part.value;
+    }
+  });
+  
+  // Create UTC timestamp using Date.UTC() with Sri Lanka time components
+  // This treats the Sri Lanka time as if it were UTC
+  const utcTimestamp = Date.UTC(
+    parseInt(values.year),
+    parseInt(values.month) - 1, // Month is 0-indexed
+    parseInt(values.day),
+    parseInt(values.hour),
+    parseInt(values.minute),
+    parseInt(values.second || '0'),
+    0 // milliseconds
   );
   
-  // Add Sri Lanka offset (+5:30 = 330 minutes)
-  const sriLankaTime = new Date(utcTime + TIMEZONE.offsetMilliseconds);
+  // Create Date object from this timestamp
+  // This Date, when converted to ISO or saved to DB, will show Sri Lanka time
+  const sriLankaDate = new Date(utcTimestamp);
   
-  return sriLankaTime;
+  return sriLankaDate;
 }
 
 /**

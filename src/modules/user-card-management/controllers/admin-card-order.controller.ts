@@ -25,7 +25,7 @@ import { UpdateCardDto } from '../dto/update-card.dto';
 import { UpdateOrderStatusDto } from '../dto/update-order-status.dto';
 import { AssignRfidDto } from '../dto/assign-rfid.dto';
 import { UpdateCardStatusDto } from '../dto/update-card-status.dto';
-import { VerifyPaymentDto } from '../dto/verify-payment.dto';
+import { VerifyCardPaymentDto } from '../dto/verify-payment.dto';
 import { CardResponseDto, PaginatedCardsResponseDto } from '../dto/response/card-response.dto';
 import { OrderResponseDto, PaginatedOrdersResponseDto } from '../dto/response/order-response.dto';
 import { PaginatedPaymentsResponseDto, PaymentResponseDto } from '../dto/response/payment-response.dto';
@@ -205,7 +205,7 @@ export class AdminCardOrderController {
   async verifyPayment(
     @Request() req: JwtRequest,
     @Param('paymentId') paymentId: string,
-    @Body() verifyPaymentDto: VerifyPaymentDto,
+    @Body() verifyPaymentDto: VerifyCardPaymentDto,
   ): Promise<PaymentResponseDto> {
     const adminUserId = req.user.s;
     return this.paymentService.verifyPayment(paymentId, verifyPaymentDto, adminUserId);
