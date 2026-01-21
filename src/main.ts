@@ -46,7 +46,8 @@ async function bootstrap() {
     });
 
     if (!isProduction) {
-      console.log('✅ NestJS app created successfully');\n    }
+      console.log('✅ NestJS app created successfully');
+    }
 
     // 🚫 SECURITY: Silent 403 filter - Return empty response for unauthorized access
     app.useGlobalFilters(new SilentForbiddenExceptionFilter());
