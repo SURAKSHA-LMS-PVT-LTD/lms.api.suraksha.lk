@@ -123,4 +123,44 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
     await this.submissionsService.remove(id);
   }
+
+  @Post('submit-google-drive')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ student: {} })
+  @ApiOperation({
+    summary: 'Submit homework using Google Drive file',
+    description: `
+    Students submit homework by uploading to their own Google Drive first,
+    then submitting the fileId to this endpoint.
+    
+    **Flow:**
+    1. Student authenticates with Google via /auth/google
+    2. Student uploads file to their Google Drive (frontend)
+    3. Student submits fileId, homeworkId, and accessToken to this endpoint
+    4. Backend validates fileId exists and stores metadata
+    
+    **Security:** Access token used only for validation, NOT stored
+    `
+  })
+  @ApiResponse({ status: 201, description: 'Homework submitted via Google Drive successfully' })
+  async submitGoogleDrive(
+    @Body() submitDto: { 
+      homeworkId: string; 
+      fileId: string; 
+      accessToken: string;
+      fileName?: string;
+      mimeType?: string;
+    },
+    @Request() req: JwtRequest
+  ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+    const studentId = req.user.s;
+    return await this.submissionsService.submitViaGoogleDrive(
+      studentId,
+      submitDto.homeworkId,
+      submitDto.fileId,
+      submitDto.accessToken,
+      submitDto.fileName,
+      submitDto.mimeType
+    );
+  }
 }

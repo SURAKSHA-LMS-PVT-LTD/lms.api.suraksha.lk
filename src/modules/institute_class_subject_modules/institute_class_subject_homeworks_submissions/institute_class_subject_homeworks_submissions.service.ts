@@ -11,6 +11,7 @@ import { InstituteClassSubjectHomework } from '../institute_class_subject_homewo
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { InstituteAccessValidator, ROLE_BITMASKS } from '../../../common/helpers/institute-access-validator.helper';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { GoogleAuthService } from '../../google-auth/google-auth.service';
 
 @Injectable()
 export class InstituteClassSubjectHomeworksSubmissionsService {
@@ -20,6 +21,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
     @InjectRepository(InstituteClassSubjectHomework)
     private readonly homeworkRepository: Repository<InstituteClassSubjectHomework>,
     private readonly cloudStorageService: CloudStorageService,
+    private readonly googleAuthService: GoogleAuthService,
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectHomeworksSubmissionDto): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
@@ -523,5 +525,86 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
     } catch (error) {
       throw new BadRequestException(`Failed to review homework submission: ${error.message}`);
     }
+  }
+
+  /**
+   * Submit homework via Google Drive
+   * IMPORTANT: Access token is used only for validation, NOT stored
+   */
+  async submitViaGoogleDrive(
+    studentId: string,
+    homeworkId: string,
+    driveFileId: string,
+    accessToken: string,
+    fileName?: string,
+    mimeType?: string
+  ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+    // Validate homework exists
+    const homework = await this.homeworkRepository.findOne({ 
+      where: { id: homeworkId } 
+    });
+
+    if (!homework) {
+      throw new NotFoundException(`Homework with ID ${homeworkId} not found`);
+    }
+
+    // Check if student already submitted for this homework
+    const existingSubmission = await this.submissionRepository.findOne({
+      where: { 
+        homeworkId, 
+        studentId 
+      }
+    });
+
+    if (existingSubmission) {
+      throw new BadRequestException(
+        'You have already submitted homework for this assignment. Delete the existing submission first to resubmit.'
+      );
+    }
+
+    // Verify file exists in Google Drive
+    const fileExists = await this.googleAuthService.verifyFileExists(
+      driveFileId,
+      accessToken
+    );
+
+    if (!fileExists) {
+      throw new BadRequestException(
+        'Unable to verify file in Google Drive. Please ensure the file exists and you have granted access.'
+      );
+    }
+
+    // Get file metadata if not provided
+    let fileMetadata = null;
+    if (!fileName || !mimeType) {
+      fileMetadata = await this.googleAuthService.getFileMetadata(
+        driveFileId,
+        accessToken
+      );
+    }
+
+    // Create submission record
+    const timestamp = now();
+    const submission = this.submissionRepository.create({
+      homeworkId,
+      studentId,
+      submissionDate: timestamp,
+      submissionType: 'GOOGLE_DRIVE',
+      driveFileId,
+      driveFileName: fileName || fileMetadata?.name || 'Unknown',
+      driveMimeType: mimeType || fileMetadata?.mimeType || 'application/octet-stream',
+      driveFileSize: fileMetadata?.size ? parseInt(fileMetadata.size) : null,
+      fileUrl: `https://drive.google.com/file/d/${driveFileId}/view`,
+      isActive: true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const savedSubmission = await this.submissionRepository.save(submission);
+
+    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
+      savedSubmission, 
+      this.cloudStorageService
+    );
   }
 }

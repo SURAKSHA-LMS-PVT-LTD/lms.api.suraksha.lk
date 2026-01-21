@@ -58,6 +58,22 @@ export class InstituteClassSubjectHomeworksSubmission {
   @Column({ name: 'teacher_correction_file_url', type: 'varchar', length: 255, nullable: true })
   teacherCorrectionFileUrl?: string;
 
+  // Google Drive Integration Fields
+  @Column({ name: 'drive_file_id', type: 'varchar', length: 255, nullable: true })
+  driveFileId?: string;
+
+  @Column({ name: 'drive_file_name', type: 'varchar', length: 500, nullable: true })
+  driveFileName?: string;
+
+  @Column({ name: 'drive_mime_type', type: 'varchar', length: 100, nullable: true })
+  driveMimeType?: string;
+
+  @Column({ name: 'drive_file_size', type: 'bigint', nullable: true })
+  driveFileSize?: number;
+
+  @Column({ name: 'submission_type', type: 'enum', enum: ['UPLOAD', 'GOOGLE_DRIVE'], default: 'UPLOAD' })
+  submissionType: 'UPLOAD' | 'GOOGLE_DRIVE';
+
   @Column({ type: 'text', nullable: true })
   remarks?: string;
 
@@ -76,6 +92,7 @@ export class InstituteClassSubjectHomeworksSubmission {
       submissionDate: this.submissionDate instanceof Date ? this.submissionDate.toISOString() : this.submissionDate,
       createdAt: this.createdAt instanceof Date ? this.createdAt.toISOString() : this.createdAt,
       updatedAt: this.updatedAt instanceof Date ? this.updatedAt.toISOString() : this.updatedAt,
+      driveViewUrl: this.driveFileId ? `https://drive.google.com/file/d/${this.driveFileId}/view` : null,
     };
   }
 }
