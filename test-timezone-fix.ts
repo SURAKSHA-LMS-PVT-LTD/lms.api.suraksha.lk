@@ -1,15 +1,15 @@
 /**
  * Test script to verify Sri Lanka timezone is working correctly
- * Run with: ts-node test-timezone-fix.ts
+ * Run with: npx ts-node test-timezone-fix.ts
  */
 
-import { now, getCurrentSriLankaTime, getCurrentSriLankaISO, getCurrentSriLankaDate, formatSriLankaDateTime } from './src/common/utils/timezone.util';
+import { now as getNow, getCurrentSriLankaTime, getCurrentSriLankaISO, getCurrentSriLankaDate, formatSriLankaDateTime } from './src/common/utils/timezone.util';
 
 console.log('🌍 Testing Sri Lanka Timezone Configuration\n');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 // Test 1: Current time
-const currentTime = now();
+const currentTime = getNow();
 console.log('1️⃣  now() function:');
 console.log(`   Result: ${currentTime}`);
 console.log(`   ISO String: ${currentTime.toISOString()}`);
@@ -61,13 +61,13 @@ console.log(`   What appears in database: Should show Sri Lanka time`);
 console.log();
 
 // Test 8: Verify it matches Time.is Colombo
-const now = getCurrentSriLankaTime();
-const hours = now.getHours().toString().padStart(2, '0');
-const minutes = now.getMinutes().toString().padStart(2, '0');
-const seconds = now.getSeconds().toString().padStart(2, '0');
+const currentSLTime = getCurrentSriLankaTime();
+const hours = currentSLTime.getHours().toString().padStart(2, '0');
+const minutes = currentSLTime.getMinutes().toString().padStart(2, '0');
+const seconds = currentSLTime.getSeconds().toString().padStart(2, '0');
 console.log('8️⃣  Current Sri Lanka Time (should match Time.is):');
 console.log(`   Time: ${hours}:${minutes}:${seconds}`);
-console.log(`   Date: ${now.toDateString()}`);
+console.log(`   Date: ${currentSLTime.toDateString()}`);
 console.log();
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
