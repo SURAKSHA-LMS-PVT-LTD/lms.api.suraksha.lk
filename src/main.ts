@@ -22,8 +22,12 @@ process.emitWarning = (warning, ...args) => {
 
 async function bootstrap() {
   try {
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     // � CRITICAL SECURITY CHECK: Validate environment variables BEFORE starting
-    console.log('🔒 Running security validation checks...\n');
+    if (!isProduction) {
+      console.log('🔒 Running security validation checks...\n');
+    }
     const isValid = validateAll();
 
     if (!isValid) {
@@ -31,21 +35,24 @@ async function bootstrap() {
       process.exit(1);
     }
 
-    console.log('🚀 Starting application...');
-    
-    // Log timezone information
-    logTimezoneInfo();
+    if (!isProduction) {
+      console.log('🚀 Starting application...');
+      logTimezoneInfo();
+    }
     
     const app = await NestFactory.create(AppModule, {
-      logger: ['error', 'warn', 'log'],
+      logger: isProduction ? ['error', 'warn'] : ['error', 'warn', 'log'],
       abortOnError: false,
     });
 
-    console.log('✅ NestJS app created successfully');
+    if (!isProduction) {
+      console.log('✅ NestJS app created successfully');\n    }
 
     // 🚫 SECURITY: Silent 403 filter - Return empty response for unauthorized access
     app.useGlobalFilters(new SilentForbiddenExceptionFilter());
-    console.log('✅ Silent 403 filter enabled (production: empty response, dev: detailed error)');
+    if (!isProduction) {
+      console.log('✅ Silent 403 filter enabled (production: empty response, dev: detailed error)');
+    }
 
     // 🔒 SECURITY: Add Helmet for HTTP headers protection
     app.use(helmet({
@@ -64,11 +71,15 @@ async function bootstrap() {
       },
     }));
 
-    console.log('✅ Security headers enabled (Helmet)');
+    if (!isProduction) {
+      console.log('✅ Security headers enabled (Helmet)');
+    }
 
     // 🍪 Enable cookie parser for secure refresh token handling
     app.use(cookieParser());
-    console.log('✅ Cookie parser enabled');
+    if (!isProduction) {
+      console.log('✅ Cookie parser enabled');
+    }
 
     // 🔒 STRICT CORS - Only allow whitelisted frontend domains
     const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -125,7 +136,9 @@ async function bootstrap() {
       next();
     });
 
-    console.log(`✅ CORS enabled${isDevelopment ? ' (Development: All origins allowed)' : ` for origins: ${allowedOrigins.join(', ')}`}`);
+    if (!isProduction) {
+      console.log(`✅ CORS enabled${isDevelopment ? ' (Development: All origins allowed)' : ` for origins: ${allowedOrigins.join(', ')}`}`);
+    }
 
     // Basic validation
     app.useGlobalPipes(
@@ -138,7 +151,9 @@ async function bootstrap() {
       }),
     );
 
-    console.log('✅ Global validation pipes configured');
+    if (!isProduction) {
+      console.log('✅ Global validation pipes configured');
+    }
 
     // 📚 API DOCUMENTATION: Setup Swagger for API documentation
     const config = new DocumentBuilder()
@@ -175,18 +190,15 @@ async function bootstrap() {
       },
     });
 
-    console.log('✅ API documentation enabled at /api/docs');
+    if (!isProduction) {
+      console.log('✅ API documentation enabled at /api/docs');
+    }
 
     const port = parseInt(process.env.PORT || '8080', 10);
 
-    console.log(`\n🚀 Starting server on 0.0.0.0:${port}...`);
     await app.listen(port, '0.0.0.0');
 
-    console.log(`\n✅ SERVER RUNNING SUCCESSFULLY!`);
-    console.log(`   URL: http://localhost:${port}`);
-    console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`   Database: ${process.env.DB_HOST}`);
-    console.log(`   Security: JWT validation enabled\n`);
+    console.log(`\n✅ SERVER RUNNING on :${port} | ENV: ${process.env.NODE_ENV || 'dev'}\n`);
 
   } catch (error) {
     console.error('\n❌ FATAL ERROR DURING STARTUP:');
