@@ -803,6 +803,7 @@ export class AttendanceService {
         parentContact: data.parentContact,
         parentEmail: data.parentEmail,
         parentTelegramId: data.parentTelegramId,
+        parentUserId: data.parentUserId,
         attendanceStatus: (markAttendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: markAttendanceDto.date,
         time: getCurrentSriLankaISO(),
@@ -852,6 +853,7 @@ export class AttendanceService {
     parentContact: string | null;
     parentEmail: string | null;
     parentTelegramId: string | null;
+    parentUserId: string | null;
     subscriptionPlan: string;
     attendanceDto: MarkAttendanceDto;
     isAdsFromDB: boolean;
@@ -865,6 +867,7 @@ export class AttendanceService {
         parentContact,
         parentEmail,
         parentTelegramId,
+        parentUserId,
         subscriptionPlan,
         attendanceDto,
         isAdsFromDB,
@@ -913,6 +916,7 @@ export class AttendanceService {
         parentContact,
         parentEmail,
         parentTelegramId,
+        parentUserId,
         attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: attendanceDto.date,
         time: formatSriLankaTime(now()),
@@ -1161,6 +1165,7 @@ export class AttendanceService {
     parentContact: string | null;
     parentEmail: string | null;
     parentTelegramId: string | null;
+    parentUserId: string | null;
     subscriptionPlan: string;
   }> {
     try {
@@ -1188,6 +1193,7 @@ export class AttendanceService {
           father: {
             userId: true,
             user: {
+              id: true,
               firstName: true,
               lastName: true,
               email: true,
@@ -1198,6 +1204,7 @@ export class AttendanceService {
           mother: {
             userId: true,
             user: {
+              id: true,
               firstName: true,
               lastName: true,
               email: true,
@@ -1208,6 +1215,7 @@ export class AttendanceService {
           guardian: {
             userId: true,
             user: {
+              id: true,
               firstName: true,
               lastName: true,
               email: true,
@@ -1225,6 +1233,7 @@ export class AttendanceService {
           parentContact: null,
           parentEmail: null,
           parentTelegramId: null,
+          parentUserId: null,
           subscriptionPlan: 'FREE'
         };
       }
@@ -1262,6 +1271,7 @@ export class AttendanceService {
         parentContact,
         parentEmail,
         parentTelegramId,
+        parentUserId: primaryParent?.id || null,
         subscriptionPlan
       };
 
@@ -1274,6 +1284,7 @@ export class AttendanceService {
         parentContact: null,
         parentEmail: null,
         parentTelegramId: null,
+        parentUserId: null,
         subscriptionPlan: 'FREE'
       };
     }
@@ -1520,19 +1531,23 @@ export class AttendanceService {
     let parentContact: string | null = null;
     let parentEmail: string | null = null;
     let parentTelegramId: string | null = null;
+    let parentUserId: string | null = null;
 
     if (studentData.father?.user) {
       parentContact = studentData.father.user.phoneNumber || null;
       parentEmail = studentData.father.user.email || null;
       parentTelegramId = studentData.father.user.telegramId || null;
+      parentUserId = studentData.father.userId || null;
     } else if (studentData.mother?.user) {
       parentContact = studentData.mother.user.phoneNumber || null;
       parentEmail = studentData.mother.user.email || null;
       parentTelegramId = studentData.mother.user.telegramId || null;
+      parentUserId = studentData.mother.userId || null;
     } else if (studentData.guardian?.user) {
       parentContact = studentData.guardian.user.phoneNumber || null;
       parentEmail = studentData.guardian.user.email || null;
       parentTelegramId = studentData.guardian.user.telegramId || null;
+      parentUserId = studentData.guardian.userId || null;
     }
 
     // Step 6: Convert to standard attendance DTO format
@@ -1571,6 +1586,7 @@ export class AttendanceService {
         parentContact,
         parentEmail,
         parentTelegramId,
+        parentUserId,
         subscriptionPlan,
         attendanceDto,
         isAdsFromDB,

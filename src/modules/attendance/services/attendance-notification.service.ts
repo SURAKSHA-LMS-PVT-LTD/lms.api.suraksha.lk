@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SmsProviderService } from '../../sms/services/sms-provider.service';
+import { FcmNotificationService } from '../../../common/services/fcm-notification.service';
 import { NOTIFICATION_PACKAGES_CONFIG } from '../../advertisement/services/notification-packages.config';
 
 // Retry configuration interface
@@ -17,6 +18,7 @@ export interface AttendanceNotificationData {
   parentContact?: string;
   parentEmail?: string;
   parentTelegramId?: string;
+  parentUserId?: string;       // ✅ Parent user ID for push notifications
   attendanceStatus: 'PRESENT' | 'ABSENT';
   attendanceType?: 'INSTITUTE' | 'CLASS' | 'SUBJECT' | 'TRANSPORT';  // ✅ Type of attendance (with all levels)
   date: string;
@@ -64,6 +66,7 @@ export class AttendanceNotificationService {
   constructor(
     private readonly smsProviderService: SmsProviderService,
     private readonly configService: ConfigService,
+    private readonly fcmNotificationService: FcmNotificationService,
   ) {}
 
   /**
@@ -116,11 +119,17 @@ export class AttendanceNotificationService {
     const envChannels: Record<string, string | undefined> = {
       'whatsapp': process.env.WHATSAPP_ACCESS_TOKEN,
       'telegram': process.env.TELEGRAM_BOT_TOKEN,
-      'email': process.env.EMAIL_SERVER_URL
+      'email': process.env.EMAIL_SERVER_URL,
+      'push': process.env.FIREBASE_PROJECT_ID  // FCM push notifications
     };
     
     // SMS is always available
     if (channel === 'sms') return true;
+    
+    // Push notifications check FCM service readiness
+    if (channel === 'push') {
+      return this.fcmNotificationService.isReady();
+    }
     
     // Check if environment variable is configured
     return !!envChannels[channel];
@@ -290,6 +299,9 @@ export class AttendanceNotificationService {
             break;
           case 'sms':
             ({ success, deliveryId } = await this.sendSMSNotification(data));
+            break;
+          case 'push':
+            ({ success, deliveryId } = await this.sendPushNotification(data));
             break;
           default:
             throw new Error(`Unsupported channel: ${channel}`);
@@ -986,6 +998,175 @@ export class AttendanceNotificationService {
     } catch (error) {
       return { success: false };
     }
+  }
+
+  /**
+   * 📱 Send Push Notification via Firebase Cloud Messaging (FCM)
+   * 
+   * Features:
+   * - Sends rich push notifications with images (if advertisement has image)
+   * - Supports both with-ads and no-ads modes
+   * - Uses parent's userId to find their FCM tokens
+   * - Includes deep link/action URL for ad click-through
+   */
+  private async sendPushNotification(
+    data: AttendanceNotificationData
+  ): Promise<{ success: boolean; deliveryId?: string }> {
+    try {
+      // Check if parent userId is available for push notification
+      if (!data.parentUserId) {
+        this.logger.debug(`No parent userId for push notification - studentId: ${data.studentId}`);
+        return { success: false, deliveryId: undefined };
+      }
+
+      // Check if FCM service is ready
+      if (!this.fcmNotificationService.isReady()) {
+        this.logger.warn('FCM service not initialized - push notification skipped');
+        return { success: false, deliveryId: undefined };
+      }
+
+      // Build push notification content
+      const pushContent = this.buildPushNotificationContent(data);
+
+      // Send push notification to parent's devices
+      const result = await this.fcmNotificationService.sendToUser(
+        data.parentUserId,
+        {
+          title: pushContent.title,
+          body: pushContent.body,
+          imageUrl: pushContent.imageUrl,
+          icon: 'ic_notification',
+        },
+        pushContent.data,
+        {
+          priority: 'high',
+          timeToLive: 86400, // 24 hours
+          collapseKey: `attendance_${data.studentId}`,
+        }
+      );
+
+      if (result.successCount > 0) {
+        this.logger.debug(`✅ Push notification sent to user ${data.parentUserId} - ${result.successCount} devices`);
+        return {
+          success: true,
+          deliveryId: `push_${Date.now()}_${data.parentUserId}`
+        };
+      } else {
+        this.logger.debug(`⚠️ Push notification failed for user ${data.parentUserId} - no devices received`);
+        return { success: false };
+      }
+
+    } catch (error) {
+      this.logger.error(`❌ Push notification error: ${(error as Error).message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Build push notification content with ad support
+   */
+  private buildPushNotificationContent(data: AttendanceNotificationData): {
+    title: string;
+    body: string;
+    imageUrl?: string;
+    data: Record<string, string>;
+  } {
+    const statusIcon = data.attendanceStatus === 'PRESENT' ? '✅' : '❌';
+    const statusText = data.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent';
+    
+    // Format date and time
+    const formattedDate = this.formatDate(data.date);
+    const formattedTime = this.formatTime(data.time);
+    
+    // Determine attendance type
+    const attendanceType = data.attendanceType || (data.bookhireName ? 'TRANSPORT' : 'INSTITUTE');
+    
+    let title = '';
+    let body = '';
+    
+    if (attendanceType === 'TRANSPORT') {
+      // Transport attendance
+      title = `${statusIcon} Transport Attendance`;
+      if (data.attendanceStatus === 'PRESENT') {
+        body = `${data.studentName} boarded ${data.bookhireName || 'transport'}${data.vehicleNumber ? ' (' + data.vehicleNumber + ')' : ''} at ${formattedTime}`;
+      } else {
+        body = `${data.studentName} did not board ${data.bookhireName || 'transport'}${data.vehicleNumber ? ' (' + data.vehicleNumber + ')' : ''} at ${formattedTime}`;
+      }
+    } else {
+      // Institute attendance
+      title = `${statusIcon} Attendance Update`;
+      
+      // Build context based on available information
+      let context = '';
+      if (data.subjectName && data.className) {
+        context = `${data.subjectName} (${data.className})`;
+      } else if (data.className) {
+        context = data.className;
+      } else if (data.instituteName) {
+        context = data.instituteName;
+      }
+      
+      if (data.attendanceStatus === 'PRESENT') {
+        body = `${data.studentName} arrived at ${context} at ${formattedTime}`;
+      } else {
+        body = `${data.studentName} was absent from ${context} at ${formattedTime}`;
+      }
+    }
+    
+    // Build data payload
+    const dataPayload: Record<string, string> = {
+      type: 'attendance',
+      studentId: data.studentId,
+      studentName: data.studentName,
+      status: data.attendanceStatus,
+      date: data.date,
+      time: data.time,
+      attendanceType: attendanceType,
+    };
+    
+    // Add optional fields
+    if (data.instituteName) dataPayload.instituteName = data.instituteName;
+    if (data.className) dataPayload.className = data.className;
+    if (data.subjectName) dataPayload.subjectName = data.subjectName;
+    if (data.bookhireName) dataPayload.bookhireName = data.bookhireName;
+    if (data.vehicleNumber) dataPayload.vehicleNumber = data.vehicleNumber;
+    
+    // Add advertisement data if available and ads are enabled
+    let imageUrl: string | undefined;
+    
+    if (data.advertisementData && this.isAdsEnabled(data.subscriptionPlan)) {
+      // Check if push is supported for this ad
+      const supportedPlatforms = data.advertisementData.supportivePlatforms || [];
+      const isPushSupported = supportedPlatforms.length === 0 || 
+                              supportedPlatforms.includes('mobile-push') ||
+                              supportedPlatforms.includes('push');
+      
+      if (isPushSupported) {
+        // Use ad image for rich notification
+        if (data.advertisementData.mediaUrl && 
+            (data.advertisementData.mediaType === 'image' || data.advertisementData.mediaType?.startsWith('image/'))) {
+          imageUrl = data.advertisementData.mediaUrl;
+        }
+        
+        // Add ad data for tracking
+        dataPayload.adId = data.advertisementData.id;
+        if (data.advertisementData.title) dataPayload.adTitle = data.advertisementData.title;
+        if (data.advertisementData.sendingUrl) dataPayload.actionUrl = data.advertisementData.sendingUrl;
+        if (data.advertisementData.mediaUrl) dataPayload.adMediaUrl = data.advertisementData.mediaUrl;
+        
+        // Optionally append ad info to body (brief)
+        if (data.advertisementData.title) {
+          body += ` | ${data.advertisementData.title}`;
+        }
+      }
+    }
+    
+    return {
+      title,
+      body,
+      imageUrl,
+      data: dataPayload,
+    };
   }
 
   /**

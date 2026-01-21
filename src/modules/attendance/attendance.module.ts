@@ -7,6 +7,7 @@ import { DynamoDBAttendanceService } from './services/dynamodb-attendance.servic
 import { DynamoDBAttendanceServiceV2 } from './services/dynamodb-attendance.service.v2';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { FcmNotificationService } from '../../common/services/fcm-notification.service';
 import { CacheModule } from '../../common/modules/cache.module';
 import { ConfigModule } from '@nestjs/config';
 import { StudentEntity } from '../student/entities/student.entity';
@@ -15,6 +16,8 @@ import { UserEntity } from '../user/entities/user.entity';
 import { StudentBookhireEnrollmentEntity } from '../private-transportation/entities/student-bookhire-enrollment.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
+import { UserFcmTokenRepository } from '../user/repositories/user-fcm-token.repository';
+import { UserFcmTokenEntity } from '../user/entities/user-fcm-token.entity';
 
 @Module({
   imports: [
@@ -28,7 +31,8 @@ import { AdvertisementEntity } from '../advertisement/entities/advertisement.ent
       UserEntity,
       StudentBookhireEnrollmentEntity,
       InstituteUserEntity,
-      AdvertisementEntity
+      AdvertisementEntity,
+      UserFcmTokenEntity
     ])
   ],
   controllers: [AttendanceController],
@@ -37,7 +41,9 @@ import { AdvertisementEntity } from '../advertisement/entities/advertisement.ent
     DynamoDBAttendanceService,
     DynamoDBAttendanceServiceV2,
     AttendanceNotificationService,
-    CloudStorageService
+    CloudStorageService,
+    FcmNotificationService,
+    UserFcmTokenRepository
   ],
   exports: [AttendanceService, DynamoDBAttendanceService, DynamoDBAttendanceServiceV2, AttendanceNotificationService]
 })
