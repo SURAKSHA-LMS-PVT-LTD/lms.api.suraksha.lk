@@ -13,7 +13,7 @@ import { UpdateInstituteClassSubjectHomeworksSubmissionDto } from './dto/update-
 import { QueryInstituteClassSubjectHomeworksSubmissionDto } from './dto/query-institute_class_subject_homeworks_submission.dto';
 import { InstituteClassSubjectHomeworksSubmissionResponseDto } from './dto/institute_class_subject_homeworks_submission-response.dto';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
-import { JwtRequest } from '@common/interfaces/jwt-request.interface';
+import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
 
 
 @ApiTags('Institute Class Subject Homework Submissions')
@@ -153,7 +153,7 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
     },
     @Request() req: JwtRequest
   ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
-    const studentId = req.user.s;
+    const studentId = JwtRequestHelper.getUserId(req.user);
     return await this.submissionsService.submitViaGoogleDrive(
       studentId,
       submitDto.homeworkId,

@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@ne
 import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GoogleTokenResponseDto } from './dto/google-token-response.dto';
-import { JwtRequest } from '@common/interfaces/jwt-request.interface';
+import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
 
 @ApiTags('Google OAuth 2.0')
 @Controller('auth/google')
@@ -59,7 +59,7 @@ export class GoogleAuthController {
     @Res() res: Response
   ): void {
     // Generate state with user ID for verification in callback
-    const userId = req.user.s;
+    const userId = JwtRequestHelper.getUserId(req.user);
     const stateParam = state || `${userId}_${Date.now()}`;
     
     const authUrl = this.googleAuthService.getAuthorizationUrl(stateParam);
