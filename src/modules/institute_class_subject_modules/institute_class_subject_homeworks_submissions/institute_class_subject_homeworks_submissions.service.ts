@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, Not, IsNull } from 'typeorm';
 import { now } from '../../../common/utils/timezone.util';
@@ -15,6 +15,8 @@ import { GoogleAuthService } from '../../google-auth/google-auth.service';
 
 @Injectable()
 export class InstituteClassSubjectHomeworksSubmissionsService {
+  private readonly logger = new Logger(InstituteClassSubjectHomeworksSubmissionsService.name);
+
   constructor(
     @InjectRepository(InstituteClassSubjectHomeworksSubmission)
     private readonly submissionRepository: Repository<InstituteClassSubjectHomeworksSubmission>,
@@ -548,19 +550,17 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       throw new NotFoundException(`Homework with ID ${homeworkId} not found`);
     }
 
-    // Check if student already submitted for this homework
-    const existingSubmission = await this.submissionRepository.findOne({
+    // ✅ ALLOW MULTIPLE SUBMISSIONS: Students can submit multiple files per homework
+    // Count existing active submissions
+    const submissionCount = await this.submissionRepository.count({
       where: { 
         homeworkId, 
-        studentId 
+        studentId,
+        isActive: true
       }
     });
 
-    if (existingSubmission) {
-      throw new BadRequestException(
-        'You have already submitted homework for this assignment. Delete the existing submission first to resubmit.'
-      );
-    }
+    this.logger.log(`Student ${studentId} has ${submissionCount} active submission(s) for homework ${homeworkId}`);
 
     // Verify file exists in Google Drive
     const fileExists = await this.googleAuthService.verifyFileExists(

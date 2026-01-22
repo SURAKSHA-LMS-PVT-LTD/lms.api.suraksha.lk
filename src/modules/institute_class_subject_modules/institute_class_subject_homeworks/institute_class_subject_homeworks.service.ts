@@ -9,6 +9,7 @@ import { QueryInstituteClassSubjectHomeworkDto } from './dto/query-institute-cla
 import { InstituteClassSubjectHomeworkResponseDto, PaginatedInstituteClassSubjectHomeworkResponseDto } from './dto/institute-class-subject-homework-response.dto';
 import { InstituteClassSubjectHomework } from './entities/institute_class_subject_homework.entity';
 import { InstituteAccessValidator, ROLE_BITMASKS } from '../../../common/helpers/institute-access-validator.helper';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 /**
  * Institute Class Subject Homeworks Service
@@ -44,6 +45,7 @@ export class InstituteClassSubjectHomeworksService {
   constructor(
     @InjectRepository(InstituteClassSubjectHomework)
     private readonly homeworkRepository: Repository<InstituteClassSubjectHomework>,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectHomeworkDto): Promise<InstituteClassSubjectHomeworkResponseDto> {
@@ -135,8 +137,8 @@ export class InstituteClassSubjectHomeworksService {
         .leftJoin('homework.teacher', 'teacher')
         .addSelect([
           'teacher.id',
-          'teacher.firstName', 
-          'teacher.lastName',
+          'teacher.nameWithInitials',
+          'teacher.imageUrl',
           'teacher.email'
         ]);
 
@@ -220,6 +222,11 @@ export class InstituteClassSubjectHomeworksService {
       // Add secondary sort for consistency
       queryBuilder.addOrderBy('homework.createdAt', 'DESC');
 
+      // Include references if requested
+      if (query.includeReferences) {
+        queryBuilder.leftJoinAndSelect('homework.references', 'reference', 'reference.isActive = :refActive', { refActive: true });
+      }
+
       // Get total count and paginated data in single operation
       const [homeworks, total] = await queryBuilder
         .skip(skip)
@@ -227,23 +234,55 @@ export class InstituteClassSubjectHomeworksService {
         .getManyAndCount();
 
       // Transform to response DTOs - lightweight response with only essential fields
-      const data = homeworks.map(homework => ({
-        id: homework.id,
-        title: homework.title,
-        description: homework.description,
-        instituteId: homework.instituteId,
-        classId: homework.classId,
-        subjectId: homework.subjectId,
-        teacherId: homework.teacherId,
-        startDate: homework.startDate,
-        endDate: homework.endDate,
-        referenceLink: homework.referenceLink,
-        teacher: homework.teacher ? {
-          id: homework.teacher.id,
-          name: `${homework.teacher.firstName} ${homework.teacher.lastName || ''}`.trim(),
-          email: homework.teacher.email
-        } : null
-      }));
+      const data = homeworks.map(homework => {
+        const baseResponse: any = {
+          id: homework.id,
+          title: homework.title,
+          description: homework.description,
+          instituteId: homework.instituteId,
+          classId: homework.classId,
+          subjectId: homework.subjectId,
+          teacherId: homework.teacherId,
+          startDate: homework.startDate,
+          endDate: homework.endDate,
+          referenceLink: homework.referenceLink,
+          teacher: homework.teacher ? {
+            id: homework.teacher.id,
+            nameWithInitials: homework.teacher.nameWithInitials || null,
+            imageUrl: homework.teacher.imageUrl 
+              ? this.cloudStorageService.getFullUrl(homework.teacher.imageUrl)
+              : null,
+            email: homework.teacher.email || null
+          } : null
+        };
+
+        // Include references if loaded
+        if (query.includeReferences && homework.references) {
+          baseResponse.references = homework.references
+            .sort((a, b) => a.displayOrder - b.displayOrder)
+            .map(ref => ({
+              id: ref.id,
+              title: ref.title,
+              description: ref.description,
+              referenceType: ref.referenceType,
+              referenceSource: ref.referenceSource,
+              displayOrder: ref.displayOrder,
+              viewUrl: ref.getViewUrl() ? 
+                (ref.referenceSource === 'S3_UPLOAD' && ref.fileUrl ? 
+                  this.cloudStorageService.getFullUrl(ref.fileUrl) : 
+                  ref.getViewUrl()) : 
+                null,
+              fileName: ref.fileName || ref.driveFileName || ref.linkTitle || null,
+              fileSize: ref.fileSize || ref.driveFileSize || null,
+              mimeType: ref.mimeType || ref.driveMimeType || null,
+              videoDuration: ref.videoDuration || null,
+              thumbnailUrl: ref.thumbnailUrl ? this.cloudStorageService.getFullUrl(ref.thumbnailUrl) : null,
+            }));
+          baseResponse.referenceCount = homework.references.length;
+        }
+
+        return baseResponse;
+      });
 
       const totalPages = Math.ceil(total / limit);
       const hasNext = page < totalPages;
@@ -265,10 +304,10 @@ export class InstituteClassSubjectHomeworksService {
     }
   }
 
-  async findOne(id: string, user?: any): Promise<InstituteClassSubjectHomeworkResponseDto> {
+  async findOne(id: string, user?: any, includeReferences: boolean = true): Promise<InstituteClassSubjectHomeworkResponseDto> {
     try {
       
-      const homework = await this.homeworkRepository.createQueryBuilder('homework')
+      const queryBuilder = this.homeworkRepository.createQueryBuilder('homework')
         .select([
           'homework.id',
           'homework.instituteId',
@@ -286,12 +325,18 @@ export class InstituteClassSubjectHomeworksService {
         .leftJoin('homework.teacher', 'teacher')
         .addSelect([
           'teacher.id',
-          'teacher.firstName',
-          'teacher.lastName', 
+          'teacher.nameWithInitials',
+          'teacher.imageUrl',
           'teacher.email'
         ])
-        .where('homework.id = :id', { id })
-        .getOne();
+        .where('homework.id = :id', { id });
+
+      // Include references if requested
+      if (includeReferences) {
+        queryBuilder.leftJoinAndSelect('homework.references', 'reference', 'reference.isActive = :refActive', { refActive: true });
+      }
+
+      const homework = await queryBuilder.getOne();
 
       if (!homework) {
         throw new NotFoundException(`Homework with ID ${id} not found`);
@@ -326,8 +371,8 @@ export class InstituteClassSubjectHomeworksService {
         }
       }
 
-      // Lightweight response - only essential fields, no unnecessary data
-      return {
+      // Build response with references
+      const response: any = {
         id: homework.id,
         title: homework.title,
         description: homework.description,
@@ -340,10 +385,40 @@ export class InstituteClassSubjectHomeworksService {
         referenceLink: homework.referenceLink,
         teacher: homework.teacher ? {
           id: homework.teacher.id,
-          name: `${homework.teacher.firstName} ${homework.teacher.lastName || ''}`.trim(),
-          email: homework.teacher.email
+          nameWithInitials: homework.teacher.nameWithInitials || null,
+          imageUrl: homework.teacher.imageUrl 
+            ? this.cloudStorageService.getFullUrl(homework.teacher.imageUrl)
+            : null,
+          email: homework.teacher.email || null
         } : null
-      } as InstituteClassSubjectHomeworkResponseDto;
+      };
+
+      // Include references if loaded
+      if (includeReferences && homework.references) {
+        response.references = homework.references
+          .sort((a, b) => a.displayOrder - b.displayOrder)
+          .map(ref => ({
+            id: ref.id,
+            title: ref.title,
+            description: ref.description,
+            referenceType: ref.referenceType,
+            referenceSource: ref.referenceSource,
+            displayOrder: ref.displayOrder,
+            viewUrl: ref.getViewUrl() ? 
+              (ref.referenceSource === 'S3_UPLOAD' && ref.fileUrl ? 
+                this.cloudStorageService.getFullUrl(ref.fileUrl) : 
+                ref.getViewUrl()) : 
+              null,
+            fileName: ref.fileName || ref.driveFileName || ref.linkTitle || null,
+            fileSize: ref.fileSize || ref.driveFileSize || null,
+            mimeType: ref.mimeType || ref.driveMimeType || null,
+            videoDuration: ref.videoDuration || null,
+            thumbnailUrl: ref.thumbnailUrl ? this.cloudStorageService.getFullUrl(ref.thumbnailUrl) : null,
+          }));
+        response.referenceCount = homework.references.length;
+      }
+
+      return response as InstituteClassSubjectHomeworkResponseDto;
     } catch (error) {
       this.logger.error(`Error fetching homework with ID ${id}:`, error);
       throw error;

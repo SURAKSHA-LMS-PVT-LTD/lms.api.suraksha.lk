@@ -68,6 +68,19 @@ export class QueryInstituteClassSubjectHomeworkDto {
   @IsEnum(['ASC', 'DESC'])
   sortOrder?: 'ASC' | 'DESC';
 
+  @ApiProperty({ 
+    required: false, 
+    description: 'Include reference materials in response', 
+    default: false 
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return false;
+    return value === 'true' || value === true;
+  })
+  @IsBoolean()
+  includeReferences?: boolean;
+
   // These fields might be sent by frontend but aren't used in backend filtering
   // Added to prevent validation errors with forbidNonWhitelisted
   @ApiProperty({ description: 'User ID (ignored, for frontend compatibility)', example: '1', required: false })

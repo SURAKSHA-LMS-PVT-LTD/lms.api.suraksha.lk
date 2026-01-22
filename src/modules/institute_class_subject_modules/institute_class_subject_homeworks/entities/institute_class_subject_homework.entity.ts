@@ -1,8 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer, OneToMany } from 'typeorm';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
+import { InstituteClassSubjectHomeworkReference } from './institute_class_subject_homework_reference.entity';
 
 // Transformer to ensure dates are properly serialized
 const dateTransformer: ValueTransformer = {
@@ -65,6 +66,10 @@ export class InstituteClassSubjectHomework {
 
   @Column({ name: 'reference_link', type: 'varchar', length: 255, nullable: true })
   referenceLink?: string;
+
+  // One homework can have many reference materials
+  @OneToMany(() => InstituteClassSubjectHomeworkReference, reference => reference.homework)
+  references: InstituteClassSubjectHomeworkReference[];
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

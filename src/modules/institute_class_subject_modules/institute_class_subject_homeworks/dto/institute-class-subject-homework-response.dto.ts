@@ -1,5 +1,47 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
+import { HomeworkReferenceType, HomeworkReferenceSource } from '../entities/institute_class_subject_homework_reference.entity';
+
+/**
+ * Simplified reference data included with homework response
+ */
+export class HomeworkReferenceSimpleDto {
+  @ApiProperty({ description: 'Reference ID', example: '1' })
+  id: string;
+
+  @ApiProperty({ description: 'Title', example: 'Chapter 1 Video' })
+  title: string;
+
+  @ApiPropertyOptional({ description: 'Description' })
+  description?: string;
+
+  @ApiProperty({ description: 'Reference type', enum: HomeworkReferenceType })
+  referenceType: HomeworkReferenceType;
+
+  @ApiProperty({ description: 'Reference source', enum: HomeworkReferenceSource })
+  referenceSource: HomeworkReferenceSource;
+
+  @ApiProperty({ description: 'Display order', example: 0 })
+  displayOrder: number;
+
+  @ApiPropertyOptional({ description: 'Primary viewable URL' })
+  viewUrl?: string;
+
+  @ApiPropertyOptional({ description: 'File name' })
+  fileName?: string;
+
+  @ApiPropertyOptional({ description: 'File size in bytes' })
+  fileSize?: number;
+
+  @ApiPropertyOptional({ description: 'MIME type' })
+  mimeType?: string;
+
+  @ApiPropertyOptional({ description: 'Video duration in seconds' })
+  videoDuration?: number;
+
+  @ApiPropertyOptional({ description: 'Thumbnail URL' })
+  thumbnailUrl?: string;
+}
 
 export class InstituteClassSubjectHomeworkResponseDto {
   @ApiProperty({ description: 'Homework ID', example: '123' })
@@ -84,9 +126,21 @@ export class InstituteClassSubjectHomeworkResponseDto {
   @Expose()
   teacher?: {
     id: string;
-    name: string;
+    nameWithInitials: string;
+    imageUrl?: string;
     email: string;
   };
+
+  @ApiPropertyOptional({ 
+    description: 'Reference materials (videos, PDFs, links, etc.)', 
+    type: [HomeworkReferenceSimpleDto] 
+  })
+  @Expose()
+  references?: HomeworkReferenceSimpleDto[];
+
+  @ApiPropertyOptional({ description: 'Total reference count' })
+  @Expose()
+  referenceCount?: number;
 }
 
 export class PaginatedInstituteClassSubjectHomeworkResponseDto {
