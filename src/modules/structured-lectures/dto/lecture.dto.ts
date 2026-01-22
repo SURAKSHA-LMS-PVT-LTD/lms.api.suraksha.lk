@@ -78,6 +78,16 @@ export class DocumentInfoDto {
 }
 
 export class CreateLectureDto {
+  @ApiProperty({ description: 'Institute ID this lecture belongs to', example: '101' })
+  @IsString()
+  @IsNotEmpty()
+  instituteId: string;
+
+  @ApiProperty({ description: 'Class ID this lecture belongs to', example: '1000' })
+  @IsString()
+  @IsNotEmpty()
+  classId: string;
+
   @ApiProperty({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_001' })
   @IsString()
   @IsNotEmpty()
@@ -156,6 +166,16 @@ export class CreateLectureDto {
 }
 
 export class UpdateLectureDto {
+  @ApiPropertyOptional({ description: 'Institute ID this lecture belongs to', example: '101' })
+  @IsString()
+  @IsOptional()
+  instituteId?: string;
+
+  @ApiPropertyOptional({ description: 'Class ID this lecture belongs to', example: '1000' })
+  @IsString()
+  @IsOptional()
+  classId?: string;
+
   @ApiPropertyOptional({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_002' })
   @IsString()
   @IsOptional()
@@ -228,6 +248,12 @@ export class LectureResponseDto {
   @ApiProperty({ description: 'Unique identifier for the lecture', example: '648a1b2c3d4e5f6789abcdef' })
   _id: string;
 
+  @ApiProperty({ description: 'Institute ID this lecture belongs to', example: '101' })
+  instituteId: string;
+
+  @ApiProperty({ description: 'Class ID this lecture belongs to', example: '1000' })
+  classId: string;
+
   @ApiProperty({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_001' })
   subjectId: string;
 
@@ -299,6 +325,16 @@ export class GetLecturesBySubjectResponseDto {
 }
 
 export class LectureQueryDto {
+  @ApiPropertyOptional({ description: 'Filter by institute ID', example: '101' })
+  @IsString()
+  @IsOptional()
+  instituteId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by class ID', example: '1000' })
+  @IsString()
+  @IsOptional()
+  classId?: string;
+
   @ApiPropertyOptional({ description: 'Filter by subject ID', example: 'SUBJ_MATH_001' })
   @IsString()
   @IsOptional()

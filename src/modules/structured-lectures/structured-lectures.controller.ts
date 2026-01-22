@@ -130,6 +130,58 @@ export class StructuredLecturesController {
     }
   }
 
+  @Get('class/:classId/subject/:subjectId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    student: true
+  })
+  @ApiOperation({ 
+    summary: 'Get lectures by class ID and subject ID',
+    description: 'Retrieve all lectures for a specific class and subject. This is the primary endpoint for institute-class-subject level access. Accessible by SUPERADMIN, Institute Admin, Teacher, or Student.'
+  })
+  @ApiParam({ name: 'classId', description: 'Class ID to filter lectures' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID to filter lectures' })
+  @ApiQuery({ name: 'grade', required: false, description: 'Optional grade level filter (1-13)' })
+  @ApiQuery({ name: 'isActive', required: false, description: 'Filter by active status (default: true for non-admin users)' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Lectures retrieved successfully',
+    type: LectureListResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'No lectures found for the class and subject' })
+  async getLecturesByClassAndSubject(
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Req() request: JwtRequest,
+    @Query('grade') grade?: number,
+    @Query('isActive') isActive?: boolean
+  ): Promise<LectureListResponseDto> {
+    try {
+      // For non-admin users, default to showing only active lectures
+      let activeFilter = isActive;
+      if (request.user.u !== UserType.SUPERADMIN && activeFilter === undefined) {
+        activeFilter = true;
+      }
+
+      return await this.lecturesService.getLecturesByClassAndSubjectAsDto(classId, subjectId, grade, activeFilter);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'Failed to retrieve lectures for class and subject',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   @Get('subject/:subjectId/grade/:grade')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({

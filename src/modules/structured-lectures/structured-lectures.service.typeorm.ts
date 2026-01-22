@@ -29,6 +29,8 @@ export class StructuredLecturesServiceTypeorm {
 
     return {
       _id: entity.id,
+      instituteId: entity.instituteId ?? undefined,
+      classId: entity.classId ?? undefined,
       subjectId: entity.subjectId,
       grade: entity.grade,
       title: entity.title,

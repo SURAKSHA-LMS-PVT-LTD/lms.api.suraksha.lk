@@ -17,6 +17,8 @@ export class StructuredLecturesService {
     return this.lectureRepository.find({
       select: [
         'id',
+        'instituteId',
+        'classId',
         'title',
         'description',
         'subjectId',
@@ -38,6 +40,8 @@ export class StructuredLecturesService {
       where: { id },
       select: [
         'id',
+        'instituteId',
+        'classId',
         'title',
         'description',
         'subjectId',
@@ -96,6 +100,8 @@ export class StructuredLecturesService {
       where: { subjectId, grade, isActive: activeFilter },
       select: [
         'id',
+        'instituteId',
+        'classId',
         'title',
         'description',
         'subjectId',
@@ -158,6 +164,8 @@ export class StructuredLecturesService {
 
     return {
       _id: entity.id,
+      instituteId: entity.instituteId,
+      classId: entity.classId,
       title: entity.title,
       description: entity.description || '',
       subjectId: entity.subjectId,
@@ -183,6 +191,8 @@ export class StructuredLecturesService {
     const queryBuilder = this.lectureRepository.createQueryBuilder('lecture')
       .select([
         'lecture.id',
+        'lecture.instituteId',
+        'lecture.classId',
         'lecture.title',
         'lecture.description',
         'lecture.subjectId',
@@ -195,6 +205,16 @@ export class StructuredLecturesService {
         'lecture.createdAt',
         'lecture.updatedAt'
       ]);
+
+    // Filter by instituteId (important for multi-tenant)
+    if (queryDto.instituteId) {
+      queryBuilder.andWhere('lecture.instituteId = :instituteId', { instituteId: queryDto.instituteId });
+    }
+
+    // Filter by classId for class-level lectures
+    if (queryDto.classId) {
+      queryBuilder.andWhere('lecture.classId = :classId', { classId: queryDto.classId });
+    }
 
     if (queryDto.subjectId) {
       queryBuilder.andWhere('lecture.subjectId = :subjectId', { subjectId: queryDto.subjectId });
@@ -314,6 +334,8 @@ export class StructuredLecturesService {
       where: { subjectId, grade, isActive: activeFilter },
       select: [
         'id',
+        'instituteId',
+        'classId',
         'title',
         'description',
         'subjectId',
@@ -327,6 +349,58 @@ export class StructuredLecturesService {
         'updatedAt'
       ]
     });
+
+    return {
+      lectures: entities.map(entity => this.transformEntityToDto(entity)),
+      total: entities.length,
+      totalPages: 1,
+      currentPage: 1,
+      limit: entities.length
+    };
+  }
+
+  /**
+   * Get lectures by class and subject - Primary method for institute-class-subject level access
+   * Optimized query with proper indexing on (classId, subjectId)
+   */
+  async getLecturesByClassAndSubjectAsDto(
+    classId: string, 
+    subjectId: string, 
+    grade?: number, 
+    activeFilter?: boolean
+  ): Promise<LectureListResponseDto> {
+    const queryBuilder = this.lectureRepository.createQueryBuilder('lecture')
+      .select([
+        'lecture.id',
+        'lecture.instituteId',
+        'lecture.classId',
+        'lecture.title',
+        'lecture.description',
+        'lecture.subjectId',
+        'lecture.grade',
+        'lecture.videoUrl',
+        'lecture.thumbnailUrl',
+        'lecture.attachments',
+        'lecture.isActive',
+        'lecture.createdBy',
+        'lecture.createdAt',
+        'lecture.updatedAt'
+      ])
+      .where('lecture.classId = :classId', { classId })
+      .andWhere('lecture.subjectId = :subjectId', { subjectId });
+
+    if (grade !== undefined) {
+      queryBuilder.andWhere('lecture.grade = :grade', { grade });
+    }
+
+    if (activeFilter !== undefined) {
+      queryBuilder.andWhere('lecture.isActive = :isActive', { isActive: activeFilter });
+    }
+
+    queryBuilder.orderBy('lecture.grade', 'ASC')
+      .addOrderBy('lecture.createdAt', 'DESC');
+
+    const entities = await queryBuilder.getMany();
 
     return {
       lectures: entities.map(entity => this.transformEntityToDto(entity)),

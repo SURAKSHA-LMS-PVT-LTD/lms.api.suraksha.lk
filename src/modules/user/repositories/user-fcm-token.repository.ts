@@ -61,8 +61,8 @@ export class UserFcmTokenRepository {
         updatedAt: timestamp,
       })
       .orUpdate(
-        ['fcmToken', 'deviceType', 'deviceName', 'appVersion', 'osVersion', 'isActive', 'isSynced', 'updatedAt'],
-        ['userId', 'deviceId'] // Conflict target: the unique constraint columns
+        ['fcm_token', 'device_type', 'device_name', 'app_version', 'os_version', 'is_active', 'is_synced', 'updated_at'],
+        ['user_id', 'device_id'] // Conflict target: the unique constraint columns
       )
       .execute();
 
