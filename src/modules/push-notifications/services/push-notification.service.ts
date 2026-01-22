@@ -271,11 +271,19 @@ export class PushNotificationService {
     }
 
     if (targetTypes.includes(NotificationTargetUserType.STUDENTS)) {
-      const students = await this.classStudentRepository.find({
+      // Get students from institute_class_students table
+      const classStudents = await this.classStudentRepository.find({
         where: { instituteId, isActive: true },
         select: ['studentUserId']
       });
-      students.forEach(s => userIds.add(s.studentUserId));
+      classStudents.forEach(s => userIds.add(s.studentUserId));
+      
+      // Also get students from institute_user table (students registered but not enrolled in classes)
+      const instituteStudents = await this.instituteUserRepository.find({
+        where: { instituteId, status: InstituteUserStatus.ACTIVE, instituteUserType: InstituteUserType.STUDENT },
+        select: ['userId']
+      });
+      instituteStudents.forEach(s => userIds.add(s.userId));
     }
 
     if (targetTypes.includes(NotificationTargetUserType.PARENTS)) {

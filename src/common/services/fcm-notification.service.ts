@@ -206,18 +206,33 @@ export class FcmNotificationService implements OnModuleInit {
     }
 
     try {
+      // Sanitize data payload - FCM requires all data values to be strings
+      const sanitizedData: { [key: string]: string } = {};
+      if (data) {
+        for (const [key, value] of Object.entries(data)) {
+          if (value !== null && value !== undefined) {
+            sanitizedData[key] = String(value);
+          }
+        }
+      }
+
+      // Build notification object, excluding undefined/null values
+      const notificationPayload: admin.messaging.Notification = {
+        title: notification.title,
+        body: notification.body,
+      };
+      if (notification.imageUrl) {
+        notificationPayload.imageUrl = notification.imageUrl;
+      }
+
       const message: admin.messaging.MulticastMessage = {
         tokens: fcmTokens,
-        notification: {
-          title: notification.title,
-          body: notification.body,
-          imageUrl: notification.imageUrl,
-        },
-        data: data || {},
+        notification: notificationPayload,
+        data: sanitizedData,
         android: {
           priority: options?.priority === 'high' ? 'high' : 'normal',
           ttl: options?.timeToLive || 86400000,
-          collapseKey: options?.collapseKey,
+          ...(options?.collapseKey ? { collapseKey: options.collapseKey } : {}),
           notification: {
             icon: notification.icon || 'ic_notification',
             color: '#4CAF50',
@@ -242,17 +257,28 @@ export class FcmNotificationService implements OnModuleInit {
       };
 
       // Use sendEachForMulticast (correct method name) instead of sendMulticast
+      this.logger.log(`📤 Sending multicast to ${fcmTokens.length} tokens`);
+      this.logger.debug(`📋 Message payload: ${JSON.stringify({ notification: notificationPayload, data: sanitizedData })}`);
+      
       const response = await admin.messaging().sendEachForMulticast(message);
+      this.logger.log(`📊 Multicast result: ${response.successCount} success, ${response.failureCount} failure`);
 
       const invalidTokens: string[] = [];
       const results: SendNotificationResult[] = response.responses.map((resp, index) => {
         if (resp.success) {
+          this.logger.log(`✅ Token ${index + 1}: sent successfully (messageId: ${resp.messageId})`);
           return {
             success: true,
             messageId: resp.messageId,
           };
         } else {
           const error = resp.error;
+          this.logger.warn(`❌ Token ${index + 1} (${fcmTokens[index].substring(0, 20)}...): failed`);
+          this.logger.warn(`   Error code: ${error?.code}`);
+          this.logger.warn(`   Error message: ${error?.message}`);
+          if (error?.stack) {
+            this.logger.debug(`   Stack: ${error.stack}`);
+          }
           if (error?.code === 'messaging/invalid-registration-token' ||
               error?.code === 'messaging/registration-token-not-registered') {
             invalidTokens.push(fcmTokens[index]);

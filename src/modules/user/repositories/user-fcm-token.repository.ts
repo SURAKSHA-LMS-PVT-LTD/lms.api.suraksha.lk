@@ -5,7 +5,7 @@ import { UserFcmTokenEntity } from '../entities/user-fcm-token.entity';
 import { CreateUserFcmTokenDto } from '../dto/create-user-fcm-token.dto';
 import { UpdateUserFcmTokenDto } from '../dto/update-user-fcm-token.dto';
 import { QueryUserFcmTokenDto } from '../dto/query-user-fcm-token.dto';
-import { now } from '../../../common/utils/timezone.util';
+import { now, formatForMySQL } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class UserFcmTokenRepository {
@@ -27,6 +27,7 @@ export class UserFcmTokenRepository {
 
   async create(createDto: CreateUserFcmTokenDto): Promise<UserFcmTokenEntity> {
     const timestamp = now();
+    const mysqlTimestamp = formatForMySQL(timestamp);
     
     // Check if user has reached device limit (only for new devices)
     const checkExistingToken = await this.findByUserAndDevice(createDto.userId, createDto.deviceId);
@@ -57,8 +58,8 @@ export class UserFcmTokenRepository {
         osVersion: createDto.osVersion || null,
         isActive: createDto.isActive ?? true,
         isSynced: createDto.isSynced ?? false,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+        createdAt: mysqlTimestamp as any,
+        updatedAt: mysqlTimestamp as any,
       })
       .orUpdate(
         ['fcm_token', 'device_type', 'device_name', 'app_version', 'os_version', 'is_active', 'is_synced', 'updated_at'],
@@ -128,10 +129,19 @@ export class UserFcmTokenRepository {
   }
 
   async findActiveTokensByUserId(userId: string): Promise<UserFcmTokenEntity[]> {
-    return await this.repository.find({
-      where: { userId, isActive: true },
-      relations: ['user']
+    // Ensure userId is a string for consistent comparison with bigint column
+    const userIdStr = String(userId);
+    
+    // Debug: Log the query
+    console.log(`[FCM Token Query] Looking for active tokens for user_id = '${userIdStr}'`);
+    
+    const tokens = await this.repository.find({
+      where: { userId: userIdStr, isActive: true },
     });
+    
+    console.log(`[FCM Token Query] Found ${tokens.length} tokens for user ${userIdStr}`);
+    
+    return tokens;
   }
 
   async update(id: string, updateDto: UpdateUserFcmTokenDto): Promise<UserFcmTokenEntity | null> {

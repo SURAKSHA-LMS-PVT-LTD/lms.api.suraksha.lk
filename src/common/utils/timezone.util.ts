@@ -181,6 +181,22 @@ export function getExpiryDate(years: number): Date {
 }
 
 /**
+ * Format a Date object for MySQL DATETIME/TIMESTAMP columns
+ * Uses the Sri Lanka time that's already "baked into" the Date from getCurrentSriLankaTime()
+ * Returns format: 'YYYY-MM-DD HH:MM:SS'
+ */
+export function formatForMySQL(date: Date): string {
+  // Use getUTC* methods since getCurrentSriLankaTime() stores Sri Lanka time as UTC values
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+/**
  * Ensure timezone is set before application starts
  */
 export function ensureTimezoneSet(): void {
