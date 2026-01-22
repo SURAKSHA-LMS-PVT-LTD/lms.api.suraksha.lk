@@ -13,7 +13,14 @@ export enum NotificationTargetUserType {
   TEACHERS = 'TEACHERS',
   PARENTS = 'PARENTS',
   ATTENDANCE_MARKERS = 'ATTENDANCE_MARKERS',
-  INSTITUTE_ADMINS = 'INSTITUTE_ADMINS'
+  INSTITUTE_ADMINS = 'INSTITUTE_ADMINS',
+  
+  // Advanced filters for global notifications (based on user.user_type)
+  USERS_WITHOUT_INSTITUTE = 'USERS_WITHOUT_INSTITUTE',     // Users not enrolled in any institute
+  USERS_WITHOUT_PARENT = 'USERS_WITHOUT_PARENT',           // Users with USER_WITHOUT_PARENT type (cannot be assigned as parent)
+  USERS_WITHOUT_STUDENT = 'USERS_WITHOUT_STUDENT',         // Users with USER_WITHOUT_STUDENT type (cannot play student role)
+  VERIFIED_USERS_ONLY = 'VERIFIED_USERS_ONLY',             // Only email-verified users (isEmailVerified = true)
+  UNVERIFIED_USERS_ONLY = 'UNVERIFIED_USERS_ONLY'          // Only unverified users (isEmailVerified = false)
 }
 
 /**

@@ -23,6 +23,7 @@ import { InstituteClassSubjectStudent } from '../../institute_class_subject_modu
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { UserEntity } from '../../user/entities/user.entity';
+import { UserType } from '../../user/enums/user-type.enum';
 import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
@@ -239,6 +240,63 @@ export class PushNotificationService {
         select: ['userId']
       });
       admins.forEach(a => userIds.add(a.userId));
+    }
+
+    // Advanced filters for global notifications - optimized with single queries
+    if (targetTypes.includes(NotificationTargetUserType.USERS_WITHOUT_INSTITUTE)) {
+      // Single query: Get users NOT in institute_user table
+      const users = await this.userRepository
+        .createQueryBuilder('u')
+        .select('u.id')
+        .leftJoin('institute_user', 'iu', 'iu.user_id = u.id AND iu.status = :status', { status: InstituteUserStatus.ACTIVE })
+        .where('u.is_active = :isActive', { isActive: true })
+        .andWhere('iu.user_id IS NULL')
+        .getRawMany();
+      users.forEach(u => userIds.add(u.u_id));
+    }
+
+    if (targetTypes.includes(NotificationTargetUserType.USERS_WITHOUT_PARENT)) {
+      // Single query: Get users with USER_WITHOUT_PARENT type
+      const users = await this.userRepository
+        .createQueryBuilder('u')
+        .select('u.id')
+        .where('u.is_active = :isActive', { isActive: true })
+        .andWhere('u.user_type = :userType', { userType: UserType.USER_WITHOUT_PARENT })
+        .getRawMany();
+      users.forEach(u => userIds.add(u.u_id));
+    }
+
+    if (targetTypes.includes(NotificationTargetUserType.USERS_WITHOUT_STUDENT)) {
+      // Single query: Get users with USER_WITHOUT_STUDENT type
+      const users = await this.userRepository
+        .createQueryBuilder('u')
+        .select('u.id')
+        .where('u.is_active = :isActive', { isActive: true })
+        .andWhere('u.user_type = :userType', { userType: UserType.USER_WITHOUT_STUDENT })
+        .getRawMany();
+      users.forEach(u => userIds.add(u.u_id));
+    }
+
+    if (targetTypes.includes(NotificationTargetUserType.VERIFIED_USERS_ONLY)) {
+      // Single query: Get only email-verified users
+      const users = await this.userRepository
+        .createQueryBuilder('u')
+        .select('u.id')
+        .where('u.is_active = :isActive', { isActive: true })
+        .andWhere('u.is_email_verified = :verified', { verified: true })
+        .getRawMany();
+      users.forEach(u => userIds.add(u.u_id));
+    }
+
+    if (targetTypes.includes(NotificationTargetUserType.UNVERIFIED_USERS_ONLY)) {
+      // Single query: Get only unverified users
+      const users = await this.userRepository
+        .createQueryBuilder('u')
+        .select('u.id')
+        .where('u.is_active = :isActive', { isActive: true })
+        .andWhere('u.is_email_verified = :verified', { verified: false })
+        .getRawMany();
+      users.forEach(u => userIds.add(u.u_id));
     }
   }
 
