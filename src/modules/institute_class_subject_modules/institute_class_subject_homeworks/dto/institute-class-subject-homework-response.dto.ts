@@ -3,6 +3,50 @@ import { Expose, Transform } from 'class-transformer';
 import { HomeworkReferenceType, HomeworkReferenceSource } from '../entities/institute_class_subject_homework_reference.entity';
 
 /**
+ * Simplified submission data included with homework response
+ */
+export class HomeworkSubmissionSimpleDto {
+  @ApiProperty({ description: 'Submission ID', example: '1' })
+  id: string;
+
+  @ApiProperty({ description: 'Student ID', example: '40' })
+  studentId: string;
+
+  @ApiPropertyOptional({ description: 'Student name' })
+  studentName?: string;
+
+  @ApiPropertyOptional({ description: 'Student image URL' })
+  studentImageUrl?: string;
+
+  @ApiProperty({ description: 'Submission date', example: '2026-01-20T10:00:00Z' })
+  submissionDate?: Date;
+
+  @ApiPropertyOptional({ description: 'Submitted file URL' })
+  fileUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Teacher correction file URL' })
+  teacherCorrectionFileUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive file ID (if submitted via Drive)' })
+  driveFileId?: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive view URL' })
+  driveViewUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Submission type', enum: ['UPLOAD', 'GOOGLE_DRIVE'] })
+  submissionType?: string;
+
+  @ApiPropertyOptional({ description: 'Teacher remarks/feedback' })
+  remarks?: string;
+
+  @ApiProperty({ description: 'Is active', example: true })
+  isActive: boolean;
+
+  @ApiProperty({ description: 'Created at' })
+  createdAt?: Date;
+}
+
+/**
  * Simplified reference data included with homework response
  */
 export class HomeworkReferenceSimpleDto {
@@ -141,6 +185,21 @@ export class InstituteClassSubjectHomeworkResponseDto {
   @ApiPropertyOptional({ description: 'Total reference count' })
   @Expose()
   referenceCount?: number;
+
+  @ApiPropertyOptional({ 
+    description: 'Current user\'s submissions for this homework (students see their own, teachers see all)', 
+    type: [HomeworkSubmissionSimpleDto] 
+  })
+  @Expose()
+  mySubmissions?: HomeworkSubmissionSimpleDto[];
+
+  @ApiPropertyOptional({ description: 'Total submissions count (for teachers)' })
+  @Expose()
+  submissionCount?: number;
+
+  @ApiPropertyOptional({ description: 'Whether current user has submitted', example: true })
+  @Expose()
+  hasSubmitted?: boolean;
 }
 
 export class PaginatedInstituteClassSubjectHomeworkResponseDto {

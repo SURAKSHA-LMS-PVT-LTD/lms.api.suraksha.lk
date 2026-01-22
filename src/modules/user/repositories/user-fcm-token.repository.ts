@@ -9,19 +9,76 @@ import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class UserFcmTokenRepository {
+  // Maximum devices per user (configurable)
+  // Recommended: 5-10 devices per user (phone, tablet, web, desktop, etc.)
+  private readonly MAX_DEVICES_PER_USER = 10;
+
   constructor(
     @InjectRepository(UserFcmTokenEntity)
     private readonly repository: Repository<UserFcmTokenEntity>,
   ) {}
 
+  /**
+   * Get the maximum number of devices allowed per user
+   */
+  getMaxDevicesPerUser(): number {
+    return this.MAX_DEVICES_PER_USER;
+  }
+
   async create(createDto: CreateUserFcmTokenDto): Promise<UserFcmTokenEntity> {
     const timestamp = now();
-    const fcmToken = this.repository.create({
-      ...createDto,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-    return await this.repository.save(fcmToken);
+    
+    // Check if user has reached device limit (only for new devices)
+    const checkExistingToken = await this.findByUserAndDevice(createDto.userId, createDto.deviceId);
+    if (!checkExistingToken) {
+      const userDeviceCount = await this.repository.count({
+        where: { userId: createDto.userId, isActive: true }
+      });
+      
+      if (userDeviceCount >= this.MAX_DEVICES_PER_USER) {
+        // Auto-remove oldest inactive device, or throw error
+        await this.removeOldestDevice(createDto.userId);
+      }
+    }
+    
+    // Use upsert to handle duplicate userId + deviceId gracefully
+    // This prevents race conditions when multiple requests come simultaneously
+    const result = await this.repository
+      .createQueryBuilder()
+      .insert()
+      .into(UserFcmTokenEntity)
+      .values({
+        userId: createDto.userId,
+        fcmToken: createDto.fcmToken,
+        deviceId: createDto.deviceId,
+        deviceType: createDto.deviceType,
+        deviceName: createDto.deviceName || null,
+        appVersion: createDto.appVersion || null,
+        osVersion: createDto.osVersion || null,
+        isActive: createDto.isActive ?? true,
+        isSynced: createDto.isSynced ?? false,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .orUpdate(
+        ['fcmToken', 'deviceType', 'deviceName', 'appVersion', 'osVersion', 'isActive', 'isSynced', 'updatedAt'],
+        ['userId', 'deviceId'] // Conflict target: the unique constraint columns
+      )
+      .execute();
+
+    // Fetch and return the created/updated token
+    const tokenId = result.identifiers[0]?.id || result.raw?.insertId;
+    if (tokenId) {
+      const token = await this.findOne(tokenId.toString());
+      if (token) return token;
+    }
+
+    // Fallback: find by userId and deviceId if insert ID not available
+    const upsertedToken = await this.findByUserAndDevice(createDto.userId, createDto.deviceId);
+    if (upsertedToken) return upsertedToken;
+
+    // This should never happen, but throw error if we can't find the token
+    throw new Error('Failed to create or retrieve FCM token after upsert');
   }
 
   async findAll(queryDto: QueryUserFcmTokenDto): Promise<{ data: UserFcmTokenEntity[]; total: number }> {
@@ -119,6 +176,33 @@ export class UserFcmTokenRepository {
       .execute();
     
     return result.affected || 0;
+  }
+
+  /**
+   * Remove the oldest inactive device when user reaches device limit
+   * Priority: Remove oldest inactive device first, then oldest active device
+   */
+  private async removeOldestDevice(userId: string): Promise<void> {
+    // First, try to remove oldest inactive device
+    const oldestInactive = await this.repository.findOne({
+      where: { userId, isActive: false },
+      order: { lastSeen: 'ASC', updatedAt: 'ASC' }
+    });
+
+    if (oldestInactive) {
+      await this.repository.delete(oldestInactive.id);
+      return;
+    }
+
+    // If no inactive devices, remove the oldest active device (least recently seen)
+    const oldestActive = await this.repository.findOne({
+      where: { userId, isActive: true },
+      order: { lastSeen: 'ASC', updatedAt: 'ASC' }
+    });
+
+    if (oldestActive) {
+      await this.repository.delete(oldestActive.id);
+    }
   }
 
   private buildQueryBuilder(queryDto: QueryUserFcmTokenDto): SelectQueryBuilder<UserFcmTokenEntity> {

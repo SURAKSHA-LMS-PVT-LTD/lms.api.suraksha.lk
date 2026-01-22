@@ -97,15 +97,18 @@ export class InstituteClassSubjectHomeworksController {
 **Performance Optimizations:**
 - Single query with all joins for optimal performance
 - Efficient filtering using proper database indexes
-- No submission data included (use separate submission endpoints)
+- No submission data included by default (use includeSubmissions=true)
 - Consistent sorting with secondary ordering
 
 **Usage Examples:**
 - \`GET /homeworks?instituteId=44&classId=40&search=mathematics\`
 - \`GET /homeworks?teacherId=40&fromDate=2025-08-01&toDate=2025-08-31\`
 - \`GET /homeworks?page=1&limit=20&sortBy=startDate&sortOrder=ASC\`
+- \`GET /homeworks?classId=40&includeReferences=true&includeSubmissions=true\` (get complete view)
 
-**Note:** For homework submissions, use the dedicated submission endpoints to avoid performance issues.` 
+**Include Options:**
+- \`includeReferences=true\` - Include reference materials (videos, PDFs, links)
+- \`includeSubmissions=true\` - Include submissions (students see their own, teachers see all)` 
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
@@ -124,6 +127,8 @@ export class InstituteClassSubjectHomeworksController {
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page (max 100)', example: 10 })
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field', enum: ['title', 'startDate', 'endDate', 'createdAt'], example: 'startDate' })
   @ApiQuery({ name: 'sortOrder', required: false, description: 'Sort order', enum: ['ASC', 'DESC'], example: 'DESC' })
+  @ApiQuery({ name: 'includeReferences', required: false, type: Boolean, description: 'Include reference materials (videos, PDFs, etc.)', example: true })
+  @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions (students see own, teachers see all)', example: true })
   @HttpCode(HttpStatus.OK)
   async findAll(@Query() query: QueryInstituteClassSubjectHomeworkDto, @Request() req: any): Promise<PaginatedInstituteClassSubjectHomeworkResponseDto> {
     return this.instituteClassSubjectHomeworksService.findAll(query, req.user);

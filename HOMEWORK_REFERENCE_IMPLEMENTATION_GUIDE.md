@@ -3,13 +3,14 @@
 ## Table of Contents
 1. [Overview](#overview)
 2. [Architecture](#architecture)
-3. [API Endpoints](#api-endpoints)
-4. [Data Models](#data-models)
-5. [Upload Workflows](#upload-workflows)
-6. [Frontend Integration Guide](#frontend-integration-guide)
-7. [Database Migration](#database-migration)
-8. [Error Handling](#error-handling)
-9. [Security Considerations](#security-considerations)
+3. [Complete Homework Response](#complete-homework-response)
+4. [API Endpoints](#api-endpoints)
+5. [Data Models](#data-models)
+6. [Upload Workflows](#upload-workflows)
+7. [Frontend Integration Guide](#frontend-integration-guide)
+8. [Database Migration](#database-migration)
+9. [Error Handling](#error-handling)
+10. [Security Considerations](#security-considerations)
 
 ---
 
@@ -34,6 +35,443 @@ The Homework Reference Materials system allows teachers to attach multiple refer
 | `S3_UPLOAD` | Upload to AWS S3 | Large files, videos, documents |
 | `GOOGLE_DRIVE` | Link from Google Drive | Files already in Drive |
 | `MANUAL_LINK` | External URL | YouTube, websites, external resources |
+
+---
+
+## Complete Homework Response
+
+The homework API now supports fetching complete homework data with references and submissions in one call.
+
+### Request
+```http
+GET /institute-class-subject-homeworks?classId=40&subjectId=5&includeReferences=true&includeSubmissions=true
+Authorization: Bearer <token>
+```
+
+### Response Structure
+```json
+{
+  "data": [
+    {
+      "id": "123",
+      "title": "Mathematics Assignment - Chapter 5",
+      "description": "Solve exercises 1-10 from textbook",
+      "instituteId": "44",
+      "classId": "40",
+      "subjectId": "5",
+      "teacherId": "100",
+      "startDate": "2026-01-20T00:00:00.000Z",
+      "endDate": "2026-01-27T23:59:59.000Z",
+      "referenceLink": null,
+      "teacher": {
+        "id": "100",
+        "nameWithInitials": "A.B. Teacher",
+        "imageUrl": "https://bucket.s3.amazonaws.com/users/teacher.jpg",
+        "email": "teacher@example.com"
+      },
+      "references": [
+        {
+          "id": "1",
+          "title": "Chapter 5 Video Lecture",
+          "description": "Full video explanation",
+          "referenceType": "VIDEO",
+          "referenceSource": "S3_UPLOAD",
+          "displayOrder": 0,
+          "viewUrl": "https://bucket.s3.amazonaws.com/homework-references/123/lecture.mp4",
+          "fileName": "lecture.mp4",
+          "fileSize": 52428800,
+          "mimeType": "video/mp4",
+          "videoDuration": 3600,
+          "thumbnailUrl": null
+        },
+        {
+          "id": "2",
+          "title": "Practice Problems PDF",
+          "referenceType": "PDF",
+          "referenceSource": "S3_UPLOAD",
+          "displayOrder": 1,
+          "viewUrl": "https://bucket.s3.amazonaws.com/homework-references/123/problems.pdf",
+          "fileName": "problems.pdf",
+          "fileSize": 1048576,
+          "mimeType": "application/pdf"
+        },
+        {
+          "id": "3",
+          "title": "YouTube Tutorial",
+          "referenceType": "LINK",
+          "referenceSource": "MANUAL_LINK",
+          "displayOrder": 2,
+          "viewUrl": "https://www.youtube.com/watch?v=example"
+        }
+      ],
+      "referenceCount": 3,
+      "mySubmissions": [
+        {
+          "id": "456",
+          "studentId": "200",
+          "studentName": "John Student",
+          "studentImageUrl": "https://bucket.s3.amazonaws.com/users/student.jpg",
+          "submissionDate": "2026-01-22T14:30:00.000Z",
+          "fileUrl": "https://bucket.s3.amazonaws.com/submissions/456/homework.pdf",
+          "teacherCorrectionFileUrl": null,
+          "driveFileId": null,
+          "driveViewUrl": null,
+          "submissionType": "UPLOAD",
+          "remarks": null,
+          "isActive": true,
+          "createdAt": "2026-01-22T14:30:00.000Z"
+        }
+      ],
+      "hasSubmitted": true,
+      "submissionCount": 25
+    }
+  ],
+  "total": 10,
+  "page": 1,
+  "limit": 10,
+  "totalPages": 1,
+  "hasNext": false,
+  "hasPrev": false
+}
+```
+
+### Response Fields by User Type
+
+| Field | Student | Teacher/Admin |
+|-------|---------|---------------|
+| `references` | ✅ All references | ✅ All references |
+| `referenceCount` | ✅ | ✅ |
+| `mySubmissions` | ✅ Own submissions only | ✅ All submissions |
+| `hasSubmitted` | ✅ Boolean | ❌ |
+| `submissionCount` | ❌ | ✅ Total count |
+
+---
+
+## CRUD Operations by User Type
+
+This section defines all create, read, update, and delete operations for homework, references, and submissions based on user roles.
+
+### User Types
+| User Type | Code | Description |
+|-----------|------|-------------|
+| Student | `USER`, `USER_WITHOUT_PARENT` | Students enrolled in classes |
+| Teacher | `TEACHER` | Teachers assigned to subjects |
+| Institute Admin | `INSTITUTE_ADMIN` | Full institute management access |
+| Super Admin | `SUPER_ADMIN` | System-wide access |
+
+---
+
+### Homework CRUD Operations
+
+| Operation | Student | Teacher | Institute Admin | Super Admin |
+|-----------|---------|---------|-----------------|-------------|
+| **GET** List Homeworks | ✅ Own classes | ✅ Own subjects | ✅ All | ✅ All |
+| **GET** Single Homework | ✅ Own classes | ✅ Own subjects | ✅ All | ✅ All |
+| **POST** Create Homework | ❌ | ✅ Own subjects | ✅ All | ✅ All |
+| **PATCH** Update Homework | ❌ | ✅ Own homeworks | ✅ All | ✅ All |
+| **DELETE** Delete Homework | ❌ | ✅ Own homeworks | ✅ All | ✅ All |
+
+#### Create Homework (Teacher/Admin)
+```http
+POST /institute-class-subject-homeworks
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "title": "Mathematics Assignment - Chapter 5",
+  "description": "Solve exercises 1-10",
+  "classId": "40",
+  "subjectId": "5",
+  "startDate": "2026-01-20T00:00:00.000Z",
+  "endDate": "2026-01-27T23:59:59.000Z"
+}
+```
+
+#### Update Homework (Teacher who created / Admin)
+```http
+PATCH /institute-class-subject-homeworks/123
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "title": "Updated Title",
+  "description": "Updated description",
+  "endDate": "2026-01-30T23:59:59.000Z"
+}
+```
+
+#### Delete Homework (Soft Delete)
+```http
+DELETE /institute-class-subject-homeworks/123
+Authorization: Bearer <teacher-token>
+```
+
+---
+
+### Reference CRUD Operations
+
+| Operation | Student | Teacher | Institute Admin | Super Admin |
+|-----------|---------|---------|-----------------|-------------|
+| **GET** List References | ✅ Own class homeworks | ✅ Own subject homeworks | ✅ All | ✅ All |
+| **GET** Single Reference | ✅ Own class homeworks | ✅ Own subject homeworks | ✅ All | ✅ All |
+| **POST** Create Reference | ❌ | ✅ Own homeworks | ✅ All | ✅ All |
+| **PATCH** Update Reference | ❌ | ✅ Own homeworks | ✅ All | ✅ All |
+| **DELETE** Soft Delete | ❌ | ✅ Own homeworks | ✅ All | ✅ All |
+| **DELETE** Permanent Delete | ❌ | ❌ | ✅ All | ✅ All |
+| **PATCH** Restore | ❌ | ✅ Own homeworks | ✅ All | ✅ All |
+
+#### Create Reference - S3 Upload (Teacher/Admin)
+
+**Step 1: Generate Upload URL**
+```http
+POST /homework-references/upload/generate-url
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "homeworkId": "123",
+  "fileName": "lecture.mp4",
+  "contentType": "video/mp4",
+  "fileSize": 52428800,
+  "referenceType": "VIDEO"
+}
+```
+
+**Step 2: Upload to S3** (Frontend direct upload using signed URL)
+
+**Step 3: Confirm Upload**
+```http
+POST /homework-references/upload/confirm
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "homeworkId": "123",
+  "title": "Chapter 5 Lecture",
+  "referenceType": "VIDEO",
+  "relativePath": "homework-references/123/lecture-uuid.mp4",
+  "fileName": "lecture.mp4",
+  "fileSize": 52428800,
+  "mimeType": "video/mp4"
+}
+```
+
+#### Create Reference - Google Drive (Teacher/Admin)
+```http
+POST /homework-references/google-drive
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "homeworkId": "123",
+  "title": "Assignment Template",
+  "referenceType": "DOCUMENT",
+  "driveFileId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "accessToken": "ya29.a0AfH6SMBx..."
+}
+```
+
+#### Create Reference - External Link (Teacher/Admin)
+```http
+POST /homework-references/link
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "homeworkId": "123",
+  "title": "YouTube Tutorial",
+  "referenceType": "LINK",
+  "externalUrl": "https://www.youtube.com/watch?v=example"
+}
+```
+
+#### Update Reference (Teacher who owns homework / Admin)
+```http
+PATCH /homework-references/456
+Authorization: Bearer <teacher-token>
+Content-Type: application/json
+
+{
+  "title": "Updated Reference Title",
+  "description": "Updated description",
+  "displayOrder": 2
+}
+```
+
+#### Delete Reference - Soft Delete (Teacher/Admin)
+```http
+DELETE /homework-references/456
+Authorization: Bearer <teacher-token>
+```
+
+#### Delete Reference - Permanent (Institute Admin Only)
+```http
+DELETE /homework-references/456/permanent
+Authorization: Bearer <admin-token>
+```
+> ⚠️ **Warning:** Permanently deletes the database record AND S3 file. Cannot be undone.
+
+#### Restore Deleted Reference (Teacher/Admin)
+```http
+PATCH /homework-references/456/restore
+Authorization: Bearer <teacher-token>
+```
+
+---
+
+### Submission CRUD Operations
+
+| Operation | Student | Teacher | Institute Admin | Super Admin |
+|-----------|---------|---------|-----------------|-------------|
+| **GET** List Submissions | ✅ Own only | ✅ All in subject | ✅ All | ✅ All |
+| **GET** Single Submission | ✅ Own only | ✅ All in subject | ✅ All | ✅ All |
+| **POST** Create Submission | ✅ Own only | ❌ | ❌ | ❌ |
+| **PATCH** Update Submission | ✅ Own (before deadline) | ✅ Add remarks/corrections | ✅ All | ✅ All |
+| **DELETE** Delete Submission | ✅ Own (before deadline) | ✅ All in subject | ✅ All | ✅ All |
+
+#### Create Submission (Student Only)
+
+**Option 1: File Upload**
+```http
+POST /institute-class-subject-homeworks-submission
+Authorization: Bearer <student-token>
+Content-Type: multipart/form-data
+
+homeworkId: 123
+file: <binary file data>
+remarks: "My completed homework"
+```
+
+**Option 2: Google Drive**
+```http
+POST /institute-class-subject-homeworks-submission/google-drive
+Authorization: Bearer <student-token>
+Content-Type: application/json
+
+{
+  "homeworkId": "123",
+  "driveFileId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+  "accessToken": "ya29.a0AfH6SMBx...",
+  "remarks": "My completed homework"
+}
+```
+
+#### Update Submission - Student (Before Deadline)
+```http
+PATCH /institute-class-subject-homeworks-submission/456
+Authorization: Bearer <student-token>
+Content-Type: multipart/form-data
+
+file: <new file>
+remarks: "Updated submission"
+```
+
+#### Update Submission - Teacher (Add Remarks/Corrections)
+```http
+PATCH /institute-class-subject-homeworks-submission/456/review
+Authorization: Bearer <teacher-token>
+Content-Type: multipart/form-data
+
+remarks: "Good work! See corrections attached."
+correctionFile: <binary file data>
+grade: "A"
+```
+
+#### Delete Submission - Student (Own, Before Deadline)
+```http
+DELETE /institute-class-subject-homeworks-submission/456
+Authorization: Bearer <student-token>
+```
+
+#### Delete Submission - Teacher/Admin (Any in their subject)
+```http
+DELETE /institute-class-subject-homeworks-submission/456
+Authorization: Bearer <teacher-token>
+```
+
+---
+
+### Permission Matrix Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        HOMEWORK SYSTEM PERMISSIONS                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  STUDENTS (USER, USER_WITHOUT_PARENT)                                       │
+│  ├── View: Own class homeworks, references, own submissions                 │
+│  ├── Create: Submissions only                                               │
+│  ├── Update: Own submissions (before deadline)                              │
+│  └── Delete: Own submissions (before deadline)                              │
+│                                                                             │
+│  TEACHERS                                                                   │
+│  ├── View: All in assigned subjects                                         │
+│  ├── Create: Homeworks, References                                          │
+│  ├── Update: Own homeworks, references, add remarks to submissions          │
+│  └── Delete: Own homeworks, references (soft delete)                        │
+│                                                                             │
+│  INSTITUTE ADMIN                                                            │
+│  ├── View: Everything in institute                                          │
+│  ├── Create: Homeworks, References                                          │
+│  ├── Update: Everything                                                     │
+│  └── Delete: Everything (including permanent delete)                        │
+│                                                                             │
+│  SUPER ADMIN                                                                │
+│  └── Full system access                                                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Frontend Implementation Notes
+
+#### Role Detection
+```typescript
+// Check user type from JWT token
+const userType = user.ut; // 'USER', 'USER_WITHOUT_PARENT', 'TEACHER', 'INSTITUTE_ADMIN', 'SUPER_ADMIN'
+
+const isStudent = userType === 'USER' || userType === 'USER_WITHOUT_PARENT';
+const isTeacher = userType === 'TEACHER';
+const isAdmin = userType === 'INSTITUTE_ADMIN' || userType === 'SUPER_ADMIN';
+```
+
+#### Show/Hide UI Elements
+```typescript
+// Homework Actions
+const canCreateHomework = isTeacher || isAdmin;
+const canEditHomework = (isTeacher && homework.teacherId === user.userId) || isAdmin;
+const canDeleteHomework = canEditHomework;
+
+// Reference Actions  
+const canAddReference = canEditHomework;
+const canDeleteReference = canEditHomework;
+const canPermanentDelete = isAdmin;
+
+// Submission Actions
+const canSubmit = isStudent && !homework.hasSubmitted && new Date() <= homework.endDate;
+const canEditSubmission = isStudent && new Date() <= homework.endDate;
+const canDeleteSubmission = isStudent ? (new Date() <= homework.endDate) : (isTeacher || isAdmin);
+const canReviewSubmission = isTeacher || isAdmin;
+```
+
+#### Conditional UI Example
+```tsx
+// React/JSX Example
+{canCreateHomework && (
+  <Button onClick={openCreateHomeworkModal}>+ New Homework</Button>
+)}
+
+{canAddReference && (
+  <Button onClick={openAddReferenceModal}>+ Add Reference</Button>
+)}
+
+{isStudent && !hasSubmitted && (
+  <Button onClick={openSubmitModal}>Submit Homework</Button>
+)}
+
+{isTeacher && (
+  <Button onClick={openReviewModal}>Review Submissions ({submissionCount})</Button>
+)}
+```
 
 ---
 

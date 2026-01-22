@@ -81,6 +81,19 @@ export class QueryInstituteClassSubjectHomeworkDto {
   @IsBoolean()
   includeReferences?: boolean;
 
+  @ApiProperty({ 
+    required: false, 
+    description: 'Include submissions in response (students see their own, teachers/admins see all)', 
+    default: false 
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return false;
+    return value === 'true' || value === true;
+  })
+  @IsBoolean()
+  includeSubmissions?: boolean;
+
   // These fields might be sent by frontend but aren't used in backend filtering
   // Added to prevent validation errors with forbidNonWhitelisted
   @ApiProperty({ description: 'User ID (ignored, for frontend compatibility)', example: '1', required: false })

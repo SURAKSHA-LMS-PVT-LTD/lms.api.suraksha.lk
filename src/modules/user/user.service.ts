@@ -30,6 +30,7 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
 import { parseDate } from '../../common/validators/date-format.validator';
 import { AsyncEmailService } from '../../common/services/async-email.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { ProfileCompletionStatus, calculateProfileCompletion, determineProfileStatus } from './enums/profile-completion-status.enum';
 import { 
   DuplicateResourceException, 
   ResourceNotFoundException, 
@@ -203,6 +204,26 @@ export class UsersService {
       const timestamp = now();
       userData.createdAt = timestamp;
       userData.updatedAt = timestamp;
+
+      // ✅ Set profile completion status for normal user creation
+      // Users created via this API have email (required) so they're at least BASIC
+      const completionStatus = determineProfileStatus({
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phoneNumber: userData.phoneNumber,
+        password: userData.password
+      });
+      userData.profileCompletionStatus = completionStatus;
+      userData.profileCompletionPercentage = calculateProfileCompletion({
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phoneNumber: userData.phoneNumber
+      });
+      userData.firstLoginCompleted = true; // Normal registration = first login done
+      userData.isPhoneVerified = false;
+      userData.isEmailVerified = false;
 
       // ✅ OPTIMIZED: Streamlined user creation 
       const user = transactionQueryRunner.manager.create(UserEntity, userData as any);
@@ -420,6 +441,15 @@ export class UsersService {
         this.logger.log(`✅ Using nameWithInitials from request: "${nameWithInitials}"`);
       }
 
+      // ✅ Calculate profile completion status for comprehensive user creation
+      const completionStatus = determineProfileStatus({
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        phoneNumber: dto.phoneNumber,
+        password: null
+      });
+
       const userData: UserData = {
         firstName: cleanToNull(dto.firstName),
         lastName: cleanToNull(dto.lastName),
@@ -444,6 +474,17 @@ export class UsersService {
         isActive: dto.isActive === true || dto.isActive === false ? dto.isActive : true, // Ensure boolean, default true
         createdAt: now(), // Sri Lanka timezone
         updatedAt: now(), // Sri Lanka timezone
+        // ✅ Profile completion fields
+        profileCompletionStatus: completionStatus,
+        profileCompletionPercentage: calculateProfileCompletion({
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          email: dto.email,
+          phoneNumber: dto.phoneNumber
+        }),
+        firstLoginCompleted: true, // Comprehensive creation = fully registered
+        isPhoneVerified: false,
+        isEmailVerified: false,
       };
 
       const userEntity = queryRunner.manager.create(UserEntity, userData as any);
@@ -1253,6 +1294,30 @@ export class UsersService {
       }
       userData.dateOfBirth = parsedDate;
     }
+
+    // Set timestamps
+    const timestamp = now();
+    userData.createdAt = timestamp;
+    userData.updatedAt = timestamp;
+
+    // ✅ Set profile completion fields for bulk user creation
+    const completionStatus = determineProfileStatus({
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      email: userData.email,
+      phoneNumber: userData.phoneNumber,
+      password: userData.password
+    });
+    userData.profileCompletionStatus = completionStatus;
+    userData.profileCompletionPercentage = calculateProfileCompletion({
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      email: userData.email,
+      phoneNumber: userData.phoneNumber
+    });
+    userData.firstLoginCompleted = true; // Bulk creation = fully registered
+    userData.isPhoneVerified = false;
+    userData.isEmailVerified = false;
 
     // Create user in MySQL
     const user = queryRunner.manager.create(UserEntity, userData as any);

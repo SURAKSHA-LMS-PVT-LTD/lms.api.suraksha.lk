@@ -7,6 +7,7 @@ import { District } from '../enums/district.enum';
 import { Country } from '../enums/country.enum';
 import { Language } from '../enums/language.enum';
 import { Occupation } from '../enums/occupation.enum';
+import { ProfileCompletionStatus } from '../enums/profile-completion-status.enum';
 
 @Entity('users')
 // 🎯 REAL QUERY-BASED INDEXES - Based on actual codebase queries (Nov 2024)
@@ -122,6 +123,97 @@ export class UserEntity {
     comment: 'User preferred language: S=Sinhala, E=English, T=Tamil'
   })
   language: Language;
+
+  // ============================================
+  // VERIFICATION & PROFILE COMPLETION FIELDS
+  // ============================================
+
+  @Column({ 
+    name: 'is_phone_verified', 
+    type: 'boolean', 
+    default: false,
+    comment: 'Whether phone number has been verified via OTP'
+  })
+  isPhoneVerified: boolean;
+
+  @Column({ 
+    name: 'is_email_verified', 
+    type: 'boolean', 
+    default: false,
+    comment: 'Whether email has been verified via link/code'
+  })
+  isEmailVerified: boolean;
+
+  @Column({ 
+    name: 'profile_completion_status', 
+    type: 'enum', 
+    enum: ProfileCompletionStatus, 
+    default: ProfileCompletionStatus.INCOMPLETE,
+    comment: 'Profile completion level: INCOMPLETE, BASIC, COMPLETE'
+  })
+  profileCompletionStatus: ProfileCompletionStatus;
+
+  @Column({ 
+    name: 'profile_completion_percentage', 
+    type: 'tinyint', 
+    default: 0,
+    comment: 'Profile completion percentage (0-100)'
+  })
+  profileCompletionPercentage: number;
+
+  @Column({ 
+    name: 'user_settings', 
+    type: 'json', 
+    nullable: true,
+    comment: 'JSON object storing user preferences and settings'
+  })
+  userSettings?: {
+    notifications?: {
+      email?: boolean;
+      sms?: boolean;
+      push?: boolean;
+    };
+    privacy?: {
+      showEmail?: boolean;
+      showPhone?: boolean;
+      showProfile?: boolean;
+    };
+    theme?: 'light' | 'dark' | 'system';
+    timezone?: string;
+    [key: string]: any;
+  };
+
+  @Column({ 
+    name: 'first_login_completed', 
+    type: 'boolean', 
+    default: false,
+    comment: 'Whether user has completed first login setup'
+  })
+  firstLoginCompleted: boolean;
+
+  @Column({ 
+    name: 'password_set_at', 
+    type: 'timestamp', 
+    nullable: true,
+    comment: 'When password was set (null = no password set yet)'
+  })
+  passwordSetAt?: Date;
+
+  @Column({ 
+    name: 'last_login_at', 
+    type: 'timestamp', 
+    nullable: true,
+    comment: 'Last successful login timestamp'
+  })
+  lastLoginAt?: Date;
+
+  @Column({ 
+    name: 'created_by_admin_id', 
+    type: 'bigint', 
+    nullable: true,
+    comment: 'Admin user ID who created this user (for admin-created users)'
+  })
+  createdByAdminId?: string;
 
 }
 

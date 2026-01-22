@@ -10,6 +10,7 @@ import { UserFcmTokenService } from './services/user-fcm-token.service';
 import { UserOtpService } from './services/user-otp.service';
 import { UserFcmTokenController } from './controllers/user-fcm-token.controller';
 import { UserProfileImageController } from './controllers/user-profile-image.controller';
+import { SystemAdminUserController } from './controllers/system-admin-user.controller';
 import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
 import { AuthModule } from '../../auth/auth.module';
 import { InstitueUserModule } from '../institute_mudules/institue_user/institue_user.module';
@@ -19,6 +20,7 @@ import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
 import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
 import { CacheModule } from '../../common/modules/cache.module';
 import { SmsModule } from '../sms/sms.module';
 import { InstantSmsModule } from '../sms/instant-sms.module';
@@ -27,6 +29,7 @@ import { EnhancedEmailService } from '../../common/services/enhanced-email.servi
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { UserRoleValidationService } from './services/user-role-validation.service';
 import { UserNotificationService } from './services/user-notification.service';
+import { SystemAdminUserService } from './services/system-admin-user.service';
 import { SmslenzProvider } from '../sms/providers/smslenz.provider';
 
 @Module({
@@ -41,7 +44,8 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
       StudentEntity,
       ParentEntity,
       InstituteClassStudentEntity,
-      InstituteClassSubjectStudent
+      InstituteClassSubjectStudent,
+      InstituteClassEntity
     ]),
     CacheModule,
     SmsModule, // Add SMS module for welcome notifications
@@ -49,7 +53,7 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
     forwardRef(() => AuthModule), // Use forwardRef to avoid circular dependency
     forwardRef(() => InstitueUserModule), // Add institute user module
   ],
-  controllers: [UsersController, UserFcmTokenController, UserProfileImageController],
+  controllers: [UsersController, UserFcmTokenController, UserProfileImageController, SystemAdminUserController],
   providers: [
     UsersService, 
     UserFcmTokenService, 
@@ -60,12 +64,13 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
     CloudStorageService, 
     UserRoleValidationService, 
     UserNotificationService,
+    SystemAdminUserService,
     SmslenzProvider,
     {
       provide: 'UserOtpService',
       useExisting: UserOtpService,
     },
   ],
-  exports: [UsersService, UserFcmTokenService, UserOtpService, UserRoleValidationService, TypeOrmModule], // Export services and TypeOrmModule for repository access
+  exports: [UsersService, UserFcmTokenService, UserOtpService, UserRoleValidationService, SystemAdminUserService, TypeOrmModule], // Export services and TypeOrmModule for repository access
 })
 export class UsersModule {}

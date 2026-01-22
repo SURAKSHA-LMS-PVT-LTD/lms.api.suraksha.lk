@@ -4,6 +4,7 @@ import { InstituteClassEntity } from '../../../institute_mudules/institue_class/
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
 import { InstituteClassSubjectHomeworkReference } from './institute_class_subject_homework_reference.entity';
+import { InstituteClassSubjectHomeworksSubmission } from '../../institute_class_subject_homeworks_submissions/entities/institute_class_subject_homeworks_submission.entity';
 
 // Transformer to ensure dates are properly serialized
 const dateTransformer: ValueTransformer = {
@@ -70,6 +71,10 @@ export class InstituteClassSubjectHomework {
   // One homework can have many reference materials
   @OneToMany(() => InstituteClassSubjectHomeworkReference, reference => reference.homework)
   references: InstituteClassSubjectHomeworkReference[];
+
+  // One homework can have many submissions
+  @OneToMany(() => InstituteClassSubjectHomeworksSubmission, submission => submission.homework)
+  submissions: InstituteClassSubjectHomeworksSubmission[];
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

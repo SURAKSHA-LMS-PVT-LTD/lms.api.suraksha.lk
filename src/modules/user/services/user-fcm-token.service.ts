@@ -15,34 +15,8 @@ export class UserFcmTokenService {
   ) {}
 
   async create(createDto: CreateUserFcmTokenDto): Promise<UserFcmTokenResponseDto> {
-    // Check if token already exists for this user and device
-    const existingToken = await this.fcmTokenRepository.findByUserAndDevice(
-      createDto.userId,
-      createDto.deviceId
-    );
-
-    if (existingToken) {
-      // Update existing token instead of creating new one
-      const updatedToken = await this.fcmTokenRepository.update(existingToken.id, {
-        fcmToken: createDto.fcmToken,
-        deviceType: createDto.deviceType,
-        deviceName: createDto.deviceName,
-        appVersion: createDto.appVersion,
-        osVersion: createDto.osVersion,
-        isActive: createDto.isActive ?? true,
-        isSynced: createDto.isSynced ?? false,
-      });
-
-      if (!updatedToken) {
-        throw new BadRequestException('Failed to update existing FCM token');
-      }
-
-      return plainToClass(UserFcmTokenResponseDto, updatedToken, {
-        excludeExtraneousValues: true,
-      });
-    }
-
-    // Create new token
+    // Repository now handles upsert automatically (INSERT ... ON DUPLICATE KEY UPDATE)
+    // This prevents race conditions and duplicate key errors
     const fcmToken = await this.fcmTokenRepository.create(createDto);
 
     return plainToClass(UserFcmTokenResponseDto, fcmToken, {
