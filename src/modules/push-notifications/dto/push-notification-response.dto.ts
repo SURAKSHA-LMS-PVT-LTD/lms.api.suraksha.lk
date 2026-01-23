@@ -325,17 +325,33 @@ export class SendNotificationResultDto {
   @ApiProperty()
   notificationId: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Total number of targeted users' })
   totalRecipients: number;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Number of successfully sent notifications' })
   sentCount: number;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Number of failed send attempts' })
   failedCount: number;
+
+  @ApiProperty({ description: 'Number of users without FCM tokens (not sent)' })
+  usersWithoutTokens: number;
+
+  @ApiProperty({ description: 'Number of users with active FCM tokens' })
+  usersWithTokens: number;
 
   @ApiPropertyOptional()
   message?: string;
+
+  @ApiPropertyOptional({ description: 'Detailed breakdown of results' })
+  details?: {
+    targetedUsers: number;
+    usersWithTokens: number;
+    usersWithoutTokens: number;
+    successfulSends: number;
+    failedSends: number;
+    deliveryRate: string;
+  };
 }
 
 /**

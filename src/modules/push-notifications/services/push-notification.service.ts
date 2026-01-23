@@ -119,7 +119,17 @@ export class PushNotificationService {
           totalRecipients: 0,
           sentCount: 0,
           failedCount: 0,
-          message: 'No recipients found for this notification'
+          usersWithoutTokens: 0,
+          usersWithTokens: 0,
+          message: 'No recipients found for this notification',
+          details: {
+            targetedUsers: 0,
+            usersWithTokens: 0,
+            usersWithoutTokens: 0,
+            successfulSends: 0,
+            failedSends: 0,
+            deliveryRate: '0.0%',
+          },
         };
       }
 
@@ -153,6 +163,10 @@ export class PushNotificationService {
         }
       );
 
+      // Count users with and without tokens
+      const usersWithTokens = result.userResults.filter(r => r.result.successCount > 0 || r.result.failureCount > 0).length;
+      const usersWithoutTokens = targetUserIds.length - usersWithTokens;
+
       // Update notification stats
       await this.notificationRepository.updateStats(notificationId, {
         totalRecipients: targetUserIds.length,
@@ -162,13 +176,30 @@ export class PushNotificationService {
 
       await this.notificationRepository.updateStatus(notificationId, NotificationStatus.SENT);
 
+      const deliveryRate = usersWithTokens > 0 ? ((result.totalSuccess / usersWithTokens) * 100).toFixed(1) : '0.0';
+
+      let message = `Notification sent to ${result.totalSuccess} out of ${targetUserIds.length} targeted users`;
+      if (usersWithoutTokens > 0) {
+        message += `. Note: ${usersWithoutTokens} user(s) don't have the app installed or notifications disabled.`;
+      }
+
       return {
         success: true,
         notificationId,
         totalRecipients: targetUserIds.length,
         sentCount: result.totalSuccess,
         failedCount: result.totalFailure,
-        message: `Notification sent to ${result.totalSuccess} out of ${targetUserIds.length} users`
+        usersWithoutTokens,
+        usersWithTokens,
+        message,
+        details: {
+          targetedUsers: targetUserIds.length,
+          usersWithTokens,
+          usersWithoutTokens,
+          successfulSends: result.totalSuccess,
+          failedSends: result.totalFailure,
+          deliveryRate: `${deliveryRate}%`,
+        },
       };
     } catch (error) {
       this.logger.error(`Failed to send notification ${notificationId}: ${error.message}`);
