@@ -36,7 +36,14 @@ import {
   CreateFamilyUnitDto,
   CreateFamilyUnitResponseDto,
   BulkCreateFamilyDto,
-  BulkCreateFamilyResponseDto
+  BulkCreateFamilyResponseDto,
+  GenerateProfileImageUrlDto,
+  GenerateProfileImageUrlResponseDto,
+  AssignProfileImageDto,
+  AssignProfileImageResponseDto,
+  LookupStudentResponseDto,
+  GenerateProfileImageUrlByUserIdDto,
+  AssignProfileImageByUserIdDto,
 } from '../dto/create-family-unit.dto';
 
 @ApiTags('System Admin - User Management')
@@ -299,5 +306,304 @@ After completion, user can login normally.
     @Param('userId') userId: string
   ) {
     return this.systemAdminUserService.resendWelcomeNotification(userId);
+  }
+
+  // ==========================================
+  // 📸 PROFILE IMAGE MANAGEMENT APIs
+  // ==========================================
+
+  /**
+   * 🔍 Lookup Student by Student ID
+   * 
+   * Find a student using their student ID (e.g., STU-20260123-001)
+   */
+  @Get('student/lookup/:studentId')
+  @ApiOperation({
+    summary: 'Lookup student by student ID',
+    description: `
+Find a student using their student ID (from students.student_id field).
+
+**Use Case:**
+- Before uploading profile image, verify student exists
+- Get student details including current profile image
+
+**Example:**
+\`\`\`
+GET /admin/users/student/lookup/STU-20260123-001
+\`\`\`
+    `
+  })
+  @ApiParam({ name: 'studentId', description: 'Student ID (e.g., STU-20260123-001)' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Student found',
+    type: LookupStudentResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Student not found with given ID'
+  })
+  async lookupStudentById(
+    @Param('studentId') studentId: string
+  ): Promise<LookupStudentResponseDto> {
+    return this.systemAdminUserService.lookupStudentById(studentId);
+  }
+
+  /**
+   * 🔗 Generate Signed URL for Profile Image Upload
+   * 
+   * Generates a pre-signed URL for uploading profile image directly to cloud storage.
+   * After successful upload, call assign-profile-image to update student's profile.
+   */
+  @Post('student/profile-image/generate-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Generate signed URL for profile image upload',
+    description: `
+Generates a pre-signed URL for uploading a student's profile image directly to cloud storage.
+
+**Workflow:**
+1. Call this endpoint with student ID and file details
+2. Upload file directly to the returned uploadUrl (PUT method)
+3. Call /assign-profile-image with the relativePath to update profile
+
+**Supported Formats:** JPEG, PNG, GIF, WebP
+**Max File Size:** 5MB
+**URL Expiry:** 10 minutes
+
+**Example Request:**
+\`\`\`json
+{
+  "studentId": "STU-20260123-001",
+  "fileName": "profile.jpg",
+  "contentType": "image/jpeg",
+  "fileSize": 1048576
+}
+\`\`\`
+
+**Upload Example (curl):**
+\`\`\`bash
+curl -X PUT "uploadUrl" \\
+  -H "Content-Type: image/jpeg" \\
+  --data-binary @profile.jpg
+\`\`\`
+    `
+  })
+  @ApiBody({ type: GenerateProfileImageUrlDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Signed URL generated successfully',
+    type: GenerateProfileImageUrlResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Student not found'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid content type or file size'
+  })
+  async generateProfileImageUrl(
+    @Body() dto: GenerateProfileImageUrlDto,
+    @Request() req: any
+  ): Promise<GenerateProfileImageUrlResponseDto> {
+    return this.systemAdminUserService.generateProfileImageUrl(dto);
+  }
+
+  /**
+   * 📸 Assign Profile Image to Student
+   * 
+   * After uploading image using signed URL, call this to update student's profile.
+   */
+  @Post('student/profile-image/assign')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Assign uploaded profile image to student',
+    description: `
+After uploading the image to the signed URL, call this endpoint to update the student's profile.
+
+**Prerequisites:**
+1. Generate signed URL using /generate-url endpoint
+2. Upload image to the returned uploadUrl
+3. Call this endpoint with studentId and relativePath
+
+**Example Request:**
+\`\`\`json
+{
+  "studentId": "STU-20260123-001",
+  "relativePath": "user-profiles/profile-abc123.jpg"
+}
+\`\`\`
+    `
+  })
+  @ApiBody({ type: AssignProfileImageDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profile image assigned successfully',
+    type: AssignProfileImageResponseDto
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Student not found'
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid relative path or file not found'
+  })
+  async assignProfileImage(
+    @Body() dto: AssignProfileImageDto,
+    @Request() req: any
+  ): Promise<AssignProfileImageResponseDto> {
+    return this.systemAdminUserService.assignProfileImage(dto, req.user.userId);
+  }
+
+  /**
+   * 🔄 Update Profile Image (Combined - Generate + Assign)
+   * 
+   * One-step endpoint that generates URL, expects upload, then assigns.
+   * Returns the signed URL for upload.
+   */
+  @Post('student/:studentId/profile-image')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Quick profile image upload URL by student ID',
+    description: `
+Simplified endpoint to get upload URL directly using student ID in path.
+Equivalent to calling /generate-url with studentId.
+
+**Example:**
+\`\`\`
+POST /admin/users/student/STU-20260123-001/profile-image
+{
+  "fileName": "profile.jpg",
+  "contentType": "image/jpeg"
+}
+\`\`\`
+    `
+  })
+  @ApiParam({ name: 'studentId', description: 'Student ID (e.g., STU-20260123-001)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['fileName', 'contentType'],
+      properties: {
+        fileName: { type: 'string', example: 'profile.jpg' },
+        contentType: { type: 'string', example: 'image/jpeg' },
+        fileSize: { type: 'number', example: 1048576 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Signed URL generated',
+    type: GenerateProfileImageUrlResponseDto
+  })
+  async generateProfileImageUrlByPath(
+    @Param('studentId') studentId: string,
+    @Body() body: { fileName: string; contentType: string; fileSize?: number }
+  ): Promise<GenerateProfileImageUrlResponseDto> {
+    return this.systemAdminUserService.generateProfileImageUrl({
+      studentId,
+      fileName: body.fileName,
+      contentType: body.contentType,
+      fileSize: body.fileSize
+    });
+  }
+
+  // ==================== USER ID BASED PROFILE IMAGE ENDPOINTS ====================
+
+  /**
+   * Lookup user by user ID
+   * GET /admin/users/lookup/:userId
+   */
+  @Get('lookup/:userId')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Lookup user by user ID',
+    description: 'Get user details including current profile image by user ID'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID (numeric)', example: 123 })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'User found',
+    type: LookupStudentResponseDto
+  })
+  async lookupUserById(@Param('userId') userId: number): Promise<LookupStudentResponseDto> {
+    return this.systemAdminUserService.lookupUserById(userId);
+  }
+
+  /**
+   * Generate profile image upload URL by user ID
+   * POST /admin/users/profile-image/generate-url
+   */
+  @Post('profile-image/generate-url')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Generate profile image upload URL by user ID',
+    description: 'Generates a signed upload URL for uploading profile image directly to cloud storage using user ID'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Upload URL generated successfully',
+    type: GenerateProfileImageUrlResponseDto
+  })
+  async generateProfileImageUrlByUserId(
+    @Body() dto: GenerateProfileImageUrlByUserIdDto
+  ): Promise<GenerateProfileImageUrlResponseDto> {
+    return this.systemAdminUserService.generateProfileImageUrlByUserId(dto);
+  }
+
+  /**
+   * Assign profile image by user ID
+   * POST /admin/users/profile-image/assign
+   */
+  @Post('profile-image/assign')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Assign profile image to user by user ID',
+    description: 'Assigns an uploaded profile image to user after successful upload to cloud storage using user ID'
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profile image assigned successfully',
+    type: AssignProfileImageResponseDto
+  })
+  async assignProfileImageByUserId(
+    @Body() dto: AssignProfileImageByUserIdDto,
+    @Request() req
+  ): Promise<AssignProfileImageResponseDto> {
+    return this.systemAdminUserService.assignProfileImageByUserId(dto, req.user.id);
+  }
+
+  /**
+   * Quick profile image URL generation by user ID (path param)
+   * POST /admin/users/:userId/profile-image
+   */
+  @Post(':userId/profile-image')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Quick generate profile image upload URL by user ID',
+    description: 'Convenience endpoint that generates upload URL using userId from path parameter'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID (numeric)', example: 123 })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Upload URL generated successfully',
+    type: GenerateProfileImageUrlResponseDto
+  })
+  async quickGenerateProfileImageUrlByUserId(
+    @Param('userId') userId: number,
+    @Body() body: { fileName: string; contentType: string; fileSize?: number }
+  ): Promise<GenerateProfileImageUrlResponseDto> {
+    return this.systemAdminUserService.generateProfileImageUrlByUserId({
+      userId,
+      fileName: body.fileName,
+      contentType: body.contentType,
+      fileSize: body.fileSize
+    });
   }
 }

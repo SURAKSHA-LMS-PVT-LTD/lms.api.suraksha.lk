@@ -11,7 +11,9 @@ import {
   IsObject,
   ValidateIf,
   ArrayMinSize,
-  IsArray
+  IsArray,
+  IsNumber,
+  Max
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { UserType } from '../enums/user-type.enum';
@@ -721,4 +723,203 @@ export class BulkCreateFamilyResponseDto {
 
   @ApiProperty({ description: 'Individual family results', type: [CreateFamilyUnitResponseDto] })
   results: (CreateFamilyUnitResponseDto | { success: false; error: string; index: number })[];
+}
+
+/**
+ * 🔗 Generate Signed URL for Profile Image Upload
+ */
+export class GenerateProfileImageUrlDto {
+  @ApiProperty({ 
+    description: 'Student ID (from students.student_id)',
+    example: 'STU-20260123-001'
+  })
+  @IsString()
+  @IsNotEmpty()
+  studentId: string;
+
+  @ApiProperty({ 
+    description: 'Original filename',
+    example: 'profile.jpg'
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  fileName: string;
+
+  @ApiProperty({ 
+    description: 'File content type (MIME type)',
+    example: 'image/jpeg',
+    enum: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  })
+  @IsString()
+  @IsNotEmpty()
+  contentType: string;
+
+  @ApiPropertyOptional({ 
+    description: 'File size in bytes (for validation)',
+    example: 1048576
+  })
+  @IsOptional()
+  fileSize?: number;
+}
+
+export class GenerateProfileImageUrlResponseDto {
+  @ApiProperty({ description: 'Success status' })
+  success: boolean;
+
+  @ApiProperty({ description: 'Student ID' })
+  studentId: string;
+
+  @ApiProperty({ description: 'User ID associated with student' })
+  userId: string;
+
+  @ApiProperty({ description: 'Student name' })
+  studentName: string;
+
+  @ApiProperty({ description: 'Signed upload URL (use PUT method)' })
+  uploadUrl: string;
+
+  @ApiProperty({ description: 'Relative path to store in database after successful upload' })
+  relativePath: string;
+
+  @ApiProperty({ description: 'URL expires at this timestamp' })
+  expiresAt: Date;
+
+  @ApiProperty({ description: 'Expected content type' })
+  contentType: string;
+
+  @ApiPropertyOptional({ description: 'Additional fields for POST uploads (AWS S3)' })
+  fields?: Record<string, string>;
+}
+
+/**
+ * 📸 Assign Profile Image to Student
+ */
+export class AssignProfileImageDto {
+  @ApiProperty({ 
+    description: 'Student ID (from students.student_id)',
+    example: 'STU-20260123-001'
+  })
+  @IsString()
+  @IsNotEmpty()
+  studentId: string;
+
+  @ApiProperty({ 
+    description: 'Relative path from signed URL upload (returned by generate-url endpoint)',
+    example: 'user-profiles/profile-abc123.jpg'
+  })
+  @IsString()
+  @IsNotEmpty()
+  relativePath: string;
+}
+
+export class AssignProfileImageResponseDto {
+  @ApiProperty({ description: 'Success status' })
+  success: boolean;
+
+  @ApiProperty({ description: 'Student ID' })
+  studentId: string;
+
+  @ApiProperty({ description: 'User ID' })
+  userId: string;
+
+  @ApiProperty({ description: 'Student full name' })
+  studentName: string;
+
+  @ApiProperty({ description: 'Full URL of profile image' })
+  imageUrl: string;
+
+  @ApiProperty({ description: 'Previous image URL (if replaced)' })
+  previousImageUrl?: string;
+
+  @ApiProperty({ description: 'Message' })
+  message: string;
+}
+
+/**
+ * 🔍 Lookup Student by ID
+ */
+export class LookupStudentResponseDto {
+  @ApiProperty({ description: 'Student ID' })
+  studentId: string;
+
+  @ApiProperty({ description: 'User ID' })
+  userId: string;
+
+  @ApiProperty({ description: 'First name' })
+  firstName: string;
+
+  @ApiProperty({ description: 'Last name' })
+  lastName: string;
+
+  @ApiPropertyOptional({ description: 'Name with initials' })
+  nameWithInitials?: string;
+
+  @ApiPropertyOptional({ description: 'Email' })
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'Phone number' })
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Current profile image URL' })
+  imageUrl?: string;
+
+  @ApiProperty({ description: 'Profile completion status' })
+  profileCompletionStatus: string;
+
+  @ApiProperty({ description: 'Profile completion percentage' })
+  profileCompletionPercentage: number;
+}
+
+// ==================== USER ID BASED PROFILE IMAGE DTOs ====================
+
+export class GenerateProfileImageUrlByUserIdDto {
+  @ApiProperty({
+    description: 'User ID',
+    example: 123,
+  })
+  @IsNumber()
+  userId: number;
+
+  @ApiProperty({
+    description: 'File name for the profile image',
+    example: 'profile.jpg',
+  })
+  @IsString()
+  @IsNotEmpty()
+  fileName: string;
+
+  @ApiProperty({
+    description: 'Content type of the file',
+    example: 'image/jpeg',
+    enum: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  })
+  @IsString()
+  @IsNotEmpty()
+  contentType: string;
+
+  @ApiProperty({
+    description: 'File size in bytes (max 5MB)',
+    example: 1024000,
+  })
+  @IsNumber()
+  @Max(5 * 1024 * 1024, { message: 'File size must not exceed 5MB' })
+  fileSize: number;
+}
+
+export class AssignProfileImageByUserIdDto {
+  @ApiProperty({
+    description: 'User ID',
+    example: 123,
+  })
+  @IsNumber()
+  userId: number;
+
+  @ApiProperty({
+    description: 'Relative path of the uploaded file in cloud storage',
+    example: 'profile-images/123/1737628800000_profile.jpg',
+  })
+  @IsString()
+  @IsNotEmpty()
+  relativePath: string;
 }

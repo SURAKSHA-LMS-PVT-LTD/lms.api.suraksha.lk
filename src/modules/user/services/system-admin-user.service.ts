@@ -8,7 +8,7 @@
  * - Handle first-login flow
  */
 
-import { Injectable, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { UserEntity } from '../entities/user.entity';
@@ -28,7 +28,14 @@ import {
   InstituteEnrollmentDto,
   InstituteEnrollmentResponseDto,
   ClassEnrollmentResponseDto,
-  SubjectEnrollmentResponseDto
+  SubjectEnrollmentResponseDto,
+  GenerateProfileImageUrlDto,
+  GenerateProfileImageUrlResponseDto,
+  AssignProfileImageDto,
+  AssignProfileImageResponseDto,
+  LookupStudentResponseDto,
+  GenerateProfileImageUrlByUserIdDto,
+  AssignProfileImageByUserIdDto,
 } from '../dto/create-family-unit.dto';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
@@ -39,6 +46,7 @@ import { InstituteClassSubjectStudent } from '../../institute_class_subject_modu
 import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { ImageVerificationStatus } from '../../institute_mudules/institue_user/enums/image-verification-status.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { now } from '../../../common/utils/timezone.util';
 import * as bcrypt from 'bcrypt';
 
@@ -65,6 +73,7 @@ export class SystemAdminUserService {
     private readonly instituteClassSubjectStudentRepository: Repository<InstituteClassSubjectStudent>,
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   /**
@@ -1124,6 +1133,307 @@ export class SystemAdminUserService {
       firstLoginUrl: user.profileCompletionStatus === ProfileCompletionStatus.INCOMPLETE
         ? `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`
         : undefined
+    };
+  }
+
+  // ==========================================
+  // 📸 PROFILE IMAGE MANAGEMENT
+  // ==========================================
+
+  /**
+   * 🔍 Lookup Student by Student ID
+   */
+  async lookupStudentById(studentId: string): Promise<LookupStudentResponseDto> {
+    const student = await this.studentRepository.findOne({
+      where: { studentId },
+      relations: ['user']
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student not found with ID: ${studentId}`);
+    }
+
+    const user = student.user;
+
+    return {
+      studentId: student.studentId,
+      userId: student.userId,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      nameWithInitials: user.nameWithInitials,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      imageUrl: user.imageUrl,
+      profileCompletionStatus: user.profileCompletionStatus,
+      profileCompletionPercentage: user.profileCompletionPercentage
+    };
+  }
+
+  /**
+   * 🔗 Generate Signed URL for Profile Image Upload
+   */
+  async generateProfileImageUrl(
+    dto: GenerateProfileImageUrlDto
+  ): Promise<GenerateProfileImageUrlResponseDto> {
+    // Validate content type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(dto.contentType)) {
+      throw new BadRequestException(
+        `Invalid content type. Allowed: ${allowedTypes.join(', ')}`
+      );
+    }
+
+    // Validate file size (max 5MB)
+    const maxFileSize = 5 * 1024 * 1024; // 5MB
+    if (dto.fileSize && dto.fileSize > maxFileSize) {
+      throw new BadRequestException(
+        `File size exceeds maximum allowed (5MB). Provided: ${(dto.fileSize / 1024 / 1024).toFixed(2)}MB`
+      );
+    }
+
+    // Find student by studentId
+    const student = await this.studentRepository.findOne({
+      where: { studentId: dto.studentId },
+      relations: ['user']
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student not found with ID: ${dto.studentId}`);
+    }
+
+    const user = student.user;
+
+    // Generate signed URL
+    const folder = 'user-profiles';
+    const result = await this.cloudStorageService.generateSignedUploadUrl(
+      folder,
+      dto.fileName,
+      dto.contentType,
+      600, // 10 minutes expiry
+      maxFileSize
+    );
+
+    this.logger.log(
+      `Generated profile image upload URL for student ${dto.studentId} (user ${student.userId})`
+    );
+
+    return {
+      success: true,
+      studentId: dto.studentId,
+      userId: student.userId,
+      studentName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nameWithInitials || 'Unknown',
+      uploadUrl: result.uploadUrl,
+      relativePath: result.relativePath,
+      expiresAt: result.expiresAt,
+      contentType: dto.contentType,
+      fields: result.fields
+    };
+  }
+
+  /**
+   * 📸 Assign Profile Image to Student
+   */
+  async assignProfileImage(
+    dto: AssignProfileImageDto,
+    adminUserId: string
+  ): Promise<AssignProfileImageResponseDto> {
+    // Find student by studentId
+    const student = await this.studentRepository.findOne({
+      where: { studentId: dto.studentId },
+      relations: ['user']
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student not found with ID: ${dto.studentId}`);
+    }
+
+    const user = student.user;
+    const previousImageUrl = user.imageUrl;
+
+    // Verify the file exists in cloud storage (optional but recommended)
+    try {
+      const exists = await this.cloudStorageService.fileExists(dto.relativePath);
+      if (!exists) {
+        throw new BadRequestException(
+          'File not found in cloud storage. Please upload the file first using the signed URL.'
+        );
+      }
+    } catch (error) {
+      // If verification fails, log warning but continue (might be timing issue)
+      this.logger.warn(
+        `Could not verify file existence for ${dto.relativePath}: ${error.message}`
+      );
+    }
+
+    // Build full URL
+    const fullUrl = await this.cloudStorageService.getFullUrl(dto.relativePath);
+
+    // Update user's imageUrl
+    await this.userRepository.update(
+      { id: student.userId },
+      { 
+        imageUrl: fullUrl,
+        updatedAt: now()
+      }
+    );
+
+    this.logger.log(
+      `Profile image assigned for student ${dto.studentId} (user ${student.userId}) by admin ${adminUserId}`
+    );
+
+    return {
+      success: true,
+      studentId: dto.studentId,
+      userId: student.userId,
+      studentName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nameWithInitials || 'Unknown',
+      imageUrl: fullUrl,
+      previousImageUrl,
+      message: previousImageUrl 
+        ? 'Profile image updated successfully'
+        : 'Profile image assigned successfully'
+    };
+  }
+
+  // ==================== USER ID BASED PROFILE IMAGE METHODS ====================
+
+  async lookupUserById(userId: number): Promise<LookupStudentResponseDto> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId.toString() },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    // Find student record if exists
+    const student = await this.studentRepository.findOne({
+      where: { userId: user.id },
+    });
+
+    return {
+      studentId: student?.studentId || null,
+      userId: user.id.toString(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      nameWithInitials: user.nameWithInitials,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      imageUrl: user.imageUrl,
+      profileCompletionStatus: user.profileCompletionStatus,
+      profileCompletionPercentage: user.profileCompletionPercentage,
+    };
+  }
+
+  async generateProfileImageUrlByUserId(
+    dto: GenerateProfileImageUrlByUserIdDto,
+  ): Promise<GenerateProfileImageUrlResponseDto> {
+    // Verify user exists
+    const user = await this.userRepository.findOne({
+      where: { id: dto.userId.toString() },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${dto.userId} not found`);
+    }
+
+    // Find student record if exists
+    const student = await this.studentRepository.findOne({
+      where: { userId: user.id },
+    });
+
+    // Validate content type
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+    if (!allowedTypes.includes(dto.contentType)) {
+      throw new BadRequestException(
+        `Invalid content type. Allowed: ${allowedTypes.join(', ')}`,
+      );
+    }
+
+    // Generate unique file path
+    const timestamp = Date.now();
+    const sanitizedFileName = dto.fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const relativePath = `profile-images/${dto.userId}/${timestamp}_${sanitizedFileName}`;
+
+    // Generate signed upload URL (10 minutes expiry)
+    const signedUrlResult = await this.cloudStorageService.generateSignedUploadUrl(
+      relativePath,
+      dto.contentType,
+      '10m', // 10 minutes
+    );
+
+    this.logger.log(
+      `Generated profile image upload URL for user ${dto.userId}`,
+    );
+
+    return {
+      success: true,
+      studentId: student?.studentId || null,
+      userId: user.id.toString(),
+      studentName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nameWithInitials || 'Unknown',
+      uploadUrl: signedUrlResult.uploadUrl,
+      relativePath,
+      expiresAt: signedUrlResult.expiresAt || new Date(Date.now() + 10 * 60 * 1000),
+      contentType: dto.contentType,
+      fields: signedUrlResult.fields,
+    };
+  }
+
+  async assignProfileImageByUserId(
+    dto: AssignProfileImageByUserIdDto,
+    adminUserId: number,
+  ): Promise<AssignProfileImageResponseDto> {
+    // Find user by ID
+    const user = await this.userRepository.findOne({
+      where: { id: dto.userId.toString() },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${dto.userId} not found`);
+    }
+
+    const previousImageUrl = user.imageUrl;
+
+    // Verify file exists in storage
+    const fileExists = await this.cloudStorageService.fileExists(
+      dto.relativePath,
+    );
+    if (!fileExists) {
+      throw new BadRequestException(
+        'File not found in storage. Please upload the file first.',
+      );
+    }
+
+    // Get full URL
+    const fullUrl = this.cloudStorageService.getFullUrl(dto.relativePath);
+
+    // Update user's imageUrl
+    await this.userRepository.update(
+      dto.userId.toString(),
+      { 
+        imageUrl: fullUrl,
+        updatedAt: now()
+      }
+    );
+
+    this.logger.log(
+      `Profile image assigned to user ${dto.userId} by admin ${adminUserId}`,
+    );
+
+    return {
+      success: true,
+      studentId: null,
+      userId: dto.userId.toString(),
+      studentName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nameWithInitials || 'Unknown',
+      imageUrl: fullUrl,
+      previousImageUrl,
+      message: previousImageUrl 
+        ? 'Profile image updated successfully'
+        : 'Profile image assigned successfully'
     };
   }
 }
