@@ -24,13 +24,20 @@ import {
   FamilyMemberUserDto,
   FamilyStudentDto,
   BulkCreateFamilyDto,
-  BulkCreateFamilyResponseDto
+  BulkCreateFamilyResponseDto,
+  InstituteEnrollmentDto,
+  InstituteEnrollmentResponseDto,
+  ClassEnrollmentResponseDto,
+  SubjectEnrollmentResponseDto
 } from '../dto/create-family-unit.dto';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
+import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
+import { ImageVerificationStatus } from '../../institute_mudules/institue_user/enums/image-verification-status.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { now } from '../../../common/utils/timezone.util';
 import * as bcrypt from 'bcrypt';
@@ -54,6 +61,8 @@ export class SystemAdminUserService {
     private readonly instituteClassRepository: Repository<InstituteClassEntity>,
     @InjectRepository(InstituteClassStudentEntity)
     private readonly instituteClassStudentRepository: Repository<InstituteClassStudentEntity>,
+    @InjectRepository(InstituteClassSubjectStudent)
+    private readonly instituteClassSubjectStudentRepository: Repository<InstituteClassSubjectStudent>,
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
   ) {}
@@ -171,10 +180,47 @@ export class SystemAdminUserService {
       if (studentResult.notificationSent) notificationsSent++;
 
       // ============================================
-      // STEP 5: Institute Enrollment (if requested)
+      // STEP 5: Institute Enrollments (new nested structure)
       // ============================================
+      let instituteEnrollments: InstituteEnrollmentResponseDto[] = [];
+      let enrollmentSummary = {
+        totalInstitutes: 0,
+        totalClasses: 0,
+        totalSubjects: 0,
+        allActive: true,
+        allVerified: true
+      };
+
+      if (dto.instituteEnrollments && dto.instituteEnrollments.length > 0) {
+        for (const enrollment of dto.instituteEnrollments) {
+          const result = await this.enrollStudentToInstituteNested(
+            queryRunner,
+            studentResult.userId,
+            enrollment,
+            adminUserId,
+            dto.autoActivateEnrollments !== false
+          );
+          instituteEnrollments.push(result);
+          
+          if (result.success) {
+            enrollmentSummary.totalInstitutes++;
+            if (result.classEnrollments) {
+              enrollmentSummary.totalClasses += result.classEnrollments.length;
+              result.classEnrollments.forEach(ce => {
+                if (ce.subjectEnrollments) {
+                  enrollmentSummary.totalSubjects += ce.subjectEnrollments.length;
+                }
+                if (!ce.isActive) enrollmentSummary.allActive = false;
+                if (!ce.isVerified) enrollmentSummary.allVerified = false;
+              });
+            }
+          }
+        }
+      }
+
+      // Legacy: Handle old instituteCode/classId format
       let instituteEnrollment: CreateFamilyUnitResponseDto['instituteEnrollment'];
-      if (dto.instituteCode) {
+      if (dto.instituteCode && !dto.instituteEnrollments) {
         instituteEnrollment = await this.enrollStudentToInstitute(
           queryRunner,
           studentResult.userId,
@@ -208,7 +254,9 @@ export class SystemAdminUserService {
         father: createdUsers.father,
         mother: createdUsers.mother,
         guardian: createdUsers.guardian,
-        instituteEnrollment,
+        instituteEnrollments: instituteEnrollments.length > 0 ? instituteEnrollments : undefined,
+        instituteEnrollment, // Legacy
+        enrollmentSummary: instituteEnrollments.length > 0 ? enrollmentSummary : undefined,
         totalUsersCreated,
         incompleteProfiles,
         notificationsSent
@@ -435,12 +483,18 @@ export class SystemAdminUserService {
     const nameWithInitials = data.nameWithInitials || 
       (data.firstName && data.lastName ? this.generateNameWithInitials(data.firstName, data.lastName) : null);
 
+    // Hash password if provided
+    let hashedPassword: string | undefined;
+    if (data.password) {
+      hashedPassword = await bcrypt.hash(data.password, 12);
+    }
+
     const completionStatus = determineProfileStatus({
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
       phoneNumber: data.phoneNumber,
-      password: undefined
+      password: hashedPassword
     });
 
     const userEntity = queryRunner.manager.create(UserEntity, {
@@ -449,10 +503,13 @@ export class SystemAdminUserService {
       nameWithInitials,
       email: data.email?.toLowerCase() || null,
       phoneNumber: data.phoneNumber || null,
+      password: hashedPassword || null,
+      passwordSetAt: hashedPassword ? now() : null,
       userType: UserType.USER_WITHOUT_STUDENT,
       dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
       gender: data.gender,
       nic: data.nic || null,
+      rfid: data.rfid || null,
       addressLine1: data.addressLine1 || null,
       addressLine2: data.addressLine2 || null,
       city: data.city || null,
@@ -469,9 +526,10 @@ export class SystemAdminUserService {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
-        phoneNumber: data.phoneNumber
+        phoneNumber: data.phoneNumber,
+        password: hashedPassword
       }),
-      firstLoginCompleted: false,
+      firstLoginCompleted: !!hashedPassword, // If password provided, first login is complete
       createdByAdminId: adminUserId,
       createdAt: now(),
       updatedAt: now()
@@ -539,12 +597,18 @@ export class SystemAdminUserService {
     const nameWithInitials = data.nameWithInitials || 
       (data.firstName && data.lastName ? this.generateNameWithInitials(data.firstName, data.lastName) : null);
 
+    // Hash password if provided
+    let hashedPassword: string | undefined;
+    if (data.password) {
+      hashedPassword = await bcrypt.hash(data.password, 12);
+    }
+
     const completionStatus = determineProfileStatus({
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
       phoneNumber: data.phoneNumber,
-      password: undefined
+      password: hashedPassword
     });
 
     const userEntity = queryRunner.manager.create(UserEntity, {
@@ -553,10 +617,13 @@ export class SystemAdminUserService {
       nameWithInitials,
       email: data.email?.toLowerCase() || null,
       phoneNumber: data.phoneNumber || null,
+      password: hashedPassword || null,
+      passwordSetAt: hashedPassword ? now() : null,
       userType: UserType.USER,
       dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
       gender: data.gender,
       nic: data.nic || null,
+      rfid: data.rfid || null,
       addressLine1: data.addressLine1 || null,
       addressLine2: data.addressLine2 || null,
       city: data.city || null,
@@ -573,9 +640,10 @@ export class SystemAdminUserService {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
-        phoneNumber: data.phoneNumber
+        phoneNumber: data.phoneNumber,
+        password: hashedPassword
       }),
-      firstLoginCompleted: false,
+      firstLoginCompleted: !!hashedPassword, // If password provided, first login is complete
       createdByAdminId: adminUserId,
       createdAt: now(),
       updatedAt: now()
@@ -703,6 +771,236 @@ export class SystemAdminUserService {
         message: `Enrollment failed: ${error.message}`
       };
     }
+  }
+
+  /**
+   * 🏫 Enroll student to institute with nested class/subject structure
+   * System admin created enrollments are automatically ACTIVE and verified
+   */
+  private async enrollStudentToInstituteNested(
+    queryRunner: QueryRunner,
+    studentUserId: string,
+    enrollment: InstituteEnrollmentDto,
+    adminUserId: string,
+    autoActivate: boolean = true
+  ): Promise<InstituteEnrollmentResponseDto> {
+    try {
+      // Find institute
+      const institute = await queryRunner.manager.findOne(InstituteEntity, {
+        where: { id: enrollment.instituteId }
+      });
+
+      if (!institute) {
+        return {
+          success: false,
+          message: `Institute not found with ID: ${enrollment.instituteId}`
+        };
+      }
+
+      // Create or update institute user record
+      let instituteUser = await queryRunner.manager.findOne(InstituteUserEntity, {
+        where: { instituteId: institute.id, userId: studentUserId }
+      });
+
+      const instituteUserType = (enrollment.instituteUserType as InstituteUserType) || InstituteUserType.STUDENT;
+
+      if (!instituteUser) {
+        instituteUser = queryRunner.manager.create(InstituteUserEntity, {
+          instituteId: institute.id,
+          userId: studentUserId,
+          instituteUserType: instituteUserType,
+          userIdByInstitute: enrollment.userIdByInstitute || null,
+          instituteUserImageUrl: enrollment.instituteUserImageUrl || null,
+          instituteCardId: enrollment.instituteCardId || null,
+          status: autoActivate ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
+          verifiedBy: autoActivate ? adminUserId : null,
+          verifiedAt: autoActivate ? now() : null,
+          imageVerificationStatus: enrollment.instituteUserImageUrl && autoActivate 
+            ? ImageVerificationStatus.VERIFIED 
+            : ImageVerificationStatus.PENDING,
+          imageVerifiedBy: enrollment.instituteUserImageUrl && autoActivate ? adminUserId : null,
+          createdAt: now(),
+          updatedAt: now()
+        });
+        await queryRunner.manager.save(instituteUser);
+      } else {
+        // Update existing institute user with new data if provided
+        const updates: Partial<InstituteUserEntity> = { updatedAt: now() };
+        if (enrollment.userIdByInstitute) updates.userIdByInstitute = enrollment.userIdByInstitute;
+        if (enrollment.instituteUserImageUrl) updates.instituteUserImageUrl = enrollment.instituteUserImageUrl;
+        if (enrollment.instituteCardId) updates.instituteCardId = enrollment.instituteCardId;
+        if (autoActivate && instituteUser.status === InstituteUserStatus.PENDING) {
+          updates.status = InstituteUserStatus.ACTIVE;
+          updates.verifiedBy = adminUserId;
+          updates.verifiedAt = now();
+        }
+        await queryRunner.manager.update(InstituteUserEntity, 
+          { instituteId: institute.id, userId: studentUserId }, 
+          updates
+        );
+      }
+
+      // Process class enrollments
+      const classEnrollmentResults: ClassEnrollmentResponseDto[] = [];
+
+      if (enrollment.classEnrollments && enrollment.classEnrollments.length > 0) {
+        for (const classEnrollment of enrollment.classEnrollments) {
+          const classResult = await this.enrollStudentToClass(
+            queryRunner,
+            studentUserId,
+            institute.id,
+            classEnrollment.classId,
+            classEnrollment.subjectEnrollments || [],
+            adminUserId,
+            autoActivate
+          );
+          classEnrollmentResults.push(classResult);
+        }
+      }
+
+      return {
+        success: true,
+        instituteId: institute.id,
+        instituteName: institute.name,
+        instituteUserType: instituteUserType,
+        status: autoActivate ? 'ACTIVE' : 'PENDING',
+        userIdByInstitute: enrollment.userIdByInstitute,
+        classEnrollments: classEnrollmentResults,
+        message: `Student enrolled to ${institute.name}` + 
+          (classEnrollmentResults.length > 0 ? ` with ${classEnrollmentResults.length} class(es)` : '')
+      };
+
+    } catch (error) {
+      this.logger.error(`Failed to enroll student to institute: ${error.message}`);
+      return {
+        success: false,
+        message: `Institute enrollment failed: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * 📚 Enroll student to class with subjects
+   */
+  private async enrollStudentToClass(
+    queryRunner: QueryRunner,
+    studentUserId: string,
+    instituteId: string,
+    classId: string,
+    subjectEnrollments: { subjectId: string }[],
+    adminUserId: string,
+    autoActivate: boolean
+  ): Promise<ClassEnrollmentResponseDto> {
+    // Find class
+    const classEntity = await queryRunner.manager.findOne(InstituteClassEntity, {
+      where: { id: classId, instituteId: instituteId }
+    });
+
+    if (!classEntity) {
+      return {
+        classId,
+        isActive: false,
+        isVerified: false,
+        enrollmentMethod: 'manual',
+        subjectEnrollments: []
+      };
+    }
+
+    // Check if already enrolled in class
+    let classStudent = await queryRunner.manager.findOne(InstituteClassStudentEntity, {
+      where: { instituteId, classId, studentUserId }
+    });
+
+    if (!classStudent) {
+      classStudent = queryRunner.manager.create(InstituteClassStudentEntity, {
+        instituteId,
+        classId,
+        studentUserId,
+        isActive: true,
+        isVerified: autoActivate,
+        enrollmentMethod: 'manual',
+        verifiedBy: autoActivate ? adminUserId : null,
+        verifiedAt: autoActivate ? now() : null,
+        createdAt: now(),
+        updatedAt: now()
+      });
+      await queryRunner.manager.save(classStudent);
+    } else if (autoActivate && !classStudent.isVerified) {
+      // Auto-verify existing enrollment
+      await queryRunner.manager.update(InstituteClassStudentEntity,
+        { instituteId, classId, studentUserId },
+        { 
+          isVerified: true, 
+          verifiedBy: adminUserId, 
+          verifiedAt: now(),
+          updatedAt: now()
+        }
+      );
+    }
+
+    // Process subject enrollments
+    const subjectEnrollmentResults: SubjectEnrollmentResponseDto[] = [];
+
+    if (subjectEnrollments.length > 0) {
+      for (const subjectEnrollment of subjectEnrollments) {
+        const subjectResult = await this.enrollStudentToSubject(
+          queryRunner,
+          studentUserId,
+          instituteId,
+          classId,
+          subjectEnrollment.subjectId,
+          adminUserId
+        );
+        subjectEnrollmentResults.push(subjectResult);
+      }
+    }
+
+    return {
+      classId,
+      className: classEntity.name,
+      isActive: true,
+      isVerified: autoActivate,
+      enrollmentMethod: 'manual',
+      subjectEnrollments: subjectEnrollmentResults
+    };
+  }
+
+  /**
+   * 📖 Enroll student to subject
+   */
+  private async enrollStudentToSubject(
+    queryRunner: QueryRunner,
+    studentUserId: string,
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    adminUserId: string
+  ): Promise<SubjectEnrollmentResponseDto> {
+    // Check if already enrolled
+    let subjectStudent = await queryRunner.manager.findOne(InstituteClassSubjectStudent, {
+      where: { instituteId, classId, subjectId, studentId: studentUserId }
+    });
+
+    if (!subjectStudent) {
+      subjectStudent = queryRunner.manager.create(InstituteClassSubjectStudent, {
+        instituteId,
+        classId,
+        subjectId,
+        studentId: studentUserId,
+        isActive: true,
+        enrollmentMethod: 'teacher_assigned',
+        enrolledBy: adminUserId,
+        createdAt: now(),
+        updatedAt: now()
+      });
+      await queryRunner.manager.save(subjectStudent);
+    }
+
+    return {
+      subjectId,
+      isActive: true,
+      enrollmentMethod: 'teacher_assigned'
+    };
   }
 
   /**

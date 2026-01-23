@@ -179,6 +179,25 @@ export class MinimalUserDto {
   @IsOptional()
   @IsEnum(Language)
   language?: Language;
+
+  @ApiPropertyOptional({ 
+    description: 'RFID card number for physical access',
+    example: 'RFID-001-2026',
+    maxLength: 20
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  @Transform(({ value }) => value?.trim() || null)
+  rfid?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Password (optional - if provided, user can login immediately)',
+    minLength: 8
+  })
+  @IsOptional()
+  @IsString()
+  password?: string;
 }
 
 /**
@@ -306,6 +325,103 @@ export class FamilyStudentDto extends MinimalUserDto {
 }
 
 /**
+ * � Subject Enrollment DTO - For enrolling in subjects within a class
+ */
+export class SubjectEnrollmentDto {
+  @ApiProperty({ 
+    description: 'Subject ID to enroll in',
+    example: '301'
+  })
+  @IsString()
+  @IsNotEmpty()
+  subjectId: string;
+}
+
+/**
+ * 📋 Class Enrollment DTO - For enrolling in classes with optional subjects
+ */
+export class ClassEnrollmentDto {
+  @ApiProperty({ 
+    description: 'Class ID to enroll in',
+    example: '201'
+  })
+  @IsString()
+  @IsNotEmpty()
+  classId: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Subject enrollments within this class',
+    type: [SubjectEnrollmentDto]
+  })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => SubjectEnrollmentDto)
+  @IsArray()
+  subjectEnrollments?: SubjectEnrollmentDto[];
+}
+
+/**
+ * 🏫 Institute Enrollment DTO - For enrolling in institutes with classes and subjects
+ * System admin created enrollments are automatically ACTIVE and verified
+ */
+export class InstituteEnrollmentDto {
+  @ApiProperty({ 
+    description: 'Institute ID to enroll in',
+    example: '100'
+  })
+  @IsString()
+  @IsNotEmpty()
+  instituteId: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Institute user type (default: STUDENT)',
+    enum: ['STUDENT', 'TEACHER', 'PARENT', 'INSTITUTE_ADMIN', 'ATTENDANCE_MARKER'],
+    default: 'STUDENT'
+  })
+  @IsOptional()
+  @IsString()
+  instituteUserType?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Institute-assigned user ID (e.g., admission number, index number)',
+    example: 'RC-2026-001',
+    maxLength: 50
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  userIdByInstitute?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Institute-specific user image URL (for ID card)',
+    maxLength: 255
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  instituteUserImageUrl?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Institute-specific card ID (e.g., library card, access card)',
+    maxLength: 100
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  instituteCardId?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Class enrollments within this institute',
+    type: [ClassEnrollmentDto]
+  })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ClassEnrollmentDto)
+  @IsArray()
+  classEnrollments?: ClassEnrollmentDto[];
+}
+
+/**
  * 👨‍👩‍👧 Complete Family Unit Creation DTO
  * 
  * Creates a complete family unit in one API call:
@@ -316,6 +432,9 @@ export class FamilyStudentDto extends MinimalUserDto {
  * 
  * Each member only needs ONE of: email OR phoneNumber
  * All other fields are optional and can be completed later
+ * 
+ * Can also enroll student in institutes with nested class/subject structure.
+ * System admin created enrollments are automatically ACTIVE and verified.
  */
 export class CreateFamilyUnitDto {
   @ApiProperty({ 
@@ -363,8 +482,28 @@ export class CreateFamilyUnitDto {
   sendWelcomeNotifications?: boolean;
 
   @ApiPropertyOptional({ 
-    description: '🏫 Institute code to auto-enroll student',
-    example: 'INST-20260122-001'
+    description: '🏫 Institute enrollments with nested class/subject structure. Auto-activated for system admin created users.',
+    type: [InstituteEnrollmentDto]
+  })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => InstituteEnrollmentDto)
+  @IsArray()
+  instituteEnrollments?: InstituteEnrollmentDto[];
+
+  @ApiPropertyOptional({ 
+    description: '🔑 Auto-activate all enrollments (default: true for system admin)',
+    default: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoActivateEnrollments?: boolean;
+
+  // Legacy fields - kept for backward compatibility
+  @ApiPropertyOptional({ 
+    description: '🏫 (DEPRECATED) Use instituteEnrollments instead. Institute code to auto-enroll student',
+    example: 'INST-20260122-001',
+    deprecated: true
   })
   @IsOptional()
   @IsString()
@@ -372,8 +511,9 @@ export class CreateFamilyUnitDto {
   instituteCode?: string;
 
   @ApiPropertyOptional({ 
-    description: '📚 Class ID to auto-enroll student (requires instituteCode)',
-    example: '40'
+    description: '📚 (DEPRECATED) Use instituteEnrollments instead. Class ID to auto-enroll student',
+    example: '40',
+    deprecated: true
   })
   @IsOptional()
   @IsString()
@@ -442,6 +582,75 @@ export class FamilyMemberResponseDto {
   firstLoginUrl?: string;
 }
 
+/**
+ * 📚 Subject Enrollment Response
+ */
+export class SubjectEnrollmentResponseDto {
+  @ApiProperty({ description: 'Subject ID' })
+  subjectId: string;
+
+  @ApiPropertyOptional({ description: 'Subject name' })
+  subjectName?: string;
+
+  @ApiProperty({ description: 'Enrollment is active' })
+  isActive: boolean;
+
+  @ApiProperty({ description: 'Enrollment method' })
+  enrollmentMethod: string;
+}
+
+/**
+ * 📋 Class Enrollment Response
+ */
+export class ClassEnrollmentResponseDto {
+  @ApiProperty({ description: 'Class ID' })
+  classId: string;
+
+  @ApiPropertyOptional({ description: 'Class name' })
+  className?: string;
+
+  @ApiProperty({ description: 'Enrollment is active' })
+  isActive: boolean;
+
+  @ApiProperty({ description: 'Enrollment is verified' })
+  isVerified: boolean;
+
+  @ApiProperty({ description: 'Enrollment method' })
+  enrollmentMethod: string;
+
+  @ApiPropertyOptional({ description: 'Subject enrollments' })
+  subjectEnrollments?: SubjectEnrollmentResponseDto[];
+}
+
+/**
+ * 🏫 Institute Enrollment Response
+ */
+export class InstituteEnrollmentResponseDto {
+  @ApiProperty({ description: 'Enrollment success' })
+  success: boolean;
+
+  @ApiPropertyOptional({ description: 'Institute ID' })
+  instituteId?: string;
+
+  @ApiPropertyOptional({ description: 'Institute name' })
+  instituteName?: string;
+
+  @ApiPropertyOptional({ description: 'Institute user type' })
+  instituteUserType?: string;
+
+  @ApiPropertyOptional({ description: 'Status (ACTIVE for system admin created)' })
+  status?: string;
+
+  @ApiPropertyOptional({ description: 'Institute-assigned user ID' })
+  userIdByInstitute?: string;
+
+  @ApiPropertyOptional({ description: 'Class enrollments' })
+  classEnrollments?: ClassEnrollmentResponseDto[];
+
+  @ApiPropertyOptional({ description: 'Error message if failed' })
+  message?: string;
+}
+
 export class CreateFamilyUnitResponseDto {
   @ApiProperty({ description: 'Overall success status' })
   success: boolean;
@@ -461,7 +670,14 @@ export class CreateFamilyUnitResponseDto {
   @ApiPropertyOptional({ description: 'Guardian user data (if created)', type: FamilyMemberResponseDto })
   guardian?: FamilyMemberResponseDto;
 
-  @ApiPropertyOptional({ description: 'Institute enrollment result' })
+  @ApiPropertyOptional({ 
+    description: 'Institute enrollments with nested class/subject results',
+    type: [InstituteEnrollmentResponseDto]
+  })
+  instituteEnrollments?: InstituteEnrollmentResponseDto[];
+
+  // Legacy field - kept for backward compatibility
+  @ApiPropertyOptional({ description: '(DEPRECATED) Use instituteEnrollments instead' })
   instituteEnrollment?: {
     success: boolean;
     instituteId?: string;
@@ -479,6 +695,15 @@ export class CreateFamilyUnitResponseDto {
 
   @ApiProperty({ description: 'Welcome notifications sent', example: 4 })
   notificationsSent: number;
+
+  @ApiPropertyOptional({ description: 'Summary of enrollments' })
+  enrollmentSummary?: {
+    totalInstitutes: number;
+    totalClasses: number;
+    totalSubjects: number;
+    allActive: boolean;
+    allVerified: boolean;
+  };
 }
 
 /**
