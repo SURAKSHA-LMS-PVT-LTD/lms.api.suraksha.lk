@@ -1201,14 +1201,19 @@ export class AuthService {
       expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
     }
 
-    // Store refresh token in database
+    // Store refresh token in database (web platform by default)
     await this.refreshTokenRepository.save({
       token: refreshToken,
       userId: userId,
       expiresAt: expiresAt,
       ipAddress: ipAddress,
       userAgent: userAgent,
-      isRevoked: false
+      platform: 'web',       // 📱 Default to web for cookie-based auth
+      deviceId: null,        // 📱 No device ID for web
+      deviceName: null,      // 📱 No device name for web
+      isRevoked: false,
+      createdAt: now(),
+      updatedAt: now()
     });
 
     return refreshToken;
@@ -1393,6 +1398,395 @@ export class AuthService {
       });
     } catch (error) {
       this.logger.error(`Failed to cleanup expired tokens: ${error.message}`);
+    }
+  }
+
+  // ============================================================================
+  // 📱 MOBILE AUTHENTICATION METHODS
+  // ============================================================================
+
+  /**
+   * 📱 Mobile Login - Returns refresh token in response body
+   * For mobile apps (iOS/Android) that cannot use httpOnly cookies
+   * Tracks device ID for session management
+   */
+  async loginMobile(
+    user: UserEntity,
+    deviceId: string,
+    platform: 'android' | 'ios',
+    ipAddress?: string,
+    userAgent?: string,
+    deviceName?: string
+  ): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    payload: any;
+    user: {
+      id: string;
+      email: string;
+      nameWithInitials: string;
+      userType: string;
+      imageUrl?: string;
+    };
+  }> {
+    // Build JWT payload with user hierarchy
+    const payload = await this.enhancedJwtService.buildPayload(user);
+    
+    // Generate access token
+    const access_token = await this.jwtService.signAsync(payload);
+    
+    // Revoke any existing tokens for this device (single device session)
+    await this.revokeDeviceTokens(user.id, deviceId);
+    
+    // Generate refresh token with device tracking
+    const refresh_token = await this.generateMobileRefreshToken(
+      user.id,
+      deviceId,
+      platform,
+      ipAddress,
+      userAgent,
+      deviceName
+    );
+
+    // Get access token expiry (default 1 hour = 3600 seconds)
+    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+    const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
+
+    return {
+      access_token,
+      refresh_token,
+      expires_in,
+      payload,
+      user: {
+        id: user.id,
+        email: user.email,
+        nameWithInitials: user.nameWithInitials,
+        userType: user.userType,
+        imageUrl: user.imageUrl,
+      },
+    };
+  }
+
+  /**
+   * 📱 Generate Mobile Refresh Token
+   * Creates refresh token with device and platform tracking
+   */
+  async generateMobileRefreshToken(
+    userId: string,
+    deviceId: string,
+    platform: 'android' | 'ios',
+    ipAddress?: string,
+    userAgent?: string,
+    deviceName?: string
+  ): Promise<string> {
+    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+
+    if (!refreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET is not configured');
+    }
+
+    // Generate refresh token with device info in payload
+    const payload = { 
+      sub: userId,
+      type: 'refresh',
+      platform: platform,
+      deviceId: deviceId
+    };
+
+    const refreshToken = await this.jwtService.signAsync(payload, {
+      secret: refreshSecret,
+      expiresIn: refreshExpiresIn
+    });
+
+    // Calculate expiry date
+    const expiresAt = now();
+    const daysMatch = refreshExpiresIn.match(/(\d+)d/);
+    if (daysMatch) {
+      expiresAt.setDate(expiresAt.getDate() + parseInt(daysMatch[1]));
+    } else {
+      expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
+    }
+
+    // Store refresh token with device info
+    await this.refreshTokenRepository.save({
+      token: refreshToken,
+      userId: userId,
+      expiresAt: expiresAt,
+      ipAddress: ipAddress,
+      userAgent: userAgent,
+      platform: platform,
+      deviceId: deviceId,
+      deviceName: deviceName,
+      isRevoked: false,
+      createdAt: now(),
+      updatedAt: now()
+    });
+
+    return refreshToken;
+  }
+
+  /**
+   * 📱 Mobile Token Refresh
+   * Validates refresh token and device ID, returns new tokens
+   */
+  async refreshMobileToken(
+    refreshToken: string,
+    deviceId: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    user: {
+      id: string;
+      email: string;
+      nameWithInitials: string;
+      userType: string;
+      imageUrl?: string;
+    };
+  }> {
+    try {
+      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+
+      // Verify refresh token
+      const payload = await this.jwtService.verifyAsync(refreshToken, {
+        secret: refreshSecret
+      });
+
+      if (payload.type !== 'refresh') {
+        throw new UnauthorizedException('Invalid token type');
+      }
+
+      // 📱 SECURITY: Verify device ID matches token
+      if (payload.deviceId && payload.deviceId !== deviceId) {
+        this.logger.warn(`⚠️ Device ID mismatch for user ${payload.sub}: expected ${payload.deviceId}, got ${deviceId}`);
+        throw new UnauthorizedException('Device ID mismatch - token may have been stolen');
+      }
+
+      // Check if token exists and is not revoked
+      const tokenRecord = await this.refreshTokenRepository.findOne({
+        where: {
+          token: refreshToken,
+          userId: payload.sub,
+          isRevoked: false,
+          deviceId: deviceId
+        }
+      });
+
+      if (!tokenRecord) {
+        throw new UnauthorizedException('Invalid, revoked, or device-mismatched refresh token');
+      }
+
+      // Check if token is expired
+      if (now() > tokenRecord.expiresAt) {
+        throw new UnauthorizedException('Refresh token expired');
+      }
+
+      // Get user data with hierarchy validation
+      const user = await this.userRepository.findOne({
+        where: { id: payload.sub },
+        select: ['id', 'email', 'nameWithInitials', 'userType', 'isActive', 'imageUrl']
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      // SECURITY: Validate user is still active
+      if (!user.isActive) {
+        await this.revokeDeviceTokens(user.id, deviceId);
+        throw new UnauthorizedException('User account is inactive');
+      }
+
+      // SECURITY: Validate user hierarchy for non-superadmin users
+      if (user.userType !== UserType.SUPERADMIN) {
+        const instituteAccess = await this.instituteUserRepository.find({
+          where: {
+            userId: user.id,
+            status: InstituteUserStatus.ACTIVE
+          },
+          relations: ['institute']
+        });
+
+        if (!instituteAccess || instituteAccess.length === 0) {
+          await this.revokeDeviceTokens(user.id, deviceId);
+          throw new UnauthorizedException('User has no valid institute access');
+        }
+
+        const hasActiveInstitute = instituteAccess.some(
+          access => access.institute && access.institute.isActive
+        );
+
+        if (!hasActiveInstitute) {
+          await this.revokeDeviceTokens(user.id, deviceId);
+          throw new UnauthorizedException('User has no access to active institutes');
+        }
+      }
+
+      // Revoke old refresh token (token rotation)
+      await this.refreshTokenRepository.update(
+        { id: tokenRecord.id },
+        { isRevoked: true, updatedAt: now() }
+      );
+
+      // Generate new access token
+      const jwtPayload = await this.enhancedJwtService.buildPayload(user);
+      const access_token = await this.jwtService.signAsync(jwtPayload);
+
+      // Generate new refresh token for device
+      const platform = tokenRecord.platform as 'android' | 'ios';
+      const new_refresh_token = await this.generateMobileRefreshToken(
+        user.id,
+        deviceId,
+        platform,
+        ipAddress,
+        userAgent,
+        tokenRecord.deviceName
+      );
+
+      // Get access token expiry
+      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+      const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
+
+      return {
+        access_token,
+        refresh_token: new_refresh_token,
+        expires_in,
+        user: {
+          id: user.id,
+          email: user.email,
+          nameWithInitials: user.nameWithInitials,
+          userType: user.userType,
+          imageUrl: user.imageUrl
+        }
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      this.logger.error(`Mobile refresh token error: ${error.message}`);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  /**
+   * 📱 Mobile Logout
+   * Revokes refresh token for specific device
+   */
+  async logoutMobile(
+    refreshToken: string,
+    deviceId: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+      
+      // Verify token to get userId
+      const payload = await this.jwtService.verifyAsync(refreshToken, {
+        secret: refreshSecret
+      });
+
+      // Revoke token with device verification
+      const result = await this.refreshTokenRepository.update(
+        { 
+          token: refreshToken, 
+          userId: payload.sub,
+          deviceId: deviceId 
+        },
+        { isRevoked: true, updatedAt: now() }
+      );
+
+      if (result.affected === 0) {
+        this.logger.warn(`⚠️ Logout attempt for non-existent token: user ${payload.sub}, device ${deviceId}`);
+      }
+
+      return { 
+        success: true, 
+        message: 'Logged out successfully' 
+      };
+    } catch (error) {
+      this.logger.error(`Mobile logout error: ${error.message}`);
+      // Still return success to not leak information
+      return { 
+        success: true, 
+        message: 'Logged out successfully' 
+      };
+    }
+  }
+
+  /**
+   * 📱 Revoke all tokens for a specific device
+   * Used when logging in on same device (single session per device)
+   */
+  async revokeDeviceTokens(userId: string, deviceId: string): Promise<void> {
+    try {
+      await this.refreshTokenRepository.update(
+        { userId: userId, deviceId: deviceId, isRevoked: false },
+        { isRevoked: true, updatedAt: now() }
+      );
+    } catch (error) {
+      this.logger.error(`Failed to revoke device tokens: ${error.message}`);
+    }
+  }
+
+  /**
+   * 📱 Get active sessions for user
+   * Returns list of active refresh tokens with device info
+   */
+  async getActiveSessions(userId: string): Promise<Array<{
+    id: string;
+    platform: string;
+    deviceId: string | null;
+    deviceName: string | null;
+    ipAddress: string | null;
+    createdAt: Date;
+    expiresAt: Date;
+  }>> {
+    const sessions = await this.refreshTokenRepository.find({
+      where: {
+        userId: userId,
+        isRevoked: false
+      },
+      select: ['id', 'platform', 'deviceId', 'deviceName', 'ipAddress', 'createdAt', 'expiresAt'],
+      order: { createdAt: 'DESC' }
+    });
+
+    return sessions.filter(s => s.expiresAt > now());
+  }
+
+  /**
+   * 📱 Revoke all sessions for user
+   * Used for security events (password change, etc.)
+   */
+  async revokeAllUserSessions(userId: string): Promise<void> {
+    try {
+      await this.refreshTokenRepository.update(
+        { userId: userId, isRevoked: false },
+        { isRevoked: true, updatedAt: now() }
+      );
+    } catch (error) {
+      this.logger.error(`Failed to revoke all sessions: ${error.message}`);
+    }
+  }
+
+  /**
+   * 🔧 Parse JWT expiry string to seconds
+   */
+  private parseExpiryToSeconds(expiresIn: string): number {
+    const match = expiresIn.match(/^(\d+)([smhd])$/);
+    if (!match) return 3600; // Default 1 hour
+
+    const value = parseInt(match[1]);
+    const unit = match[2];
+
+    switch (unit) {
+      case 's': return value;
+      case 'm': return value * 60;
+      case 'h': return value * 3600;
+      case 'd': return value * 86400;
+      default: return 3600;
     }
   }
 }

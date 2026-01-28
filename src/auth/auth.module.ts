@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AuthV2Controller } from './controllers/auth.v2.controller';
+import { AuthMobileController } from './controllers/auth.mobile.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PasswordMigrationService } from './password-migration.service';
 import { DatabaseResetService } from './database-reset.service';
@@ -93,7 +94,7 @@ import { EnhancedEmailService } from '../common/services/enhanced-email.service'
       ParentEntity
     ]),
   ],
-  controllers: [AuthController, AuthV2Controller, InstituteSelectionController, FirstLoginController],
+  controllers: [AuthController, AuthV2Controller, AuthMobileController, InstituteSelectionController, FirstLoginController],
   providers: [
     AuthService, 
     JwtStrategy, 

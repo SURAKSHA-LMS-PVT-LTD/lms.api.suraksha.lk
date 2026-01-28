@@ -89,11 +89,14 @@ export class UserFirstLoginLogEntity {
 /**
  * 🔄 Refresh Token Entity
  * Stores refresh tokens for secure token renewal
+ * Supports both web (cookie-based) and mobile (body-based) authentication
  */
 @Entity('refresh_tokens')
 @Index('idx_refresh_token_user', ['userId', 'isRevoked'])
 @Index('idx_refresh_token', ['token'])
 @Index('idx_refresh_token_expires', ['expiresAt', 'isRevoked'])
+@Index('idx_refresh_token_device', ['deviceId', 'userId']) // Mobile device lookup
+@Index('idx_refresh_token_platform', ['platform', 'userId']) // Platform-based queries
 export class RefreshTokenEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -115,6 +118,34 @@ export class RefreshTokenEntity {
 
   @Column({ type: 'text', nullable: true })
   userAgent: string;
+
+  /**
+   * 📱 Platform type for token differentiation
+   * - 'web': Browser-based authentication (uses httpOnly cookies)
+   * - 'android': Android app (refresh token in response body)
+   * - 'ios': iOS app (refresh token in response body)
+   */
+  @Column({ 
+    type: 'enum', 
+    enum: ['web', 'android', 'ios'],
+    default: 'web'
+  })
+  platform: 'web' | 'android' | 'ios';
+
+  /**
+   * 📱 Device ID for mobile session management
+   * NULL for web platform, required for mobile platforms
+   * Format: platform_timestamp_uuid (e.g., android_1706438400000_abc123xyz)
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  deviceId: string | null;
+
+  /**
+   * 📱 Device name for user-friendly session display
+   * e.g., "Samsung Galaxy S21", "iPhone 15 Pro"
+   */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  deviceName: string | null;
 
   @Column({ type: 'timestamp' })
   createdAt: Date;
