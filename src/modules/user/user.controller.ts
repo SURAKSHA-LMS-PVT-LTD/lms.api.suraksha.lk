@@ -1604,6 +1604,175 @@ export class UsersController {
   }
 
   /**
+   * Get Parent Institutes (Children's Schools Only)
+   * 
+   * 🎯 PARENT-SPECIFIC API: Returns ONLY institutes where user's children are enrolled as students.
+   * This ensures parents see ONLY their children's schools, NOT institutes where they might have other roles.
+   * 
+   * Uses fatherId/motherId/guardianId from student table + institute_class_student for enrollment.
+   * 
+   * @param id - Parent user UUID
+   * @param req - Request object with JWT
+   * @returns Institutes where children are students
+   */
+  @Get(':id/parent-institutes')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Get institutes where user\'s children are students (Parents only)',
+    description: `Returns institutes where the user acts as a parent ONLY - institutes where their children are enrolled as students.
+    
+**Use Case:**
+- Parents should see ONLY their children's schools
+- Excludes institutes where parent has other roles (teacher, admin, etc.)
+- Based on fatherId/motherId/guardianId relationships
+
+**vs Regular /users/:id/institutes:**
+- Regular API: Shows ALL institutes (any role)
+- Parent API: Shows ONLY children's institutes (parent role)`
+  })
+  @ApiParam({ name: 'id', description: 'Parent User UUID', example: '123' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (max 100)', example: 10 })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Parent institutes retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              instituteId: { type: 'string', example: '44' },
+              instituteName: { type: 'string', example: 'Royal College' },
+              shortName: { type: 'string', example: 'Royal' },
+              logoUrl: { type: 'string', example: 'https://storage.googleapis.com/...' },
+              primaryColorCode: { type: 'string', example: '#0066CC' },
+              secondaryColorCode: { type: 'string', example: '#FFD700' },
+              role: { type: 'string', example: 'PARENT' },
+              enrollmentStatus: { type: 'boolean', example: true, description: 'Student enrollment status in institute' },
+              instituteUserId: { type: 'string', example: '789', description: 'Institute user ID if exists' },
+              studentInstituteImageUrl: { type: 'string', example: 'https://storage.googleapis.com/...', description: 'Student profile image in this institute' },
+              isVerified: { type: 'boolean', example: true, description: 'Whether student is verified in institute' },
+              instituteUserStatus: { type: 'string', example: 'ACTIVE', description: 'Institute user status (ACTIVE, PENDING, etc.)' },
+              isParentInstitute: { type: 'boolean', example: true }
+            }
+          }
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            page: { type: 'number', example: 1 },
+            limit: { type: 'number', example: 10 },
+            total: { type: 'number', example: 3 },
+            totalPages: { type: 'number', example: 1 }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied - can only view own parent institutes' })
+  async getParentInstitutes(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+    @Request() req: JwtRequest
+  ): Promise<{
+    data: any[];
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const currentUser = req.user;
+    
+    // ✅ Security: User can only access their own parent institutes
+    if (currentUser.s !== id) {
+      throw new ForbiddenException('Access denied. You can only view your own parent institutes');
+    }
+    
+    // Parse pagination
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    
+    // Get parent institutes (children's schools only)
+    const allInstitutes = await this.usersService.getParentInstitutes(id);
+    
+    // Calculate pagination
+    const total = allInstitutes.length;
+    const totalPages = Math.ceil(total / limitNum);
+    const startIndex = (pageNum - 1) * limitNum;
+    const endIndex = startIndex + limitNum;
+    const paginatedData = allInstitutes.slice(startIndex, endIndex);
+    
+    return {
+      data: paginatedData,
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1
+      }
+    };
+  }
+
+  /**
+   * Get Parents for User's Institutes
+  ): Promise<{
+    data: UserInstitutesResponseDto[];
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const currentUser = req.user;
+    
+    // ✅ Validate user can only access their own institutes
+    if (currentUser.s !== id) {
+      throw new ForbiddenException('Access denied. You can only view your own institutes');
+    }
+    
+    // Parse pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    
+    // Get all institutes for user
+    const allInstitutes = await this.usersService.getUserInstitutes(id, currentUser);
+    
+    // Calculate pagination
+    const total = allInstitutes.length;
+    const totalPages = Math.ceil(total / limitNum);
+    const startIndex = (pageNum - 1) * limitNum;
+    const endIndex = startIndex + limitNum;
+    const paginatedData = allInstitutes.slice(startIndex, endIndex);
+    
+    return {
+      data: paginatedData,
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1
+      }
+    };
+  }
+
+  /**
    * Get Parents for User's Institutes
    * 
    * Retrieves all parents of students in institutes associated with the user.

@@ -2070,6 +2070,68 @@ export class UsersService {
     }
   }
 
+  /**
+   * Get Parent Institutes - ONLY institutes where user's children are enrolled as students
+   * 
+   * 🎯 Parent-specific API that returns institutes based on fatherId/motherId/guardianId relationships.
+   * Ensures parents see ONLY their children's schools, not institutes where they have other roles.
+   * 
+   * @param parentUserId - Parent's user ID
+   * @returns Array of institutes where children are students with enrollment details
+   */
+  async getParentInstitutes(parentUserId: string): Promise<any[]> {
+    try {
+      // Query: Find all students where user is father, mother, or guardian
+      // Get their enrollment details from institute_class_student and institute_user
+      const query = `
+        SELECT DISTINCT ON (i.id)
+          i.id as "instituteId",
+          i.name as "instituteName",
+          i.short_name as "shortName",
+          i.logo_url as "logoUrl",
+          i.primary_color_code as "primaryColorCode",
+          i.secondary_color_code as "secondaryColorCode",
+          ics.is_active as "enrollmentStatus",
+          iu.id as "instituteUserId",
+          iu.image_url as "studentInstituteImageUrl",
+          iu.is_verified as "isVerified",
+          iu.status as "instituteUserStatus"
+        FROM student s
+        INNER JOIN institute_class_student ics ON ics.student_user_id = s.user_id AND ics.is_active = true
+        INNER JOIN institute i ON i.id = ics.institute_id AND i.is_active = true
+        LEFT JOIN institute_user iu ON iu.user_id = s.user_id AND iu.institute_id = i.id
+        WHERE 
+          (s.father_id = $1 OR s.mother_id = $1 OR s.guardian_id = $1)
+          AND s.is_active = true
+        ORDER BY i.id, i.name ASC
+      `;
+
+      const results = await this.userRepository.query(query, [parentUserId]);
+
+      // Transform results
+      return results.map((row: any) => ({
+        instituteId: row.instituteId,
+        instituteName: row.instituteName,
+        shortName: row.shortName,
+        logoUrl: row.logoUrl ? this.cloudStorageService.getFullUrl(row.logoUrl) : null,
+        primaryColorCode: row.primaryColorCode,
+        secondaryColorCode: row.secondaryColorCode,
+        role: 'PARENT',
+        enrollmentStatus: row.enrollmentStatus,
+        instituteUserId: row.instituteUserId,
+        studentInstituteImageUrl: row.studentInstituteImageUrl 
+          ? this.cloudStorageService.getFullUrl(row.studentInstituteImageUrl) 
+          : null,
+        isVerified: row.isVerified || false,
+        instituteUserStatus: row.instituteUserStatus,
+        isParentInstitute: true
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to get parent institutes for user ${parentUserId}: ${error.message}`, error.stack);
+      throw new BusinessLogicException('Failed to get parent institutes');
+    }
+  }
+
   async getUserInstitutes(userId: string, currentUser?: JwtPayload): Promise<UserInstitutesResponseDto[]> {
     try {
       
