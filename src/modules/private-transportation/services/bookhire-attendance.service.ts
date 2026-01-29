@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { getCurrentSriLankaDate, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { DynamoDBBookhireAttendanceService } from './dynamodb-bookhire-attendance.service';
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
@@ -33,7 +34,7 @@ export class BookhireAttendanceService {
   async markAttendance(markAttendanceDto: MarkBookhireAttendanceDto, ownerId: string): Promise<any> {
     // Set default date if not provided
     if (!markAttendanceDto.attendanceDate) {
-      markAttendanceDto.attendanceDate = new Date().toISOString().split('T')[0];
+      markAttendanceDto.attendanceDate = getCurrentSriLankaDate();
     }
 
     // 🔍 STEP 1: Verify bookhire ownership - Optimized field selection
@@ -196,7 +197,7 @@ export class BookhireAttendanceService {
   async markAttendanceByRfid(markAttendanceDto: MarkBookhireAttendanceDto, ownerId: string): Promise<any> {
     // Set default date if not provided
     if (!markAttendanceDto.attendanceDate) {
-      markAttendanceDto.attendanceDate = new Date().toISOString().split('T')[0];
+      markAttendanceDto.attendanceDate = getCurrentSriLankaDate();
     }
 
     // 🔍 STEP 1: Verify bookhire ownership
@@ -588,7 +589,7 @@ export class BookhireAttendanceService {
         attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
         attendanceType: 'TRANSPORT' as 'TRANSPORT',
         date: attendanceRecord.attendanceDate,
-        time: new Date().toISOString(),
+        time: getCurrentSriLankaISO(),
         vehicleNumber: vehicleData.vehicleNumber,
         bookhireName: vehicleData.bookhireName,
         subscriptionPlan: studentData.subscriptionPlan,
@@ -666,7 +667,7 @@ export class BookhireAttendanceService {
         attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT', // Both pickup and dropoff indicate presence
         attendanceType: 'TRANSPORT' as 'TRANSPORT',
         date: attendanceRecord.attendanceDate,
-        time: new Date().toISOString(),
+        time: getCurrentSriLankaISO(),
         vehicleNumber: vehicleData.vehicleNumber,
         bookhireName: vehicleData.bookhireName,
         subscriptionPlan: studentData.subscriptionPlan,
@@ -849,7 +850,7 @@ export class BookhireAttendanceService {
             attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
             attendanceType: 'TRANSPORT' as 'TRANSPORT',
             date: attendanceRecord.attendanceDate,
-            time: new Date().toISOString(),
+            time: getCurrentSriLankaISO(),
             vehicleNumber: vehicleData.vehicleNumber,
             bookhireName: vehicleData.bookhireName,
             subscriptionPlan: parentSubscriptionPlan,

@@ -342,7 +342,7 @@ export class InstituteClassSubjectPaymentService {
     // Update submission
     submission.status = verifyDto.status;
     submission.verifiedBy = user.s;
-    submission.verifiedAt = new Date();
+    submission.verifiedAt = now();
     submission.rejectionReason = verifyDto.rejectionReason;
     if (verifyDto.notes) {
       submission.notes = verifyDto.notes;
@@ -768,7 +768,7 @@ export class InstituteClassSubjectPaymentService {
         isRejected: submission.status === SubmissionStatus.REJECTED,
         canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
         paymentIsActive: submission.payment.isActive,
-        isOverdue: submission.payment.lastDate < new Date(),
+        isOverdue: submission.payment.lastDate < now(),
       },
       
       // User actions available
@@ -902,7 +902,7 @@ export class InstituteClassSubjectPaymentService {
           isRejected: submission.status === SubmissionStatus.REJECTED,
           canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
           paymentIsActive: submission.payment.isActive,
-          isOverdue: submission.payment.lastDate < new Date(),
+          isOverdue: submission.payment.lastDate < now(),
           timeline: [
             {
               status: 'Submitted',

@@ -56,7 +56,7 @@ export class SecurityController {
         uniqueIPs: metrics.uniqueIPs,
         alertLevel: this.calculateAlertLevel(metrics)
       },
-      timestamp: new Date().toISOString()
+      timestamp: getCurrentSriLankaISO()
     };
   }
 
@@ -70,7 +70,7 @@ export class SecurityController {
     return {
       success: true,
       data: this.securityMonitoringService.analyzeSecurityPatterns(ip),
-      timestamp: new Date().toISOString()
+      timestamp: getCurrentSriLankaISO()
     };
   }
 
@@ -85,7 +85,7 @@ export class SecurityController {
     return {
       success: true,
       message: 'Security event recorded',
-      timestamp: new Date().toISOString()
+      timestamp: getCurrentSriLankaISO()
     };
   }
 

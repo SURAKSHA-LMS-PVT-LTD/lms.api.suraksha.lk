@@ -509,13 +509,13 @@ export class ParentsService {
       // 🚀 ULTRA-OPTIMIZED: Build response from existing data instead of unnecessary SELECT
       const deactivatedParent = Object.assign({}, parent, { 
         isActive: false, 
-        updatedAt: new Date() 
+        updatedAt: now() 
       });
       
       // Update user active status
       Object.assign(deactivatedParent.user, { 
         isActive: false, 
-        updatedAt: new Date() 
+        updatedAt: now() 
       });
 
       return this.mapToResponseDto(deactivatedParent);

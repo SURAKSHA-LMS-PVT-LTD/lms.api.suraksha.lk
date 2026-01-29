@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
 import { DynamoDBClient, QueryCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand } from '@aws-sdk/client-dynamodb';
 import { QueryCommandInput, PutItemCommandInput, UpdateItemCommandInput, DeleteItemCommandInput } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
@@ -352,7 +353,7 @@ export class DynamoDBAttendanceService {
 
   // Mark bulk attendance
   async markBulkAttendance(bulkData: BulkAttendanceDto): Promise<MarkAttendanceDto[]> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentSriLankaDate();
     const attendances = bulkData.students.map(studentData => ({
       studentId: studentData.studentId,
       studentName: studentData.studentName,

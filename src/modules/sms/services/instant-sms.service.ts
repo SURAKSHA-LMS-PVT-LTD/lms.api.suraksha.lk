@@ -309,7 +309,7 @@ export class InstantSmsService {
           successfulSends: 1,
           providerCampaignId: response.data?.campaignId?.toString(),
           providerResponse: response,
-          sentAt: new Date(),
+          sentAt: now(),
         });
       } else {
         await this.campaignRepository.update(campaignId, {
@@ -356,7 +356,7 @@ export class InstantSmsService {
           successfulSends: phoneNumbers.length,
           providerCampaignId: response.data?.campaignId?.toString(),
           providerResponse: response,
-          sentAt: new Date(),
+          sentAt: now(),
         });
       } else {
         await this.campaignRepository.update(campaignId, {
@@ -438,7 +438,7 @@ export class InstantSmsService {
       credit.balance = Number(credit.balance) + amount;
       credit.totalPurchased = Number(credit.totalPurchased) + amount;
       credit.lastTopupAmount = amount;
-      credit.lastTopupAt = new Date();
+      credit.lastTopupAt = now();
 
       await queryRunner.manager.save(credit);
       await queryRunner.commitTransaction();

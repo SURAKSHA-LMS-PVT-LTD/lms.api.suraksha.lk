@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DynamoDbService } from './dynamodb.service';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 
 @Injectable()
 export class NotificationLoggingService {
@@ -29,7 +30,7 @@ export class NotificationLoggingService {
       // Log directly to DynamoDB only (no MySQL, optimal performance)
       await this.logToDynamoDBAsync({
         ...data,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
       });
     } catch (error) {
       this.logger.error(`❌ Failed to log SMS notification to DynamoDB: ${error.message}`, error);
@@ -60,7 +61,7 @@ export class NotificationLoggingService {
           messageId,
           ...recipient,
           ...messageData,
-          timestamp: new Date().toISOString(),
+          timestamp: getCurrentSriLankaISO(),
         })
       );
 
@@ -128,7 +129,7 @@ export class NotificationLoggingService {
         (errorMessage ? ', #errorMessage = :errorMessage' : ''),
         {
           ':status': status,
-          ':updatedAt': new Date().toISOString(),
+          ':updatedAt': getCurrentSriLankaISO(),
           ...(deliveredAt && { ':deliveredAt': deliveredAt.toISOString() }),
           ...(errorMessage && { ':errorMessage': errorMessage }),
         },

@@ -89,7 +89,7 @@ export class StructuredLecturesServiceTypeorm {
           documentName: `Document ${index + 1}`,
           documentUrl: docUrl,
           documentDescription: `Lecture document ${index + 1}`,
-          uploadedAt: new Date(),
+          uploadedAt: now(),
         });
         const savedDoc = await this.lectureDocumentRepository.save(document);
         documents.push(savedDoc);

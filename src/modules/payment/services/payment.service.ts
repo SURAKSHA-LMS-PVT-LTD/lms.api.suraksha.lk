@@ -11,7 +11,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { ConfigService } from '@nestjs/config';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
-import { now, getCurrentSriLankaTime, nowTimestamp } from '../../../common/utils/timezone.util';
+import { now, getCurrentSriLankaTime, nowTimestamp, formatSriLankaDateTime } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class PaymentService {
@@ -114,7 +114,7 @@ export class PaymentService {
     // 📧 Send payment submission email notification (fire-and-forget)
     try {
       const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User';
-      const submittedAt = new Date().toLocaleString('en-US', { 
+      const submittedAt = formatSriLankaDateTime(now(), { 
         year: 'numeric', 
         month: 'short', 
         day: 'numeric', 
@@ -327,7 +327,7 @@ export class PaymentService {
       // 📧 Send email notification based on payment status (fire-and-forget)
       try {
         const userName = `${payment.user.firstName || ''} ${payment.user.lastName || ''}`.trim() || 'User';
-        const verifiedAt = new Date().toLocaleString('en-US', { 
+        const verifiedAt = formatSriLankaDateTime(now(), { 
           year: 'numeric', 
           month: 'short', 
           day: 'numeric', 
