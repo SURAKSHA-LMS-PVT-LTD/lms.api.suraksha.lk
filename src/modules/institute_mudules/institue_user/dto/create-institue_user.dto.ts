@@ -2,6 +2,7 @@ import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bi
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InstituteUserStatus } from '../enums/institute-user-status.enum';
+import { InstituteUserType } from '../enums/institute-user-type.enum';
 
 export class CreateInstitueUserDto {
   @ApiProperty({
@@ -27,6 +28,16 @@ export class CreateInstitueUserDto {
   @IsOptional()
   @IsString()
   userIdByInstitute?: string;
+
+  @ApiProperty({
+    description: 'Type of user in institute',
+    enum: InstituteUserType,
+    example: InstituteUserType.STUDENT
+  })
+  @IsEnum(InstituteUserType, {
+    message: 'instituteUserType must be a valid InstituteUserType'
+  })
+  instituteUserType: InstituteUserType;
 
   @ApiPropertyOptional({
     description: 'Status of user in institute',
