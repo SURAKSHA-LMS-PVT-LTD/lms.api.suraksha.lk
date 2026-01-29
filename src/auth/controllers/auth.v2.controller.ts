@@ -16,12 +16,12 @@ export class AuthV2Controller {
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 900000 } }) // 🔒 SECURITY: 5 login attempts per 15 minutes
   @ApiOperation({ 
-    summary: 'User login with refresh token support for all clients (SSO compatible)',
-    description: 'Authenticates user and returns access token (15 min expiry) + refresh token (7 days). Refresh token available in both response body (for all clients/SSO) and httpOnly cookie (for browsers).'
+    summary: 'Universal login with email, phone, system ID, or birth certificate number',
+    description: 'Authenticates user using multiple identifier types: Email, Phone (+94771234567, 0771234567, 771234567), System Registration Number (6 digits like 500423), or Birth Certificate Number. Returns access token (15 min expiry) + refresh token (7 days). Refresh token available in both response body (for all clients/SSO) and httpOnly cookie (for browsers).'
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'Login successful - refresh token available for all clients (web browsers, mobile apps, SSO)',
+    description: 'Login successful - supports email, phone, system ID, and birth certificate login',
     schema: {
       example: {
         access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
@@ -49,7 +49,7 @@ export class AuthV2Controller {
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: ExpressResponse
   ) {
-    const user = await this.authService.validateUser(loginDto.email, loginDto.password);
+    const user = await this.authService.validateUser(loginDto.identifier, loginDto.password);
     
     const clientInfo = {
       ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',

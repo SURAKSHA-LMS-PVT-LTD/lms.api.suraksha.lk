@@ -39,26 +39,31 @@ import { Public } from '../common/decorators/public.decorator';
 
 // =================== DTOs FOR PASSWORD RESET ===================
 
-// Step 1 DTO: Just email
+// Step 1 DTO: Identifier (email, phone, system ID, or birth certificate)
 export class ForgotPasswordDto {
   @ApiProperty({
-    description: 'Email address to send OTP',
-    example: 'john.doe@example.com'
+    description: 'User identifier: email, phone number (+94771234567, 0771234567, 771234567), system registration number (6 digits like 500423), or birth certificate number',
+    examples: {
+      email: { value: 'user@example.com', description: 'Reset with email' },
+      phone: { value: '+94771234567', description: 'Reset with phone' },
+      system_id: { value: '500423', description: 'Reset with system ID' },
+      birth_cert: { value: '12345678901', description: 'Reset with birth certificate' }
+    }
   })
-  @IsEmail({}, { message: 'Valid email required' })
-  @IsNotEmpty({ message: 'Email required' })
-  email: string;
+  @IsString({ message: 'Identifier must be a string' })
+  @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate) required' })
+  identifier: string;
 }
 
-// Step 2 DTO: Email + OTP + New Password
+// Step 2 DTO: Identifier + OTP + New Password
 export class ResetPasswordDto {
   @ApiProperty({
-    description: 'Email address',
-    example: 'john.doe@example.com'
+    description: 'User identifier: email, phone, system ID, or birth certificate (same as used in forgot-password)',
+    example: 'user@example.com'
   })
-  @IsEmail({}, { message: 'Valid email required' })
-  @IsNotEmpty({ message: 'Email required' })
-  email: string;
+  @IsString({ message: 'Identifier must be a string' })
+  @IsNotEmpty({ message: 'Identifier required' })
+  identifier: string;
 
   @ApiProperty({
     description: '6-digit OTP from email',
@@ -253,8 +258,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 3, ttl: 900000 } }) // 3 attempts per 15 minutes
   @ApiOperation({ 
-    summary: 'Send OTP to email for password reset',
-    description: 'User enters email → Sends 6-digit OTP. OTP expires in 15 minutes.'
+    summary: 'Send OTP for password reset (supports email, phone, system ID, birth certificate)',
+    description: 'User enters identifier (email/phone/system ID/birth certificate) → Sends 6-digit OTP to registered email. OTP expires in 15 minutes.'
   })
   @ApiResponse({ 
     status: 200, 
@@ -263,7 +268,7 @@ export class AuthController {
       example: {
         success: true,
         message: 'If an account exists, you will receive an OTP code.',
-        data: { expiresInMinutes: 15 }
+        data: { identifier: '+94771234567', email: 'user@example.com', expiresInMinutes: 15 }
       }
     }
   })
@@ -298,8 +303,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiConsumes('application/json')
   @ApiOperation({ 
-    summary: 'Reset password with OTP',
-    description: 'User enters OTP + new password → Verify OTP → Encrypt password → Save to database'
+    summary: 'Reset password with OTP (supports email, phone, system ID, birth certificate)',
+    description: 'User enters identifier (same as forgot-password) + OTP + new password → Verify OTP → Encrypt password → Save to database'
   })
   @ApiResponse({ 
     status: 200, 

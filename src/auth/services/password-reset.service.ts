@@ -10,16 +10,16 @@ import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
 
 export interface InitiatePasswordResetDto {
-  email: string;
+  identifier: string;
 }
 
 export interface VerifyPasswordResetOtpDto {
-  email: string;
+  identifier: string;
   otp: string;
 }
 
 export interface ResetPasswordDto {
-  email: string;
+  identifier: string;
   otp: string;
   newPassword: string;
   confirmPassword: string;
@@ -35,7 +35,8 @@ export interface PasswordResetResponseDto {
   success: boolean;
   message: string;
   data?: {
-    email: string;
+    identifier?: string;
+    email?: string; // Deprecated: for backward compatibility
     expiresInMinutes: number;
   };
 }
@@ -63,6 +64,49 @@ export class PasswordResetService {
   ) {}
 
   /**
+   * 🔍 Detect identifier type and normalize
+   * Returns: { type, normalized, email }
+   */
+  private detectIdentifierType(identifier: string): { 
+    type: 'email' | 'phone' | 'system_id' | 'birth_certificate', 
+    normalized: string 
+  } {
+    const trimmed = identifier.trim();
+    
+    // 📧 Email (contains @ and .)
+    if (trimmed.includes('@') && trimmed.includes('.')) {
+      return { type: 'email', normalized: trimmed.toLowerCase() };
+    }
+    
+    // 📱 Phone number
+    const phonePattern = /^(\+94|94|0)?7[012578]\d{7}$/;
+    const digitsOnly = trimmed.replace(/^\+/, '');
+    
+    if (phonePattern.test(trimmed)) {
+      let normalized = digitsOnly;
+      if (normalized.startsWith('94')) {
+        normalized = '0' + normalized.substring(2);
+      } else if (!normalized.startsWith('0')) {
+        normalized = '0' + normalized;
+      }
+      return { type: 'phone', normalized };
+    }
+    
+    // 🆔 System ID (exactly 6 digits)
+    if (/^\d{6}$/.test(trimmed)) {
+      return { type: 'system_id', normalized: trimmed };
+    }
+    
+    // 📄 Birth certificate (numeric, not 6 digits)
+    if (/^\d+$/.test(trimmed)) {
+      return { type: 'birth_certificate', normalized: trimmed };
+    }
+    
+    // Default to email if pattern doesn't match
+    return { type: 'email', normalized: trimmed.toLowerCase() };
+  }
+
+  /**
    * Initiate password reset process
    */
   async initiatePasswordReset(
@@ -71,28 +115,52 @@ export class PasswordResetService {
     userAgent?: string
   ): Promise<PasswordResetResponseDto> {
 
+    // 🔍 Detect identifier type and normalize
+    const { type, normalized } = this.detectIdentifierType(dto.identifier);
+    
+    this.logger.log(`🔐 Password reset request with ${type}: ${normalized}`);
+
+    // Build query based on identifier type
+    let whereClause: any = { isActive: true };
+    
+    switch (type) {
+      case 'email':
+        whereClause.email = normalized;
+        break;
+      case 'phone':
+        whereClause.phoneNumber = normalized;
+        break;
+      case 'system_id':
+        whereClause.id = normalized;
+        break;
+      case 'birth_certificate':
+        whereClause.birthCertificateNo = normalized;
+        break;
+    }
+
     // Check if user exists
     const user = await this.userRepository.findOne({
-      where: { email: dto.email, isActive: true }
+      where: whereClause,
+      select: ['id', 'email', 'phoneNumber', 'firstName', 'lastName', 'isActive']
     });
 
-    if (!user) {
-      // Don't reveal if email exists or not for security
+    if (!user || !user.email) {
+      // Don't reveal if identifier exists or not for security
       return {
         success: true,
-        message: 'If an account with this email exists, you will receive a password reset code.',
+        message: 'If an account with this identifier exists, you will receive a password reset code.',
         data: {
-          email: dto.email,
+          identifier: dto.identifier,
           expiresInMinutes: 15
         }
       };
     }
 
-    // Check rate limiting (max 3 requests per 15 minutes)
-    const fifteenMinutesAgo = nowTimestamp() - (15 * 60 * 1000); // 15 minutes in milliseconds
+    // Check rate limiting (max 3 requests per 15 minutes) - use email as key
+    const fifteenMinutesAgo = nowTimestamp() - (15 * 60 * 1000);
     const recentTokens = await this.passwordResetTokenRepository.count({
       where: {
-        email: dto.email,
+        email: user.email,
         tokenType: 'PASSWORD_RESET',
         createdAt: new Date(fifteenMinutesAgo)
       }
@@ -109,18 +177,18 @@ export class PasswordResetService {
 
     // Invalidate any existing tokens for this email
     await this.passwordResetTokenRepository.update(
-      { email: dto.email, tokenType: 'PASSWORD_RESET', isUsed: false },
+      { email: user.email, tokenType: 'PASSWORD_RESET', isUsed: false },
       { isUsed: true, updatedAt: now() }
     );
 
-    // Create new token
+    // Create new token (store email for OTP verification)
     const resetToken = this.passwordResetTokenRepository.create({
-      email: dto.email,
+      email: user.email, // Always store email for OTP verification
       otp,
       tokenType: 'PASSWORD_RESET',
       expiresAt,
-      createdAt: now(), // Explicitly set Sri Lanka timezone
-      updatedAt: now(), // Initialize updatedAt
+      createdAt: now(),
+      updatedAt: now(),
       ipAddress,
       userAgent,
     });
@@ -143,7 +211,8 @@ export class PasswordResetService {
       success: true,
       message: 'Password reset code sent to your email address. Please check your inbox.',
       data: {
-        email: dto.email,
+        identifier: dto.identifier,
+        email: user.email, // For backward compatibility
         expiresInMinutes: 15
       }
     };
@@ -154,9 +223,38 @@ export class PasswordResetService {
    */
   async verifyPasswordResetOtp(dto: VerifyPasswordResetOtpDto): Promise<PasswordResetResponseDto> {
 
+    // 🔍 Detect identifier type and find user
+    const { type, normalized } = this.detectIdentifierType(dto.identifier);
+    
+    let whereClause: any = { isActive: true };
+    switch (type) {
+      case 'email':
+        whereClause.email = normalized;
+        break;
+      case 'phone':
+        whereClause.phoneNumber = normalized;
+        break;
+      case 'system_id':
+        whereClause.id = normalized;
+        break;
+      case 'birth_certificate':
+        whereClause.birthCertificateNo = normalized;
+        break;
+    }
+
+    const user = await this.userRepository.findOne({
+      where: whereClause,
+      select: ['id', 'email']
+    });
+
+    if (!user || !user.email) {
+      throw new BadRequestException('Invalid or expired OTP code');
+    }
+
+    // Verify OTP using the user's email
     const resetToken = await this.passwordResetTokenRepository.findOne({
       where: {
-        email: dto.email,
+        email: user.email,
         otp: dto.otp,
         tokenType: 'PASSWORD_RESET',
         isUsed: false
@@ -166,7 +264,7 @@ export class PasswordResetService {
     if (!resetToken) {
       // Increment failed attempts for security monitoring
       await this.passwordResetTokenRepository.increment(
-        { email: dto.email, tokenType: 'PASSWORD_RESET' },
+        { email: user.email, tokenType: 'PASSWORD_RESET' },
         'failedAttempts',
         1
       );
@@ -181,13 +279,14 @@ export class PasswordResetService {
 
 
     const remainingTimeMs = resetToken.expiresAt.getTime() - nowTimestamp();
-    const expiresInMinutes = Math.ceil(remainingTimeMs / (60 * 1000)); // Convert ms to minutes
+    const expiresInMinutes = Math.ceil(remainingTimeMs / (60 * 1000));
     
     return {
       success: true,
       message: 'OTP verified successfully. You can now reset your password.',
       data: {
-        email: dto.email,
+        identifier: dto.identifier,
+        email: user.email,
         expiresInMinutes
       }
     };
@@ -210,10 +309,38 @@ export class PasswordResetService {
     // Validate password strength
     this.validatePasswordStrength(dto.newPassword);
 
-    // Verify OTP
+    // 🔍 Detect identifier type and find user
+    const { type, normalized } = this.detectIdentifierType(dto.identifier);
+    
+    let whereClause: any = { isActive: true };
+    switch (type) {
+      case 'email':
+        whereClause.email = normalized;
+        break;
+      case 'phone':
+        whereClause.phoneNumber = normalized;
+        break;
+      case 'system_id':
+        whereClause.id = normalized;
+        break;
+      case 'birth_certificate':
+        whereClause.birthCertificateNo = normalized;
+        break;
+    }
+
+    const user = await this.userRepository.findOne({
+      where: whereClause,
+      select: ['id', 'email']
+    });
+
+    if (!user || !user.email) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Verify OTP using the user's email
     const resetToken = await this.passwordResetTokenRepository.findOne({
       where: {
-        email: dto.email,
+        email: user.email,
         otp: dto.otp,
         tokenType: 'PASSWORD_RESET',
         isUsed: false
@@ -223,15 +350,6 @@ export class PasswordResetService {
     const currentTime = now();
     if (!resetToken || resetToken.expiresAt < currentTime) {
       throw new BadRequestException('Invalid or expired OTP code');
-    }
-
-    // Find user
-    const user = await this.userRepository.findOne({
-      where: { email: dto.email, isActive: true }
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
     }
 
     // Hash new password using AuthService with pepper and proper salt rounds

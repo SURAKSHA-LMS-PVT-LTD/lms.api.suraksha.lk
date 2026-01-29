@@ -99,10 +99,8 @@ export class InstituteClassSubjectHomeworksService {
                 const [classId, subjectBitmask] = classSubjectEntry;
                 const subjectIdNum = parseInt(query.subjectId, 10);
                 
-                // Check if subjectBitmask contains the subjectId
-                // If subjectBitmask is a direct value (not a true bitmask), compare directly
-                // If it's a true bitmask, check if the bit at position subjectIdNum is set
-                const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+                // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
+                const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
                 
                 if (!hasSubjectAccess) {
                   throw new ForbiddenException(`You do not have access to subject ${query.subjectId} in class ${query.classId}`);
@@ -468,7 +466,8 @@ export class InstituteClassSubjectHomeworksService {
           // Validate subject access using bitmask
           const [classId, subjectBitmask] = classSubjectEntry;
           const subjectIdNum = parseInt(homework.subjectId, 10);
-          const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+          // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
+          const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
           
           if (!hasSubjectAccess) {
             throw new ForbiddenException(`You do not have access to subject ${homework.subjectId} in class ${homework.classId}`);
@@ -675,7 +674,8 @@ export class InstituteClassSubjectHomeworksService {
           
           const [, subjectBitmask] = classSubjectEntry;
           const subjectIdNum = parseInt(subjectId, 10);
-          const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+          // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
+          const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
           
           if (!hasSubjectAccess) {
             throw new ForbiddenException(`You do not have access to subject ${subjectId} in class ${classId}`);

@@ -164,7 +164,8 @@ export class InstituteClassSubjectExamsService {
               if (query.subjectId) {
                 const [classId, subjectBitmask] = classSubjectEntry;
                 const subjectIdNum = parseInt(query.subjectId, 10);
-                const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+                // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
+                const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
                 
                 if (!hasSubjectAccess) {
                   throw new ForbiddenException(`You do not have access to subject ${query.subjectId} in class ${query.classId}`);
@@ -414,7 +415,8 @@ export class InstituteClassSubjectExamsService {
           // Validate subject access using bitmask
           const [classId, subjectBitmask] = classSubjectEntry;
           const subjectIdNum = parseInt(exam.subjectId, 10);
-          const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+          // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
+          const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
           
           if (!hasSubjectAccess) {
             throw new ForbiddenException(`You do not have access to subject ${exam.subjectId} in class ${exam.classId}`);

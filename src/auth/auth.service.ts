@@ -70,71 +70,149 @@ export class AuthService {
   }
 
   /**
+   * � Detect identifier type based on pattern
+   * Returns: 'email' | 'phone' | 'system_id' | 'birth_certificate'
+   */
+  private detectIdentifierType(identifier: string): { type: 'email' | 'phone' | 'system_id' | 'birth_certificate', normalized: string } {
+    const trimmed = identifier.trim();
+    
+    // 📧 Check if it's an email (contains @ and .)
+    if (trimmed.includes('@') && trimmed.includes('.')) {
+      return { type: 'email', normalized: trimmed.toLowerCase() };
+    }
+    
+    // 📱 Check if it's a phone number
+    // Patterns: +94771234567, 94771234567, 0771234567, 771234567
+    // Must start with +94, 94, 077/071/070/078/075/076/072, or 77/71/70/78/75/76/72
+    // Must be 9-13 digits (after removing +)
+    const phonePattern = /^(\+94|94|0)?7[012578]\d{7}$/;
+    const digitsOnly = trimmed.replace(/^\+/, '');
+    
+    if (phonePattern.test(trimmed)) {
+      // Normalize to format: 0771234567 (Sri Lankan local format)
+      let normalized = digitsOnly;
+      if (normalized.startsWith('94')) {
+        normalized = '0' + normalized.substring(2);
+      } else if (!normalized.startsWith('0')) {
+        normalized = '0' + normalized;
+      }
+      return { type: 'phone', normalized };
+    }
+    
+    // 🆔 Check if it's a system registration number (exactly 6 digits)
+    if (/^\d{6}$/.test(trimmed)) {
+      return { type: 'system_id', normalized: trimmed };
+    }
+    
+    // 📄 Otherwise treat as birth certificate number (numeric, not 6 digits)
+    if (/^\d+$/.test(trimmed)) {
+      return { type: 'birth_certificate', normalized: trimmed };
+    }
+    
+    // Default to email if pattern doesn't match anything
+    return { type: 'email', normalized: trimmed.toLowerCase() };
+  }
+
+  /**
    * 🚀 CACHE-OPTIMIZED: Validate user credentials using existing cache system
    * Performance: 0 database queries (cache hit) vs 1-2 queries (cache miss)
    * Speed: ~15ms (cache) vs ~200ms (database)
+   * 
+   * Supports multiple identifier types:
+   * - Email: user@example.com
+   * - Phone: +94771234567, 94771234567, 0771234567, 771234567
+   * - System ID: 500423 (6 digits)
+   * - Birth Certificate: 12345678901 (other numeric formats)
    */
-  async validateUser(email: string, password: string): Promise<UserEntity> {
-    if (!email || !password) {
-      throw new UnauthorizedException('Email and password are required');
+  async validateUser(identifier: string, password: string): Promise<UserEntity> {
+    if (!identifier || !password) {
+      throw new UnauthorizedException('Identifier and password are required');
     }
 
     try {
-      // ⚡ STEP 1: Try cache-first authentication using existing email index
-      const emailData = await this.userManagementService.getUserDataByEmail(email);
+      // 🔍 STEP 1: Detect identifier type and normalize
+      const { type, normalized } = this.detectIdentifierType(identifier);
       
-      if (emailData) {
-        // 🎯 Cache HIT: Verify password directly from cached data
-        const isPasswordValid = await this.comparePassword(password, emailData.password);
-        
-        if (!isPasswordValid) {
-          throw new UnauthorizedException('Invalid credentials');
-        }
+      this.logger.log(`🔐 Login attempt with ${type}: ${normalized}`);
 
-        // ✅ Get full user data from user cache (already includes all profile data)
-        const fullUserData = await this.userManagementService.getUserCacheInfo(emailData.userId);
+      // ⚡ STEP 2: Try cache-first authentication for email
+      if (type === 'email') {
+        const emailData = await this.userManagementService.getUserDataByEmail(normalized);
         
-        if (fullUserData.cached && fullUserData.data) {
-          // 🚀 CACHE SUCCESS: Return user data from cache (0 database queries)
-          const userData = fullUserData.data;
+        if (emailData) {
+          // 🎯 Cache HIT: Verify password directly from cached data
+          const isPasswordValid = await this.comparePassword(password, emailData.password);
           
-          // Transform cached data to UserEntity-like object
-          return {
-            id: userData.userId,
-            email: userData.email,
-            password: emailData.password, // From email index cache
-            firstName: userData.firstName,
-            lastName: userData.lastName,
-            isActive: userData.isActive,
-            userType: userData.userType,
-            imageUrl: userData.imageUrl
-          } as UserEntity;
+          if (!isPasswordValid) {
+            throw new UnauthorizedException('Invalid credentials');
+          }
+
+          // ✅ Get full user data from user cache (already includes all profile data)
+          const fullUserData = await this.userManagementService.getUserCacheInfo(emailData.userId);
+          
+          if (fullUserData.cached && fullUserData.data) {
+            // 🚀 CACHE SUCCESS: Return user data from cache (0 database queries)
+            const userData = fullUserData.data;
+            
+            // Transform cached data to UserEntity-like object
+            return {
+              id: userData.userId,
+              email: userData.email,
+              password: emailData.password, // From email index cache
+              firstName: userData.firstName,
+              lastName: userData.lastName,
+              isActive: userData.isActive,
+              userType: userData.userType,
+              imageUrl: userData.imageUrl
+            } as UserEntity;
+          }
         }
       }
 
-      // 📊 STEP 2: Cache MISS - Fallback to database authentication
-      this.logger.warn(`⚠️ Cache miss for email ${email}, falling back to database authentication`);
+      // 📊 STEP 3: Database query based on identifier type
+      this.logger.log(`⚠️ Querying database for ${type}: ${normalized}`);
+      
+      let whereClause: any = {};
+      
+      switch (type) {
+        case 'email':
+          whereClause = { email: normalized };
+          break;
+        case 'phone':
+          whereClause = { phoneNumber: normalized };
+          break;
+        case 'system_id':
+          // System ID is stored in the 'id' field (6-digit user ID)
+          whereClause = { id: normalized };
+          break;
+        case 'birth_certificate':
+          whereClause = { birthCertificateNo: normalized };
+          break;
+      }
       
       const user = await this.userRepository.findOne({ 
-        where: { email },
-        select: ['id', 'email', 'password', 'nameWithInitials', 'isActive', 'userType', 'imageUrl']
+        where: whereClause,
+        select: ['id', 'email', 'password', 'phoneNumber', 'birthCertificateNo', 'firstName', 'lastName', 'nameWithInitials', 'isActive', 'userType', 'imageUrl']
       });
       
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
 
+      // 🔐 STEP 4: Verify password
       const isPasswordValid = await this.comparePassword(password, user.password);
       if (!isPasswordValid) {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      // 💾 STEP 3: Cache the user data for future logins
-      try {
-        await this.userManagementService.setUserCache(user.id);
-        await this.userManagementService.setUserIndexes(user.id);
-      } catch (cacheError) {
-        this.logger.warn(`Failed to cache user data after login: ${cacheError.message}`);
+      // 💾 STEP 5: Cache the user data for future logins (only for email logins)
+      if (type === 'email') {
+        try {
+          await this.userManagementService.setUserCache(user.id);
+          await this.userManagementService.setUserIndexes(user.id);
+        } catch (cacheError) {
+          this.logger.warn(`Failed to cache user data after login: ${cacheError.message}`);
+        }
       }
 
       return user;
@@ -144,7 +222,7 @@ export class AuthService {
         throw error;
       }
       
-      this.logger.error(`Login error for ${email}: ${error.message}`);
+      this.logger.error(`Login error for ${identifier}: ${error.message}`);
       throw new UnauthorizedException('Authentication failed');
     }
   }

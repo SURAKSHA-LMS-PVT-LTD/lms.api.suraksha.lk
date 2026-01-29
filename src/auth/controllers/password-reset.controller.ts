@@ -35,24 +35,29 @@ import { JwtRequest } from '../../common/interfaces/jwt-request.interface';
 // DTOs for password reset operations
 export class InitiatePasswordResetDto {
   @ApiProperty({
-    description: 'Email address of the account to reset password for',
-    example: 'john.doe@example.com',
+    description: 'User identifier: email, phone number (+94771234567, 0771234567, 771234567), system registration number (6 digits like 500423), or birth certificate number',
+    examples: {
+      email: { value: 'user@example.com', description: 'Reset with email' },
+      phone: { value: '+94771234567', description: 'Reset with phone' },
+      system_id: { value: '500423', description: 'Reset with system ID' },
+      birth_cert: { value: '12345678901', description: 'Reset with birth certificate' }
+    },
     required: true
   })
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  @IsNotEmpty({ message: 'Email is required' })
-  email: string;
+  @IsString({ message: 'Identifier must be a string' })
+  @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate) is required' })
+  identifier: string;
 }
 
 export class VerifyPasswordResetOtpDto {
   @ApiProperty({
-    description: 'Email address of the account',
-    example: 'john.doe@example.com',
+    description: 'User identifier (same as used in forgot-password): email, phone, system ID, or birth certificate',
+    example: 'user@example.com',
     required: true
   })
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  @IsNotEmpty({ message: 'Email is required' })
-  email: string;
+  @IsString({ message: 'Identifier must be a string' })
+  @IsNotEmpty({ message: 'Identifier is required' })
+  identifier: string;
 
   @ApiProperty({
     description: '6-digit OTP code received via email',
@@ -68,9 +73,9 @@ export class VerifyPasswordResetOtpDto {
 }
 
 export class ResetPasswordDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  @IsNotEmpty({ message: 'Email is required' })
-  email: string;
+  @IsString({ message: 'Identifier must be a string' })
+  @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate) is required' })
+  identifier: string;
 
   @IsString({ message: 'OTP must be a string' })
   @Length(6, 6, { message: 'OTP must be exactly 6 characters' })

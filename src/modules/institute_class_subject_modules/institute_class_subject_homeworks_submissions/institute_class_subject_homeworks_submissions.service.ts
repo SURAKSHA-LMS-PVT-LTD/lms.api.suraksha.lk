@@ -77,7 +77,8 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
           if (filters.subjectId) {
             const [classId, subjectBitmask] = classSubjectEntry;
             const subjectIdNum = parseInt(filters.subjectId, 10);
-            const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+            // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
+            const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
             
             if (!hasSubjectAccess) {
               throw new ForbiddenException(`You do not have access to subject ${filters.subjectId} in class ${filters.classId}`);

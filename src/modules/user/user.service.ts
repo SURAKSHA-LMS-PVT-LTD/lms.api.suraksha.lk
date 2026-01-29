@@ -482,7 +482,7 @@ export class UsersService {
           email: dto.email,
           phoneNumber: dto.phoneNumber
         }),
-        firstLoginCompleted: true, // Comprehensive creation = fully registered
+        firstLoginCompleted: false, // Self-registration requires first login setup
         isPhoneVerified: false,
         isEmailVerified: false,
       };
@@ -1315,7 +1315,7 @@ export class UsersService {
       email: userData.email,
       phoneNumber: userData.phoneNumber
     });
-    userData.firstLoginCompleted = true; // Bulk creation = fully registered
+    userData.firstLoginCompleted = false; // Self-registration requires first login setup
     userData.isPhoneVerified = false;
     userData.isEmailVerified = false;
 
