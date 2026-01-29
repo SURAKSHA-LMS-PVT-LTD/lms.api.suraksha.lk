@@ -140,12 +140,17 @@ export class AuthService {
         const emailData = await this.userManagementService.getUserDataByEmail(normalized);
         
         if (emailData) {
+          this.logger.debug(`📦 Cache HIT for email: userId=${emailData.userId}, hasPassword=${!!emailData.password}`);
+          
           // 🎯 Cache HIT: Verify password directly from cached data
           const isPasswordValid = await this.comparePassword(password, emailData.password);
           
           if (!isPasswordValid) {
+            this.logger.warn(`❌ Cache password validation failed for user ${emailData.userId}`);
             throw new UnauthorizedException('Invalid credentials');
           }
+
+          this.logger.debug(`✅ Cache password validation successful for user ${emailData.userId}`);
 
           // ✅ Get full user data from user cache (already includes all profile data)
           const fullUserData = await this.userManagementService.getUserCacheInfo(emailData.userId);
@@ -153,6 +158,8 @@ export class AuthService {
           if (fullUserData.cached && fullUserData.data) {
             // 🚀 CACHE SUCCESS: Return user data from cache (0 database queries)
             const userData = fullUserData.data;
+            
+            this.logger.log(`🚀 Login successful from cache for user ${userData.userId}`);
             
             // Transform cached data to UserEntity-like object
             return {
@@ -166,6 +173,8 @@ export class AuthService {
               imageUrl: userData.imageUrl
             } as UserEntity;
           }
+        } else {
+          this.logger.debug(`📭 Cache MISS for email: ${normalized}`);
         }
       }
 
@@ -190,20 +199,28 @@ export class AuthService {
           break;
       }
       
+      this.logger.debug(`🔍 WHERE clause: ${JSON.stringify(whereClause)}`);
+      
       const user = await this.userRepository.findOne({ 
         where: whereClause,
         select: ['id', 'email', 'password', 'phoneNumber', 'birthCertificateNo', 'firstName', 'lastName', 'nameWithInitials', 'isActive', 'userType', 'imageUrl']
       });
       
       if (!user) {
+        this.logger.warn(`❌ User not found with ${type}: ${normalized}`);
         throw new UnauthorizedException('Invalid credentials');
       }
+      
+      this.logger.debug(`✅ User found: ID=${user.id}, email=${user.email}, hasPassword=${!!user.password}`);
 
       // 🔐 STEP 4: Verify password
       const isPasswordValid = await this.comparePassword(password, user.password);
       if (!isPasswordValid) {
+        this.logger.warn(`❌ Database password validation failed for user ${user.id}`);
         throw new UnauthorizedException('Invalid credentials');
       }
+      
+      this.logger.log(`✅ Login successful from database for user ${user.id}`);
 
       // 💾 STEP 5: Cache the user data for future logins (only for email logins)
       if (type === 'email') {

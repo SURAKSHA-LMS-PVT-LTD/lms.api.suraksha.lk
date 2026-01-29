@@ -9,6 +9,7 @@ import { QueryInstituteClassSubjectResaultDto } from './dto/query-institute_clas
 import { InstituteClassSubjectResaultResponseDto } from './dto/institute_class_subject_resault-response.dto';
 import { InstituteClassSubjectResault } from './entities/institute_class_subject_resault.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
+import { InstituteAccessValidator } from '../../../common/helpers/institute-access-validator.helper';
 
 @Injectable()
 export class InstituteClassSubjectResaultsService {
@@ -43,9 +44,15 @@ export class InstituteClassSubjectResaultsService {
     }
   }
 
-  async findAll(queryDto: QueryInstituteClassSubjectResaultDto): Promise<PaginatedResponseDto<InstituteClassSubjectResaultResponseDto>> {
+  async findAll(queryDto: QueryInstituteClassSubjectResaultDto, user?: any): Promise<PaginatedResponseDto<InstituteClassSubjectResaultResponseDto>> {
     const { page = 1, limit = 10, ...filters } = queryDto;
     const skip = (page - 1) * limit;
+
+    // SECURITY: Validate parent access if userId provided
+    if (user && filters.instituteId) {
+      const targetUserId = filters.studentId || filters.userId;
+      InstituteAccessValidator.validateInstituteAccess(user, filters.instituteId, undefined, targetUserId, true);
+    }
 
     const queryBuilder = this.resultRepository
       .createQueryBuilder('result')

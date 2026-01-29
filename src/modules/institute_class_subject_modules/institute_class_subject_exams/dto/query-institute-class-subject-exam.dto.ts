@@ -127,4 +127,11 @@ export class QueryInstituteClassSubjectExamDto {
   @IsOptional()
   @IsString()
   teacherId?: string;
+
+  @ApiPropertyOptional({
+    description: 'User ID (for parent access validation)',
+    example: '1',
+  })
+  @IsOptionalBigIntId()
+  userId?: string;
 }

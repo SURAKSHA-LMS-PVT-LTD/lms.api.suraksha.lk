@@ -177,7 +177,8 @@ export class AttendanceController {
   @ApiResponse({ status: 500, description: 'Internal server error' })
   async getStudentAttendance(
     @Param('studentId') studentId: string,
-    @Query() queryDto: GetStudentAttendanceQueryDto
+    @Query() queryDto: GetStudentAttendanceQueryDto,
+    @Request() req: any
   ): Promise<StudentAttendanceResponseDto> {
     try {
       // Combine path parameter with query parameters
@@ -214,7 +215,7 @@ export class AttendanceController {
         );
       }
 
-      const result = await this.attendanceService.getStudentAttendance(fullQueryDto);
+      const result = await this.attendanceService.getStudentAttendance(fullQueryDto, req.user);
       
       if (result.data.length === 0 && fullQueryDto.page === 1) {
         throw new HttpException(

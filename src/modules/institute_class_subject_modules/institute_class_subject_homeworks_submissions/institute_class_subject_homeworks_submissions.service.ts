@@ -56,8 +56,11 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
     // SECURITY: Validate user has access to requested institute, class, and subject
     if (user && filters.instituteId) {
-      // Validate institute access first
-      InstituteAccessValidator.validateInstituteAccess(user, filters.instituteId);
+      // Extract targetUserId for parent access validation (studentId or userId)
+      const targetUserId = filters.studentId || filters.userId;
+      
+      // Validate institute access first - pass targetUserId and isReadOnly=true to allow parent access
+      InstituteAccessValidator.validateInstituteAccess(user, filters.instituteId, undefined, targetUserId, true);
       
       // Validate class access if classId is provided
       if (filters.classId) {

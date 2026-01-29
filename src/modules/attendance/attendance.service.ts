@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -241,8 +241,22 @@ export class AttendanceService {
     }
   }
 
-  async getStudentAttendance(getStudentAttendanceDto: GetStudentAttendanceDto): Promise<StudentAttendanceResponseDto> {
+  async getStudentAttendance(getStudentAttendanceDto: GetStudentAttendanceDto, user?: any): Promise<StudentAttendanceResponseDto> {
     const { studentId, startDate, endDate, page = 1, limit = 20, status } = getStudentAttendanceDto;
+    
+    // SECURITY: Validate access - student themselves OR parent with child in JWT
+    if (user) {
+      const isOwnData = user.s === studentId;
+      const children = Array.isArray(user.c) ? user.c : [];
+      const isParentOfStudent = children.includes(studentId);
+      
+      if (!isOwnData && !isParentOfStudent) {
+        this.logger.warn(`Access denied: User ${user.s} attempted to access attendance for student ${studentId}`);
+        throw new ForbiddenException('You can only access your own attendance data or your children\'s attendance data.');
+      }
+      
+      this.logger.debug(`✅ Attendance access granted: ${isOwnData ? 'Own data' : 'Parent accessing child data'}`);
+    }
     
     // Get all attendance records for the student in the date range
     const allRecords = await this.dynamoAttendanceService.getStudentAttendance(

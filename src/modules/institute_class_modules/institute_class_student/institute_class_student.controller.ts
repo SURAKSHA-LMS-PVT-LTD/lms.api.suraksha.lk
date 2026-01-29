@@ -101,13 +101,14 @@ export class InstituteClassStudentController {
   async getStudentAssignment(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string
+    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Request() req: any
   ) {
     return await this.instituteClassStudentService.findOne({
       instituteId,
       classId,
       studentUserId,
-    });
+    }, req.user);
   }
 
   @Patch(':studentUserId')

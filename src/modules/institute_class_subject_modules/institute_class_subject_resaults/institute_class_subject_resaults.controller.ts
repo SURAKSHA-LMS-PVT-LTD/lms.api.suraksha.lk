@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, BadRequestException, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
@@ -37,8 +37,8 @@ export class InstituteClassSubjectResaultsController {
   @RequireAnyOfRoles({ anyInstituteRole: true })
   @ApiOperation({ summary: 'Get all results with filtering and pagination' })
   @ApiResponse({ status: 200, description: 'List of results', type: PaginatedResponseDto<InstituteClassSubjectResaultResponseDto> })
-  async findAll(@Query() queryDto: QueryInstituteClassSubjectResaultDto): Promise<PaginatedResponseDto<InstituteClassSubjectResaultResponseDto>> {
-    return await this.resultsService.findAll(queryDto);
+  async findAll(@Query() queryDto: QueryInstituteClassSubjectResaultDto, @Request() req: any): Promise<PaginatedResponseDto<InstituteClassSubjectResaultResponseDto>> {
+    return await this.resultsService.findAll(queryDto, req.user);
   }
 
   @Get('with-details/:id')

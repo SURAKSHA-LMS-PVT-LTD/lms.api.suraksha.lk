@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpCode, HttpStatus, UseGuards, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpCode, HttpStatus, UseGuards, UploadedFile, BadRequestException, Request } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -68,8 +68,8 @@ export class StudentsController {
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Student retrieved successfully', type: StudentResponseDto })
   @ApiResponse({ status: 404, description: 'Student not found' })
-  async findOne(@Param('userId', ParseBigIntPipe) userId: string): Promise<StudentResponseDto> {
-    return await this.studentsService.findOne(userId);
+  async findOne(@Param('userId', ParseBigIntPipe) userId: string, @Request() req: any): Promise<StudentResponseDto> {
+    return await this.studentsService.findOne(userId, req.user);
   }
 
   @Patch(':userId')

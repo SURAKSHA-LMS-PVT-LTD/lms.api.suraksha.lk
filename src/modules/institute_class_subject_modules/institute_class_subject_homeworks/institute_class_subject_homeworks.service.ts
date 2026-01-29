@@ -77,8 +77,12 @@ export class InstituteClassSubjectHomeworksService {
       // SECURITY: Validate user has access to requested institute, class, and subject
       if (user) {
         if (query.instituteId) {
+          // Extract userId from query for parent access validation
+          const targetUserId = query.userId;
+          
           // Validate institute access first
-          InstituteAccessValidator.validateInstituteAccess(user, query.instituteId);
+          // Pass targetUserId and isReadOnly=true to allow parent access
+          InstituteAccessValidator.validateInstituteAccess(user, query.instituteId, undefined, targetUserId, true);
           
           // Validate class access if classId is provided
           if (query.classId) {
@@ -647,18 +651,24 @@ export class InstituteClassSubjectHomeworksService {
     user?: any
   ): Promise<any> {
     try {
-      // SECURITY: Validate JWT token user matches requested userId
+      // SECURITY: Validate JWT token user matches requested userId OR is parent of the user
       if (!user || !user.sub) {
         throw new ForbiddenException('Invalid JWT token');
       }
 
-      if (user.sub !== userId) {
-        throw new ForbiddenException('You can only access your own homework data. JWT user ID does not match requested userId.');
+      // Check if requesting user is the target user OR a parent of the target user
+      const isOwnData = user.sub === userId;
+      const children = Array.isArray(user.c) ? user.c : [];
+      const isParentOfUser = children.includes(userId);
+
+      if (!isOwnData && !isParentOfUser) {
+        throw new ForbiddenException('You can only access your own homework data or your children\'s homework data.');
       }
 
       // Validate access to institute/class/subject
+      // Pass userId as targetUserId and isReadOnly=true to allow parent access
       if (user) {
-        InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+        InstituteAccessValidator.validateInstituteAccess(user, instituteId, undefined, userId, true);
         
         const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
         const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === instituteId);

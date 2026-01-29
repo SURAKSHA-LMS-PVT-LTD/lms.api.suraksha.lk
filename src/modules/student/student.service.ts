@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, InternalServerErrorException, Logger, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { StudentEntity } from './entities/student.entity';
@@ -634,7 +634,18 @@ export class StudentsService {
     return new PaginatedStudentResponseDto(studentResponseDtos, pageNumber, limitNumber, total);
   }
 
-  async findOne(userId: string): Promise<StudentResponseDto> {
+  async findOne(userId: string, requestingUser?: any): Promise<StudentResponseDto> {
+    // SECURITY: Validate access - student themselves OR parent with child in JWT
+    if (requestingUser) {
+      const isOwnData = requestingUser.s === userId;
+      const children = Array.isArray(requestingUser.c) ? requestingUser.c : [];
+      const isParentOfStudent = children.includes(userId);
+      
+      if (!isOwnData && !isParentOfStudent) {
+        throw new ForbiddenException('You can only access your own profile or your children\'s profiles.');
+      }
+    }
+    
     const student = await this.studentRepository.findOne({
       where: { userId },
       relations: [

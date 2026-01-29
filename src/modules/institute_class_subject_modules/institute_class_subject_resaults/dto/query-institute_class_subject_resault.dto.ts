@@ -49,4 +49,8 @@ export class QueryInstituteClassSubjectResaultDto extends PaginationDto {
   @IsOptional()
   @IsString()
   remarksSearch?: string;
+
+  @ApiProperty({ description: 'User ID (for parent access validation)', example: '1', required: false })
+  @IsOptionalBigIntId()
+  userId?: string;
 }

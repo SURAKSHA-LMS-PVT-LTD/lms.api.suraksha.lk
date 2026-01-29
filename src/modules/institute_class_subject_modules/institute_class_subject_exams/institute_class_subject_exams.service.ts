@@ -143,8 +143,11 @@ export class InstituteClassSubjectExamsService {
       // SECURITY: Validate user has access to requested institute, class, and subject
       if (user) {
         if (query.instituteId) {
-          // Validate institute access first
-          InstituteAccessValidator.validateInstituteAccess(user, query.instituteId);
+          // Extract targetUserId for parent access validation
+          const targetUserId = query.userId;
+          
+          // Validate institute access first - pass targetUserId and isReadOnly=true to allow parent access
+          InstituteAccessValidator.validateInstituteAccess(user, query.instituteId, undefined, targetUserId, true);
           
           // Validate class access if classId is provided
           if (query.classId) {
