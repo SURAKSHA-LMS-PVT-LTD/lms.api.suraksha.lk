@@ -108,7 +108,8 @@ export class InstituteClassSubjectHomeworksController {
 
 **Include Options:**
 - \`includeReferences=true\` - Include reference materials (videos, PDFs, links)
-- \`includeSubmissions=true\` - Include submissions (students see their own, teachers see all)` 
+- \`includeSubmissions=true\` - Include submissions (ALWAYS filtered by userId - no bulk loading)
+- \`userId=123\` - Filter submissions for specific student (teachers/admins use this with includeSubmissions)` 
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
@@ -119,6 +120,7 @@ export class InstituteClassSubjectHomeworksController {
   @ApiQuery({ name: 'classId', required: false, description: 'Filter by class ID', example: '40' })
   @ApiQuery({ name: 'subjectId', required: false, description: 'Filter by subject ID', example: '40' })
   @ApiQuery({ name: 'teacherId', required: false, description: 'Filter by teacher ID', example: '40' })
+  @ApiQuery({ name: 'userId', required: false, description: 'Filter submissions by student userId (required with includeSubmissions)', example: '123' })
   @ApiQuery({ name: 'search', required: false, description: 'Search in title or description', example: 'mathematics homework' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status', example: true })
   @ApiQuery({ name: 'fromDate', required: false, description: 'Filter from start date (YYYY-MM-DD)', example: '2025-08-01' })
@@ -128,7 +130,7 @@ export class InstituteClassSubjectHomeworksController {
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field', enum: ['title', 'startDate', 'endDate', 'createdAt'], example: 'startDate' })
   @ApiQuery({ name: 'sortOrder', required: false, description: 'Sort order', enum: ['ASC', 'DESC'], example: 'DESC' })
   @ApiQuery({ name: 'includeReferences', required: false, type: Boolean, description: 'Include reference materials (videos, PDFs, etc.)', example: true })
-  @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions (students see own, teachers see all)', example: true })
+  @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions filtered by userId (never all)', example: true })
   @HttpCode(HttpStatus.OK)
   async findAll(@Query() query: QueryInstituteClassSubjectHomeworkDto, @Request() req: any): Promise<PaginatedInstituteClassSubjectHomeworkResponseDto> {
     return this.instituteClassSubjectHomeworksService.findAll(query, req.user);

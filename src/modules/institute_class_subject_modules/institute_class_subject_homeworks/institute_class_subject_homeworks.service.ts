@@ -229,44 +229,26 @@ export class InstituteClassSubjectHomeworksService {
         queryBuilder.leftJoinAndSelect('homework.references', 'reference', 'reference.isActive = :refActive', { refActive: true });
       }
 
-      // Determine if user is a student BEFORE building query (for optimization)
-      const userTypeStr = user?.ut || user?.userType || '';
-      const userTypeCompact = user?.u;
-      const isStudentUser = user && (
-        userTypeStr === 'USER' || 
-        userTypeStr === 'USER_WITHOUT_PARENT' ||
-        userTypeCompact === 2 || 
-        userTypeCompact === 3
-      );
-
-      // Include submissions if requested
-      // For students: filter to only their submissions (no need to join student data - it's themselves)
-      // For teachers/admins: include all submissions with student data
-      if (query.includeSubmissions) {
-        queryBuilder.leftJoinAndSelect('homework.submissions', 'submission', 'submission.isActive = :subActive', { subActive: true });
-        
-        // Only join student data for teachers/admins who need to see all students
-        if (!isStudentUser) {
-          queryBuilder.leftJoin('submission.student', 'submissionStudent');
-          queryBuilder.addSelect([
-            'submissionStudent.id',
-            'submissionStudent.firstName',
-            'submissionStudent.lastName',
-            'submissionStudent.nameWithInitials',
-            'submissionStudent.imageUrl'
-          ]);
-        }
+      // 🚀 PERFORMANCE: Load submissions ONLY with userId filter (never all submissions)
+      // Usage: Students get own (JWT userId), Teachers/Admins pass userId query param for specific student
+      const targetUserId = query.userId || user?.userId || user?.id || user?.s;
+      
+      if (query.includeSubmissions && targetUserId) {
+        // Load ONLY specific user's submissions (homework_id + user_id filter)
+        queryBuilder.leftJoinAndSelect(
+          'homework.submissions', 
+          'submission', 
+          'submission.isActive = :subActive AND submission.studentId = :targetUserId', 
+          { subActive: true, targetUserId }
+        );
       }
+      // Without userId: NO submissions loaded (performance)
 
       // Get total count and paginated data in single operation
       const [homeworks, total] = await queryBuilder
         .skip(skip)
         .take(limit)
         .getManyAndCount();
-
-      // Use pre-calculated isStudentUser from above
-      const isStudent = isStudentUser;
-      const currentUserId = user?.userId || user?.id || user?.s;
 
       // Transform to response DTOs - lightweight response with only essential fields
       const data = homeworks.map(homework => {
@@ -316,63 +298,27 @@ export class InstituteClassSubjectHomeworksService {
           baseResponse.referenceCount = homework.references.length;
         }
 
-        // Include submissions if loaded
+        // Submissions already filtered by userId in query
         if (query.includeSubmissions && homework.submissions) {
-          // For students: filter to only their own submissions
-          // For teachers/admins: show all submissions
-          let submissions = homework.submissions;
-          
-          if (isStudent && currentUserId) {
-            submissions = submissions.filter(sub => sub.studentId === currentUserId);
-          }
-
-          // For students: simplified response (no need for their own name/image)
-          // For teachers/admins: full response with student details
-          baseResponse.mySubmissions = submissions.map(sub => {
-            const baseSubmission: any = {
-              id: sub.id,
-              submissionDate: sub.submissionDate,
-              fileUrl: sub.fileUrl 
-                ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
-                : null,
-              teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
-                ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
-                : null,
-              driveFileId: sub.driveFileId || null,
-              driveViewUrl: sub.driveFileId 
-                ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
-                : null,
-              submissionType: sub.submissionType || 'UPLOAD',
-              remarks: sub.remarks || null,
-              isActive: sub.isActive,
-              createdAt: sub.createdAt,
-            };
-
-            // Only include student details if NOT viewing own submission
-            // Check both: user role AND if submission belongs to current user
-            const isOwnSubmission = currentUserId && sub.studentId === currentUserId;
-            if (!isStudent && !isOwnSubmission) {
-              baseSubmission.studentId = sub.studentId;
-              baseSubmission.studentName = sub.student 
-                ? `${sub.student.firstName || ''} ${sub.student.lastName || ''}`.trim() || sub.student.nameWithInitials || null
-                : null;
-              baseSubmission.studentImageUrl = sub.student?.imageUrl 
-                ? this.cloudStorageService.getFullUrl(sub.student.imageUrl)
-                : null;
-            }
-
-            return baseSubmission;
-          });
-
-          // For students: hasSubmitted flag
-          if (isStudent && currentUserId) {
-            baseResponse.hasSubmitted = submissions.length > 0;
-          }
-          
-          // For teachers/admins: total submission count
-          if (!isStudent) {
-            baseResponse.submissionCount = homework.submissions.length;
-          }
+          baseResponse.mySubmissions = homework.submissions.map(sub => ({
+            id: sub.id,
+            submissionDate: sub.submissionDate,
+            fileUrl: sub.fileUrl 
+              ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
+              : null,
+            teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
+              ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
+              : null,
+            driveFileId: sub.driveFileId || null,
+            driveViewUrl: sub.driveFileId 
+              ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
+              : null,
+            submissionType: sub.submissionType || 'UPLOAD',
+            remarks: sub.remarks || null,
+            isActive: sub.isActive,
+            createdAt: sub.createdAt,
+          }));
+          baseResponse.hasSubmitted = homework.submissions.length > 0;
         }
 
         return baseResponse;
@@ -430,17 +376,17 @@ export class InstituteClassSubjectHomeworksService {
         queryBuilder.leftJoinAndSelect('homework.references', 'reference', 'reference.isActive = :refActive', { refActive: true });
       }
 
-      // Include submissions if requested
-      if (includeSubmissions) {
-        queryBuilder.leftJoinAndSelect('homework.submissions', 'submission', 'submission.isActive = :subActive', { subActive: true });
-        queryBuilder.leftJoin('submission.student', 'submissionStudent');
-        queryBuilder.addSelect([
-          'submissionStudent.id',
-          'submissionStudent.firstName',
-          'submissionStudent.lastName',
-          'submissionStudent.nameWithInitials',
-          'submissionStudent.imageUrl'
-        ]);
+      // 🚀 PERFORMANCE: Load submissions ONLY with userId filter
+      const targetUserId = user?.userId || user?.id || user?.s;
+
+      if (includeSubmissions && targetUserId) {
+        // Load ONLY specific user's submissions (homework_id + user_id)
+        queryBuilder.leftJoinAndSelect(
+          'homework.submissions', 
+          'submission', 
+          'submission.isActive = :subActive AND submission.studentId = :targetUserId', 
+          { subActive: true, targetUserId }
+        );
       }
 
       const homework = await queryBuilder.getOne();
@@ -526,75 +472,27 @@ export class InstituteClassSubjectHomeworksService {
         response.referenceCount = homework.references.length;
       }
 
-      // Include submissions if loaded
+      // Submissions already filtered by userId in query
       if (includeSubmissions && homework.submissions) {
-        // Determine if user is a student (for filtering submissions)
-        // Check multiple sources: ut (legacy), userType (from DB), u (compact numeric: 2=USER, 3=USER_WITHOUT_PARENT)
-        const userTypeStr = user?.ut || user?.userType || '';
-        const userTypeCompact = user?.u;
-        const isStudent = user && (
-          userTypeStr === 'USER' || 
-          userTypeStr === 'USER_WITHOUT_PARENT' ||
-          userTypeCompact === 2 || 
-          userTypeCompact === 3
-        );
-        const currentUserId = user?.userId || user?.id || user?.s;
-
-        // For students: filter to only their own submissions
-        // For teachers/admins: show all submissions
-        let submissions = homework.submissions;
-        
-        if (isStudent && currentUserId) {
-          submissions = submissions.filter(sub => sub.studentId === currentUserId);
-        }
-
-        // For students: simplified response (no need for their own name/image)
-        // For teachers/admins: full response with student details
-        response.mySubmissions = submissions.map(sub => {
-          const baseSubmission: any = {
-            id: sub.id,
-            submissionDate: sub.submissionDate,
-            fileUrl: sub.fileUrl 
-              ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
-              : null,
-            teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
-              ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
-              : null,
-            driveFileId: sub.driveFileId || null,
-            driveViewUrl: sub.driveFileId 
-              ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
-              : null,
-            submissionType: sub.submissionType || 'UPLOAD',
-            remarks: sub.remarks || null,
-            isActive: sub.isActive,
-            createdAt: sub.createdAt,
-          };
-
-          // Only include student details if NOT viewing own submission
-          // Check both: user role AND if submission belongs to current user
-          const isOwnSubmission = currentUserId && sub.studentId === currentUserId;
-          if (!isStudent && !isOwnSubmission) {
-            baseSubmission.studentId = sub.studentId;
-            baseSubmission.studentName = sub.student 
-              ? `${sub.student.firstName || ''} ${sub.student.lastName || ''}`.trim() || sub.student.nameWithInitials || null
-              : null;
-            baseSubmission.studentImageUrl = sub.student?.imageUrl 
-              ? this.cloudStorageService.getFullUrl(sub.student.imageUrl)
-              : null;
-          }
-
-          return baseSubmission;
-        });
-
-        // For students: hasSubmitted flag
-        if (isStudent && currentUserId) {
-          response.hasSubmitted = submissions.length > 0;
-        }
-        
-        // For teachers/admins: total submission count
-        if (!isStudent) {
-          response.submissionCount = homework.submissions.length;
-        }
+        response.mySubmissions = homework.submissions.map(sub => ({
+          id: sub.id,
+          submissionDate: sub.submissionDate,
+          fileUrl: sub.fileUrl 
+            ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
+            : null,
+          teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
+            ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
+            : null,
+          driveFileId: sub.driveFileId || null,
+          driveViewUrl: sub.driveFileId 
+            ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
+            : null,
+          submissionType: sub.submissionType || 'UPLOAD',
+          remarks: sub.remarks || null,
+          isActive: sub.isActive,
+          createdAt: sub.createdAt,
+        }));
+        response.hasSubmitted = homework.submissions.length > 0;
       }
 
       return response as InstituteClassSubjectHomeworkResponseDto;
