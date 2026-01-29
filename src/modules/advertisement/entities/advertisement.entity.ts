@@ -5,6 +5,7 @@ import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
 import { Province } from '../../user/enums/province.enum';
 import { District } from '../../user/enums/district.enum';
 import { Occupation } from '../../user/enums/occupation.enum';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 export enum MediaType {
   IMAGE = 'image',
@@ -187,11 +188,11 @@ export class AdvertisementEntity {
 
   // Helper methods
   isExpired(): boolean {
-    return new Date() > this.endDate;
+    return getCurrentSriLankaTime() > this.endDate;
   }
 
   isCurrentlyActive(): boolean {
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     return this.isActive && 
            now >= this.startDate && 
            now <= this.endDate &&

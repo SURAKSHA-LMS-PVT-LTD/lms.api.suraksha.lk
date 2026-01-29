@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SESClient, SendEmailCommand, GetSendQuotaCommand, GetSendStatisticsCommand } from '@aws-sdk/client-ses';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 import { 
   EmailTemplate, 
   OTPEmailData, 
@@ -195,7 +196,7 @@ export class AwsSesEmailService {
       const template = PasswordChangeSuccessTemplate.generate({
         firstName,
         email,
-        changeDate: new Date(),
+        changeDate: getCurrentSriLankaTime(),
         ipAddress,
         userAgent
       });
@@ -249,7 +250,7 @@ export class AwsSesEmailService {
         firstName,
         email,
         alertType,
-        timestamp: new Date(),
+        timestamp: getCurrentSriLankaTime(),
         ipAddress,
         location
       });

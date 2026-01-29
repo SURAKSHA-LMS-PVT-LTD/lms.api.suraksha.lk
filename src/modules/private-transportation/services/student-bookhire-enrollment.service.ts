@@ -11,7 +11,7 @@ import {
   StudentBookhireEnrollmentListResponseDto
 } from '../dto/student-bookhire-enrollment.dto';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 @Injectable()
 export class StudentBookhireEnrollmentService {
   constructor(
@@ -47,17 +47,17 @@ export class StudentBookhireEnrollmentService {
     if (existingEnrollment) {
       throw new ConflictException('Student is already enrolled in this bookhire');
     }
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaTime();
     const enrollment = this.enrollmentRepository.create({
       studentId: createEnrollmentDto.studentId,
       bookhireId: createEnrollmentDto.bookhireId,
-      enrollmentDate: new Date(),
+      enrollmentDate: getCurrentSriLankaTime(),
       status: 'approved', // Auto-approve enrollments in v1
       pickupLocation: createEnrollmentDto.pickupLocation || null,
       dropoffLocation: createEnrollmentDto.dropoffLocation || null,
       monthlyFee: createEnrollmentDto.monthlyFee || bookhire.pricePerMonth || 0,
       isActive: true,
-      approvedAt: new Date(), // Set approval timestamp
+      approvedAt: getCurrentSriLankaTime(), // Set approval timestamp
       approvedBy: createEnrollmentDto.studentId, // Auto-approved by system
       createdAt: timestamp,
       updatedAt: timestamp
@@ -356,7 +356,7 @@ export class StudentBookhireEnrollmentService {
     if (enrollment.status !== EnrollmentStatus.PENDING) {
       throw new BadRequestException('Only pending enrollments can be approved');
     }
-    const currentDate = new Date();
+    const currentDate = getCurrentSriLankaTime();
     await this.enrollmentRepository.update(enrollmentId, {
       status: EnrollmentStatus.APPROVED
     });
@@ -391,7 +391,7 @@ export class StudentBookhireEnrollmentService {
     if (enrollment.status !== EnrollmentStatus.PENDING) {
       throw new BadRequestException('Only pending enrollments can be rejected');
     }
-    const currentDate = new Date();
+    const currentDate = getCurrentSriLankaTime();
     await this.enrollmentRepository.update(enrollmentId, {
       status: EnrollmentStatus.REJECTED,
       isActive: false
@@ -427,7 +427,7 @@ export class StudentBookhireEnrollmentService {
     if (enrollment.status !== EnrollmentStatus.APPROVED) {
       throw new BadRequestException('Only approved enrollments can be activated');
     }
-    const currentDate = new Date();
+    const currentDate = getCurrentSriLankaTime();
     await this.enrollmentRepository.update(enrollmentId, {
       status: EnrollmentStatus.ACTIVE,
       // startDate not in database

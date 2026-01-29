@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, Not, IsNull } from 'typeorm';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectHomeworksSubmissionDto } from './dto/create-institute_class_subject_homeworks_submission.dto';
 import { UpdateInstituteClassSubjectHomeworksSubmissionDto } from './dto/update-institute_class_subject_homeworks_submission.dto';
 import { QueryInstituteClassSubjectHomeworksSubmissionDto } from './dto/query-institute_class_subject_homeworks_submission.dto';
@@ -28,11 +28,11 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
   async create(createDto: CreateInstituteClassSubjectHomeworksSubmissionDto): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
     try {
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaTime();
       const submissionData = {
         homeworkId: createDto.homeworkId,
         studentId: createDto.studentId,
-        submissionDate: createDto.submissionDate ? new Date(createDto.submissionDate) : new Date(),
+        submissionDate: createDto.submissionDate ? new Date(createDto.submissionDate) : getCurrentSriLankaTime(),
         fileUrl: createDto.fileUrl || '',
         teacherCorrectionFileUrl: createDto.teacherCorrectionFileUrl || '',
         remarks: createDto.remarks || null,
@@ -378,13 +378,13 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         existingSubmission.fileUrl = submissionData.fileUrl;
         existingSubmission.submissionDate = submissionData.submissionDate;
         existingSubmission.isActive = submissionData.isActive;
-        existingSubmission.updatedAt = new Date();
+        existingSubmission.updatedAt = getCurrentSriLankaTime();
 
         const updatedSubmission = await this.submissionRepository.save(existingSubmission);
         return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission, this.cloudStorageService);
       } else {
         // Create new submission
-        const timestamp = now();
+        const timestamp = getCurrentSriLankaTime();
         const newSubmission = this.submissionRepository.create({
           homeworkId: submissionData.homeworkId,
           studentId: submissionData.studentId,
@@ -499,7 +499,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
     try {
       const updateData: any = {
-        updatedAt: new Date()
+        updatedAt: getCurrentSriLankaTime()
       };
 
       if (reviewData.remarks !== undefined) {
@@ -584,7 +584,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
     }
 
     // Create submission record
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaTime();
     const submission = this.submissionRepository.create({
       homeworkId,
       studentId,

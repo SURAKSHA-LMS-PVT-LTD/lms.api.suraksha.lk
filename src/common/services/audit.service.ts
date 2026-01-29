@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
 export interface AuditLogEntry {
   id: string;
@@ -26,7 +27,7 @@ export class AuditService {
   async createAuditLog(entry: Partial<AuditLogEntry>): Promise<void> {
     const auditEntry: AuditLogEntry = {
       id: this.generateId(),
-      timestamp: new Date(),
+      timestamp: getCurrentSriLankaTime(),
       action: 'UNKNOWN',
       resource: 'UNKNOWN',
       method: 'UNKNOWN',
@@ -60,7 +61,7 @@ export class AuditService {
   }
 
   async getAuditStats(): Promise<any> {
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 

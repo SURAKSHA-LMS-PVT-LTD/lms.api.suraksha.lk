@@ -11,6 +11,7 @@
 import { Injectable, BadRequestException, Logger, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 import { UserEntity } from '../entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
@@ -1076,7 +1077,7 @@ export class SystemAdminUserService {
    * Generate unique student ID
    */
   private generateStudentId(): string {
-    const year = new Date().getFullYear();
+    const year = getCurrentSriLankaTime().getFullYear();
     const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
     return `STU-${year}-${random}`;
   }

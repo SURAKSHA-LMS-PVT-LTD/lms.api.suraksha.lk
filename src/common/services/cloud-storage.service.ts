@@ -2,6 +2,7 @@ import { Injectable, Logger, InternalServerErrorException, BadRequestException, 
 import { ConfigService } from '@nestjs/config';
 import { Storage, Bucket } from '@google-cloud/storage';
 import { v4 as uuidv4 } from 'uuid';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { 
@@ -654,7 +655,7 @@ export class CloudStorageService implements OnModuleInit {
       // 🔒 SECURITY: Add server-side encryption
       'x-amz-server-side-encryption': 'AES256',
       // 🔒 SECURITY: Add metadata for tracking
-      'x-amz-meta-upload-timestamp': new Date().toISOString(),
+      'x-amz-meta-upload-timestamp': getCurrentSriLankaISO(),
       'x-amz-meta-original-filename': relativePath.split('/').pop(),
     };
 
@@ -975,7 +976,7 @@ export class CloudStorageService implements OnModuleInit {
           cacheControl: 'public, max-age=31536000',
           metadata: {
             'original-name': this.extractFileName(relativePath),
-            'upload-date': new Date().toISOString(),
+            'upload-date': getCurrentSriLankaISO(),
             'access-type': 'permanent-public',
           },
         },
@@ -1038,7 +1039,7 @@ export class CloudStorageService implements OnModuleInit {
         CacheControl: 'public, max-age=31536000',
         Metadata: {
           'original-name': this.extractFileName(relativePath),
-          'upload-date': new Date().toISOString(),
+          'upload-date': getCurrentSriLankaISO(),
           'access-type': 'permanent-public'
         }
       };
@@ -1107,7 +1108,7 @@ export class CloudStorageService implements OnModuleInit {
             size: (metadata.size || 0).toString(),
             contentType: metadata.contentType || 'application/octet-stream',
             etag: metadata.etag || '',
-            updated: metadata.updated || new Date().toISOString()
+            updated: metadata.updated || getCurrentSriLankaISO()
           };
         
         case 'aws':
@@ -1122,7 +1123,7 @@ export class CloudStorageService implements OnModuleInit {
             size: head.ContentLength?.toString() || '0',
             contentType: head.ContentType || 'application/octet-stream',
             etag: head.ETag || '',
-            updated: head.LastModified?.toISOString() || new Date().toISOString()
+            updated: head.LastModified?.toISOString() || getCurrentSriLankaISO()
           };
         
         case 'local':
@@ -1270,7 +1271,7 @@ export class CloudStorageService implements OnModuleInit {
             name: file.name,
             size: (file.metadata.size || 0).toString(),
             contentType: file.metadata.contentType || 'application/octet-stream',
-            updated: file.metadata.updated || new Date().toISOString()
+            updated: file.metadata.updated || getCurrentSriLankaISO()
           }));
         
         case 'aws':
@@ -1285,7 +1286,7 @@ export class CloudStorageService implements OnModuleInit {
             name: obj.Key || '',
             size: obj.Size?.toString() || '0',
             contentType: 'application/octet-stream',
-            updated: obj.LastModified?.toISOString() || new Date().toISOString()
+            updated: obj.LastModified?.toISOString() || getCurrentSriLankaISO()
           })) || [];
         
         case 'local':

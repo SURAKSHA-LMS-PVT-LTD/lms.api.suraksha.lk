@@ -4,6 +4,7 @@ import { Repository, Between, MoreThanOrEqual, LessThanOrEqual, In } from 'typeo
 import { InstituteLectureEntity } from '../entities/institue_lecture.entity';
 import { LectureStatus } from '../enums/lecture.enum';
 import { IInstituteLecture, IInstituteLectureRepository } from '../interfaces/institute-lecture.interface';
+import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 
 @Injectable()
 export class InstituteLectureRepository implements IInstituteLectureRepository {
@@ -278,7 +279,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         throw new BadRequestException('Invalid institute ID format');
       }
 
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       const results = await this.lectureRepository.find({
         where: {
           instituteId,
@@ -306,7 +307,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         throw new BadRequestException('Invalid institute ID format');
       }
 
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       const results = await this.lectureRepository.find({
         where: {
           instituteId,
@@ -333,7 +334,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         throw new BadRequestException('Invalid institute ID format');
       }
 
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       const results = await this.lectureRepository.find({
         where: {
           instituteId,

@@ -1,5 +1,6 @@
 import { Injectable, NestMiddleware, Logger, BadRequestException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class RequestFilterMiddleware implements NestMiddleware {
@@ -96,7 +97,7 @@ export class RequestFilterMiddleware implements NestMiddleware {
       (req as any).securityContext = {
         clientIP,
         userAgent,
-        requestTime: new Date(),
+        requestTime: getCurrentSriLankaTime(),
         contentLength,
       };
 
@@ -115,7 +116,7 @@ export class RequestFilterMiddleware implements NestMiddleware {
       res.status(400).json({
         statusCode: 400,
         message: error.message,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
       });
     }
   }
@@ -153,7 +154,7 @@ export class RequestFilterMiddleware implements NestMiddleware {
 
   private logSecurityIncident(req: Request, clientIP: string, userAgent: string, reason: string): void {
     const incidentData = {
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
       type: 'REQUEST_FILTER_BLOCK',
       clientIP,
       userAgent,

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../utils/timezone.util';
 import { UserEntity } from '../../modules/user/entities/user.entity';
 import { SubscriptionPlan } from '../../modules/user/enums/subscription-plan.enum';
 import { UserManagementService } from './cache-user-management.service';
@@ -54,8 +55,8 @@ export class PackageUpgradeService {
       }
 
       // Calculate new expiration date
-      const currentExpiration = user.paymentExpiresAt || new Date();
-      const now = new Date();
+      const currentExpiration = user.paymentExpiresAt || getCurrentSriLankaTime();
+      const now = getCurrentSriLankaTime();
       
       // If current expiration is in the future, extend from there, otherwise from now
       const baseDate = currentExpiration > now ? currentExpiration : now;
@@ -80,7 +81,7 @@ export class PackageUpgradeService {
         ...user,
         subscriptionPlan,
         paymentExpiresAt: newExpirationDate,
-        updatedAt: new Date()
+        updatedAt: getCurrentSriLankaTime()
       };
 
       // Sync to DynamoDB
@@ -162,7 +163,7 @@ export class PackageUpgradeService {
       throw new NotFoundException(`User with ID ${userId} not found`);
     }
 
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     const isExpired = user.paymentExpiresAt ? user.paymentExpiresAt <= now : false;
     const daysUntilExpiry = user.paymentExpiresAt 
       ? Math.ceil((user.paymentExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -177,7 +178,7 @@ export class PackageUpgradeService {
       // MongoDB sync status can be checked here if needed
       mongoSync = {
         ...mongoSync,
-        lastSync: new Date().toISOString(),
+        lastSync: getCurrentSriLankaISO(),
         status: 'enabled'
       };
     } catch (error) {

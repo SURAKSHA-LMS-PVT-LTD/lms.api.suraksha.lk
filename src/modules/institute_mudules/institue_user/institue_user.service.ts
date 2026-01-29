@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, In } from 'typeorm';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { ConfigService } from '@nestjs/config';
 
 // DTOs
@@ -195,7 +195,7 @@ export class InstitueUserService {
       }
 
       // Create new institute user relationship
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const newInstituteUser = this.instituteUserRepository.create({
         userId: userId,
         instituteId: instituteId,
@@ -385,7 +385,7 @@ export class InstitueUserService {
 
     // Apply age filters if provided (all user types)
     if (query.minAge || query.maxAge) {
-      const currentDate = new Date();
+      const currentDate = getCurrentSriLankaTime();
       
       if (query.minAge) {
         const minAge = parseInt(query.minAge);
@@ -2014,7 +2014,7 @@ export class InstitueUserService {
           {
             status: InstituteUserStatus.ACTIVE,
             verifiedBy: safeVerifierId,
-            verifiedAt: new Date()
+            verifiedAt: getCurrentSriLankaTime()
           }
         );
 
@@ -2291,13 +2291,13 @@ export class InstitueUserService {
 
       // Filter by age range
       if (query.minAge) {
-        const minDate = new Date();
+        const minDate = getCurrentSriLankaTime();
         minDate.setFullYear(minDate.getFullYear() - parseInt(query.minAge));
         queryBuilder.andWhere('user.dateOfBirth <= :minDate', { minDate });
       }
 
       if (query.maxAge) {
-        const maxDate = new Date();
+        const maxDate = getCurrentSriLankaTime();
         maxDate.setFullYear(maxDate.getFullYear() - parseInt(query.maxAge));
         queryBuilder.andWhere('user.dateOfBirth >= :maxDate', { maxDate });
       }
@@ -2515,7 +2515,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: safeUserId,
@@ -2749,7 +2749,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: safeUserId,
@@ -2863,7 +2863,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: safeUserId,
@@ -2976,7 +2976,7 @@ export class InstitueUserService {
       }
 
       // ✅ SINGLE INSERT: Create assignment with image data in one query
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const assignment = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: student.id,
@@ -3717,7 +3717,7 @@ export class InstitueUserService {
       }
 
       // Step 7: Create institute user assignment
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const instituteUser = this.instituteUserRepository.create({
         instituteId: safeInstituteId,
         userId: user.id,
@@ -3772,7 +3772,7 @@ export class InstitueUserService {
           imageUrl,
           isVerified: imageVerified === ImageVerificationStatus.VERIFIED,
           verifiedBy: imageVerifiedBy,
-          verifiedAt: imageVerified === ImageVerificationStatus.VERIFIED ? new Date() : undefined
+          verifiedAt: imageVerified === ImageVerificationStatus.VERIFIED ? getCurrentSriLankaTime() : undefined
         } : undefined
       };
 

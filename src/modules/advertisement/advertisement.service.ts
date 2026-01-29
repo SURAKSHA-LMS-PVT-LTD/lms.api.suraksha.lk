@@ -8,13 +8,13 @@ import { Gender } from '../user/enums/gender.enum';
 import { SubscriptionPlan } from '../user/enums/subscription-plan.enum';
 import { AdvertisementResponseDto, AdvertisementListResponseDto, CreateAdvertisementDto } from './dto/advertisement.dto';
 import { ManualAdvertisementSendDto, BulkManualAdvertisementSendDto, ManualSendResponseDto, ManualSendTargetType } from './dto/manual-advertisement.dto';
+import { getCurrentSriLankaTime, getCurrentSriLankaDate, getCurrentSriLankaISO, formatSriLankaTime } from '../../common/utils/timezone.util';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
 import { AttendanceNotificationService } from '../attendance/services/attendance-notification.service';
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
-import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class AdvertisementService {
@@ -67,7 +67,7 @@ export class AdvertisementService {
 
   async findActive(): Promise<AdvertisementEntity[]> {
     try {
-      const currentTime = new Date();
+      const currentTime = getCurrentSriLankaTime();
       return await this.advertisementRepository
         .createQueryBuilder('ad')
         .select([
@@ -104,7 +104,7 @@ export class AdvertisementService {
 
   async create(createDto: CreateAdvertisementDto): Promise<AdvertisementEntity> {
     try {
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const advertisement = this.advertisementRepository.create({
         title: createDto.title,
         accessKey: createDto.accessKey,
@@ -570,8 +570,8 @@ export class AdvertisementService {
           parentEmail: user.email || null,
           parentTelegramId: user.telegramId || null,
           attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT', // Required by notification service
-          date: new Date().toISOString().split('T')[0],
-          time: new Date().toLocaleTimeString(),
+          date: getCurrentSriLankaDate(),
+          time: formatSriLankaTime(getCurrentSriLankaTime()),
           vehicleNumber: null,
           bookhireName: null,
           subscriptionPlan: user.subscriptionPlan || 'BASIC',

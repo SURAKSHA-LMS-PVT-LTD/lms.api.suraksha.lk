@@ -15,7 +15,7 @@ import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/in
 import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { EnhancedJwtPayload, ROLE_BITMASKS, USER_TYPE_COMPACT } from '../../auth/interfaces/enhanced-jwt-payload.interface';
-import { now } from '../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class OrganizationService {
@@ -349,7 +349,7 @@ export class OrganizationService {
     }
 
     // Create organization
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaISO();
     const organization = this.organizationRepository.create({
       name,
       type,
@@ -376,7 +376,7 @@ export class OrganizationService {
         throw new BadRequestException(`Creator user with ID ${userId} not found`);
       }
 
-      const timestamp2 = now();
+      const timestamp2 = getCurrentSriLankaISO();
       const orgUser = this.organizationUserRepository.create({
         organizationId: savedOrganization.organizationId,
         userId: userId,
@@ -394,7 +394,7 @@ export class OrganizationService {
       });
 
       if (!omSystemUser) {
-        const timestamp3 = now();
+        const timestamp3 = getCurrentSriLankaISO();
         omSystemUser = this.userRepository.create({
           email: 'org.manager@system.local',
           firstName: 'Organization',
@@ -407,7 +407,7 @@ export class OrganizationService {
         await this.userRepository.save(omSystemUser);
       }
 
-      const timestamp4 = now();
+      const timestamp4 = getCurrentSriLankaISO();
       const orgUser = this.organizationUserRepository.create({
         organizationId: savedOrganization.organizationId,
         userId: omSystemUser.id,
@@ -635,7 +635,7 @@ export class OrganizationService {
       // Direct update - will throw if organization doesn't exist
       const result = await this.organizationRepository.update(
         { organizationId },
-        { instituteId, updatedAt: new Date() }
+        { instituteId, updatedAt: getCurrentSriLankaTime() }
       );
 
       if (result.affected === 0) {
@@ -649,7 +649,7 @@ export class OrganizationService {
       return {
         success: true,
         message: 'Organization successfully assigned to institute',
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         operation: 'ASSIGN_INSTITUTE',
         organizationId,
         instituteId,
@@ -700,7 +700,7 @@ export class OrganizationService {
       return {
         message: 'Organization successfully removed from institute',
         organizationId,
-        removedAt: new Date().toISOString()
+        removedAt: getCurrentSriLankaISO()
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -880,7 +880,7 @@ export class OrganizationService {
         userId,
         organizationId,
         role,
-        assignedAt: new Date().toISOString()
+        assignedAt: getCurrentSriLankaISO()
       };
     } catch (error) {
       if (error instanceof BadRequestException) {
@@ -939,7 +939,7 @@ export class OrganizationService {
     }
 
     // Create organization membership with auto-verification using raw SQL to avoid update constraint
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     await this.organizationUserRepository.query(`
       INSERT INTO org_organization_users 
         (organizationId, userId, role, isVerified, verifiedBy, verifiedAt, createdAt, updatedAt)
@@ -964,7 +964,7 @@ export class OrganizationService {
         role: organizationRole,
         isVerified: true,
         addedBy: requestingUserId,
-        addedAt: new Date().toISOString()
+        addedAt: getCurrentSriLankaISO()
       }
     };
   }
@@ -1015,7 +1015,7 @@ export class OrganizationService {
         userId,
         organizationId,
         role: newRole,
-        assignedAt: new Date().toISOString()
+        assignedAt: getCurrentSriLankaISO()
       };
     } catch (error) {
       if (error instanceof BadRequestException) {
@@ -1065,7 +1065,7 @@ export class OrganizationService {
         message: 'User removed from organization successfully',
         userId,
         organizationId,
-        removedAt: new Date().toISOString()
+        removedAt: getCurrentSriLankaISO()
       };
     } catch (error) {
       if (error instanceof BadRequestException) {
@@ -1114,7 +1114,7 @@ export class OrganizationService {
         message: 'Presidency transferred successfully',
         newPresidentUserId,
         previousPresidentUserId: result.previousPresidentId,
-        transferredAt: new Date().toISOString()
+        transferredAt: getCurrentSriLankaISO()
       };
     } catch (error) {
       if (error instanceof BadRequestException) {
@@ -1209,7 +1209,7 @@ export class OrganizationService {
 
     // Step 6: Create institute user assignment
     try {
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const instituteUser = this.instituteUserRepository.create({
         userId,
         instituteId,
@@ -1217,7 +1217,7 @@ export class OrganizationService {
         instituteUserType: finalInstituteUserType as InstituteUserType,
         status: shouldAutoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
         verifiedBy: shouldAutoVerify ? requestingUserId : null,
-        verifiedAt: shouldAutoVerify ? new Date() : null,
+        verifiedAt: shouldAutoVerify ? getCurrentSriLankaTime() : null,
         createdAt: timestamp,
         updatedAt: timestamp
       });
@@ -1371,14 +1371,14 @@ export class OrganizationService {
         }
 
         // Create assignment
-        const timestamp = now();
+        const timestamp = getCurrentSriLankaISO();
         const instituteUser = this.instituteUserRepository.create({
           userId,
           instituteId,
           instituteUserType: finalInstituteUserType as InstituteUserType,
           status: shouldAutoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
           verifiedBy: shouldAutoVerify ? requestingUserId : null,
-          verifiedAt: shouldAutoVerify ? new Date() : null,
+          verifiedAt: shouldAutoVerify ? getCurrentSriLankaTime() : null,
           createdAt: timestamp,
           updatedAt: timestamp
         });

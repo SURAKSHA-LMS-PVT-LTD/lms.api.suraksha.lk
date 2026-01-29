@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, GetCommand, UpdateCommand, DeleteCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 export interface BookhireAttendanceRecord {
   // Primary table structure (optimized for bookhire owners)
@@ -170,7 +171,7 @@ export class DynamoDBBookhireAttendanceService {
    * ✅ FIXED: Now uses timestamp with UUID to prevent overwrites even in same millisecond
    */
   async markAttendance(dto: MarkBookhireAttendanceDto, studentData: any, vehicleData: any): Promise<BookhireAttendanceRecord> {
-    const timestamp = new Date().toISOString();
+    const timestamp = getCurrentSriLankaISO();
     const attendanceId = uuidv4();
     
     // Create primary keys for efficient querying
@@ -283,7 +284,7 @@ export class DynamoDBBookhireAttendanceService {
         ':sent': notificationData.notificationSent,
         ':channels': notificationData.notificationChannels,
         ':msgId': notificationData.messageId || null,
-        ':updated': new Date().toISOString(),
+        ':updated': getCurrentSriLankaISO(),
         ':inc': 1
       }
     });

@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundEx
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 // Entities
 import { InstituteSmsCredentialsEntity, SmsVerificationStage } from '../entities/institute-sms-credentials.entity';
@@ -428,7 +428,7 @@ export class SmsEnhancedService {
     try {
       // Record when API call was initiated
       await this.messageRepo.update(campaignId, {
-        sentAt: now()
+        sentAt: getCurrentSriLankaTime()
       });
 
       // Call SMS Lenz API
@@ -455,7 +455,7 @@ export class SmsEnhancedService {
         status: finalStatus,
         successfulSends: result.totalSent,
         failedSends: result.totalFailed,
-        completedAt: now(),
+        completedAt: getCurrentSriLankaTime(),
         deliveryReport: {
           delivered: result.totalSent,
           failed: result.totalFailed,
@@ -476,7 +476,7 @@ export class SmsEnhancedService {
         status: SmsMessageStatus.FAILED,
         errorMessage: error.message,
         failedSends: phoneNumbers.length,
-        completedAt: now()
+        completedAt: getCurrentSriLankaTime()
       });
     }
   }
@@ -582,7 +582,7 @@ export class SmsEnhancedService {
     // Update campaign status to APPROVED (admin approved, ready to send)
     campaign.status = SmsMessageStatus.APPROVED;
     campaign.approvedBy = adminId;
-    campaign.approvedAt = now();
+    campaign.approvedAt = getCurrentSriLankaTime();
     campaign.creditsUsed = totalCost;
     await this.messageRepo.save(campaign);
 
@@ -630,7 +630,7 @@ export class SmsEnhancedService {
     campaign.status = SmsMessageStatus.REJECTED;
     campaign.rejectionReason = rejectionReason;
     campaign.approvedBy = adminId;  // Track who rejected
-    campaign.approvedAt = now();
+    campaign.approvedAt = getCurrentSriLankaTime();
     await this.messageRepo.save(campaign);
 
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../utils/timezone.util';
 import { CacheService } from './cache.service';
 import { UserEntity } from '../../modules/user/entities/user.entity';
 import { StudentEntity } from '../../modules/student/entities/student.entity';
@@ -264,7 +265,7 @@ export class UserCacheManagerService {
         fullUser.institutes[instituteIndex] = {
           ...fullUser.institutes[instituteIndex],
           ...updates,
-          updatedAt: new Date().toISOString(),
+          updatedAt: getCurrentSriLankaISO(),
         };
         
         // Save updated cache
@@ -315,7 +316,7 @@ export class UserCacheManagerService {
     let age: number | undefined;
     if (user.dateOfBirth) {
       const birthDate = new Date(user.dateOfBirth);
-      const today = new Date();
+      const today = getCurrentSriLankaTime();
       age = today.getFullYear() - birthDate.getFullYear();
       const monthDiff = today.getMonth() - birthDate.getMonth();
       if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {

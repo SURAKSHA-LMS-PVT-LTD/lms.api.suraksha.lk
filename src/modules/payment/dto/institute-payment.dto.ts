@@ -266,8 +266,8 @@ export class CreateInstitutePaymentSubmissionDto {
       const date = new Date(value);
       if (isNaN(date.getTime())) return value;
       // Ensure payment date is not in future
-      const { now } = require('../../../common/utils/timezone.util');
-      if (date > now()) {
+      const { getCurrentSriLankaTime } = require('../../../common/utils/timezone.util');
+      if (date > getCurrentSriLankaTime()) {
         throw new Error('Payment date cannot be in the future');
       }
       return date.toISOString();

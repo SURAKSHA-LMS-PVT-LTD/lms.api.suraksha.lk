@@ -5,7 +5,7 @@ import { InstituteClassExamEntity } from '../entities/institute-class-exam.entit
 import { CreateExamDto } from '../dto/create-exam.dto';
 import { UpdateExamDto } from '../dto/update-exam.dto';
 import { ExamStatus, ExamType } from '../enums/exam.enum';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class InstituteClassExamRepository {
@@ -15,7 +15,7 @@ export class InstituteClassExamRepository {
   ) {}
 
   async create(createExamDto: CreateExamDto): Promise<InstituteClassExamEntity> {
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaISO();
     const exam = this.examRepository.create({
       ...createExamDto,
       status: ExamStatus.DRAFT,
@@ -65,7 +65,7 @@ export class InstituteClassExamRepository {
   }
 
   async findActiveExams(): Promise<InstituteClassExamEntity[]> {
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     return this.examRepository.find({
       where: [
         { status: ExamStatus.PUBLISHED },
@@ -76,7 +76,7 @@ export class InstituteClassExamRepository {
   }
 
   async findUpcomingExams(instituteId?: string): Promise<InstituteClassExamEntity[]> {
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     const query = this.examRepository.createQueryBuilder('exam')
       .where('exam.startDate > :now', { now })
       .andWhere('exam.status IN (:...statuses)', { 
@@ -120,7 +120,7 @@ export class InstituteClassExamRepository {
     await this.examRepository.update(id, { 
       isResultsPublished: true,
       status: ExamStatus.RESULTS_PUBLISHED,
-      resultsPublishedDate: new Date(),
+      resultsPublishedDate: getCurrentSriLankaTime(),
     });
     return this.findOne(id);
   }

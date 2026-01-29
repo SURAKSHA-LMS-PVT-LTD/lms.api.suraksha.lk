@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cache } from 'cache-manager';
 import { AdvertisementEntity } from '../entities/advertisement.entity';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 /**
  * Advertisement Cache Service with Metrics Tracking
@@ -89,7 +90,7 @@ export class AdvertisementCacheService {
       }
 
       const metrics = await this.getMetricsFromCache();
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       
       if (!metrics.data[adId]) {
         metrics.data[adId] = { sendings: 0 };
@@ -115,7 +116,7 @@ export class AdvertisementCacheService {
     lastSyncTime: Date | null;
   }> {
     const metrics = await this.cacheManager.get<any>(this.METRICS_CACHE_KEY);
-    return metrics || { data: {}, lastUpdated: new Date(), lastSyncTime: null };
+    return metrics || { data: {}, lastUpdated: getCurrentSriLankaTime(), lastSyncTime: null };
   }
 
   /**
@@ -127,7 +128,7 @@ export class AdvertisementCacheService {
     lastSyncTime: Date | null;
   }): Promise<void> {
     try {
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       
       if (!metrics.lastSyncTime) {
         // First time - sync immediately
@@ -171,7 +172,7 @@ export class AdvertisementCacheService {
         );
       }
 
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       
       // Update metrics with new sync time and clear data
       const updatedMetrics = {
@@ -191,7 +192,7 @@ export class AdvertisementCacheService {
    * Fetch from database with optimized query
    */
   private async fetchFromDatabase(): Promise<AdvertisementEntity[]> {
-    const currentTime = new Date();
+    const currentTime = getCurrentSriLankaTime();
     
     const ads = await this.advertisementRepository
       .createQueryBuilder('ad')

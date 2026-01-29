@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { plainToClass } from 'class-transformer';
 import { CreateInstituteClassSubjectExamDto } from './dto/create-institute_class_subject_exam.dto';
 import { UpdateInstituteClassSubjectExamDto } from './dto/update-institute_class_subject_exam.dto';
@@ -70,7 +70,7 @@ export class InstituteClassSubjectExamsService {
         throw new BadRequestException('Start time must be before end time');
       }
 
-      if (examDate < new Date()) {
+      if (examDate < getCurrentSriLankaTime()) {
         throw new BadRequestException('Exam date cannot be in the past');
       }
 
@@ -97,7 +97,7 @@ export class InstituteClassSubjectExamsService {
       }
 
       // Create exam entity
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const exam = this.examRepository.create({
         instituteId: createDto.instituteId,
         classId: createDto.classId,
@@ -661,7 +661,7 @@ export class InstituteClassSubjectExamsService {
         .addSelect(['subject.id', 'subject.name', 'subject.code'])
         .leftJoin('exam.creator', 'creator')
         .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.email'])
-        .where('exam.scheduleDate >= :now', { now: new Date() })
+        .where('exam.scheduleDate >= :now', { now: getCurrentSriLankaTime() })
         .andWhere('exam.isActive = :isActive', { isActive: true })
         .andWhere('exam.status IN (:...statuses)', { statuses: ['scheduled', 'active'] });
 

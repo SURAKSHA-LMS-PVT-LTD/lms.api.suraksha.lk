@@ -13,6 +13,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
@@ -96,7 +97,7 @@ export class EnhancedAdvertisingController {
           serviceId: body.serviceId,
           revenueType: body.revenueType,
           amount: body.amount,
-          timestamp: new Date(),
+          timestamp: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -128,7 +129,7 @@ export class EnhancedAdvertisingController {
         data: {
           timeframe,
           metrics: analytics,
-          generatedAt: new Date(),
+          generatedAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -164,7 +165,7 @@ export class EnhancedAdvertisingController {
         data: {
           serviceId,
           demandLevel: body.demandLevel,
-          updatedAt: new Date(),
+          updatedAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -201,7 +202,7 @@ export class EnhancedAdvertisingController {
           serviceId,
           bidAmount: body.bidAmount,
           isPremium: body.bidAmount > 0,
-          updatedAt: new Date(),
+          updatedAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -238,7 +239,7 @@ export class EnhancedAdvertisingController {
           serviceId,
           blockedCompetitors: body.competitorIds.length,
           competitorIds: body.competitorIds,
-          updatedAt: new Date(),
+          updatedAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -282,7 +283,7 @@ export class EnhancedAdvertisingController {
         data: {
           serviceId,
           offer,
-          createdAt: new Date(),
+          createdAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -327,7 +328,7 @@ export class EnhancedAdvertisingController {
           serviceId,
           tier: body.tier,
           benefits: tierBenefits[body.tier],
-          updatedAt: new Date(),
+          updatedAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {
@@ -364,7 +365,7 @@ export class EnhancedAdvertisingController {
         message: 'Advertising summary retrieved successfully',
         data: {
           summary,
-          generatedAt: new Date(),
+          generatedAt: getCurrentSriLankaTime(),
         },
       };
     } catch (error) {

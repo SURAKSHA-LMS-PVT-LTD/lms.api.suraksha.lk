@@ -2,6 +2,7 @@ import { PipeTransform, Injectable, ArgumentMetadata, BadRequestException } from
 import { INVALID_TIME_RANGE } from '../constants/institute-lecture.constants';
 import { CreateInstitueLectureDto } from '../dto/create-institue_lecture.dto';
 import { RescheduleLectureDto } from '../dto/reschedule-lecture.dto';
+import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 
 @Injectable()
 export class LectureTimePipe implements PipeTransform {
@@ -42,7 +43,7 @@ export class LectureTimePipe implements PipeTransform {
 
     // Prevent scheduling lectures in the past (only for create, not update)
     if (value instanceof CreateInstitueLectureDto) {
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       if (startTime < now) {
         throw new BadRequestException('Cannot schedule lectures in the past');
       }

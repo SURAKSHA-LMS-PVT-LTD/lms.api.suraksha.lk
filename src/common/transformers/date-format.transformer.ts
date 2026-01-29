@@ -1,6 +1,7 @@
 // src/common/transformers/date-format.transformer.ts
 import { Transform } from 'class-transformer';
 import { BadRequestException } from '@nestjs/common';
+import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
 /**
  * Transforms date strings from various formats to YYYY-MM-DD format
@@ -138,13 +139,13 @@ export function ValidDateOfBirthTransformer() {
       }
       
       // Check if date is not in future (for birth dates)
-      const today = new Date();
+      const today = getCurrentSriLankaTime();
       if (date > today) {
         throw new BadRequestException(`Date of birth cannot be in the future: ${transformedValue}`);
       }
       
       // Check if date is reasonable (not too old)
-      const hundredYearsAgo = new Date();
+      const hundredYearsAgo = getCurrentSriLankaTime();
       hundredYearsAgo.setFullYear(hundredYearsAgo.getFullYear() - 100);
       if (date < hundredYearsAgo) {
         throw new BadRequestException(`Date of birth cannot be more than 100 years ago: ${transformedValue}`);

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import { InstituteUserType } from '../../modules/institute_mudules/institue_user/enums/institute-user-type.enum';
+import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
 export interface CacheSetOptions {
   ttl?: number;
@@ -547,7 +548,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       }
 
       const testKey = 'health:check:' + Date.now();
-      const testValue = { test: true, timestamp: new Date() };
+      const testValue = { test: true, timestamp: getCurrentSriLankaTime() };
       
       await this.set(testKey, testValue, { ttl: 10 });
       const retrieved = await this.get(testKey);
@@ -562,7 +563,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
             connected: this.isConnected,
             testPassed: isWorking
           },
-          timestamp: new Date()
+          timestamp: getCurrentSriLankaTime()
         }
       };
     } catch (error) {
@@ -570,7 +571,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         status: 'error',
         details: { 
           error: error.message, 
-          timestamp: new Date() 
+          timestamp: getCurrentSriLankaTime() 
         }
       };
     }

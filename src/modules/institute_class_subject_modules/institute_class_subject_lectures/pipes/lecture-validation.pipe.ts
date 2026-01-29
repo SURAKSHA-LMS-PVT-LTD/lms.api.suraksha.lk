@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
+import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectLectureDto } from '../dto/create-institute_class_subject_lecture.dto';
 import { UpdateInstituteClassSubjectLectureDto } from '../dto/update-institute-class-subject-lecture.dto';
 
@@ -66,7 +67,7 @@ export class LectureValidationPipe implements PipeTransform {
 
       // Check if lecture is not in the past (for creation)
       if (dto instanceof CreateInstituteClassSubjectLectureDto) {
-        const now = new Date();
+        const now = getCurrentSriLankaTime();
         if (startTime < now) {
           throw new BadRequestException('Cannot schedule lectures in the past');
         }

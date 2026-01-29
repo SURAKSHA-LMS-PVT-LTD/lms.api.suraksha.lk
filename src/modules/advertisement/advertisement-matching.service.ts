@@ -9,6 +9,7 @@ import { Province } from '../user/enums/province.enum';
 import { District } from '../user/enums/district.enum';
 import { Occupation } from '../user/enums/occupation.enum';
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 export interface UserProfile {
   userId: string;
@@ -308,7 +309,7 @@ export class AdvertisementMatchingService {
    * Get all active advertisements that can still send
    */
   private async getActiveAdvertisements(): Promise<AdvertisementEntity[]> {
-    const currentTime = new Date();
+    const currentTime = getCurrentSriLankaTime();
     
     return await this.advertisementRepository
       .createQueryBuilder('ad')
@@ -439,7 +440,7 @@ export class AdvertisementMatchingService {
    * Check if advertisement is currently active
    */
   private isAdvertisementActive(advertisement: AdvertisementEntity): boolean {
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
     return advertisement.isActive && 
            now >= advertisement.startDate && 
            now <= advertisement.endDate &&

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
 /**
  * 🔍 SECURITY MONITORING SERVICE
@@ -119,7 +120,7 @@ export class SecurityMonitoringService {
    */
   exportSecurityReport(): SecurityReport {
     const metrics = this.getSecurityMetrics();
-    const now = new Date();
+    const now = getCurrentSriLankaTime();
 
     return {
       generatedAt: now.toISOString(),

@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 
 /**
  * Security utilities for preventing SQL injection and other attacks
@@ -133,7 +134,7 @@ export class SecurityUtils {
     }
 
     // Don't allow dates too far in the future or past
-    const currentYear = new Date().getFullYear();
+    const currentYear = getCurrentSriLankaTime().getFullYear();
     const year = parsedDate.getFullYear();
     
     if (year < 1900 || year > currentYear + 10) {

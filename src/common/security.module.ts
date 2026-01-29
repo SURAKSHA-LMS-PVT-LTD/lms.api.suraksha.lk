@@ -1,5 +1,6 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { getCurrentSriLankaISO } from '../common/utils/timezone.util';
 import { SecurityMonitoringService } from '../common/services/security-monitoring.service';
 import { EncryptionService } from '../common/services/encryption.service';
 import { AdvancedSecurityGuard } from '../common/guards/advanced-security.guard';
@@ -43,7 +44,7 @@ export class SecurityModule {
       description: 'Security system initialized successfully',
       severity: 'LOW',
       metadata: {
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         version: '2.0.0'
       }
     });

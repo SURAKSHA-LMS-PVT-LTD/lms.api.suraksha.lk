@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger }
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 
 /**
  * 🛡️ ADVANCED SECURITY GUARD
@@ -248,7 +249,7 @@ export class AdvancedSecurityGuard implements CanActivate {
 
   private recordSecurityViolation(clientIP: string, reason: string, request: Request): void {
     const violation = {
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
       ip: clientIP,
       reason,
       path: request.path,

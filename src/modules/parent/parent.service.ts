@@ -11,7 +11,7 @@ import { UserEntity } from '../user/entities/user.entity';
 // Services
 import { UsersService } from '../user/user.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
-import { now } from '../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 // DTOs
 import { CreateParentDto } from './dto/create-parent.dto';
@@ -89,13 +89,13 @@ export class ParentsService {
       const savedUser = {
         id: userResponse.id,
         ...userDataWithNullFields,
-        createdAt: now(),
-        updatedAt: now()
+        createdAt: getCurrentSriLankaTime(),
+        updatedAt: getCurrentSriLankaTime()
       };
 
       // Create parent with user relation
       const { user, ...parentData } = createParentDto;
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaTime();
       const parentEntity = this.parentRepository.create({ 
         ...parentData, 
         userId: savedUser.id,
@@ -262,13 +262,13 @@ export class ParentsService {
     const savedUser = {
       id: userResponse.id,
       ...userDataWithNullFields,
-      createdAt: now(),
-      updatedAt: now()
+      createdAt: getCurrentSriLankaTime(),
+      updatedAt: getCurrentSriLankaTime()
     };
 
     // Create parent
     const { user, ...parentData } = createParentDto;
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaTime();
     const parentEntity = this.parentRepository.create({ 
       ...parentData, 
       userId: savedUser.id,
@@ -457,11 +457,11 @@ export class ParentsService {
 
       // 🚀 ULTRA-OPTIMIZED: Build response from existing data instead of unnecessary SELECT
       // Create updated parent with current data + updates
-      const updatedParentEntity = Object.assign({}, parent, parentUpdateData, { updatedAt: now() });
+      const updatedParentEntity = Object.assign({}, parent, parentUpdateData, { updatedAt: getCurrentSriLankaTime() });
       
       // Update user entity if user data was provided
       if (updateParentDto.user) {
-        Object.assign(updatedParentEntity.user, updateParentDto.user, { updatedAt: now() });
+        Object.assign(updatedParentEntity.user, updateParentDto.user, { updatedAt: getCurrentSriLankaTime() });
       }
 
       return this.mapToResponseDto(updatedParentEntity);
@@ -509,13 +509,13 @@ export class ParentsService {
       // 🚀 ULTRA-OPTIMIZED: Build response from existing data instead of unnecessary SELECT
       const deactivatedParent = Object.assign({}, parent, { 
         isActive: false, 
-        updatedAt: now() 
+        updatedAt: getCurrentSriLankaTime() 
       });
       
       // Update user active status
       Object.assign(deactivatedParent.user, { 
         isActive: false, 
-        updatedAt: now() 
+        updatedAt: getCurrentSriLankaTime() 
       });
 
       return this.mapToResponseDto(deactivatedParent);

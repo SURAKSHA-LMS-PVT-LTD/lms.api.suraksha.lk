@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestEx
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SmsSenderMaskEntity, SenderMaskStatus } from '../entities/sms-sender-mask.entity';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 /**
  * Sender Mask Service
@@ -104,7 +104,7 @@ export class SenderMaskService {
     const existingMasks = await this.maskRepository.find({ where: { instituteId } });
     const isFirst = existingMasks.length === 0;
 
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaISO();
     const mask = this.maskRepository.create({
       instituteId,
       maskId,
@@ -134,7 +134,7 @@ export class SenderMaskService {
     }
 
     mask.status = SenderMaskStatus.APPROVED;
-    mask.approvedAt = new Date();
+    mask.approvedAt = getCurrentSriLankaTime();
     mask.approvedBy = approvedBy;
 
     await this.maskRepository.save(mask);

@@ -1,6 +1,7 @@
 import { Injectable, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { InstituteUserType } from '../../modules/institute_mudules/institue_user/enums/institute-user-type.enum';
+import { getCurrentSriLankaTime } from '../utils/timezone.util';
 import { UserManagementService } from './cache-user-management.service';
 import { AdminAccessControlService, AccessControlContext } from './admin-access-control.service';
 import { LayerManagementService } from './layer-management.service';
@@ -305,7 +306,7 @@ export class CacheValidationService {
           clientIp,
           origin,
           userAgent,
-          timestamp: new Date()
+          timestamp: getCurrentSriLankaTime()
         };
 
         const accessControlResult = await this.adminAccessControlService.validateAdminAccessControl(accessContext);
@@ -465,7 +466,7 @@ export class CacheValidationService {
           clientIp,
           origin,
           userAgent,
-          timestamp: new Date()
+          timestamp: getCurrentSriLankaTime()
         };
 
         const accessControlResult = await this.adminAccessControlService.validateAdminAccessControl(accessContext);

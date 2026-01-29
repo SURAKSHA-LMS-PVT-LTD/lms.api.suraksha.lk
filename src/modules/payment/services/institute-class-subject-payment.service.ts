@@ -12,7 +12,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { UserType } from '../../user/enums/user-type.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class InstituteClassSubjectPaymentService {
@@ -50,7 +50,7 @@ export class InstituteClassSubjectPaymentService {
     }
 
     // Create payment
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaTime();
     const payment = this.paymentRepository.create({
       instituteId,
       classId,
@@ -168,7 +168,7 @@ export class InstituteClassSubjectPaymentService {
     }
 
     // Check if last date has passed
-    if (now() > payment.lastDate) {
+    if (getCurrentSriLankaTime() > payment.lastDate) {
       throw new BadRequestException({
         success: false,
         message: 'Payment submission deadline has passed',
@@ -222,7 +222,7 @@ export class InstituteClassSubjectPaymentService {
 
     // Create submission - ALWAYS defaults to PENDING status
     // IMPORTANT: Submissions can NEVER be auto-verified - they must be manually verified by humans
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaTime();
     const submission = this.submissionRepository.create({
       paymentId,
       userId: user.s,
@@ -342,7 +342,7 @@ export class InstituteClassSubjectPaymentService {
     // Update submission
     submission.status = verifyDto.status;
     submission.verifiedBy = user.s;
-    submission.verifiedAt = now();
+    submission.verifiedAt = getCurrentSriLankaTime();
     submission.rejectionReason = verifyDto.rejectionReason;
     if (verifyDto.notes) {
       submission.notes = verifyDto.notes;
@@ -768,7 +768,7 @@ export class InstituteClassSubjectPaymentService {
         isRejected: submission.status === SubmissionStatus.REJECTED,
         canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
         paymentIsActive: submission.payment.isActive,
-        isOverdue: submission.payment.lastDate < now(),
+        isOverdue: submission.payment.lastDate < getCurrentSriLankaTime(),
       },
       
       // User actions available
@@ -902,7 +902,7 @@ export class InstituteClassSubjectPaymentService {
           isRejected: submission.status === SubmissionStatus.REJECTED,
           canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
           paymentIsActive: submission.payment.isActive,
-          isOverdue: submission.payment.lastDate < now(),
+          isOverdue: submission.payment.lastDate < getCurrentSriLankaTime(),
           timeline: [
             {
               status: 'Submitted',

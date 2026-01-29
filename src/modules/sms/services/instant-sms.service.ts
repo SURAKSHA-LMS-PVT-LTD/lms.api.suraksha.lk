@@ -9,7 +9,7 @@ import { SendSingleSmsDto, SendInstantBulkSmsDto, InstantSmsResponseDto, CreditB
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { SenderMaskValidationService } from './sender-mask-validation.service';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 /**
  * Simplified SMS Service
@@ -66,7 +66,7 @@ export class InstantSmsService {
       await this.deductCredits(dto.instituteId, this.costPerMessage);
 
       // Create campaign record with validated mask
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaTime();
       const campaign = this.campaignRepository.create({
         instituteId: dto.instituteId,
         senderId: validatedMask.maskId, // Use validated mask ID
@@ -132,7 +132,7 @@ export class InstantSmsService {
       await this.deductCredits(dto.instituteId, requiredCredits);
 
       // Create campaign record with validated mask
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaTime();
       const campaign = this.campaignRepository.create({
         instituteId: dto.instituteId,
         senderId: validatedMask.maskId, // Use validated mask ID
@@ -309,7 +309,7 @@ export class InstantSmsService {
           successfulSends: 1,
           providerCampaignId: response.data?.campaignId?.toString(),
           providerResponse: response,
-          sentAt: now(),
+          sentAt: getCurrentSriLankaTime(),
         });
       } else {
         await this.campaignRepository.update(campaignId, {
@@ -356,7 +356,7 @@ export class InstantSmsService {
           successfulSends: phoneNumbers.length,
           providerCampaignId: response.data?.campaignId?.toString(),
           providerResponse: response,
-          sentAt: now(),
+          sentAt: getCurrentSriLankaTime(),
         });
       } else {
         await this.campaignRepository.update(campaignId, {
@@ -384,7 +384,7 @@ export class InstantSmsService {
 
     if (!credit) {
       // Initialize credit account if it doesn't exist
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaTime();
       const newCredit = this.creditRepository.create({
         instituteId,
         balance: 0,
@@ -424,7 +424,7 @@ export class InstantSmsService {
       let credit = await queryRunner.manager.findOne(SmsCreditEntity, { where: { instituteId } });
 
       if (!credit) {
-        const timestamp = now();
+        const timestamp = getCurrentSriLankaTime();
         credit = queryRunner.manager.create(SmsCreditEntity, {
           instituteId,
           balance: 0,
@@ -438,7 +438,7 @@ export class InstantSmsService {
       credit.balance = Number(credit.balance) + amount;
       credit.totalPurchased = Number(credit.totalPurchased) + amount;
       credit.lastTopupAmount = amount;
-      credit.lastTopupAt = now();
+      credit.lastTopupAt = getCurrentSriLankaTime();
 
       await queryRunner.manager.save(credit);
       await queryRunner.commitTransaction();

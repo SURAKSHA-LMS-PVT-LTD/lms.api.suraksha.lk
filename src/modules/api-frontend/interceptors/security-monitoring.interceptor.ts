@@ -3,6 +3,7 @@ import { Observable, throwError } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { Request, Response } from 'express';
 import { SecureRequest } from '../guards/api-frontend.guard';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class SecurityMonitoringInterceptor implements NestInterceptor {
@@ -90,7 +91,7 @@ export class SecurityMonitoringInterceptor implements NestInterceptor {
   private logSensitiveOperation(request: SecureRequest, requestId: string, status: string, error?: string): void {
     const logData = {
       requestId,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
       method: request.method,
       url: request.url,
       userEmail: request.user?.email || 'anonymous',
@@ -109,7 +110,7 @@ export class SecurityMonitoringInterceptor implements NestInterceptor {
   private logSecurityIncident(request: SecureRequest, requestId: string, error: any): void {
     const incidentData = {
       requestId,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
       incidentType: error.constructor.name,
       method: request.method,
       url: request.url,

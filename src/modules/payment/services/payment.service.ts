@@ -11,7 +11,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { ConfigService } from '@nestjs/config';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
-import { now, getCurrentSriLankaTime, nowTimestamp, formatSriLankaDateTime } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, nowTimestamp, formatSriLankaDateTime } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class PaymentService {
@@ -72,7 +72,7 @@ export class PaymentService {
     // No need to validate here as file is now a URL string
 
     // Create payment entity
-    const timestamp = now();
+    const timestamp = getCurrentSriLankaTime();
     const payment = this.paymentRepository.create({
       userId,
       paymentAmount: createPaymentDto.paymentAmount,
@@ -114,7 +114,7 @@ export class PaymentService {
     // 📧 Send payment submission email notification (fire-and-forget)
     try {
       const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User';
-      const submittedAt = formatSriLankaDateTime(now(), { 
+      const submittedAt = formatSriLankaDateTime(getCurrentSriLankaTime(), { 
         year: 'numeric', 
         month: 'short', 
         day: 'numeric', 
@@ -281,7 +281,7 @@ export class PaymentService {
       await manager.update(PaymentEntity, paymentId, {
         status: newStatus,
         verifiedBy: verifierId,
-        verifiedAt: now(),
+        verifiedAt: getCurrentSriLankaTime(),
         rejectionReason: verifyPaymentDto.rejectionReason,
         notes: verifyPaymentDto.notes || payment.notes,
       });
@@ -299,7 +299,7 @@ export class PaymentService {
         await manager.update(UserEntity, payment.userId, {
           subscriptionPlan: subscriptionPlan,
           paymentExpiresAt: expirationDate,
-          updatedAt: now(),
+          updatedAt: getCurrentSriLankaTime(),
         });
 
         // ✅ MANDATORY: Get updated user data after subscription update for cache refresh
@@ -327,7 +327,7 @@ export class PaymentService {
       // 📧 Send email notification based on payment status (fire-and-forget)
       try {
         const userName = `${payment.user.firstName || ''} ${payment.user.lastName || ''}`.trim() || 'User';
-        const verifiedAt = formatSriLankaDateTime(now(), { 
+        const verifiedAt = formatSriLankaDateTime(getCurrentSriLankaTime(), { 
           year: 'numeric', 
           month: 'short', 
           day: 'numeric', 
@@ -401,7 +401,7 @@ export class PaymentService {
     const hasPaidSubscription = user.subscriptionPlan !== 'FREE';
 
     return {
-      isPaid: hasPaidSubscription && (!user.paymentExpiresAt || user.paymentExpiresAt > now()),
+      isPaid: hasPaidSubscription && (!user.paymentExpiresAt || user.paymentExpiresAt > getCurrentSriLankaTime()),
       currentMonth,
       paymentExpiresAt: user.paymentExpiresAt,
       subscriptionPlan: user.subscriptionPlan,

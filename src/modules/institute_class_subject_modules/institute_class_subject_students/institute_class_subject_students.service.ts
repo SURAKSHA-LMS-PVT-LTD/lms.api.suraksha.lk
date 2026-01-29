@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectStudentDto } from './dto/create-institute_class_subject_student.dto';
 import { UpdateInstituteClassSubjectStudentDto } from './dto/update-institute_class_subject_student.dto';
 import { QueryInstituteClassSubjectStudentDto, BulkEnrollStudentsDto } from './dto/query-institute_class_subject_student.dto';
@@ -60,7 +60,7 @@ export class InstituteClassSubjectStudentsService {
         throw new ConflictException('Student is already enrolled in this class subject');
       }
 
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const studentData = {
         instituteId: createDto.instituteId,
         classId: createDto.classId,
@@ -250,7 +250,7 @@ export class InstituteClassSubjectStudentsService {
       // Access control will be handled by decorators
       enrollmentMethod = 'teacher_assigned'; // Keep the enum value valid
 
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const enrollments = bulkDto.studentIds.map(studentId => {
         const enrollmentData = {
           instituteId: bulkDto.instituteId,
@@ -857,7 +857,7 @@ export class InstituteClassSubjectStudentsService {
       }
 
       // Create enrollment
-      const timestamp = now();
+      const timestamp = getCurrentSriLankaISO();
       const enrollment = this.studentRepository.create({
         instituteId: classSubject.instituteId,
         classId: classSubject.classId,
@@ -883,7 +883,7 @@ export class InstituteClassSubjectStudentsService {
         subjectName: classSubject.subject.name,
         className: classSubject.class.name,
         enrollmentMethod: 'self_enrolled',
-        enrolledAt: new Date(),
+        enrolledAt: getCurrentSriLankaTime(),
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof ForbiddenException) {
@@ -969,7 +969,7 @@ export class InstituteClassSubjectStudentsService {
           }
 
           // Create enrollment
-          const timestamp = now();
+          const timestamp = getCurrentSriLankaISO();
           const enrollment = this.studentRepository.create({
             instituteId,
             classId,
@@ -1084,7 +1084,7 @@ export class InstituteClassSubjectStudentsService {
         enrollmentEnabled: updateDto.enrollmentEnabled,
         enrollmentKey: updateDto.enrollmentEnabled ? enrollmentKey : undefined,
         currentEnrollmentCount: enrollmentCount,
-        updatedAt: new Date(),
+        updatedAt: getCurrentSriLankaTime(),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {

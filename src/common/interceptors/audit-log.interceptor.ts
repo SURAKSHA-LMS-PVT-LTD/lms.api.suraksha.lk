@@ -8,6 +8,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Request, Response } from 'express';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 import { AuditService } from '../services/audit.service';
 
 @Injectable()
@@ -39,7 +40,7 @@ export class AuditLogInterceptor implements NestInterceptor {
       body: this.sanitizeBody(request.body),
       query: request.query,
       params: request.params,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
     });
 
     return next.handle().pipe(
@@ -54,7 +55,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             statusCode: response.statusCode,
             duration,
             responseBody: this.sanitizeResponse(responseBody),
-            timestamp: new Date().toISOString(),
+            timestamp: getCurrentSriLankaISO(),
           });
 
           // Save to audit service
@@ -97,7 +98,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             duration,
             error: errorDetails,
             requestBody: this.sanitizeBody(request.body),
-            timestamp: new Date().toISOString(),
+            timestamp: getCurrentSriLankaISO(),
           });
 
           // Save error to audit service

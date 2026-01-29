@@ -1,5 +1,6 @@
 import { ParseBigIntPipe } from '../../../../common/pipes/parse-bigint.pipe';
 import { Controller, Post, BadRequestException, Param, UseGuards, Request, HttpStatus, HttpCode, Body, UseFilters, Get, Patch, Query, ForbiddenException } from '@nestjs/common';
+import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiConsumes, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../../auth/guards/flexible-access.guard';
@@ -105,7 +106,7 @@ export class HomeworkSubmissionController {
       }
 
       // Check if submission is within allowed time period
-      const now = new Date();
+      const now = getCurrentSriLankaTime();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       if (homework.startDate) {
@@ -128,7 +129,7 @@ export class HomeworkSubmissionController {
         homeworkId,
         studentId,
         fileUrl: body.fileUrl,
-        submissionDate: new Date(),
+        submissionDate: getCurrentSriLankaTime(),
         isActive: true
       });
 
@@ -279,7 +280,7 @@ export class HomeworkSubmissionController {
     return await this.homeworkSubmissionsService.reviewSubmission(submissionId, {
       ...reviewData,
       reviewerId: teacherId,
-      reviewDate: new Date()
+      reviewDate: getCurrentSriLankaTime()
     });
   }
 
@@ -358,7 +359,7 @@ export class HomeworkSubmissionController {
         data: {
           submissionId: updatedSubmission.id,
           correctionFileUrl: publicCorrectionUrl,
-          uploadDate: new Date()
+          uploadDate: getCurrentSriLankaTime()
         }
       };
     } catch (error) {

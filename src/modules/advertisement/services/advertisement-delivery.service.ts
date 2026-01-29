@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdvertisementEntity } from '../entities/advertisement.entity';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 import { AdvertisementMatchingService, UserProfile } from '../advertisement-matching.service';
 import { AttendanceNotificationService, AttendanceNotificationData } from '../../attendance/services/attendance-notification.service';
 import { UserEntity } from '../../user/entities/user.entity';
@@ -125,7 +126,7 @@ export class AdvertisementDeliveryService {
           mediaType: 'IMAGE',
           matchScore: advertisementResult.matchScore
         } : undefined,
-        deliveryTimestamp: new Date()
+        deliveryTimestamp: getCurrentSriLankaTime()
       };
 
     } catch (error) {
@@ -138,7 +139,7 @@ export class AdvertisementDeliveryService {
           attendanceNotified: fallbackResult.successfulChannels > 0,
           advertisementDelivered: false,
           notificationChannels: fallbackResult.results.filter(r => r.success).map(r => r.channel),
-          deliveryTimestamp: new Date()
+          deliveryTimestamp: getCurrentSriLankaTime()
         };
       } catch (fallbackError) {
         this.logger.error(`Fallback notification also failed for student ${studentId}`, fallbackError);
@@ -146,7 +147,7 @@ export class AdvertisementDeliveryService {
           attendanceNotified: false,
           advertisementDelivered: false,
           notificationChannels: [],
-          deliveryTimestamp: new Date()
+          deliveryTimestamp: getCurrentSriLankaTime()
         };
       }
     }
@@ -171,7 +172,7 @@ export class AdvertisementDeliveryService {
           success: false,
           deliveryMethod: 'none',
           reason: 'Advertisements disabled for subscription plan',
-          timestamp: new Date()
+          timestamp: getCurrentSriLankaTime()
         };
       }
 
@@ -189,7 +190,7 @@ export class AdvertisementDeliveryService {
         success: false,
         deliveryMethod: 'none',
         reason: `Error: ${error.message}`,
-        timestamp: new Date()
+        timestamp: getCurrentSriLankaTime()
       };
     }
   }
@@ -211,7 +212,7 @@ export class AdvertisementDeliveryService {
           success: false,
           deliveryMethod: 'database',
           reason: 'Could not build user profile for database query',
-          timestamp: new Date()
+          timestamp: getCurrentSriLankaTime()
         };
       }
 
@@ -224,7 +225,7 @@ export class AdvertisementDeliveryService {
           success: false,
           deliveryMethod: 'database',
           reason: 'No matching advertisements in database',
-          timestamp: new Date()
+          timestamp: getCurrentSriLankaTime()
         };
       }
 
@@ -238,7 +239,7 @@ export class AdvertisementDeliveryService {
         advertisementUrl: bestMatch.advertisement.mediaUrl,
         matchScore: bestMatch.matchScore,
         deliveryMethod: 'database',
-        timestamp: new Date()
+        timestamp: getCurrentSriLankaTime()
       };
 
     } catch (error) {
@@ -247,7 +248,7 @@ export class AdvertisementDeliveryService {
         success: false,
         deliveryMethod: 'database',
         reason: `Database query error: ${error.message}`,
-        timestamp: new Date()
+        timestamp: getCurrentSriLankaTime()
       };
     }
   }
@@ -261,7 +262,7 @@ export class AdvertisementDeliveryService {
       advertisementTitle: this.defaultAdTitle,
       advertisementUrl: this.defaultAdMediaUrl,
       deliveryMethod: 'default',
-      timestamp: new Date()
+      timestamp: getCurrentSriLankaTime()
     };
   }
 

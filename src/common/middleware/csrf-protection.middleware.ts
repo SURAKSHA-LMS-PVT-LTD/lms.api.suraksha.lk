@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware, Logger, ForbiddenException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
+import { getCurrentSriLankaISO } from '../utils/timezone.util';
 
 /**
  * 🛡️ CSRF PROTECTION MIDDLEWARE
@@ -60,7 +61,7 @@ export class CSRFProtectionMiddleware implements NestMiddleware {
           error: 'CSRF_VALIDATION_FAILED',
           message: 'Invalid or missing CSRF token',
           code: 'CSRF_403',
-          timestamp: new Date().toISOString(),
+          timestamp: getCurrentSriLankaISO(),
           requestId: req.headers['x-request-id'] || 'unknown'
         });
       }
@@ -75,7 +76,7 @@ export class CSRFProtectionMiddleware implements NestMiddleware {
         error: 'SECURITY_CHECK_FAILED',
         message: 'Request could not be processed securely',
         code: 'SEC_403',
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentSriLankaISO()
       });
     }
   }
@@ -286,7 +287,7 @@ export class CSRFProtectionMiddleware implements NestMiddleware {
   private logCSRFViolation(req: Request, reason: string): void {
     try {
       const violationData = {
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         ip: req.ip || req.connection?.remoteAddress || 'unknown',
         userAgent: req.get('User-Agent') || 'unknown',
         origin: req.get('Origin') || 'unknown',

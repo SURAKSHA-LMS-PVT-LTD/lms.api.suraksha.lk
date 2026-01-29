@@ -6,7 +6,7 @@ import { LectureDocumentEntity } from './entities/lecture.entity'; // Both entit
 import { CreateLectureDto, UpdateLectureDto } from './dto/lecture.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { LectureResponseDto, LectureListResponseDto, LectureQueryDto } from './dto/lecture.dto';
-import { now } from '../../common/utils/timezone.util';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class StructuredLecturesServiceTypeorm {
@@ -74,8 +74,8 @@ export class StructuredLecturesServiceTypeorm {
       coverImageUrl: processedCoverImageUrl,
       createdBy: userId,
       updatedBy: userId,
-      createdAt: now(),
-      updatedAt: now()
+      createdAt: getCurrentSriLankaTime(),
+      updatedAt: getCurrentSriLankaTime()
     });
 
     const savedLecture = await this.lectureRepository.save(lecture);
@@ -89,7 +89,7 @@ export class StructuredLecturesServiceTypeorm {
           documentName: `Document ${index + 1}`,
           documentUrl: docUrl,
           documentDescription: `Lecture document ${index + 1}`,
-          uploadedAt: now(),
+          uploadedAt: getCurrentSriLankaTime(),
         });
         const savedDoc = await this.lectureDocumentRepository.save(document);
         documents.push(savedDoc);
@@ -237,8 +237,8 @@ export class StructuredLecturesServiceTypeorm {
     const lecture = this.lectureRepository.create({
       ...createLectureDto,
       coverImageUrl: processedCoverImageUrl,
-      createdAt: now(),
-      updatedAt: now()
+      createdAt: getCurrentSriLankaTime(),
+      updatedAt: getCurrentSriLankaTime()
     });
 
     const savedLecture = await this.lectureRepository.save(lecture);
@@ -481,7 +481,7 @@ export class StructuredLecturesServiceTypeorm {
     // Update lecture
     await this.lectureRepository.update(id, {
       ...updateLectureDto,
-      updatedAt: now()
+      updatedAt: getCurrentSriLankaTime()
     });
 
     // Fetch updated lecture with relations
@@ -517,8 +517,8 @@ export class StructuredLecturesServiceTypeorm {
     const document = this.lectureDocumentRepository.create({
       ...documentData,
       lectureId,
-      createdAt: now(),
-      updatedAt: now()
+      createdAt: getCurrentSriLankaTime(),
+      updatedAt: getCurrentSriLankaTime()
     });
 
     const savedDocument = await this.lectureDocumentRepository.save(document);
@@ -704,7 +704,7 @@ export class StructuredLecturesServiceTypeorm {
 
     await this.lectureRepository.update(id, {
       isActive: !lecture.isActive,
-      updatedAt: now()
+      updatedAt: getCurrentSriLankaTime()
     });
 
     const updatedLecture = await this.lectureRepository.findOne({
@@ -730,7 +730,7 @@ export class StructuredLecturesServiceTypeorm {
       { id: In(lectureIds) },
       {
         ...updateData,
-        updatedAt: now()
+        updatedAt: getCurrentSriLankaTime()
       }
     );
 
@@ -826,7 +826,7 @@ export class StructuredLecturesServiceTypeorm {
       ...updateLectureDto,
       ...(processedCoverImageUrl !== undefined && { coverImageUrl: processedCoverImageUrl }),
       updatedBy: userId,
-      updatedAt: now()
+      updatedAt: getCurrentSriLankaTime()
     });
 
     // Handle document URLs if provided
@@ -841,7 +841,7 @@ export class StructuredLecturesServiceTypeorm {
           documentName: `Document ${index + 1}`,
           documentUrl: docUrl,
           documentDescription: `Lecture document ${index + 1}`,
-          uploadedAt: now(),
+          uploadedAt: getCurrentSriLankaTime(),
         });
         await this.lectureDocumentRepository.save(document);
       }
@@ -878,7 +878,7 @@ export class StructuredLecturesServiceTypeorm {
     await this.lectureRepository.update(id, {
       isActive: false,
       updatedBy: userId,
-      updatedAt: now()
+      updatedAt: getCurrentSriLankaTime()
     });
 
     return {

@@ -1,5 +1,6 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, UploadedFile, ClassSerializerInterceptor } from '@nestjs/common';
+import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { InstitueClassService } from './institue_class.service';
@@ -630,7 +631,7 @@ export class InstitueClassController {
         studentUserId: verifyDto.studentUserId,
         approved: verifyDto.approve,
         verifiedBy: teacherId,
-        verifiedAt: new Date(),
+        verifiedAt: getCurrentSriLankaTime(),
         student: result ? {
           instituteId: result.instituteId,
           classId: result.classId,
@@ -897,7 +898,7 @@ export class InstitueClassController {
           },
           studentUserId: studentUserId,
           removedBy: req.user?.s,
-          removedAt: new Date()
+          removedAt: getCurrentSriLankaTime()
         };
       } else {
         throw new BadRequestException('Failed to remove student from class');
@@ -1172,7 +1173,7 @@ export class InstitueClassController {
         limit,
         instituteId,
         requestId,
-        timestamp: new Date().toISOString(),
+        timestamp: getCurrentSriLankaISO(),
         totalPages: Math.ceil(total / limit),
         hasNext: page < Math.ceil(total / limit),
         hasPrevious: page > 1

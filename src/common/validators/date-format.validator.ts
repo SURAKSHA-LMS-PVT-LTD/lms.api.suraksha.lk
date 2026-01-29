@@ -1,5 +1,6 @@
 import { registerDecorator, ValidationOptions, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
 @ValidatorConstraint({ async: false })
 export class IsDateFormatConstraint implements ValidatorConstraintInterface {
@@ -60,13 +61,13 @@ export class IsFlexibleDateConstraint implements ValidatorConstraintInterface {
     if (!isValidDate) return false;
     
     // Check if date is not in the future
-    const today = new Date();
+    const today = getCurrentSriLankaTime();
     today.setHours(0, 0, 0, 0);
     
     if (date > today) return false;
     
     // Check if person is not too old (150 years)
-    const maxAge = new Date();
+    const maxAge = getCurrentSriLankaTime();
     maxAge.setFullYear(maxAge.getFullYear() - 150);
     
     if (date < maxAge) return false;

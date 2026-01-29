@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { UserType } from '../../modules/user/enums/user-type.enum';
+import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class UserIdGeneratorService {
@@ -28,7 +29,7 @@ export class UserIdGeneratorService {
   async generateUserId(
     userType: UserType,
     existingUserIds: string[] = [],
-    registrationDate: Date = new Date()
+    registrationDate: Date = getCurrentSriLankaTime()
   ): Promise<string> {
     const prefix = this.prefixMap[userType];
     const year = registrationDate.getFullYear().toString().slice(-2); // Last 2 digits of year
@@ -54,7 +55,7 @@ export class UserIdGeneratorService {
     userType: UserType,
     instituteCode: string,
     existingUserIds: string[] = [],
-    registrationDate: Date = new Date()
+    registrationDate: Date = getCurrentSriLankaTime()
   ): Promise<string> {
     const prefix = this.prefixMap[userType];
     const year = registrationDate.getFullYear().toString().slice(-2);
@@ -135,7 +136,7 @@ export class UserIdGeneratorService {
     }
 
     // Check if year is reasonable (not too far in past/future)
-    const currentYear = new Date().getFullYear();
+    const currentYear = getCurrentSriLankaTime().getFullYear();
     if (parsed.year < 2020 || parsed.year > currentYear + 5) {
       return false;
     }

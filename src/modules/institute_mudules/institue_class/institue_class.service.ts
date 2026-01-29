@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { now } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { CreateInstitueClassDto } from './dto/create-institue_class.dto';
 import { UpdateInstitueClassDto } from './dto/update-institue_class.dto';
 import { InstituteClassRepository } from './repositories/institute-class.repository';
@@ -279,7 +279,7 @@ export class InstitueClassService {
       page,
       limit,
       instituteId,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentSriLankaISO(),
     };
   }
 
