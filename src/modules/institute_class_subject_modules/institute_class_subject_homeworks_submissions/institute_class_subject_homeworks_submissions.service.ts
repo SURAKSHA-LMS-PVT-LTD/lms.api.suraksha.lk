@@ -136,33 +136,62 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
     return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
   }
 
-  async update(id: string, updateDto: UpdateInstituteClassSubjectHomeworksSubmissionDto): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
-    const submission = await this.submissionRepository.findOne({ where: { id } });
+  async update(id: string, updateDto: UpdateInstituteClassSubjectHomeworksSubmissionDto, user?: any): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+    const submission = await this.submissionRepository.findOne({ 
+      where: { id },
+      relations: ['homework']
+    });
     
     if (!submission) {
       throw new NotFoundException(`Homework submission with ID ${id} not found`);
     }
 
     try {
+      // Determine user role based on JWT token
+      const userId = user?.sub || user?.s;
+      const isStudent = submission.studentId === userId;
+      const userInstituteAccess = Array.isArray(user?.i) ? user.i : [];
+      const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === submission.homework.instituteId);
+      const userRole = instituteEntry?.r || 0;
+      
+      // Role bitmasks
+      const TEACHER = 2;
+      const INSTITUTE_ADMIN = 4;
+      const isTeacherOrAdmin = (userRole & TEACHER) !== 0 || (userRole & INSTITUTE_ADMIN) !== 0;
+
       const updateData: any = {};
       
-      if (updateDto.homeworkId !== undefined) updateData.homeworkId = updateDto.homeworkId;
-      if (updateDto.studentId !== undefined) updateData.studentId = updateDto.studentId;
+      // Students can only update their own submission file
+      if (isStudent) {
+        if (updateDto.fileUrl !== undefined) {
+          updateData.fileUrl = updateDto.fileUrl || '';
+        }
+        // Students cannot update teacherCorrectionFileUrl or remarks
+        if (updateDto.teacherCorrectionFileUrl !== undefined || updateDto.remarks !== undefined) {
+          throw new ForbiddenException('Students can only update their submission file, not teacher corrections or remarks');
+        }
+      }
+      
+      // Teachers/Admins can update correction files and remarks
+      if (isTeacherOrAdmin) {
+        if (updateDto.teacherCorrectionFileUrl !== undefined) {
+          updateData.teacherCorrectionFileUrl = updateDto.teacherCorrectionFileUrl || '';
+        }
+        if (updateDto.remarks !== undefined) {
+          updateData.remarks = updateDto.remarks?.trim() || null;
+        }
+        // Teachers can also update student file if needed
+        if (updateDto.fileUrl !== undefined) {
+          updateData.fileUrl = updateDto.fileUrl || '';
+        }
+      }
+      
+      // Only allow if user is student (own submission) or teacher/admin
+      if (!isStudent && !isTeacherOrAdmin) {
+        throw new ForbiddenException('You do not have permission to update this submission');
+      }
+      
       if (updateDto.submissionDate !== undefined) updateData.submissionDate = updateDto.submissionDate ? new Date(updateDto.submissionDate) : null;
-      
-      // ✅ Handle file URL updates - ensure empty string instead of undefined/null
-      if (updateDto.fileUrl !== undefined) {
-        updateData.fileUrl = updateDto.fileUrl || '';
-      }
-      if (updateDto.teacherCorrectionFileUrl !== undefined) {
-        updateData.teacherCorrectionFileUrl = updateDto.teacherCorrectionFileUrl || '';
-      }
-      
-      // ✅ Handle remarks - ensure null instead of undefined for empty values
-      if (updateDto.remarks !== undefined) {
-        updateData.remarks = updateDto.remarks?.trim() || null;
-      }
-      
       if (updateDto.isActive !== undefined) updateData.isActive = updateDto.isActive;
 
       await this.submissionRepository.update(id, updateData);
@@ -172,9 +201,15 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         .leftJoin('submission.homework', 'homework')
         .addSelect([
           'homework.id',
+          'homework.instituteId',
+          'homework.classId',
+          'homework.subjectId',
+          'homework.teacherId',
           'homework.title',
           'homework.description',
+          'homework.startDate',
           'homework.endDate',
+          'homework.referenceLink',
           'homework.isActive'
         ])
         .where('submission.id = :id', { id })
@@ -182,15 +217,39 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
       return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission!, this.cloudStorageService);
     } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
       throw new BadRequestException(`Failed to update homework submission: ${error.message}`);
     }
   }
 
-  async remove(id: string): Promise<void> {
-    const submission = await this.submissionRepository.findOne({ where: { id } });
+  async remove(id: string, user?: any): Promise<void> {
+    const submission = await this.submissionRepository.findOne({ 
+      where: { id },
+      relations: ['homework']
+    });
     
     if (!submission) {
       throw new NotFoundException(`Homework submission with ID ${id} not found`);
+    }
+
+    // Determine user role
+    const userId = user?.sub || user?.s;
+    const isStudent = submission.studentId === userId;
+    const userInstituteAccess = Array.isArray(user?.i) ? user.i : [];
+    const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === submission.homework.instituteId);
+    const userRole = instituteEntry?.r || 0;
+    
+    // Role bitmasks
+    const TEACHER = 2;
+    const INSTITUTE_ADMIN = 4;
+    const isTeacherOrAdmin = (userRole & TEACHER) !== 0 || (userRole & INSTITUTE_ADMIN) !== 0;
+
+    // Students can only delete their own submissions
+    // Teachers/Admins can delete any submission
+    if (!isStudent && !isTeacherOrAdmin) {
+      throw new ForbiddenException('You do not have permission to delete this submission');
     }
 
     await this.submissionRepository.delete(id);

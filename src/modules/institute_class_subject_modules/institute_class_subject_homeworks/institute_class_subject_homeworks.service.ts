@@ -638,6 +638,142 @@ export class InstituteClassSubjectHomeworksService {
     }
   }
 
+  async findUserHomeworksWithSubmissionsAndReferences(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+    user?: any
+  ): Promise<any> {
+    try {
+      // SECURITY: Validate JWT token user matches requested userId
+      if (!user || !user.sub) {
+        throw new ForbiddenException('Invalid JWT token');
+      }
+
+      if (user.sub !== userId) {
+        throw new ForbiddenException('You can only access your own homework data. JWT user ID does not match requested userId.');
+      }
+
+      // Validate access to institute/class/subject
+      if (user) {
+        InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+        
+        const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
+        const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === instituteId);
+        
+        if (instituteEntry && Array.isArray(instituteEntry.c)) {
+          const classSubjectEntry = instituteEntry.c.find(
+            ([cId]: [string, number]) => cId === classId
+          );
+          
+          if (!classSubjectEntry) {
+            throw new ForbiddenException(`You do not have access to class ${classId} in institute ${instituteId}`);
+          }
+          
+          const [, subjectBitmask] = classSubjectEntry;
+          const subjectIdNum = parseInt(subjectId, 10);
+          const hasSubjectAccess = (subjectBitmask & subjectIdNum) !== 0 || subjectBitmask === subjectIdNum;
+          
+          if (!hasSubjectAccess) {
+            throw new ForbiddenException(`You do not have access to subject ${subjectId} in class ${classId}`);
+          }
+        }
+      }
+
+      const skip = (page - 1) * limit;
+
+      // Query homeworks with submissions and references
+      const queryBuilder = this.homeworkRepository.createQueryBuilder('homework')
+        .leftJoinAndSelect('homework.teacher', 'teacher')
+        .leftJoinAndSelect('homework.references', 'references')
+        .leftJoin('homework.submissions', 'submissions', 'submissions.studentId = :userId AND submissions.isActive = true', { userId })
+        .addSelect([
+          'submissions.id',
+          'submissions.submissionDate',
+          'submissions.fileUrl',
+          'submissions.teacherCorrectionFileUrl',
+          'submissions.driveFileId',
+          'submissions.driveFileName',
+          'submissions.driveMimeType',
+          'submissions.submissionType',
+          'submissions.remarks',
+          'submissions.isActive'
+        ])
+        .where('homework.instituteId = :instituteId', { instituteId })
+        .andWhere('homework.classId = :classId', { classId })
+        .andWhere('homework.subjectId = :subjectId', { subjectId })
+        .andWhere('homework.isActive = :isActive', { isActive: true })
+        .orderBy('homework.startDate', 'DESC')
+        .addOrderBy('references.displayOrder', 'ASC')
+        .skip(skip)
+        .take(limit);
+
+      const [homeworks, total] = await queryBuilder.getManyAndCount();
+
+      // Transform data
+      const data = homeworks.map(homework => ({
+        id: homework.id,
+        instituteId: homework.instituteId,
+        classId: homework.classId,
+        subjectId: homework.subjectId,
+        teacherId: homework.teacherId,
+        title: homework.title,
+        description: homework.description,
+        startDate: homework.startDate,
+        endDate: homework.endDate,
+        referenceLink: homework.referenceLink,
+        isActive: homework.isActive,
+        createdAt: homework.createdAt,
+        updatedAt: homework.updatedAt,
+        teacher: homework.teacher ? {
+          id: homework.teacher.id,
+          nameWithInitials: homework.teacher.nameWithInitials,
+          email: homework.teacher.email,
+          imageUrl: homework.teacher.imageUrl ? this.cloudStorageService.getFullUrl(homework.teacher.imageUrl) : null
+        } : null,
+        mySubmissions: homework.submissions?.map(sub => ({
+          id: sub.id,
+          submissionDate: sub.submissionDate,
+          fileUrl: sub.fileUrl ? this.cloudStorageService.getFullUrl(sub.fileUrl) : null,
+          teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) : null,
+          driveFileId: sub.driveFileId,
+          driveFileName: sub.driveFileName,
+          driveMimeType: sub.driveMimeType,
+          submissionType: sub.submissionType,
+          remarks: sub.remarks,
+          isActive: sub.isActive
+        })) || [],
+        references: homework.references?.map(ref => ({
+          id: ref.id,
+          title: ref.title,
+          description: ref.description,
+          fileUrl: ref.fileUrl ? this.cloudStorageService.getFullUrl(ref.fileUrl) : null,
+          driveFileId: ref.driveFileId,
+          driveFileName: ref.driveFileName,
+          driveMimeType: ref.driveMimeType,
+          referenceType: ref.referenceType,
+          referenceSource: ref.referenceSource,
+          displayOrder: ref.displayOrder,
+          isActive: ref.isActive
+        })) || []
+      }));
+
+      return {
+        data,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      };
+    } catch (error) {
+      this.logger.error('Error fetching my homeworks with submissions and references:', error);
+      throw error;
+    }
+  }
+
   async remove(id: string, user: any): Promise<void> {
     try {
       

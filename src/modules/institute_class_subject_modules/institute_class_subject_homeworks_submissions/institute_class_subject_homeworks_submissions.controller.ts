@@ -103,25 +103,40 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   @Patch(':id')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ anyInstituteRole: true })
-  @ApiOperation({ summary: 'Update a homework submission' })
+  @ApiOperation({ 
+    summary: 'Update a homework submission', 
+    description: 'Students can only update their own submissions (file). Teachers/Admins can update correction files and remarks.' 
+  })
   @ApiParam({ name: 'id', description: 'Homework submission ID' })
   @ApiResponse({ status: 200, description: 'Homework submission updated successfully', type: InstituteClassSubjectHomeworksSubmissionResponseDto })
   @ApiResponse({ status: 404, description: 'Homework submission not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - cannot update other users submissions' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async update(@Param('id', ParseBigIntPipe) id: string, @Body() updateDto: UpdateInstituteClassSubjectHomeworksSubmissionDto): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
-    return await this.submissionsService.update(id, updateDto);
+  async update(
+    @Param('id', ParseBigIntPipe) id: string, 
+    @Body() updateDto: UpdateInstituteClassSubjectHomeworksSubmissionDto,
+    @Request() req: any
+  ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+    return await this.submissionsService.update(id, updateDto, req.user);
   }
 
   @Delete(':id')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @RequireAnyOfRoles({ anyInstituteRole: true })
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a homework submission (Institute Admin or Teacher)' })
+  @ApiOperation({ 
+    summary: 'Delete a homework submission', 
+    description: 'Students can only delete their own submissions. Teachers/Admins can delete any submission.' 
+  })
   @ApiParam({ name: 'id', description: 'Homework submission ID' })
   @ApiResponse({ status: 204, description: 'Homework submission deleted successfully' })
   @ApiResponse({ status: 404, description: 'Homework submission not found' })
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
-    await this.submissionsService.remove(id);
+  @ApiResponse({ status: 403, description: 'Forbidden - cannot delete other users submissions' })
+  async remove(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: any
+  ): Promise<void> {
+    await this.submissionsService.remove(id, req.user);
   }
 
   @Post('submit-google-drive')

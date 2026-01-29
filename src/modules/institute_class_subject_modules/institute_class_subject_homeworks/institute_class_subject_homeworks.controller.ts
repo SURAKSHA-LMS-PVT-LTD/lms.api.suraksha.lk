@@ -311,6 +311,83 @@ export class InstituteClassSubjectHomeworksController {
     return this.instituteClassSubjectHomeworksService.update(id, updateInstituteClassSubjectHomeworkDto, req.user);
   }
 
+  @Get('user/:userId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @ApiOperation({ 
+    summary: 'Get user homeworks with submissions and references', 
+    description: 'Retrieves all homeworks for specified institute/class/subject with user submissions and reference materials. JWT token must match the requested userId for security.' 
+  })
+  @ApiParam({ name: 'userId', description: 'User ID (must match JWT token)', example: '123' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID', example: '1' })
+  @ApiQuery({ name: 'classId', required: true, description: 'Class ID', example: '2' })
+  @ApiQuery({ name: 'subjectId', required: true, description: 'Subject ID', example: '3' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 20)', example: 20 })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Homeworks retrieved successfully with submissions and references',
+    schema: {
+      example: {
+        data: [
+          {
+            id: "123",
+            instituteId: "1",
+            classId: "2",
+            subjectId: "3",
+            teacherId: "4",
+            title: "Essay Assignment",
+            description: "Write an essay about climate change",
+            startDate: "2024-01-10T00:00:00Z",
+            endDate: "2024-01-20T23:59:59Z",
+            isActive: true,
+            mySubmissions: [
+              {
+                id: "456",
+                submissionDate: "2024-01-15T10:30:00Z",
+                fileUrl: "https://storage.googleapis.com/.../submission.pdf",
+                teacherCorrectionFileUrl: "https://storage.googleapis.com/.../correction.pdf",
+                remarks: "Good work, but needs improvement"
+              }
+            ],
+            references: [
+              {
+                id: "789",
+                title: "Climate Change Research Paper",
+                fileUrl: "https://storage.googleapis.com/.../reference.pdf",
+                orderIndex: 1
+              }
+            ]
+          }
+        ],
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1
+      }
+    }
+  })
+  @HttpCode(HttpStatus.OK)
+  async getUserHomeworks(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Query('instituteId') instituteId: string,
+    @Query('classId') classId: string,
+    @Query('subjectId') subjectId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Request() req?: any
+  ) {
+    return this.instituteClassSubjectHomeworksService.findUserHomeworksWithSubmissionsAndReferences(
+      instituteId,
+      classId,
+      subjectId,
+      userId,
+      page,
+      limit,
+      req.user
+    );
+  }
+
   @Delete(':id')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
