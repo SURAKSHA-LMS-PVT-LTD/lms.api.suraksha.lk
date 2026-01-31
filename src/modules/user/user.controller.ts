@@ -1620,22 +1620,23 @@ export class UsersController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: 'Get institutes where user\'s children are students (Parents only)',
-    description: `Returns institutes where the user acts as a parent ONLY - institutes where their children are enrolled as students.
+    summary: 'Get institutes where a child is enrolled (Parents only)',
+    description: `Returns institutes where a specific child (student) is enrolled. This endpoint is ONLY for parents accessing their children's data.
     
 **Use Case:**
-- Parents can view their own parent institutes
-- Parents can view their children's parent institutes (uses JWT 'c' field)
-- Excludes institutes where parent has other roles (teacher, admin, etc.)
-- Based on fatherId/motherId/guardianId relationships
+- Parent can view institutes where their child is enrolled
+- The :id parameter must be a child's userId that exists in JWT's 'c' (children) array
+- Based on institute_class_student enrollment records
 
 **Parent Access:**
-- Parent with userId=2 can access /users/2/parent-institutes (own data)
-- Parent with userId=2 can access /users/500362/parent-institutes if 500362 is in their 'c' array (child data)
+- Parent with userId=2 and c=["500341", "500362"] can access:
+  - /users/500341/parent-institutes ✅
+  - /users/500362/parent-institutes ✅
+  - /users/999999/parent-institutes ❌ (not their child)
 
 **vs Regular /users/:id/institutes:**
-- Regular API: Shows ALL institutes (any role)
-- Parent API: Shows ONLY children's institutes (parent role)`
+- Regular API: Shows ALL institutes where user has ANY role
+- Parent API: Shows ONLY institutes where child is enrolled as student`
   })
   @ApiParam({ name: 'id', description: 'Parent User UUID', example: '123' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number', example: 1 })
@@ -1698,12 +1699,17 @@ export class UsersController {
   }> {
     const currentUser = req.user;
     
-    // ✅ Security: User can access their own parent institutes OR their children's parent institutes
-    const isOwnData = currentUser.s === id;
-    const isChildData = currentUser.c && Array.isArray(currentUser.c) && currentUser.c.includes(id);
+    // ✅ Security: Only allow parents to access their children's institutes
+    // The :id parameter should be a child's userId that exists in JWT's 'c' array
+    const targetUserId = String(id);
+    const childrenIds = currentUser.c ? currentUser.c.map(childId => String(childId)) : [];
     
-    if (!isOwnData && !isChildData) {
-      throw new ForbiddenException('Access denied. You can only view your own parent institutes or your children\'s parent institutes');
+    const isChildData = childrenIds.includes(targetUserId);
+    
+    this.logger.log(`Parent institutes access check: parentUserId=${currentUser.s}, targetChildId=${targetUserId}, childrenIds=${JSON.stringify(childrenIds)}, hasAccess=${isChildData}`);
+    
+    if (!isChildData) {
+      throw new ForbiddenException(`Access denied. User ${targetUserId} is not your child. You can only view your children's institutes.`);
     }
     
     // Parse pagination

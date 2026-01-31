@@ -2083,55 +2083,57 @@ export class UsersService {
     try {
       this.logger.log(`Getting parent institutes for user ${userId}`);
       
-      // Query: Find institutes where THIS SPECIFIC USER is enrolled as a student
-      // Get their enrollment details from institute_class_student and institute_user
-      const query = `
-        SELECT DISTINCT ON (i.id)
-          i.id as "instituteId",
-          i.name as "instituteName",
-          i.short_name as "shortName",
-          i.logo_url as "logoUrl",
-          i.primary_color_code as "primaryColorCode",
-          i.secondary_color_code as "secondaryColorCode",
-          ics.is_active as "enrollmentStatus",
-          iu.id as "instituteUserId",
-          iu.image_url as "studentInstituteImageUrl",
-          iu.is_verified as "isVerified",
-          iu.status as "instituteUserStatus"
-        FROM institute_class_student ics
-        INNER JOIN institute i ON i.id = ics.institute_id AND i.is_active = true
-        LEFT JOIN institute_user iu ON iu.user_id = ics.student_user_id AND iu.institute_id = i.id
-        WHERE 
-          ics.student_user_id = $1::bigint
-          AND ics.is_active = true
-        ORDER BY i.id, i.name ASC
-      `;
-
-      const results = await this.userRepository.query(query, [userId]);
+      // Use the SAME approach as getUserInstitutes - query institute_user table
+      // This ensures we get institutes where the user has an active relationship
+      const instituteUserRelations = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .leftJoinAndSelect('iu.institute', 'institute')
+        .select([
+          'iu.instituteId',
+          'iu.userId',
+          'iu.status',
+          'iu.instituteUserType',
+          'iu.verifiedAt',
+          'iu.instituteUserImageUrl',
+          
+          // Institute fields
+          'institute.id',
+          'institute.name',
+          'institute.shortName',
+          'institute.logoUrl',
+          'institute.primaryColorCode',
+          'institute.secondaryColorCode',
+          'institute.isActive'
+        ])
+        .where('iu.userId = :userId', { userId })
+        .andWhere('iu.status IN (:...statuses)', { statuses: ['ACTIVE', 'PENDING'] })
+        .andWhere('institute.isActive = :isActive', { isActive: true })
+        .orderBy('institute.name', 'ASC')
+        .getMany();
       
-      this.logger.log(`Found ${results.length} parent institutes for user ${userId}`);
+      this.logger.log(`Found ${instituteUserRelations.length} parent institutes for user ${userId}`);
 
-      // Transform results
-      return results.map((row: any) => ({
-        instituteId: row.instituteId,
-        instituteName: row.instituteName,
-        shortName: row.shortName,
-        logoUrl: row.logoUrl ? this.cloudStorageService.getFullUrl(row.logoUrl) : null,
-        primaryColorCode: row.primaryColorCode,
-        secondaryColorCode: row.secondaryColorCode,
+      // Transform results - same format as getUserInstitutes
+      return instituteUserRelations.map((relation) => ({
+        instituteId: relation.institute.id,
+        instituteName: relation.institute.name,
+        shortName: relation.institute.shortName,
+        logoUrl: relation.institute.logoUrl ? this.cloudStorageService.getFullUrl(relation.institute.logoUrl) : null,
+        primaryColorCode: relation.institute.primaryColorCode,
+        secondaryColorCode: relation.institute.secondaryColorCode,
         role: 'PARENT',
-        enrollmentStatus: row.enrollmentStatus,
-        instituteUserId: row.instituteUserId,
-        studentInstituteImageUrl: row.studentInstituteImageUrl 
-          ? this.cloudStorageService.getFullUrl(row.studentInstituteImageUrl) 
+        enrollmentStatus: relation.status === 'ACTIVE',
+        instituteUserId: relation.instituteId,
+        studentInstituteImageUrl: relation.instituteUserImageUrl 
+          ? this.cloudStorageService.getFullUrl(relation.instituteUserImageUrl) 
           : null,
-        isVerified: row.isVerified || false,
-        instituteUserStatus: row.instituteUserStatus,
+        isVerified: !!relation.verifiedAt,
+        instituteUserStatus: relation.status,
         isParentInstitute: true
       }));
     } catch (error) {
       this.logger.error(`Failed to get parent institutes for user ${userId}: ${error.message}`, error.stack);
-      throw new BusinessLogicException('Failed to get parent institutes');
+      throw new BusinessLogicException(`Failed to get parent institutes: ${error.message}`);
     }
   }
 
