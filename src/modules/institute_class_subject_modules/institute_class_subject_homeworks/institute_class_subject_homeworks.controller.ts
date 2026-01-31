@@ -315,12 +315,12 @@ export class InstituteClassSubjectHomeworksController {
 
   @Get('user/:userId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ student: {}, parent: {}, anyInstituteRole: true })
   @ApiOperation({ 
     summary: 'Get user homeworks with submissions and references', 
-    description: 'Retrieves all homeworks for specified institute/class/subject with user submissions and reference materials. JWT token must match the requested userId for security.' 
+    description: 'Retrieves all homeworks for specified institute/class/subject with user submissions and reference materials. Parents can access their children homeworks via JWT validation.' 
   })
-  @ApiParam({ name: 'userId', description: 'User ID (must match JWT token)', example: '123' })
+  @ApiParam({ name: 'userId', description: 'User ID', example: '123' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID', example: '1' })
   @ApiQuery({ name: 'classId', required: true, description: 'Class ID', example: '2' })
   @ApiQuery({ name: 'subjectId', required: true, description: 'Subject ID', example: '3' })

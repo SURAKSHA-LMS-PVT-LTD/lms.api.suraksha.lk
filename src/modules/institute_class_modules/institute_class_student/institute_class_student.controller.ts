@@ -356,9 +356,13 @@ export class StudentClassesController {
 
   @Get()
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ student: {}, teacher: {}, instituteAdmin: true, global: [UserType.SUPERADMIN] })
-  @ApiOperation({ summary: 'Get all classes for a student (Optimized)' })
+  @RequireAnyOfRoles({ student: {}, parent: {}, teacher: {}, instituteAdmin: true, global: [UserType.SUPERADMIN] })
+  @ApiOperation({ 
+    summary: 'Get all classes for a student (Optimized)', 
+    description: 'Parents can access their children\'s classes. FlexibleAccessGuard validates parent-child relationship via JWT.'
+  })
   @ApiResponse({ status: 200, description: 'List of classes for the student' })
+  @ApiResponse({ status: 403, description: 'Access denied - not authorized to view this student\'s classes' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number' })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
   @ApiQuery({ name: 'activeOnly', required: false, description: 'Filter active classes only' })
@@ -380,12 +384,13 @@ export class StudentClassesController {
 
   @Get('enrolled')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ student: {}, teacher: {}, instituteAdmin: true, global: [UserType.SUPERADMIN] })
+  @RequireAnyOfRoles({ student: {}, parent: {}, teacher: {}, instituteAdmin: true, global: [UserType.SUPERADMIN] })
   @ApiOperation({ 
     summary: 'Get student enrolled classes with advanced filtering (Ultra-Optimized)',
-    description: 'Retrieves classes a student is enrolled in with optional filters for institute. By default, includes both verified (active access) and pending (no access) enrollments. Pending enrollments are marked with enrollmentStatus="pending" and hasAccess=false.'
+    description: 'Retrieves classes a student is enrolled in with optional filters. Includes verified and pending enrollments. Parents can access children\'s data via JWT validation.'
   })
   @ApiResponse({ status: 200, description: 'List of enrolled classes with verification status and access permission flags' })
+  @ApiResponse({ status: 403, description: 'Access denied - not authorized to view this student\'s enrolled classes' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 10, max: 100)' })
   @ApiQuery({ name: 'instituteId', required: false, description: 'Filter by institute ID' })

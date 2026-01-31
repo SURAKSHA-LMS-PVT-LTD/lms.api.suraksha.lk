@@ -329,33 +329,46 @@ export class FlexibleAccessGuard implements CanActivate {
         ? {} 
         : config.parent;
       
-      // Check if user has USER_WITHOUT_STUDENT type (parent)
-      const userTypeKey = COMPACT_TO_USER_TYPE[user.u];
-      const userTypeValue = UserType[userTypeKey as keyof typeof UserType];
-      const isParentUser = userTypeValue === UserType.USER_WITHOUT_STUDENT;
+      // 🎯 ENHANCED: Parent access validation with JWT 'c' (children) array check
+      // Parents can access their children's data if the target userId/studentId is in JWT 'c' array
+      const childrenIds = user.c ? user.c.map(childId => String(childId)) : [];
       
       let hasParentAccess = false;
       
-      if (isParentUser) {
-        // If requireStudent is true, check if studentId parameter exists
+      // Extract target userId/studentId from various sources
+      const query = request.query || {};
+      const targetUserId = params.id || params.userId || params.studentUserId || params.studentId || 
+                          body.userId || body.studentId || query.userId || query.studentId;
+      
+      // ✅ Parent can access if:
+      // 1. They have children in JWT (c array exists and has entries)
+      // 2. The target userId/studentId matches one of their children
+      if (childrenIds.length > 0 && targetUserId) {
+        const targetUserIdStr = String(targetUserId);
+        hasParentAccess = childrenIds.includes(targetUserIdStr);
+      }
+      
+      // 🔧 Backward compatibility: If no specific child ID in request, check requireStudent config
+      if (!hasParentAccess && !targetUserId) {
+        // Check if user has parent-capable user type (has children in JWT)
+        const hasChildren = childrenIds.length > 0;
+        
         if (parentConfig.requireStudent) {
-          const query = request.query || {};
-          const studentId = params.studentId || body.studentId || query.studentId;
-          
-          // Parent must provide studentId in request
-          // Service layer will validate if this student is actually their child
-          hasParentAccess = !!studentId;
+          // Parent must provide studentId/userId in request
+          hasParentAccess = false; // Reject if no target ID provided
         } else {
-          // No student requirement, just being a parent is enough
-          hasParentAccess = true;
+          // No student requirement, just having children is enough
+          hasParentAccess = hasChildren;
         }
       }
       
       accessChecks.push({
         check: hasParentAccess,
-        reason: parentConfig.requireStudent 
-          ? 'Parent access (with studentId filter)' 
-          : 'Parent access',
+        reason: targetUserId 
+          ? `Parent access (child ID: ${targetUserId})` 
+          : parentConfig.requireStudent 
+            ? 'Parent access (with studentId filter)' 
+            : 'Parent access',
       });
       
       if (hasParentAccess) {
