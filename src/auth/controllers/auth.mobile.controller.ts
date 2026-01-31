@@ -56,9 +56,15 @@ export class AuthMobileController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 900000 } }) // 5 attempts per 15 minutes
   @ApiOperation({ 
-    summary: 'Mobile app login (iOS/Android)',
+    summary: 'Mobile app login with email, phone, system ID, or birth certificate (iOS/Android)',
     description: `
 Authenticates user credentials and returns tokens for mobile applications.
+
+**Supported Login Methods:**
+- Email: user@example.com
+- Phone: +94771234567, 0771234567, 771234567
+- System ID: 500423 (6 digits)
+- Birth Certificate: Any format
 
 **Key Differences from Web Login:**
 - Refresh token is returned in the response body (not as httpOnly cookie)
@@ -101,9 +107,9 @@ Authenticates user credentials and returns tokens for mobile applications.
     @Req() req: ExpressRequest
   ) {
     try {
-      // Validate user credentials
+      // Validate user credentials (supports email, phone, system ID, birth certificate)
       const user = await this.authService.validateUser(
-        loginDto.email, 
+        loginDto.identifier, 
         loginDto.password
       );
 

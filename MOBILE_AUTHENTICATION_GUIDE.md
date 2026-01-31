@@ -35,7 +35,7 @@ POST /v2/auth/login/mobile
 ### Request
 ```json
 {
-  "email": "user@example.com",
+  "identifier": "user@example.com",
   "password": "password123",
   "deviceId": "android_1706438400000_abc123xyz",
   "deviceName": "Samsung Galaxy S21",
@@ -43,10 +43,17 @@ POST /v2/auth/login/mobile
 }
 ```
 
+### Supported Login Identifiers
+Mobile login now supports multiple identifier types (same as web):
+- **Email**: `user@example.com`
+- **Phone Number**: `+94771234567`, `0771234567`, `771234567`
+- **System ID**: `500423` (6-digit registration number)
+- **Birth Certificate**: Any format stored in user profile
+
 ### Request Parameters
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `email` | string | ✅ | User email address |
+| `identifier` | string | ✅ | User identifier (email, phone, system ID, or birth certificate) |
 | `password` | string | ✅ | User password |
 | `deviceId` | string | ✅ | Unique device identifier (format: `platform_timestamp_uuid`) |
 | `deviceName` | string | ❌ | User-friendly device name |
@@ -294,7 +301,7 @@ const API_BASE = 'https://lmsapi.suraksha.lk';
 
 export class MobileAuthService {
   
-  static async login(email: string, password: string): Promise<any> {
+  static async login(identifier: string, password: string): Promise<any> {
     const deviceId = await DeviceService.getDeviceId();
     const deviceName = await DeviceService.getDeviceName();
     const platform = DeviceService.getPlatform();
@@ -303,7 +310,7 @@ export class MobileAuthService {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email,
+        identifier, // Supports email, phone, system ID, birth certificate
         password,
         deviceId,
         deviceName,
@@ -479,10 +486,33 @@ CREATE TABLE refresh_tokens (
 
 #### Mobile Login
 ```bash
+# Login with email
 curl -X POST https://lmsapi.suraksha.lk/v2/auth/login/mobile \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com",
+    "identifier": "user@example.com",
+    "password": "password123",
+    "deviceId": "android_1706438400000_abc123xyz",
+    "deviceName": "Test Device",
+    "platform": "android"
+  }'
+
+# Login with phone number
+curl -X POST https://lmsapi.suraksha.lk/v2/auth/login/mobile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifier": "0771234567",
+    "password": "password123",
+    "deviceId": "android_1706438400000_abc123xyz",
+    "deviceName": "Test Device",
+    "platform": "android"
+  }'
+
+# Login with system ID
+curl -X POST https://lmsapi.suraksha.lk/v2/auth/login/mobile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identifier": "500423",
     "password": "password123",
     "deviceId": "android_1706438400000_abc123xyz",
     "deviceName": "Test Device",
@@ -527,10 +557,21 @@ open https://lmsapi.suraksha.lk/api
 
 ### Step 3: Update Mobile App
 1. Replace login endpoint from `/v2/auth/login` to `/v2/auth/login/mobile`
-2. Add device ID generation
-3. Store refresh token securely (Capacitor Preferences)
-4. Update refresh logic to use `/auth/refresh/mobile`
-5. Update logout to use `/auth/logout/mobile`
+2. **Change `email` field to `identifier`** - now supports email, phone, system ID, birth certificate
+3. Add device ID generation
+4. Store refresh token securely (Capacitor Preferences)
+5. Update refresh logic to use `/auth/refresh/mobile`
+6. Update logout to use `/auth/logout/mobile`
+
+### Example Login Screen Update
+```typescript
+// Before
+await MobileAuthService.login(email, password);
+
+// After (supports multiple identifier types)
+await MobileAuthService.login(identifier, password);
+// identifier can be: email, phone (+94771234567, 0771234567), system ID, birth cert
+```
 
 ---
 
