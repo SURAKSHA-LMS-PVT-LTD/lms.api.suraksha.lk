@@ -1624,9 +1624,14 @@ export class UsersController {
     description: `Returns institutes where the user acts as a parent ONLY - institutes where their children are enrolled as students.
     
 **Use Case:**
-- Parents should see ONLY their children's schools
+- Parents can view their own parent institutes
+- Parents can view their children's parent institutes (uses JWT 'c' field)
 - Excludes institutes where parent has other roles (teacher, admin, etc.)
 - Based on fatherId/motherId/guardianId relationships
+
+**Parent Access:**
+- Parent with userId=2 can access /users/2/parent-institutes (own data)
+- Parent with userId=2 can access /users/500362/parent-institutes if 500362 is in their 'c' array (child data)
 
 **vs Regular /users/:id/institutes:**
 - Regular API: Shows ALL institutes (any role)
@@ -1693,9 +1698,12 @@ export class UsersController {
   }> {
     const currentUser = req.user;
     
-    // ✅ Security: User can only access their own parent institutes
-    if (currentUser.s !== id) {
-      throw new ForbiddenException('Access denied. You can only view your own parent institutes');
+    // ✅ Security: User can access their own parent institutes OR their children's parent institutes
+    const isOwnData = currentUser.s === id;
+    const isChildData = currentUser.c && Array.isArray(currentUser.c) && currentUser.c.includes(id);
+    
+    if (!isOwnData && !isChildData) {
+      throw new ForbiddenException('Access denied. You can only view your own parent institutes or your children\'s parent institutes');
     }
     
     // Parse pagination
