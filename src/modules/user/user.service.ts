@@ -2071,17 +2071,19 @@ export class UsersService {
   }
 
   /**
-   * Get Parent Institutes - ONLY institutes where user's children are enrolled as students
+   * Get Parent Institutes - ONLY institutes where a specific user (child) is enrolled as a student
    * 
-   * 🎯 Parent-specific API that returns institutes based on fatherId/motherId/guardianId relationships.
-   * Ensures parents see ONLY their children's schools, not institutes where they have other roles.
+   * 🎯 Returns institutes where the specified user is enrolled as a student.
+   * Parent can access this for their children (checked in controller via JWT 'c' field).
    * 
-   * @param parentUserId - Parent's user ID
-   * @returns Array of institutes where children are students with enrollment details
+   * @param userId - Student's user ID (could be parent's own ID or their child's ID)
+   * @returns Array of institutes where this user is enrolled as a student
    */
-  async getParentInstitutes(parentUserId: string): Promise<any[]> {
+  async getParentInstitutes(userId: string): Promise<any[]> {
     try {
-      // Query: Find all students where user is father, mother, or guardian
+      this.logger.log(`Getting parent institutes for user ${userId}`);
+      
+      // Query: Find institutes where THIS SPECIFIC USER is enrolled as a student
       // Get their enrollment details from institute_class_student and institute_user
       const query = `
         SELECT DISTINCT ON (i.id)
@@ -2096,17 +2098,18 @@ export class UsersService {
           iu.image_url as "studentInstituteImageUrl",
           iu.is_verified as "isVerified",
           iu.status as "instituteUserStatus"
-        FROM student s
-        INNER JOIN institute_class_student ics ON ics.student_user_id = s.user_id AND ics.is_active = true
+        FROM institute_class_student ics
         INNER JOIN institute i ON i.id = ics.institute_id AND i.is_active = true
-        LEFT JOIN institute_user iu ON iu.user_id = s.user_id AND iu.institute_id = i.id
+        LEFT JOIN institute_user iu ON iu.user_id = ics.student_user_id AND iu.institute_id = i.id
         WHERE 
-          (s.father_id = $1 OR s.mother_id = $1 OR s.guardian_id = $1)
-          AND s.is_active = true
+          ics.student_user_id = $1::bigint
+          AND ics.is_active = true
         ORDER BY i.id, i.name ASC
       `;
 
-      const results = await this.userRepository.query(query, [parentUserId]);
+      const results = await this.userRepository.query(query, [userId]);
+      
+      this.logger.log(`Found ${results.length} parent institutes for user ${userId}`);
 
       // Transform results
       return results.map((row: any) => ({
@@ -2127,7 +2130,7 @@ export class UsersService {
         isParentInstitute: true
       }));
     } catch (error) {
-      this.logger.error(`Failed to get parent institutes for user ${parentUserId}: ${error.message}`, error.stack);
+      this.logger.error(`Failed to get parent institutes for user ${userId}: ${error.message}`, error.stack);
       throw new BusinessLogicException('Failed to get parent institutes');
     }
   }
