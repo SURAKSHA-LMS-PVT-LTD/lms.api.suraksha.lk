@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../../user/enums/user-type.enum';
 import { CardService } from '../services/card.service';
@@ -38,7 +39,7 @@ interface JwtRequest extends Request {
 
 @ApiTags('Admin - Card Management')
 @Controller('admin')
-@UseGuards(FlexibleAccessGuard)
+@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
 @ApiBearerAuth()
 export class AdminCardOrderController {
   constructor(

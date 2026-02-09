@@ -1,5 +1,5 @@
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
-import { Entity, PrimaryGeneratedColumn, Column,  OneToMany, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index, OneToMany, AfterLoad } from 'typeorm';
 
 export enum SubjectType {
   MAIN = 'MAIN',
@@ -17,6 +17,9 @@ export enum SubjectType {
 }
 
 @Entity('subjects')
+@Index('idx_subjects_institute_active', ['instituteId', 'isActive'])
+@Index('idx_subjects_code', ['code'])
+@Index('idx_subjects_type', ['subjectType'])
 export class SubjectEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

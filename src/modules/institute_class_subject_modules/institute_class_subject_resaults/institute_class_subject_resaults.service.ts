@@ -251,8 +251,8 @@ export class InstituteClassSubjectResaultsService {
 
       // Create individual result objects from bulk structure
       const timestamp = now();
-      const resultPromises = bulkDto.results.map(async (studentResult) => {
-        const resultData = {
+      const entities = bulkDto.results.map((studentResult) => {
+        return this.resultRepository.create({
           instituteId: bulkDto.instituteId,
           classId: bulkDto.classId,
           subjectId: bulkDto.subjectId,
@@ -264,13 +264,11 @@ export class InstituteClassSubjectResaultsService {
           isActive: true,
           createdAt: timestamp,
           updatedAt: timestamp,
-        };
-
-        const result = this.resultRepository.create(resultData);
-        return await this.resultRepository.save(result);
+        });
       });
 
-      const savedResults = await Promise.all(resultPromises);
+      // Bulk insert in a single query instead of N individual inserts
+      const savedResults = await this.resultRepository.save(entities);
 
       // ✅ OPTIMIZED: Load student and exam details in bulk to eliminate N+1 queries
       const resultIds = savedResults.map(result => result.id);
@@ -306,8 +304,11 @@ export class InstituteClassSubjectResaultsService {
     }
   }
 
-  async findAllRaw(): Promise<any[]> {
-    return await this.resultRepository
+  async findAllRaw(page: number = 1, limit: number = 100): Promise<{ data: any[]; total: number }> {
+    const take = Math.min(limit, 500); // Hard cap at 500
+    const skip = (page - 1) * take;
+    
+    const [data, total] = await this.resultRepository
       .createQueryBuilder('result')
       .leftJoin('result.institute', 'institute')
       .leftJoin('result.class', 'class')
@@ -335,40 +336,35 @@ export class InstituteClassSubjectResaultsService {
         'student.email',
         'student.isActive'
       ])
-      .getMany();
+      .skip(skip)
+      .take(take)
+      .orderBy('result.createdAt', 'DESC')
+      .getManyAndCount();
+    
+    return { data, total };
   }
 
   async getStats(): Promise<any> {
-    const total = await this.resultRepository.count();
-    const active = await this.resultRepository.count({ where: { isActive: true } });
-    
-    // Grade field has been removed - calculating pass/fail based on score instead
-    const passed = await this.resultRepository
+    // Single aggregation query instead of 5 separate round-trips
+    const stats = await this.resultRepository
       .createQueryBuilder('result')
-      .where('CAST(result.score AS DECIMAL) >= 40')
-      .andWhere('result.isActive = true')
-      .getCount();
-    
-    const failed = await this.resultRepository
-      .createQueryBuilder('result')  
-      .where('CAST(result.score AS DECIMAL) < 40')
-      .andWhere('result.score IS NOT NULL')
-      .andWhere('result.isActive = true')
-      .getCount();
-
-    const avgScore = await this.resultRepository
-      .createQueryBuilder('result')
-      .select('AVG(CAST(result.score AS DECIMAL))', 'avgScore')
-      .where('result.score IS NOT NULL')
+      .select([
+        'COUNT(*) as total',
+        'SUM(CASE WHEN result.isActive = true THEN 1 ELSE 0 END) as active',
+        'SUM(CASE WHEN result.isActive = false THEN 1 ELSE 0 END) as inactive',
+        'SUM(CASE WHEN CAST(result.score AS DECIMAL) >= 40 AND result.isActive = true THEN 1 ELSE 0 END) as passed',
+        'SUM(CASE WHEN CAST(result.score AS DECIMAL) < 40 AND result.score IS NOT NULL AND result.isActive = true THEN 1 ELSE 0 END) as failed',
+        'AVG(CASE WHEN result.score IS NOT NULL THEN CAST(result.score AS DECIMAL) END) as avgScore',
+      ])
       .getRawOne();
 
     return {
-      total,
-      active,
-      inactive: total - active,
-      passed,
-      failed,
-      averageScore: avgScore?.avgScore || 0,
+      total: parseInt(stats.total) || 0,
+      active: parseInt(stats.active) || 0,
+      inactive: parseInt(stats.inactive) || 0,
+      passed: parseInt(stats.passed) || 0,
+      failed: parseInt(stats.failed) || 0,
+      averageScore: parseFloat(stats.avgScore) || 0,
     };
   }
 

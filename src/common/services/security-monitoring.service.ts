@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { getCurrentSriLankaTime } from '../utils/timezone.util';
@@ -8,19 +8,28 @@ import { getCurrentSriLankaTime } from '../utils/timezone.util';
  * Tracks and analyzes security events in real-time
  */
 @Injectable()
-export class SecurityMonitoringService {
+export class SecurityMonitoringService implements OnModuleDestroy {
   private readonly logger = new Logger(SecurityMonitoringService.name);
   private readonly securityEvents = new Map<string, SecurityEvent[]>();
+  private readonly MAX_IPS = 10000;
+  private readonly MAX_EVENTS_PER_IP = 100;
   private readonly alertThresholds = {
     failedLogins: 5,
     suspiciousRequests: 10,
     rateLimitHits: 20,
     timeWindow: 15 * 60 * 1000, // 15 minutes
   };
+  private cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor(private configService: ConfigService) {
     // Start cleanup interval
-    setInterval(() => this.cleanupOldEvents(), 5 * 60 * 1000); // Every 5 minutes
+    this.cleanupInterval = setInterval(() => this.cleanupOldEvents(), 5 * 60 * 1000); // Every 5 minutes
+  }
+
+  onModuleDestroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
   }
 
   /**
@@ -33,10 +42,22 @@ export class SecurityMonitoringService {
       id: this.generateEventId(),
     };
 
-    // Store event
+    // Store event (bounded)
     const ipEvents = this.securityEvents.get(event.ip) || [];
     ipEvents.push(securityEvent);
+    // Cap per-IP events to prevent memory growth
+    if (ipEvents.length > this.MAX_EVENTS_PER_IP) {
+      ipEvents.splice(0, ipEvents.length - this.MAX_EVENTS_PER_IP);
+    }
     this.securityEvents.set(event.ip, ipEvents);
+
+    // Evict oldest IPs if total exceeds limit
+    if (this.securityEvents.size > this.MAX_IPS) {
+      const firstKey = this.securityEvents.keys().next().value;
+      if (firstKey !== undefined) {
+        this.securityEvents.delete(firstKey);
+      }
+    }
 
     // Log event
     this.logSecurityEvent(securityEvent);

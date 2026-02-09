@@ -251,6 +251,7 @@ export class BookhireAttendanceService {
       } else {
       }
     } catch (error) {
+      this.logger.warn(`Failed to fetch student data for RFID user ${userId}: ${error.message}`);
     }
 
     // 🔍 STEP 5: Verify enrollment (if required by environment and user is a student)
@@ -540,6 +541,7 @@ export class BookhireAttendanceService {
       }
 
     } catch (error) {
+      this.logger.warn(`Notification with advertising failed: ${error.message}`);
     }
   }
 
@@ -695,6 +697,7 @@ export class BookhireAttendanceService {
 
 
     } catch (error) {
+      this.logger.warn(`Default ad notification failed: ${error.message}`);
     }
   }
 

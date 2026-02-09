@@ -41,7 +41,7 @@ const AppDataSource = new DataSource({
   extra: {
     charset: 'utf8mb4_unicode_ci',
     timezone: '+05:30',
-    connectionLimit: 10,
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '25'),
     connectTimeout: 10000,
     supportBigNumbers: true,
     bigNumberStrings: true,

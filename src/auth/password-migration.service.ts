@@ -13,6 +13,15 @@ export class PasswordMigrationService {
   ) {}
 
   /**
+   * Guard: Prevent dangerous operations in production
+   */
+  private ensureNotProduction(operation: string): void {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`BLOCKED: ${operation} is not allowed in production environment`);
+    }
+  }
+
+  /**
    * This method helps migrate users who may have passwords hashed with old method
    * Call this method if you need to update existing passwords
    */
@@ -39,15 +48,41 @@ export class PasswordMigrationService {
    * Bulk migrate all users with a default password
    * WARNING: Only use this in development or with proper user consent
    */
-  async bulkMigrateWithDefaultPassword(defaultPassword: string = 'password123'): Promise<number> {
+  async bulkMigrateWithDefaultPassword(defaultPassword?: string): Promise<number> {
+    this.ensureNotProduction('Bulk password migration');
+    const password = defaultPassword || process.env.DEFAULT_MIGRATION_PASSWORD;
+    if (!password) {
+      throw new Error('Password must be provided via parameter or DEFAULT_MIGRATION_PASSWORD env var');
+    }
     try {
-      const users = await this.userRepository.find();
+      const BATCH_SIZE = 100;
+      let offset = 0;
       let migratedCount = 0;
 
-      for (const user of users) {
-        const newHashedPassword = await this.authService.hashPassword(defaultPassword);
-        await this.userRepository.update(user.id, { password: newHashedPassword });
-        migratedCount++;
+      // Hash once — same password for all users
+      const newHashedPassword = await this.authService.hashPassword(password);
+
+      while (true) {
+        const users = await this.userRepository.find({
+          select: ['id'],
+          take: BATCH_SIZE,
+          skip: offset,
+          order: { id: 'ASC' },
+        });
+
+        if (users.length === 0) break;
+
+        const ids = users.map(u => u.id);
+        await this.userRepository
+          .createQueryBuilder()
+          .update(UserEntity)
+          .set({ password: newHashedPassword })
+          .whereInIds(ids)
+          .execute();
+
+        migratedCount += users.length;
+        offset += BATCH_SIZE;
+        if (users.length < BATCH_SIZE) break;
       }
 
       return migratedCount;

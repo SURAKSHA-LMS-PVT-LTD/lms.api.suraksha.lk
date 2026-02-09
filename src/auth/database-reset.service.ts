@@ -16,13 +16,24 @@ export class DatabaseResetService {
   ) {}
 
   /**
+   * Guard: Prevent dangerous operations in production
+   */
+  private ensureNotProduction(operation: string): void {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`BLOCKED: ${operation} is not allowed in production environment`);
+    }
+  }
+
+  /**
    * Reset database and create default users with secure passwords
+   * WARNING: Only for development/testing environments
    */
   async resetDatabaseWithDefaults(): Promise<void> {
+    this.ensureNotProduction('Database reset');
     try {
       this.logger.log('🔄 Resetting database...');
       
-      // Clear all users (be careful in production!)
+      // Clear all users (development/testing only)
       await this.userRepository.clear();
       
       // Create default admin user
@@ -53,8 +64,14 @@ export class DatabaseResetService {
   /**
    * Migrate all existing passwords to new format without resetting data
    * Processes in batches to avoid memory issues
+   * WARNING: Only for development/testing environments
    */
-  async migrateAllPasswords(defaultPassword: string = 'password123'): Promise<number> {
+  async migrateAllPasswords(defaultPassword?: string): Promise<number> {
+    this.ensureNotProduction('Bulk password migration');
+    const password = defaultPassword || process.env.DEFAULT_MIGRATION_PASSWORD;
+    if (!password) {
+      throw new Error('Password must be provided via parameter or DEFAULT_MIGRATION_PASSWORD env var');
+    }
     try {
       this.logger.log('Migrating all user passwords...');
       let migratedCount = 0;
@@ -73,10 +90,10 @@ export class DatabaseResetService {
 
         for (const user of users) {
           if (user.email) {
-            const needsMigration = await this.authService.isPasswordInOldFormat(user, defaultPassword);
+            const needsMigration = await this.authService.isPasswordInOldFormat(user, password);
 
             if (needsMigration || !user.password) {
-              const newHashedPassword = await this.authService.hashPassword(defaultPassword);
+              const newHashedPassword = await this.authService.hashPassword(password);
               await this.userRepository.update(user.id, { password: newHashedPassword });
               migratedCount++;
             }
@@ -194,6 +211,7 @@ export class DatabaseResetService {
 
   /**
    * Get all users with their password status (for debugging)
+   * WARNING: Only for development/testing environments
    */
   async getUsersPasswordStatus(): Promise<Array<{
     id: string;
@@ -203,7 +221,9 @@ export class DatabaseResetService {
     isSecureFormat: boolean;
     userType: UserType | undefined;
   }>> {
-    const users = await this.userRepository.find();
+    this.ensureNotProduction('Password status dump');
+    const BATCH_SIZE = 100;
+    let offset = 0;
     const statusList: Array<{
       id: string;
       email: string;
@@ -213,21 +233,35 @@ export class DatabaseResetService {
       userType: UserType | undefined;
     }> = [];
     
-    for (const user of users) {
-      if (user.email) {
-        const hasPassword = !!user.password;
-        const isSecure = hasPassword ? 
-          !(await this.authService.isPasswordInOldFormat(user, 'test123')) : false;
-        
-        statusList.push({
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          hasPassword,
-          isSecureFormat: isSecure,
-          userType: user.userType,
-        });
+    while (true) {
+      const users = await this.userRepository.find({
+        select: ['id', 'email', 'firstName', 'password', 'userType'],
+        take: BATCH_SIZE,
+        skip: offset,
+        order: { id: 'ASC' },
+      });
+
+      if (users.length === 0) break;
+
+      for (const user of users) {
+        if (user.email) {
+          const hasPassword = !!user.password;
+          const isSecure = hasPassword ? 
+            !(await this.authService.isPasswordInOldFormat(user, 'test123')) : false;
+          
+          statusList.push({
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            hasPassword,
+            isSecureFormat: isSecure,
+            userType: user.userType,
+          });
+        }
       }
+
+      offset += BATCH_SIZE;
+      if (users.length < BATCH_SIZE) break;
     }
     
     return statusList;

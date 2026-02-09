@@ -1,7 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 import { CardType } from '../enums/card-type.enum';
 
 @Entity('cards')
+@Index('idx_cards_type_active', ['cardType', 'isActive'])
 export class Card {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

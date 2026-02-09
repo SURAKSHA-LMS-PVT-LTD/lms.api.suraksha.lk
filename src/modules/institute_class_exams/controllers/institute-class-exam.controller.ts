@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards, Logger, HttpStatus, HttpException } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, Query, UseGuards, Logger, HttpStatus, HttpException, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiCookieAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
@@ -35,12 +35,10 @@ export class InstituteClassExamController {
   })
   async createExam(
     @Body() createExamDto: CreateExamDto,
-    // @CurrentUser() user: any, // Uncomment when auth is implemented
+    @Request() req: any,
   ) {
     try {
-      
-      // For now, using a mock user ID
-      const createdBy = 'admin_user_id'; // Replace with user.id from auth
+      const createdBy = req.user?.s || req.user?.userId || 'unknown';
       
       const result = await this.examService.createExam(createExamDto, createdBy);
       
@@ -50,21 +48,13 @@ export class InstituteClassExamController {
         data: result,
       };
     } catch (error) {
-      this.logger.error('Failed to create exam', error);
-      this.logger.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-        cause: error.cause
-      });
+      this.logger.error('Failed to create exam', error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to create term test',
-          error: error.response || error.message,
-          originalError: error.name,
+          message: error instanceof HttpException ? error.message : 'Failed to create exam',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -88,14 +78,13 @@ export class InstituteClassExamController {
         data: exam,
       };
     } catch (error) {
-      this.logger.error(`Failed to get exam: ${examId}`, error);
+      this.logger.error(`Failed to get exam: ${examId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to retrieve exam',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to retrieve exam',
         },
-        error.status || HttpStatus.NOT_FOUND,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.NOT_FOUND,
       );
     }
   }
@@ -120,14 +109,13 @@ export class InstituteClassExamController {
         count: exams.length,
       };
     } catch (error) {
-      this.logger.error(`Failed to get institute exams: ${instituteId}`, error);
+      this.logger.error(`Failed to get institute exams: ${instituteId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to retrieve institute exams',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to retrieve institute exams',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -152,14 +140,13 @@ export class InstituteClassExamController {
         count: exams.length,
       };
     } catch (error) {
-      this.logger.error(`Failed to get class exams: ${classId}`, error);
+      this.logger.error(`Failed to get class exams: ${classId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to retrieve class exams',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to retrieve class exams',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -188,14 +175,13 @@ export class InstituteClassExamController {
         data: updatedExam,
       };
     } catch (error) {
-      this.logger.error(`Failed to update exam: ${examId}`, error);
+      this.logger.error(`Failed to update exam: ${examId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to update exam',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to update exam',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -214,13 +200,13 @@ export class InstituteClassExamController {
   async enterMarks(
     @Param('id', ParseBigIntPipe) examId: string,
     @Body() markEntryDto: MarkEntryDto,
+    @Request() req: any,
   ) {
     try {
       // Set the examId from the URL parameter
       markEntryDto.examId = examId;
       
-      // For now, using a mock user ID
-      const enteredBy = 'teacher_user_id'; // Replace with user.id from auth
+      const enteredBy = req.user?.s || req.user?.userId || 'unknown';
       
       const result = await this.examService.enterMarks(markEntryDto, enteredBy);
       
@@ -230,14 +216,13 @@ export class InstituteClassExamController {
         data: result,
       };
     } catch (error) {
-      this.logger.error(`Failed to enter marks for exam: ${examId}`, error);
+      this.logger.error(`Failed to enter marks for exam: ${examId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to enter marks',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to enter marks',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -256,13 +241,13 @@ export class InstituteClassExamController {
   async bulkEnterMarks(
     @Param('id', ParseBigIntPipe) examId: string,
     @Body() bulkMarkEntryDto: BulkMarkEntryDto,
+    @Request() req: any,
   ) {
     try {
       // Set the examId from the URL parameter
       bulkMarkEntryDto.examId = examId;
       
-      // For now, using a mock user ID
-      const enteredBy = 'teacher_user_id'; // Replace with user.id from auth
+      const enteredBy = req.user?.s || req.user?.userId || 'unknown';
       
       const result = await this.examService.bulkEnterMarks(bulkMarkEntryDto, enteredBy);
       
@@ -276,14 +261,13 @@ export class InstituteClassExamController {
         },
       };
     } catch (error) {
-      this.logger.error(`Failed to bulk enter marks for exam: ${examId}`, error);
+      this.logger.error(`Failed to bulk enter marks for exam: ${examId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to bulk enter marks',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to bulk enter marks',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -301,10 +285,10 @@ export class InstituteClassExamController {
   async publishResults(
     @Param('id', ParseBigIntPipe) examId: string,
     @Body() publishResultsDto: PublishResultsDto,
+    @Request() req: any,
   ) {
     try {
-      // For now, using a mock user ID
-      const publishedBy = 'admin_user_id'; // Replace with user.id from auth
+      const publishedBy = req.user?.s || req.user?.userId || 'unknown';
       
       const result = await this.examService.publishResults(examId, publishedBy);
       
@@ -314,14 +298,13 @@ export class InstituteClassExamController {
         data: result,
       };
     } catch (error) {
-      this.logger.error(`Failed to publish results for exam: ${examId}`, error);
+      this.logger.error(`Failed to publish results for exam: ${examId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to publish results',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to publish results',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -345,14 +328,13 @@ export class InstituteClassExamController {
         data: { examId },
       };
     } catch (error) {
-      this.logger.error(`Failed to delete exam: ${examId}`, error);
+      this.logger.error(`Failed to delete exam: ${examId}`, error.stack);
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to delete exam',
-          error: error.response || error.message,
+          message: error instanceof HttpException ? error.message : 'Failed to delete exam',
         },
-        error.status || HttpStatus.BAD_REQUEST,
+        error instanceof HttpException ? error.getStatus() : HttpStatus.BAD_REQUEST,
       );
     }
   }
