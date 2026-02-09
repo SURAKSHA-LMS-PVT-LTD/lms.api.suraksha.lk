@@ -207,14 +207,19 @@ export class AdvertisementEntity {
     this.currentSendings += 1;
   }
 
+  /**
+   * ✅ FIXED: No longer calls incrementSending().
+   * currentSendings is tracked separately by AdvertisementCacheService.trackSending()
+   * to prevent double-counting.
+   */
   incrementImpression(): void {
     this.impressionCount += 1;
-    this.incrementSending();
   }
 
   incrementClick(): void {
     this.clickCount += 1;
   }
+  
 }
 
 

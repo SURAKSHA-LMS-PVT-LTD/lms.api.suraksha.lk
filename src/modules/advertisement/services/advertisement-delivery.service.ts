@@ -8,6 +8,7 @@ import { AttendanceNotificationService, AttendanceNotificationData } from '../..
 import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
+import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 
 export interface AdvertisementDeliveryResult {
   success: boolean;
@@ -65,6 +66,8 @@ export class AdvertisementDeliveryService {
     private studentRepository: Repository<StudentEntity>,
     @InjectRepository(ParentEntity)
     private parentRepository: Repository<ParentEntity>,
+    @InjectRepository(InstituteUserEntity)
+    private instituteUserRepository: Repository<InstituteUserEntity>,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
   ) {
@@ -318,23 +321,25 @@ export class AdvertisementDeliveryService {
 
       // Use parent data if available, otherwise use student data
       const parentData = student.father || student.mother || student.guardian;
-      
-      // Map UserType enum to match expected type
-      const userTypeMapping = {
-        'SUPER_ADMIN': 'SUPERADMIN',
-        'INSTITUTE_ADMIN': 'INSTITUTE_ADMIN',
-        'ATTENDANCE_MARKER': 'ATTENDANCE_MARKER',
-        'TEACHER': 'TEACHER',
-        'STUDENT': 'STUDENT',
-        'PARENT': 'PARENT',
-        'OWNER': 'OWNER'
-      };
-      
+
+      // ✅ FIXED: Query institute_users to get actual instituteId for ad targeting
+      let instituteId: string | undefined;
+      try {
+        const instituteUser = await this.instituteUserRepository.findOne({
+          where: { userId: studentId, status: 'ACTIVE' as any },
+          select: ['instituteId'],
+          order: { instituteId: 'ASC' },
+        });
+        instituteId = instituteUser?.instituteId;
+      } catch (err) {
+        this.logger.warn(`Could not fetch instituteId for user ${studentId}: ${err.message}`);
+      }
+
       return {
         userId: studentId,
-        userType: (userTypeMapping[student.user.userType] || student.user.userType) as any,
+        userType: student.user.userType as any,
         subscriptionPlan: subscriptionPlan as any,
-        instituteId: undefined, // StudentEntity doesn't have instituteId, need to get from institute_users
+        instituteId,
         city: student.user.city || parentData?.user?.city,
         province: student.user.province || parentData?.user?.province,
         district: student.user.district,
@@ -351,60 +356,47 @@ export class AdvertisementDeliveryService {
 
   /**
    * Check if advertisements are enabled for subscription plan
+   * ✅ REFACTORED: Subscription plan no longer gates ad delivery.
+   * Delivery channels are determined solely by the ad's supportivePlatforms.
+   * Subscription plan is only used for other features (marks, attendance, etc.)
    */
   private isAdvertisementEnabled(subscriptionPlan: string): boolean {
-    // Import notification config to check if ads are enabled
-    const NOTIFICATION_PACKAGES_CONFIG = {
-      FREE: { isAds: true },
-      BASIC: { isAds: true },
-      STANDARD: { isAds: true },
-      PREMIUM: { isAds: false },
-      ENTERPRISE: { isAds: false }
-    };
-
-    const config = NOTIFICATION_PACKAGES_CONFIG[subscriptionPlan?.toUpperCase()];
-    return config?.isAds !== false;
+    // Ads are always enabled — delivery channels come from ad.supportivePlatforms
+    return true;
   }
 
   /**
    * Record advertisement impression (view)
+   * ✅ FIXED: Uses atomic increment() instead of findOne+save to prevent race conditions.
+   * Only increments impressionCount here — currentSendings is tracked separately
+   * by AdvertisementCacheService.trackSending() to avoid double-counting.
    */
   private async recordAdvertisementImpression(advertisementId: string, studentId: string): Promise<void> {
     try {
-      const advertisement = await this.advertisementRepository.findOne({
-        where: { id: advertisementId },
-        select: ['id', 'currentSendings', 'maxSendings', 'impressionCount']
-      });
-
-      if (advertisement && advertisement.currentSendings < advertisement.maxSendings) {
-        advertisement.incrementImpression();
-        await this.advertisementRepository.save(advertisement);
-      }
+      await this.advertisementRepository.increment(
+        { id: advertisementId },
+        'impressionCount',
+        1,
+      );
     } catch (error) {
-      this.logger.error(`Error recording impression for ad ${advertisementId}`, error);
+      this.logger.warn(`Failed to record impression for ad ${advertisementId}: ${error.message}`);
     }
   }
 
   /**
    * Record advertisement click (when user interacts)
+   * ✅ FIXED: Uses atomic increment() instead of findOne+save to prevent race conditions.
    */
   async recordAdvertisementClick(advertisementId: string, studentId: string): Promise<boolean> {
     try {
-      const advertisement = await this.advertisementRepository.findOne({
-        where: { id: advertisementId },
-        select: ['id', 'clickCount']
-      });
-
-      if (advertisement) {
-        advertisement.incrementClick();
-        await this.advertisementRepository.save(advertisement);
-        
-        return true;
-      }
-
-      return false;
+      const result = await this.advertisementRepository.increment(
+        { id: advertisementId },
+        'clickCount',
+        1,
+      );
+      return (result.affected ?? 0) > 0;
     } catch (error) {
-      this.logger.error(`Error recording click for ad ${advertisementId}`, error);
+      this.logger.warn(`Failed to record click for ad ${advertisementId}: ${error.message}`);
       return false;
     }
   }

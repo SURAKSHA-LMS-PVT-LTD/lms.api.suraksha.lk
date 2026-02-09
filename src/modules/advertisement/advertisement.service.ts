@@ -2,7 +2,6 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { AdvertisementEntity, MediaType } from './entities/advertisement.entity';
-import { NOTIFICATION_PACKAGES_CONFIG } from './services/notification-packages.config';
 import { UserType } from '../user/enums/user-type.enum';
 import { Gender } from '../user/enums/gender.enum';
 import { SubscriptionPlan } from '../user/enums/subscription-plan.enum';
@@ -313,7 +312,9 @@ export class AdvertisementService {
   // ========================================
 
   /**
-   * 📤 Send advertisement manually to targeted users with package filtering
+   * 📤 Send advertisement manually to targeted users
+   * Delivery channels are determined by the ad's supportivePlatforms array.
+   * Subscription plan is NOT used for channel filtering — only for other features (marks, etc.)
    */
   async sendAdvertisementManually(sendDto: ManualAdvertisementSendDto, adminUserId: string): Promise<ManualSendResponseDto> {
     try {
@@ -328,7 +329,13 @@ export class AdvertisementService {
         throw new BadRequestException('Cannot send inactive advertisement');
       }
 
-      // 2. Get targeted users based on criteria
+      // 2. Validate ad has delivery channels configured
+      const deliveryChannels = advertisement.supportivePlatforms || [];
+      if (deliveryChannels.length === 0) {
+        throw new BadRequestException('Advertisement has no delivery channels (supportivePlatforms) configured');
+      }
+
+      // 3. Get targeted users based on criteria
       const targetedUsers = await this.getTargetedUsers(sendDto);
 
       if (targetedUsers.length === 0) {
@@ -347,13 +354,29 @@ export class AdvertisementService {
         };
       }
 
-      // 3. Filter users by their subscription package capabilities
-      const { eligibleUsers, packageBreakdown } = await this.filterUsersByPackageCapabilities(targetedUsers, sendDto.channels);
+      // 4. Build plan breakdown for analytics (no filtering — all targeted users are eligible)
+      const packageBreakdown = this.buildPlanBreakdown(targetedUsers);
       
-      // 4. Send advertisements to eligible users
-      const sendResults = await this.sendAdvertisementToUsers(advertisement, eligibleUsers, sendDto.message, sendDto.channels);
+      // 5. Send advertisements to ALL targeted users using ad's supportivePlatforms
+      const sendResults = await this.sendAdvertisementToUsers(advertisement, targetedUsers, sendDto.message);
 
-      // 5. Update advertisement send count
+      // 6. Update plan breakdown with actual results
+      for (const userId of sendResults.sentUsers) {
+        const user = targetedUsers.find(u => u.id === userId);
+        if (user) {
+          const plan = user.subscriptionPlan || 'BASIC';
+          if (packageBreakdown[plan]) packageBreakdown[plan].sent++;
+        }
+      }
+      for (const userId of sendResults.failedUsers) {
+        const user = targetedUsers.find(u => u.id === userId);
+        if (user) {
+          const plan = user.subscriptionPlan || 'BASIC';
+          if (packageBreakdown[plan]) packageBreakdown[plan].failed++;
+        }
+      }
+
+      // 7. Update advertisement send count
       await this.advertisementRepository.increment(
         { id: advertisement.id },
         'currentSendings',
@@ -364,7 +387,7 @@ export class AdvertisementService {
       
       return {
         success: true,
-        message: `Advertisement sent to ${sendResults.sentUsers.length} users successfully`,
+        message: `Advertisement sent to ${sendResults.sentUsers.length} users via [${deliveryChannels.join(', ')}]`,
         data: {
           campaignId,
           totalTargeted: targetedUsers.length,
@@ -491,63 +514,42 @@ export class AdvertisementService {
   }
 
   /**
-   * 📦 Filter users by their subscription package capabilities
+   * 📦 Build subscription plan breakdown for analytics
+   * NOTE: Subscription plan is NOT used for ad delivery filtering.
+   * Delivery channels come from ad.supportivePlatforms.
+   * This method only groups users by plan for reporting purposes.
    */
-  private async filterUsersByPackageCapabilities(
-    users: UserEntity[], 
-    requestedChannels?: string[]
-  ): Promise<{ 
-    eligibleUsers: UserEntity[]; 
-    packageBreakdown: { [packageName: string]: { targeted: number; sent: number; failed: number } } 
-  }> {
+  private buildPlanBreakdown(
+    users: UserEntity[]
+  ): { [packageName: string]: { targeted: number; sent: number; failed: number } } {
     const packageBreakdown: { [packageName: string]: { targeted: number; sent: number; failed: number } } = {};
-    const eligibleUsers: UserEntity[] = [];
 
     for (const user of users) {
       const subscriptionPlan = user.subscriptionPlan || 'BASIC';
-      
-      // Initialize package breakdown
       if (!packageBreakdown[subscriptionPlan]) {
         packageBreakdown[subscriptionPlan] = { targeted: 0, sent: 0, failed: 0 };
       }
       packageBreakdown[subscriptionPlan].targeted++;
-
-      // Check if user's package should receive advertisements
-      const packageConfig = await this.getPackageConfiguration(subscriptionPlan);
-      
-      if (packageConfig?.isAds === true) {
-        // Check if requested channels are supported by user's package
-        const supportedChannels = packageConfig.channels || [];
-        const hasValidChannel = !requestedChannels || 
-          requestedChannels.length === 0 || 
-          requestedChannels.some(channel => supportedChannels.includes(channel));
-
-        if (hasValidChannel) {
-          eligibleUsers.push(user);
-          packageBreakdown[subscriptionPlan].sent++;
-        } else {
-          this.logger.warn(`📵 User ${user.id} package ${subscriptionPlan} doesn't support requested channels`);
-          packageBreakdown[subscriptionPlan].failed++;
-        }
-      } else {
-        packageBreakdown[subscriptionPlan].failed++;
-      }
     }
 
-    return { eligibleUsers, packageBreakdown };
+    return packageBreakdown;
   }
 
   /**
-   * 📱 Send advertisement to eligible users via their preferred channels
+   * 📱 Send advertisement to users via the ad's supportivePlatforms channels
+   * Delivery channels are defined on the advertisement entity itself.
+   * Subscription plan does NOT affect which channels are used.
    */
   private async sendAdvertisementToUsers(
     advertisement: AdvertisementEntity,
     users: UserEntity[],
     customMessage?: string,
-    requestedChannels?: string[]
   ): Promise<{ sentUsers: string[]; failedUsers: string[] }> {
     const sentUsers: string[] = [];
     const failedUsers: string[] = [];
+    const deliveryChannels = advertisement.supportivePlatforms || [];
+
+    this.logger.log(`📡 Delivering ad "${advertisement.title}" via channels: [${deliveryChannels.join(', ')}] to ${users.length} users`);
 
     for (const user of users) {
       try {
@@ -569,7 +571,9 @@ export class AdvertisementService {
             mediaUrl: advertisement.mediaUrl,
             mediaType: advertisement.mediaType,
             title: advertisement.title,
-            content: customMessage || advertisement.description || `Check out our latest update!`
+            content: customMessage || advertisement.description || `Check out our latest update!`,
+            // 🎯 Pass delivery channels from ad entity so notification service knows which channels to use
+            deliveryChannels: deliveryChannels,
           }
         };
 
@@ -588,26 +592,7 @@ export class AdvertisementService {
   }
 
   /**
-   * 📋 Get package configuration from notification system
-   */
-  private async getPackageConfiguration(subscriptionPlan: string): Promise<any> {
-    try {
-      // Get configuration from notification packages config
-      const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[subscriptionPlan.toUpperCase()];
-      
-      if (!packageConfig) {
-        return NOTIFICATION_PACKAGES_CONFIG.packages['FREE'] || { isAds: false, channels: ['email'] };
-      }
-      
-      return packageConfig;
-    } catch (error) {
-      this.logger.error('Error getting package configuration:', error);
-      return { isAds: false, channels: [] };
-    }
-  }
-
-  /**
-   * 📊 Get manual sending analytics for admin dashboard
+   *  Get manual sending analytics for admin dashboard
    */
   async getManualSendAnalytics(adminUserId: string, startDate?: string, endDate?: string): Promise<any> {
     try {
@@ -695,20 +680,15 @@ export class AdvertisementService {
         bySubscriptionPlan[plan] = (bySubscriptionPlan[plan] || 0) + 1;
       });
 
-      // Query 3: Filter by package capabilities
-      const { eligibleUsers, packageBreakdown } = await this.filterUsersByPackageCapabilities(
-        targetedUsers,
-        sendDto.channels
-      );
-      dbQueryCount++;
+      // Build plan breakdown for analytics (no channel filtering — all targeted users are eligible)
+      const packageBreakdown = this.buildPlanBreakdown(targetedUsers);
 
-      const platforms = sendDto.channels || ['email', 'telegram', 'whatsapp', 'sms'];
+      // Delivery channels come from the advertisement entity
+      const deliveryChannels = advertisement.supportivePlatforms || [];
       const deliveryMode = targetedUsers.length > 100 ? 'batch' : 'real-time';
       const estimatedTime = targetedUsers.length > 100 
         ? `${Math.ceil(targetedUsers.length / 50)} minutes` 
         : `${targetedUsers.length * 0.5} seconds`;
-
-      const executionTime = Date.now() - startTime;
 
       return {
         success: true,
@@ -720,6 +700,7 @@ export class AdvertisementService {
             mediaUrl: advertisement.mediaUrl,
             mediaType: advertisement.mediaType,
             isActive: advertisement.isActive,
+            supportivePlatforms: deliveryChannels,
           },
           targeting: {
             totalUsers: targetedUsers.length,
@@ -729,13 +710,13 @@ export class AdvertisementService {
             bySubscriptionPlan,
           },
           delivery: {
-            platforms,
-            eligibleUsers: eligibleUsers.length,
-            ineligibleUsers: targetedUsers.length - eligibleUsers.length,
+            platforms: deliveryChannels,
+            eligibleUsers: targetedUsers.length,
+            ineligibleUsers: 0,
             packageBreakdown,
           },
           execution: {
-            estimatedDBQueries: dbQueryCount + (eligibleUsers.length > 0 ? 1 : 0), // +1 for update query
+            estimatedDBQueries: dbQueryCount + (targetedUsers.length > 0 ? 1 : 0), // +1 for update query
             estimatedExecutionTime: estimatedTime,
             deliveryMode,
           },

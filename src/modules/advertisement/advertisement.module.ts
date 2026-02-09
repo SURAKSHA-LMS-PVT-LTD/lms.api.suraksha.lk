@@ -7,6 +7,7 @@ import { AdvertisementEntity } from './entities/advertisement.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
+import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { AdvertisementDeliveryService } from './services/advertisement-delivery.service';
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
@@ -20,7 +21,8 @@ import { AttendanceModule } from '../attendance/attendance.module';
       AdvertisementEntity,
       UserEntity,
       StudentEntity,
-      ParentEntity
+      ParentEntity,
+      InstituteUserEntity,
     ]),
     SmsModule,
     CacheModule, // For advertisement caching with 12-hour TTL + daily 5 AM refresh

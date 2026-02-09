@@ -308,77 +308,37 @@ export class AdvertisementMatchingService {
   /**
    * Get all active advertisements that can still send
    */
-  private async getActiveAdvertisements(): Promise<AdvertisementEntity[]> {
-    const currentTime = getCurrentSriLankaTime();
-    
-    return await this.advertisementRepository
-      .createQueryBuilder('ad')
-      .select([
-        'ad.id',
-        'ad.title',
-        'ad.description',
-        'ad.mediaUrl',
-        'ad.mediaType',
-        'ad.targetUserTypes',
-        'ad.targetGenders',
-        'ad.minBornYear',
-        'ad.maxBornYear',
-        'ad.targetSubscriptionPlans',
-        'ad.targetInstituteIds',
-        'ad.targetCities',
-        'ad.targetProvinces',
-        'ad.targetDistricts',
-        'ad.targetOccupations',
-        'ad.priority',
-        'ad.currentSendings',
-        'ad.maxSendings',
-        'ad.startDate',
-        'ad.endDate'
-      ])
-      .where('ad.isActive = :isActive', { isActive: true })
-      .andWhere('ad.startDate <= :currentTime', { currentTime })
-      .andWhere('ad.endDate >= :currentTime', { currentTime })
-      .andWhere('ad.currentSendings < ad.maxSendings')
-      .orderBy('ad.priority', 'DESC')
-      .addOrderBy('ad.createdAt', 'DESC')
-      .getMany();
-  }
+  // ✅ REMOVED: Dead private getActiveAdvertisements() method.
+  // This service uses advertisementCacheService.getActiveAdvertisements() instead (line ~62).
 
   /**
-   * Record advertisement impression and increment counters
+   * Record advertisement impression and increment counter atomically
+   * ✅ FIXED: Uses atomic increment() instead of findOne+save to prevent race conditions.
+   * Only increments impressionCount — currentSendings is tracked by AdvertisementCacheService.
    */
   async recordImpression(advertisementId: string, userProfile: UserProfile): Promise<void> {
     try {
-      // Optimize: Select only fields needed for impression recording
-      const advertisement = await this.advertisementRepository.findOne({
-        where: { id: advertisementId },
-        select: ['id', 'currentSendings', 'maxSendings', 'impressionCount']
-      });
-
-      if (advertisement && advertisement.canSend()) {
-        advertisement.incrementImpression();
-        await this.advertisementRepository.save(advertisement);
-      }
+      await this.advertisementRepository.increment(
+        { id: advertisementId },
+        'impressionCount',
+        1,
+      );
     } catch (error) {
       this.logger.error(`Error recording impression: ${error.message}`, error.stack);
     }
   }
 
   /**
-   * Record advertisement click
+   * Record advertisement click atomically
+   * ✅ FIXED: Uses atomic increment() instead of findOne+save to prevent race conditions.
    */
   async recordClick(advertisementId: string, userProfile: UserProfile): Promise<void> {
     try {
-      // Optimize: Select only fields needed for click recording
-      const advertisement = await this.advertisementRepository.findOne({
-        where: { id: advertisementId },
-        select: ['id', 'clickCount']
-      });
-
-      if (advertisement) {
-        advertisement.incrementClick();
-        await this.advertisementRepository.save(advertisement);
-      }
+      await this.advertisementRepository.increment(
+        { id: advertisementId },
+        'clickCount',
+        1,
+      );
     } catch (error) {
       this.logger.error(`Error recording click: ${error.message}`, error.stack);
     }

@@ -35,11 +35,6 @@ export class ManualAdvertisementSendDto {
   @IsOptional()
   @IsString()
   message?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  channels?: string[]; // ['email', 'telegram', 'whatsapp', 'sms']
 }
 
 export class BulkManualAdvertisementSendDto {
