@@ -3,6 +3,13 @@ import { AppModule } from '../app.module';
 import { PasswordMigrationService } from './password-migration.service';
 
 async function resetAllPasswords() {
+  // 🔒 SECURITY: Block execution in production environment
+  if (process.env.NODE_ENV === 'production') {
+    console.error('\u274c CRITICAL: Password reset CLI is BLOCKED in production environment!');
+    console.error('This tool should never be run against a production database.');
+    process.exit(1);
+  }
+
   const app = await NestFactory.createApplicationContext(AppModule);
   const passwordMigrationService = app.get(PasswordMigrationService);
 

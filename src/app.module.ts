@@ -124,7 +124,7 @@ import { AppService } from './app.service';
           debug: false, // Always disabled in production
           // MySQL 8.x SSL configuration
           ssl: config.get('NODE_ENV') === 'production' ? {
-            rejectUnauthorized: false,
+            rejectUnauthorized: config.get('DB_SSL_REJECT_UNAUTHORIZED', 'true') === 'true',
             // Enable TLS 1.2+ for MySQL 8.x
             minVersion: 'TLSv1.2'
           } : false,

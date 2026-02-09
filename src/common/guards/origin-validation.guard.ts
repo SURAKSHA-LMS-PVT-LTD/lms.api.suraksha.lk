@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 
@@ -17,6 +17,7 @@ import { Reflector } from '@nestjs/core';
  */
 @Injectable()
 export class OriginValidationGuard implements CanActivate {
+  private readonly logger = new Logger(OriginValidationGuard.name);
   private readonly allowedOrigins: string[];
   private readonly allowedIPs: string[];
   private readonly strictMode: boolean;
@@ -49,14 +50,12 @@ export class OriginValidationGuard implements CanActivate {
 
     // ✅ BYPASS in development mode - Allow all requests
     if (this.isDevelopment) {
-      console.log('🔓 Origin validation bypassed - Development mode');
       return true;
     }
 
     // ✅ BYPASS: ONLY for API key authentication (backend-to-backend)
     // @Public() routes do NOT bypass origin validation!
     if (request._isApiKeyAuthenticated || request.user?.isApiKeyAuth) {
-      console.log('✅ Origin validation bypassed - API Key authentication');
       return true;
     }
 
@@ -74,7 +73,7 @@ export class OriginValidationGuard implements CanActivate {
       
       // 🚫 SILENT BLOCK - Return empty 403 (looks like DNS/network error)
       const clientIP = request.ip || request.connection?.remoteAddress || 'unknown';
-      console.warn(`🚫 SECURITY BLOCK - Unauthorized origin: ${origin} from IP: ${clientIP}`);
+      this.logger.warn(`SECURITY BLOCK - Unauthorized origin: ${origin} from IP: ${clientIP}`);
       response.status(403).send();
       return false;
     }
@@ -88,14 +87,14 @@ export class OriginValidationGuard implements CanActivate {
 
       // 🚫 SILENT BLOCK - Return empty 403
       const clientIP = request.ip || request.connection?.remoteAddress || 'unknown';
-      console.warn(`🚫 SECURITY BLOCK - Unauthorized referer: ${referer} from IP: ${clientIP}`);
+      this.logger.warn(`SECURITY BLOCK - Unauthorized referer from IP: ${clientIP}`);
       response.status(403).send();
       return false;
     }
 
     // 🚫 PRODUCTION STRICT MODE: No Origin or Referer - SILENT BLOCK
     const clientIP = request.ip || request.connection?.remoteAddress || 'unknown';
-    console.warn(`🚫 SECURITY BLOCK - No origin/referer headers from IP: ${clientIP}`);
+    this.logger.warn(`SECURITY BLOCK - No origin/referer headers from IP: ${clientIP}`);
     response.status(403).send();
     return false;
   }

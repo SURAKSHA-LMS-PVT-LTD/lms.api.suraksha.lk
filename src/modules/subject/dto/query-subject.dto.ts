@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
-import { IsOptional, IsString, IsBoolean, IsInt, Min, Max, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, IsIn, Min, Max, IsEnum } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -77,13 +77,15 @@ export class QuerySubjectDto {
   @Max(1000) // Increased maximum to allow larger result sets
   limit?: number;
 
-  @ApiPropertyOptional({ description: 'Sort field' })
+  @ApiPropertyOptional({ description: 'Sort field', enum: ['name', 'code', 'category', 'createdAt', 'updatedAt'] })
   @IsOptional()
   @IsString()
+  @IsIn(['name', 'code', 'category', 'createdAt', 'updatedAt'], { message: 'sortBy must be one of: name, code, category, createdAt, updatedAt' })
   sortBy?: string;
 
   @ApiPropertyOptional({ description: 'Sort order', enum: ['ASC', 'DESC'] })
   @IsOptional()
   @IsString()
+  @IsIn(['ASC', 'DESC'])
   sortOrder?: 'ASC' | 'DESC';
 }

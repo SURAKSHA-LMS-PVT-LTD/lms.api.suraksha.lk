@@ -70,7 +70,7 @@ import { EnhancedEmailService } from '../../common/services/enhanced-email.servi
 
         return {
           secret: jwtSecret,
-          signOptions: { expiresIn: '24h' },
+          signOptions: { expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '15m' },
         };
       },
       inject: [ConfigService],

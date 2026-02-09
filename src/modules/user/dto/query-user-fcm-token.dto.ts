@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
-import { IsOptional, IsString, IsEnum, IsBoolean, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsBoolean, IsInt, IsIn, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { DeviceType } from '../entities/user-fcm-token.entity';
@@ -46,9 +46,10 @@ export class QueryUserFcmTokenDto {
   @Max(100)
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Sort by field', default: 'createdAt' })
+  @ApiPropertyOptional({ description: 'Sort by field', default: 'createdAt', enum: ['createdAt', 'updatedAt', 'lastSeen', 'userId'] })
   @IsOptional()
   @IsString()
+  @IsIn(['createdAt', 'updatedAt', 'lastSeen', 'userId'], { message: 'sortBy must be one of: createdAt, updatedAt, lastSeen, userId' })
   sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({ description: 'Sort order', enum: ['ASC', 'DESC'], default: 'DESC' })

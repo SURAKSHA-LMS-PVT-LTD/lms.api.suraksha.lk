@@ -244,6 +244,37 @@ function validateConnectionPool(): ValidationResult {
 }
 
 /**
+ * Validate that secrets are not reused across different systems
+ */
+function validateSecretReuse(): ValidationResult {
+  const result: ValidationResult = { valid: true, errors: [], warnings: [] };
+
+  const secrets: Record<string, string | undefined> = {
+    JWT_SECRET: process.env.JWT_SECRET,
+    REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
+    BCRYPT_PEPPER: process.env.BCRYPT_PEPPER,
+    TELEGRAM_SECRET_TOKEN: process.env.TELEGRAM_SECRET_TOKEN,
+    SPECIAL_API_KEY: process.env.SPECIAL_API_KEY,
+  };
+
+  const entries = Object.entries(secrets).filter(([, v]) => v && v.length > 0);
+  
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[i][1] === entries[j][1]) {
+        result.warnings.push(
+          `⚠️  SECRET REUSE DETECTED: ${entries[i][0]} and ${entries[j][0]} have the same value!\n` +
+          `   Each secret should be unique. Reusing secrets across systems reduces security.\n` +
+          `   Generate a unique value with: openssl rand -hex 64`
+        );
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Run all validations
  */
 function validateAll(): boolean {
@@ -256,6 +287,7 @@ function validateAll(): boolean {
     { name: 'Bcrypt Salt Rounds', fn: validateBcryptSaltRounds },
     { name: 'Database Configuration', fn: validateDatabaseConfig },
     { name: 'Connection Pool', fn: validateConnectionPool },
+    { name: 'Secret Reuse', fn: validateSecretReuse },
   ];
 
   let hasErrors = false;

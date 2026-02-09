@@ -70,6 +70,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       },
     });
 
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isServerError = errorInfo.statusCode >= 500;
+
     // Send structured error response
     response.status(errorInfo.statusCode).json({
       success: false,
@@ -80,8 +83,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message: errorInfo.message,
       error: errorInfo.type,
       requestId,
-      ...(errorInfo.details && { details: errorInfo.details }),
-      ...(process.env.NODE_ENV === 'development' && errorInfo.stack && { 
+      // Only include details for client errors in production; hide for server errors
+      ...(errorInfo.details && (!isProduction || !isServerError) && { details: errorInfo.details }),
+      ...(!isProduction && errorInfo.stack && { 
         stack: errorInfo.stack 
       }),
     });
@@ -145,8 +149,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         statusCode: HttpStatus.NOT_FOUND,
         message: 'The requested resource was not found',
         type: 'EntityNotFoundError',
-        details: exception.message,
-        stack: exception.stack,
+        details: process.env.NODE_ENV !== 'production' ? exception.message : undefined,
+        stack: process.env.NODE_ENV !== 'production' ? exception.stack : undefined,
       };
     }
 
@@ -168,7 +172,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           ? 'Internal server error occurred' 
           : exception.message,
         type: exception.constructor.name,
-        stack: exception.stack,
+        stack: process.env.NODE_ENV !== 'production' ? exception.stack : undefined,
       };
     }
 
@@ -177,7 +181,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       message: 'An unexpected error occurred',
       type: 'UnknownError',
-      details: typeof exception === 'object' ? JSON.stringify(exception) : String(exception),
+      details: process.env.NODE_ENV !== 'production'
+        ? (typeof exception === 'object' ? JSON.stringify(exception) : String(exception))
+        : undefined,
     };
   }
 
@@ -191,6 +197,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const message = error.message;
     const code = (error as any).code;
     const errno = (error as any).errno;
+    const isDev = process.env.NODE_ENV !== 'production';
 
     // Handle specific MySQL error codes
     switch (code) {
@@ -200,7 +207,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           message: 'Duplicate entry: A record with this information already exists',
           type: 'DuplicateEntryError',
           details: this.extractDuplicateField(message),
-          stack: error.stack,
+          stack: isDev ? error.stack : undefined,
         };
 
       case 'ER_NO_REFERENCED_ROW_2':
@@ -208,8 +215,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           statusCode: HttpStatus.BAD_REQUEST,
           message: 'Referenced record does not exist',
           type: 'ForeignKeyConstraintError',
-          details: message,
-          stack: error.stack,
+          details: isDev ? message : undefined,
+          stack: isDev ? error.stack : undefined,
         };
 
       case 'ER_ROW_IS_REFERENCED_2':
@@ -217,8 +224,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           statusCode: HttpStatus.CONFLICT,
           message: 'Cannot delete: Record is being referenced by other records',
           type: 'ForeignKeyConstraintError',
-          details: message,
-          stack: error.stack,
+          details: isDev ? message : undefined,
+          stack: isDev ? error.stack : undefined,
         };
 
       case 'ER_DATA_TOO_LONG':
@@ -226,8 +233,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           statusCode: HttpStatus.BAD_REQUEST,
           message: 'Data too long for field',
           type: 'DataTooLongError',
-          details: message,
-          stack: error.stack,
+          details: isDev ? message : undefined,
+          stack: isDev ? error.stack : undefined,
         };
 
       case 'ER_ACCESS_DENIED_ERROR':
@@ -235,7 +242,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
           message: 'Database access denied',
           type: 'DatabaseAccessError',
-          stack: error.stack,
+          stack: isDev ? error.stack : undefined,
         };
 
       case 'ER_BAD_DB_ERROR':
@@ -243,18 +250,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
           message: 'Database connection error',
           type: 'DatabaseConnectionError',
-          stack: error.stack,
+          stack: isDev ? error.stack : undefined,
         };
 
       default:
         return {
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-          message: process.env.NODE_ENV === 'production' 
-            ? 'Database operation failed' 
-            : message,
+          message: isDev ? message : 'Database operation failed',
           type: 'DatabaseError',
-          details: { code, errno, message },
-          stack: error.stack,
+          details: isDev ? { code, errno, message } : undefined,
+          stack: isDev ? error.stack : undefined,
         };
     }
   }

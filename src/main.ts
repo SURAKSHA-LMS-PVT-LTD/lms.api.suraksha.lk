@@ -1,6 +1,6 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { validateAll } from './config/validate-environment';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -145,12 +145,19 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
+        forbidNonWhitelisted: true, // Reject requests with unknown properties
         transform: true,
         transformOptions: {
-          enableImplicitConversion: true, // Auto-convert types
+          // ⚠️ SECURITY NOTE: enableImplicitConversion auto-converts query/param strings to numbers/booleans.
+          // This can bypass class-validator checks if DTOs aren't carefully typed.
+          // Ensure all DTO properties have explicit @IsInt(), @IsBoolean(), etc. validators.
+          enableImplicitConversion: true,
         },
       }),
     );
+
+    // 🔒 SECURITY: Apply ClassSerializerInterceptor globally to honor @Exclude() decorators
+    app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
     if (!isProduction) {
       console.log('✅ Global validation pipes configured');

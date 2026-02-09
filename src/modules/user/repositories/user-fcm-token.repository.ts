@@ -132,14 +132,9 @@ export class UserFcmTokenRepository {
     // Ensure userId is a string for consistent comparison with bigint column
     const userIdStr = String(userId);
     
-    // Debug: Log the query
-    console.log(`[FCM Token Query] Looking for active tokens for user_id = '${userIdStr}'`);
-    
     const tokens = await this.repository.find({
       where: { userId: userIdStr, isActive: true },
     });
-    
-    console.log(`[FCM Token Query] Found ${tokens.length} tokens for user ${userIdStr}`);
     
     return tokens;
   }

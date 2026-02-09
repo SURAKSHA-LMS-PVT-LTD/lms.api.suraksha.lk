@@ -27,8 +27,6 @@ export class ApiKeyOrJwtGuard extends AuthGuard('jwt') {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
-    console.log('🔑 ApiKeyOrJwtGuard called!', { authHeader: authHeader?.substring(0, 50) });
-
     if (!authHeader) {
       throw new UnauthorizedException('No authorization header provided');
     }
@@ -47,14 +45,14 @@ export class ApiKeyOrJwtGuard extends AuthGuard('jwt') {
     if (specialApiKey && token === specialApiKey) {
       // API Key authentication successful
       // Set user on request and mark as API key authenticated
+      // 🔒 SECURITY: API key gets a dedicated type, NOT superadmin equivalence
       request.user = {
         isApiKeyAuth: true,
         authType: 'API_KEY',
-        // Add minimal user context for API key requests
         s: 'api-key-user', // Subject/user ID
         userType: 'API_KEY',
-        u: 0, // User type number for compatibility
-        i: [], // Empty institute access
+        u: -1, // Dedicated API key type (NOT 0/SUPERADMIN)
+        i: [], // Empty institute access - API key access is checked separately in FlexibleAccessGuard
       };
       // Mark the request to skip JWT validation in handleRequest
       request._isApiKeyAuthenticated = true;

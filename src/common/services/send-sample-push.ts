@@ -6,7 +6,12 @@ async function sendSamplePush() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const fcmService = app.get(FcmNotificationService);
 
-  const fcmToken = 'flqezDBaTRyv8n6lsyqlhj:APA91bHNOXouO2W9LImGK0fOuooiRS9eYW3JnloWGaLozsbM_SVVPuYQ6A8trjxQ71lIjFV-uk5EBg8j1hCeae6ZxtmWmhSLXztMazP8DxE1BBayd-B71Gc';
+  const fcmToken = process.env.TEST_FCM_TOKEN;
+  if (!fcmToken) {
+    console.error('\u274c TEST_FCM_TOKEN environment variable is required. Set it before running this test script.');
+    await app.close();
+    return;
+  }
 
   const notification: FcmNotificationPayload = {
     title: 'Sample Notification',

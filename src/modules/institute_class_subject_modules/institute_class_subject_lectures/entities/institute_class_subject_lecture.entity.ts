@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index, ValueTransformer } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
@@ -93,6 +94,7 @@ export class InstituteClassSubjectLecture {
   @Column({ name: 'meeting_id', type: 'varchar', length: 100, nullable: true })
   meetingId?: string;
 
+  @Exclude()
   @Column({ name: 'meeting_password', type: 'varchar', length: 50, nullable: true })
   meetingPassword?: string;
 

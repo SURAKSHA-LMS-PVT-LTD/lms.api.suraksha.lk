@@ -61,6 +61,7 @@ import { Gender } from './enums/gender.enum';
 import { InstituteUserResponseDto } from '../institute_mudules/institue_user/dto/institute-user-response.dto';
 import { UserInstitutesResponseDto } from '../institute_mudules/institue_user/dto/user-institutes-response.dto';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
+import { UpdateTelegramIdDto } from './dto/update-telegram-id.dto';
 
 /**
  * Enhanced User Management Controller
@@ -393,6 +394,23 @@ export class UsersController {
       }
       
       const currentUser = req?.user;
+
+    // 🔒 SECURITY: Whitelist allowed top-level fields to prevent mass assignment
+    const allowedFields = [
+      'email', 'firstName', 'lastName', 'nameWithInitials', 'userType', 'password',
+      'phoneNumber', 'dateOfBirth', 'gender', 'address', 'city', 'district', 'province',
+      'profileImage', 'isActive', 'parentInfo', 'studentInfo', 'instituteAssignment',
+      'birthCertificateNumber', 'nicNumber', 'school', 'medium', 'stream'
+    ];
+    const sanitizedDto: Record<string, any> = {};
+    for (const key of allowedFields) {
+      if (dto[key] !== undefined) {
+        sanitizedDto[key] = dto[key];
+      }
+    }
+    // Use sanitized DTO from here on
+    const originalDto = dto;
+    dto = sanitizedDto;
     
     // 🔧 Transform flat form-data into nested structure
     // Form-data sends all fields flat, so we need to organize them
@@ -2828,7 +2846,7 @@ export class UsersController {
     }
   })
   async updateTelegramId(
-    @Body() updateTelegramDto: any, // Using any to match the exact request structure
+    @Body() updateTelegramDto: UpdateTelegramIdDto,
     @Request() req: JwtRequest
   ): Promise<{ message: string; success: boolean }> {
     // Extract JWT token from authorization header

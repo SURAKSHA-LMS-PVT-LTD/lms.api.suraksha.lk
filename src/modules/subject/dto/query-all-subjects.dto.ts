@@ -1,5 +1,5 @@
 import { IsBigIntId } from '../../../common/validators/bigint-id.validator';
-import { IsOptional, IsString, IsBoolean } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class QueryAllSubjectsDto {
@@ -21,9 +21,11 @@ export class QueryAllSubjectsDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['name', 'code', 'category', 'createdAt', 'updatedAt'], { message: 'sortBy must be one of: name, code, category, createdAt, updatedAt' })
   sortBy?: string;
 
   @IsOptional()
   @IsString()
+  @IsIn(['ASC', 'DESC'])
   sortOrder?: 'ASC' | 'DESC';
 }

@@ -1,6 +1,6 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsDateString, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsDateString, IsEnum, IsIn } from 'class-validator';
 import { PaginationDto } from '../../../../common/dto/pagination.dto';
 
 export class QueryInstituteClassSubjectHomeworksSubmissionDto extends PaginationDto {
@@ -59,9 +59,10 @@ export class QueryInstituteClassSubjectHomeworksSubmissionDto extends Pagination
   remarksSearch?: string;
 
   // Additional filtering/sorting fields
-  @ApiProperty({ description: 'Sort by field', example: 'submissionDate', required: false })
+  @ApiProperty({ description: 'Sort by field', example: 'submissionDate', required: false, enum: ['submissionDate', 'grade', 'createdAt', 'updatedAt'] })
   @IsOptional()
   @IsString()
+  @IsIn(['submissionDate', 'grade', 'createdAt', 'updatedAt'], { message: 'sortBy must be one of: submissionDate, grade, createdAt, updatedAt' })
   sortBy?: string;
 
   @ApiProperty({ description: 'Sort order', example: 'DESC', required: false })

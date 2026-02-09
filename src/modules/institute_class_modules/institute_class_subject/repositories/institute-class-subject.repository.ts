@@ -245,12 +245,6 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
     data: Partial<InstituteClassSubjectEntity>,
   ): Promise<InstituteClassSubjectEntity> {
     // Log the update operation for debugging
-    console.log('Updating institute class subject:', {
-      instituteId,
-      classId,
-      subjectId,
-      data
-    });
 
     const updateResult = await this.repository.update(
       { 
@@ -261,14 +255,10 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
       data,
     );
 
-    console.log('Update result:', updateResult);
-    
     const updated = await this.findOneWithRelations(instituteId, classId, subjectId);
     if (!updated) {
       throw new NotFoundException('Institute class subject not found');
     }
-    
-    console.log('Updated entity teacherId:', updated.teacherId);
     
     return updated;
   }

@@ -60,8 +60,16 @@ export class AuthService {
     // Get salt rounds from environment variable
     this.saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS', '12'), 10);
     
-    // Get pepper from environment variable
-    this.pepper = this.configService.get<string>('BCRYPT_PEPPER', 'default-pepper-change-in-production');
+    // Get pepper from environment variable (NO fallback - must be explicitly set)
+    const pepper = this.configService.get<string>('BCRYPT_PEPPER');
+    if (!pepper || pepper === 'default-pepper-change-in-production') {
+      throw new Error(
+        '❌ CRITICAL SECURITY ERROR: BCRYPT_PEPPER is not set or is using the default value!\n' +
+        'Set a strong, unique pepper in your .env file: BCRYPT_PEPPER=your_random_secret_string\n' +
+        'Generate with: openssl rand -hex 32'
+      );
+    }
+    this.pepper = pepper;
     
     // Validate configuration
     if (isNaN(this.saltRounds) || this.saltRounds < 10 || this.saltRounds > 15) {

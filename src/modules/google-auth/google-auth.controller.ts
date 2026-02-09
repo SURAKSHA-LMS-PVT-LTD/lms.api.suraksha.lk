@@ -140,11 +140,20 @@ export class GoogleAuthController {
       // Exchange code for access token
       const tokenData = await this.googleAuthService.exchangeCodeForToken(code);
 
-      // Redirect to frontend with token (as URL fragment for security)
+      // 🔒 SECURITY: Set token as httpOnly cookie instead of URL fragment
       const frontendUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
-      const redirectUrl = `${frontendUrl}/homework/upload#access_token=${tokenData.access_token}&expires_in=${tokenData.expires_in}&token_type=${tokenData.token_type}`;
+      const isProduction = process.env.NODE_ENV === 'production';
       
-      res.redirect(redirectUrl);
+      res.cookie('google_access_token', tokenData.access_token, {
+        httpOnly: false, // Frontend needs to read this for Google Drive API calls
+        secure: isProduction,
+        sameSite: isProduction ? 'strict' : 'lax',
+        maxAge: (tokenData.expires_in || 3600) * 1000, // Convert seconds to ms
+        path: '/homework',
+      });
+
+      // Redirect to frontend without token in URL
+      res.redirect(`${frontendUrl}/homework/upload?google_auth=success`);
     } catch (error) {
       const frontendUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
       res.redirect(`${frontendUrl}/homework/upload?error=${encodeURIComponent('Failed to authenticate with Google')}`);

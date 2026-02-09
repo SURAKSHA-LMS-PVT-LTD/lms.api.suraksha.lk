@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsOptional, IsArray, ValidateNested, IsBoolean, Min, Max, IsUrl, IsNotEmpty, ValidateIf, Validate, ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsArray, ValidateNested, IsBoolean, IsIn, Min, Max, IsUrl, IsNotEmpty, ValidateIf, Validate, ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 @ValidatorConstraint({ name: 'documentNameRequired', async: false })
@@ -373,14 +373,16 @@ export class LectureQueryDto {
   @IsOptional()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Sort field', example: 'createdAt', default: 'createdAt' })
+  @ApiPropertyOptional({ description: 'Sort field', example: 'createdAt', default: 'createdAt', enum: ['createdAt', 'updatedAt', 'title', 'orderIndex'] })
   @IsString()
   @IsOptional()
+  @IsIn(['createdAt', 'updatedAt', 'title', 'orderIndex'], { message: 'sortBy must be one of: createdAt, updatedAt, title, orderIndex' })
   sortBy?: string;
 
-  @ApiPropertyOptional({ description: 'Sort order', example: 'DESC', default: 'DESC' })
+  @ApiPropertyOptional({ description: 'Sort order', example: 'DESC', default: 'DESC', enum: ['ASC', 'DESC'] })
   @IsString()
   @IsOptional()
+  @IsIn(['ASC', 'DESC'])
   sortOrder?: 'ASC' | 'DESC';
 }
 

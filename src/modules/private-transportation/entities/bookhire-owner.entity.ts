@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column,  Index, OneToMany } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { BookhireEntity } from './bookhire.entity';
 
 @Entity('bookhire_owners')
@@ -15,6 +16,7 @@ export class BookhireOwnerEntity {
   @Column({ type: 'varchar', length: 255, nullable: false, unique: true })
   email: string;
 
+  @Exclude()
   @Column({ type: 'varchar', length: 255, nullable: false })
   password: string;
 
@@ -33,9 +35,11 @@ export class BookhireOwnerEntity {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
+  @Exclude()
   @Column({ type: 'varchar', length: 255, nullable: true })
   verificationToken?: string;
 
+  @Exclude()
   @Column({ type: 'varchar', length: 255, nullable: true })
   resetPasswordToken?: string;
 

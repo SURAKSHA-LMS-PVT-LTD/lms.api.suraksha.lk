@@ -6,9 +6,11 @@ export class SortDto {
     description: 'Field to sort by',
     default: 'createdAt',
     example: 'createdAt',
+    enum: ['createdAt', 'updatedAt'],
   })
   @IsOptional()
   @IsString()
+  @IsIn(['createdAt', 'updatedAt'], { message: 'sortBy must be one of: createdAt, updatedAt' })
   sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({

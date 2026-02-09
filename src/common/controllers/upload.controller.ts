@@ -220,7 +220,7 @@ export class UploadController {
       This allows external systems to upload profile images using an API key.
       
       **🔐 Authentication:**
-      - API Key: Bearer wvIcy1X3xreEL9CkT6KzFGqbsaHUZPVBYN0oiSDQR5pM2tudOl84gnjW7mJfhA
+      - API Key: Bearer <YOUR_API_KEY>
       - JWT Token: Standard user authentication
       
       **🔐 Upload Flow:**
@@ -232,7 +232,7 @@ export class UploadController {
       
       **Example Request:**
       GET /upload/profile-images/get-signed-url?fileName=avatar.jpg&contentType=image/jpeg&fileSize=2048576
-      Authorization: Bearer wvIcy1X3xreEL9CkT6KzFGqbsaHUZPVBYN0oiSDQR5pM2tudOl84gnjW7mJfhA
+      Authorization: Bearer <YOUR_API_KEY>
     `
   })
   @ApiQuery({ 

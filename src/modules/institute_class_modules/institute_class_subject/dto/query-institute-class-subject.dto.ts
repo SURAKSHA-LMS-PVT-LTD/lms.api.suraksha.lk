@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { IsOptional, IsString, IsBoolean, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, IsIn, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -46,13 +46,15 @@ export class QueryInstituteClassSubjectDto {
   @Transform(({ value }) => parseInt(value, 10))
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Sort field' })
+  @ApiPropertyOptional({ description: 'Sort field', enum: ['createdAt', 'updatedAt', 'subjectId', 'classId'] })
   @IsOptional()
   @IsString()
+  @IsIn(['createdAt', 'updatedAt', 'subjectId', 'classId'], { message: 'sortBy must be one of: createdAt, updatedAt, subjectId, classId' })
   sortBy?: string;
 
   @ApiPropertyOptional({ description: 'Sort order', enum: ['ASC', 'DESC'] })
   @IsOptional()
   @IsString()
+  @IsIn(['ASC', 'DESC'])
   sortOrder?: 'ASC' | 'DESC' = 'ASC';
 }

@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { IsOptional, IsString, IsEnum, IsDateString, IsBoolean, IsNumberString } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsDateString, IsBoolean, IsNumberString, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -98,9 +98,11 @@ export class QueryInstituteClassSubjectExamDto {
   @ApiPropertyOptional({
     description: 'Sort field',
     example: 'scheduleDate',
+    enum: ['scheduleDate', 'createdAt', 'updatedAt', 'title', 'totalMarks'],
   })
   @IsOptional()
   @IsString()
+  @IsIn(['scheduleDate', 'createdAt', 'updatedAt', 'title', 'totalMarks'], { message: 'sortBy must be one of: scheduleDate, createdAt, updatedAt, title, totalMarks' })
   sortBy?: string;
 
   @ApiPropertyOptional({

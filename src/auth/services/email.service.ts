@@ -20,7 +20,7 @@ export class EmailService {
       if (this.isDevelopment) {
         // In development, log to console and also send email if AWS is configured
         this.logger.warn(`=== DEVELOPMENT MODE ===`);
-        this.logger.warn(`First Login OTP for ${email} (${firstName}): ${otp}`);
+        this.logger.warn(`First Login OTP sent to ${email.substring(0, 3)}***`);
         this.logger.warn(`=== END DEVELOPMENT MODE ===`);
       }
 
@@ -45,7 +45,7 @@ export class EmailService {
     try {
       if (this.isDevelopment) {
         this.logger.warn(`=== DEVELOPMENT MODE ===`);
-        this.logger.warn(`Password Reset OTP for ${email} (${firstName}): ${otp}`);
+        this.logger.warn(`Password Reset OTP sent to ${email.substring(0, 3)}***`);
         this.logger.warn(`=== END DEVELOPMENT MODE ===`);
       }
 
@@ -91,7 +91,7 @@ export class EmailService {
     try {
       if (this.isDevelopment) {
         this.logger.warn(`=== DEVELOPMENT MODE ===`);
-        this.logger.warn(`Change Password OTP for ${email} (${firstName}): ${otp}`);
+        this.logger.warn(`Change Password OTP sent to ${email.substring(0, 3)}***`);
         this.logger.warn(`=== END DEVELOPMENT MODE ===`);
       }
 

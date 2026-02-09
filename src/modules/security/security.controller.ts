@@ -4,6 +4,7 @@ import { SecurityMonitoringService } from '../../common/services/security-monito
 import { AdvancedSecurityGuard } from '../../common/guards/advanced-security.guard';
 import { JwtAuthGuard, FlexibleAccessGuard, RequireAnyOfRoles, UserType } from '../../auth/guards';
 import { getCurrentSriLankaISO } from '../../common/utils/timezone.util';
+import { RecordSecurityEventDto } from './dto/record-security-event.dto';
 
 @ApiTags('Security')
 @Controller('api/security')
@@ -80,7 +81,7 @@ export class SecurityController {
   @ApiOperation({ summary: 'Record a security event (SUPERADMIN only - internal use)' })
   @ApiResponse({ status: 201, description: 'Security event recorded successfully' })
   @HttpCode(HttpStatus.CREATED)
-  async recordSecurityEvent(@Body() eventData: any) {
+  async recordSecurityEvent(@Body() eventData: RecordSecurityEventDto) {
     this.securityMonitoringService.recordSecurityEvent(eventData);
     return {
       success: true,

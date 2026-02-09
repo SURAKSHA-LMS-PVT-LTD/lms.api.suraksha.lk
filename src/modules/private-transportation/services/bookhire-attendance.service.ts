@@ -860,8 +860,6 @@ export class BookhireAttendanceService {
           // Send notification (fire-and-forget)
           // await this.attendanceNotificationService.sendAttendanceNotification(notificationData); // TODO: Service not available
           
-          console.log(`✅ [BookHire] Cascaded ad to ${parent.type} (${parentUser.phoneNumber || parentUser.email})`);
-          
         } catch (error) {
           console.error(`❌ [BookHire] Failed to cascade ad to ${parent.type}: ${error.message}`);
         }

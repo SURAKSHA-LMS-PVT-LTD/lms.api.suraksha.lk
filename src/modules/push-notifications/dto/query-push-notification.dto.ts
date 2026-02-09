@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsEnum, IsString, IsBoolean, IsDateString } from 'class-validator';
+import { IsOptional, IsEnum, IsString, IsBoolean, IsDateString, IsIn } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { NotificationScope, NotificationStatus, NotificationPriority } from '../entities/push-notification.entity';
 
@@ -17,9 +17,10 @@ export class QueryPushNotificationDto {
   @Type(() => Number)
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Sort by field', example: 'createdAt' })
+  @ApiPropertyOptional({ description: 'Sort by field', example: 'createdAt', enum: ['createdAt', 'updatedAt', 'sentAt', 'title'] })
   @IsOptional()
   @IsString()
+  @IsIn(['createdAt', 'updatedAt', 'sentAt', 'title'], { message: 'sortBy must be one of: createdAt, updatedAt, sentAt, title' })
   sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({ description: 'Sort order', enum: ['ASC', 'DESC'], example: 'DESC' })

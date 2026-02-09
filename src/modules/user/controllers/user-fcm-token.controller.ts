@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpStatus, HttpCode, ValidationPipe, Put, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpStatus, HttpCode, ValidationPipe, Put, UseGuards, Request, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
@@ -11,6 +11,7 @@ import { UpdateUserFcmTokenDto } from '../dto/update-user-fcm-token.dto';
 import { QueryUserFcmTokenDto } from '../dto/query-user-fcm-token.dto';
 import { UserFcmTokenResponseDto } from '../dto/user-fcm-token-response.dto';
 import { PaginatedUserFcmTokenResponseDto } from '../dto/paginated-user-fcm-token-response.dto';
+import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
 
 @ApiTags('user-fcm-tokens')
 @ApiBearerAuth()
@@ -70,12 +71,20 @@ export class UserFcmTokenController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     anyInstituteRole: true,
-    global: []
+    global: [UserType.SUPERADMIN]
   })
   @ApiOperation({ summary: 'Get all FCM tokens for a specific user' })
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User FCM tokens retrieved successfully', type: [UserFcmTokenResponseDto] })
-  async findByUserId(@Param('userId', ParseBigIntPipe) userId: string): Promise<UserFcmTokenResponseDto[]> {
+  async findByUserId(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Request() req: JwtRequest,
+  ): Promise<UserFcmTokenResponseDto[]> {
+    // Ownership check: users can only access their own tokens unless superadmin
+    const requestingUserId = JwtRequestHelper.getUserId(req.user);
+    if (requestingUserId !== userId && !JwtRequestHelper.isSuperAdmin(req.user)) {
+      throw new ForbiddenException('You can only access your own FCM tokens');
+    }
     return await this.userFcmTokenService.findByUserId(userId);
   }
 
@@ -83,12 +92,20 @@ export class UserFcmTokenController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     anyInstituteRole: true,
-    global: []
+    global: [UserType.SUPERADMIN]
   })
   @ApiOperation({ summary: 'Get active FCM tokens for a specific user' })
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Active user FCM tokens retrieved successfully', type: [UserFcmTokenResponseDto] })
-  async findActiveByUserId(@Param('userId', ParseBigIntPipe) userId: string): Promise<UserFcmTokenResponseDto[]> {
+  async findActiveByUserId(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Request() req: JwtRequest,
+  ): Promise<UserFcmTokenResponseDto[]> {
+    // Ownership check: users can only access their own tokens unless superadmin
+    const requestingUserId = JwtRequestHelper.getUserId(req.user);
+    if (requestingUserId !== userId && !JwtRequestHelper.isSuperAdmin(req.user)) {
+      throw new ForbiddenException('You can only access your own FCM tokens');
+    }
     return await this.userFcmTokenService.findActiveTokensByUserId(userId);
   }
 
@@ -171,13 +188,21 @@ export class UserFcmTokenController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     anyInstituteRole: true,
-    global: []
+    global: [UserType.SUPERADMIN]
   })
   @ApiOperation({ summary: 'Deactivate all FCM tokens for a user' })
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'All user FCM tokens deactivated successfully' })
   @HttpCode(HttpStatus.OK)
-  async deactivateAllUserTokens(@Param('userId', ParseBigIntPipe) userId: string): Promise<void> {
+  async deactivateAllUserTokens(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Request() req: JwtRequest,
+  ): Promise<void> {
+    // Ownership check: users can only manage their own tokens unless superadmin
+    const requestingUserId = JwtRequestHelper.getUserId(req.user);
+    if (requestingUserId !== userId && !JwtRequestHelper.isSuperAdmin(req.user)) {
+      throw new ForbiddenException('You can only manage your own FCM tokens');
+    }
     await this.userFcmTokenService.deactivateAllUserTokens(userId);
   }
 
