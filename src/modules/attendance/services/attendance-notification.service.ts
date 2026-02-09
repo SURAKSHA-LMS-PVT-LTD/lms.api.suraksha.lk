@@ -628,7 +628,7 @@ export class AttendanceNotificationService {
         [data.parentEmail],
         templateData,
         data.studentId
-      ).catch(() => {});
+      ).catch((err) => this.logger.warn(`Background email send failed: ${err.message}`));
 
       // Return immediately - don't wait for email service
       return {

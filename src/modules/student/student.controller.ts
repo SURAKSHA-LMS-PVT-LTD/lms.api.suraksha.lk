@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { ImageUrlDto } from '../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpCode, HttpStatus, UseGuards, UploadedFile, BadRequestException, Request } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
@@ -189,7 +190,7 @@ export class StudentsController {
   @ApiResponse({ status: 404, description: 'Student not found' })
   async uploadImage(
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() body: { imageUrl: string }
+    @Body() body: ImageUrlDto
   ): Promise<{ success: boolean; message: string; imageUrl: string }> {
     if (!body.imageUrl) {
       throw new BadRequestException('imageUrl is required');

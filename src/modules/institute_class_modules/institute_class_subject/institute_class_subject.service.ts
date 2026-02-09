@@ -15,9 +15,8 @@ export class InstituteClassSubjectService {
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectDto): Promise<InstituteClassSubjectSuccessResponseDto> {
-    try {
-      // Check if assignment already exists
-      const exists = await this.instituteClassSubjectRepository.existsByInstituteClassAndSubject(
+    // Check if assignment already exists
+    const exists = await this.instituteClassSubjectRepository.existsByInstituteClassAndSubject(
         createDto.instituteId,
         createDto.classId,
         createDto.subjectId,
@@ -46,9 +45,6 @@ export class InstituteClassSubjectService {
         success: true,
         message: 'Subject successfully assigned to class',
       };
-    } catch (error) {
-      throw error;
-    }
   }
 
   async bulkCreate(bulkCreateDto: BulkCreateInstituteClassSubjectDto): Promise<BulkInstituteClassSubjectResponseDto> {

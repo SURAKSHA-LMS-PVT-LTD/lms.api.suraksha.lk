@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository, SelectQueryBuilder, In } from 'typeorm';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectStudentDto } from './dto/create-institute_class_subject_student.dto';
 import { UpdateInstituteClassSubjectStudentDto } from './dto/update-institute_class_subject_student.dto';
@@ -922,55 +922,62 @@ export class InstituteClassSubjectStudentsService {
 
       const successfulAssignments = [];
       const failedAssignments = [];
+      const studentIds = assignDto.studentIds;
 
-      for (const studentId of assignDto.studentIds) {
-        try {
-          // Check if student is enrolled in the class
-          const classEnrollment = await this.classStudentRepository.findOne({
-            where: {
-              instituteId,
-              classId,
-              studentUserId: studentId,
-              isActive: true,
-            },
+      // Batch fetch all data upfront to avoid N+1 queries
+      const [users, classEnrollments, existingSubjectEnrollments] = await Promise.all([
+        this.userRepository.find({
+          where: { id: In(studentIds) },
+          select: ['id', 'firstName', 'lastName'],
+        }),
+        this.classStudentRepository.find({
+          where: {
+            instituteId,
+            classId,
+            studentUserId: In(studentIds),
+            isActive: true,
+          },
+        }),
+        this.studentRepository.find({
+          where: { instituteId, classId, subjectId, studentId: In(studentIds) },
+        }),
+      ]);
+
+      // Build lookup maps for O(1) access
+      const userMap = new Map(users.map(u => [u.id, u]));
+      const classEnrolledSet = new Set(classEnrollments.map(e => e.studentUserId));
+      const subjectEnrolledSet = new Set(existingSubjectEnrollments.map(e => e.studentId));
+
+      const enrollmentsToCreate = [];
+      const cacheRefreshIds: string[] = [];
+
+      for (const studentId of studentIds) {
+        const user = userMap.get(studentId);
+        const studentName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+
+        if (!classEnrolledSet.has(studentId)) {
+          failedAssignments.push({
+            studentId,
+            studentName,
+            status: 'failed',
+            reason: 'Student not enrolled in class',
           });
+          continue;
+        }
 
-          if (!classEnrollment) {
-            const student = await this.userRepository.findOne({
-              where: { id: studentId },
-              select: ['id', 'firstName', 'lastName'],
-            });
-            failedAssignments.push({
-              studentId,
-              studentName: student ? `${student.firstName} ${student.lastName}` : 'Unknown',
-              status: 'failed',
-              reason: 'Student not enrolled in class',
-            });
-            continue;
-          }
-
-          // Check if already enrolled in subject
-          const existingEnrollment = await this.studentRepository.findOne({
-            where: { instituteId, classId, subjectId, studentId },
+        if (subjectEnrolledSet.has(studentId)) {
+          failedAssignments.push({
+            studentId,
+            studentName,
+            status: 'failed',
+            reason: 'Already enrolled in subject',
           });
+          continue;
+        }
 
-          if (existingEnrollment) {
-            const student = await this.userRepository.findOne({
-              where: { id: studentId },
-              select: ['id', 'firstName', 'lastName'],
-            });
-            failedAssignments.push({
-              studentId,
-              studentName: student ? `${student.firstName} ${student.lastName}` : 'Unknown',
-              status: 'failed',
-              reason: 'Already enrolled in subject',
-            });
-            continue;
-          }
-
-          // Create enrollment
-          const timestamp = getCurrentSriLankaISO();
-          const enrollment = this.studentRepository.create({
+        const timestamp = getCurrentSriLankaISO();
+        enrollmentsToCreate.push(
+          this.studentRepository.create({
             instituteId,
             classId,
             subjectId,
@@ -980,31 +987,26 @@ export class InstituteClassSubjectStudentsService {
             isActive: true,
             createdAt: timestamp,
             updatedAt: timestamp,
-          });
+          }),
+        );
+        cacheRefreshIds.push(studentId);
 
-          await this.studentRepository.save(enrollment);
-
-          // Refresh student cache after subject enrollment
-          await this.userManagementService.refreshUserCache(studentId);
-
-          const student = await this.userRepository.findOne({
-            where: { id: studentId },
-            select: ['id', 'firstName', 'lastName'],
-          });
-
-          successfulAssignments.push({
-            studentId,
-            studentName: student ? `${student.firstName} ${student.lastName}` : 'Unknown',
-            status: 'success',
-          });
-        } catch (error) {
-          failedAssignments.push({
-            studentId,
-            status: 'failed',
-            reason: error.message,
-          });
-        }
+        successfulAssignments.push({
+          studentId,
+          studentName,
+          status: 'success',
+        });
       }
+
+      // Batch insert all enrollments at once
+      if (enrollmentsToCreate.length > 0) {
+        await this.studentRepository.save(enrollmentsToCreate);
+      }
+
+      // Refresh caches in parallel
+      await Promise.all(
+        cacheRefreshIds.map(id => this.userManagementService.refreshUserCache(id)),
+      );
 
       return {
         message: `Successfully assigned ${successfulAssignments.length} students to ${classSubject.subject.name} for ${classSubject.class.name}`,

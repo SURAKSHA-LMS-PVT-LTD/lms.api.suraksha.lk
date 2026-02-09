@@ -31,7 +31,7 @@ export class AdvertisementService {
     private parentRepository: Repository<ParentEntity>,
     private readonly attendanceNotificationService: AttendanceNotificationService,
     private readonly advertisementCacheService: AdvertisementCacheService,
-    private readonly CloudStorageService: CloudStorageService,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   async findAll(): Promise<AdvertisementEntity[]> {
@@ -61,6 +61,7 @@ export class AdvertisementService {
         take: 100
       });
     } catch (error) {
+      this.logger.error(`Failed to fetch advertisements: ${error.message}`, error.stack);
       return [];
     }
   }
@@ -98,14 +99,14 @@ export class AdvertisementService {
         .limit(50)
         .getMany();
     } catch (error) {
+      this.logger.error(`Failed to fetch active advertisements: ${error.message}`, error.stack);
       return [];
     }
   }
 
   async create(createDto: CreateAdvertisementDto): Promise<AdvertisementEntity> {
-    try {
-      const timestamp = getCurrentSriLankaISO();
-      const advertisement = this.advertisementRepository.create({
+    const timestamp = getCurrentSriLankaISO();
+    const advertisement = this.advertisementRepository.create({
         title: createDto.title,
         accessKey: createDto.accessKey,
         description: createDto.description,
@@ -146,22 +147,19 @@ export class AdvertisementService {
       await this.advertisementCacheService.invalidateCache();
       
       return saved;
-    } catch (error) {
-      throw error;
-    }
   }
 
   async findOne(id: string): Promise<AdvertisementEntity | null> {
     try {
       return await this.advertisementRepository.findOne({ where: { id } });
     } catch (error) {
+      this.logger.error(`Failed to find advertisement ${id}: ${error.message}`, error.stack);
       return null;
     }
   }
 
   async update(id: string, updateDto: Partial<CreateAdvertisementDto>): Promise<AdvertisementEntity | null> {
-    try {
-      const updateData: any = {};
+    const updateData: Partial<AdvertisementEntity> = {};
       
       if (updateDto.title !== undefined) updateData.title = updateDto.title;
       if (updateDto.accessKey !== undefined) updateData.accessKey = updateDto.accessKey;
@@ -184,8 +182,8 @@ export class AdvertisementService {
       if (updateDto.displayDuration !== undefined) updateData.displayDuration = updateDto.displayDuration;
       if (updateDto.priority !== undefined) updateData.priority = updateDto.priority;
       if (updateDto.isActive !== undefined) updateData.isActive = updateDto.isActive;
-      if (updateDto.startDate !== undefined) updateData.startDate = updateDto.startDate;
-      if (updateDto.endDate !== undefined) updateData.endDate = updateDto.endDate;
+      if (updateDto.startDate !== undefined) updateData.startDate = new Date(updateDto.startDate);
+      if (updateDto.endDate !== undefined) updateData.endDate = new Date(updateDto.endDate);
       if (updateDto.maxSendings !== undefined) updateData.maxSendings = updateDto.maxSendings;
       if (updateDto.cascadeToParents !== undefined) updateData.cascadeToParents = updateDto.cascadeToParents;
       if (updateDto.budget !== undefined) updateData.budget = updateDto.budget;
@@ -199,20 +197,11 @@ export class AdvertisementService {
       await this.advertisementCacheService.invalidateCache();
       
       return updated;
-    } catch (error) {
-      throw error;
-    }
   }
 
   async remove(id: string): Promise<void> {
-    try {
-      await this.advertisementRepository.delete(id);
-      
-      // Invalidate cache after deleting advertisement
-      await this.advertisementCacheService.invalidateCache();
-    } catch (error) {
-      throw error;
-    }
+    await this.advertisementRepository.delete(id);
+    await this.advertisementCacheService.invalidateCache();
   }
 
   // ========================================
@@ -229,7 +218,7 @@ export class AdvertisementService {
       title: entity.title || '',
       accessKey: entity.accessKey || '',
       description: entity.description || '',
-      mediaUrl: this.CloudStorageService.getFullUrl(entity.mediaUrl) || '',
+      mediaUrl: this.cloudStorageService.getFullUrl(entity.mediaUrl) || '',
       landingUrl: entity.landingUrl || null,
       sendingUrl: entity.sendingUrl || null,
       supportivePlatforms: Array.isArray(entity.supportivePlatforms) ? entity.supportivePlatforms : [],

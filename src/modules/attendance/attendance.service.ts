@@ -753,7 +753,7 @@ export class AttendanceService {
 
   private scheduleAttendanceNotification(markAttendanceDto: MarkAttendanceDto, attendanceResult: any, studentData?: any): void {
     // Fire-and-forget notification - no blocking, no waiting
-    this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch(() => {});
+    this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));
   }
 
   /**

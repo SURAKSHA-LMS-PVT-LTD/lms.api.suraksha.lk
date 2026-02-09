@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getCurrentSriLankaISO } from '../utils/timezone.util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as crypto from 'crypto';
 import { 
   S3Client, 
   HeadObjectCommand, 
@@ -419,29 +420,11 @@ export class CloudStorageService implements OnModuleInit {
    */
   private generateSecureToken(length: number = 16): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const randomBytes = crypto.randomBytes(length);
     let result = '';
-    const randomArray = new Uint8Array(length);
-    
-    // Use crypto.getRandomValues for cryptographically secure randomness
-    if (typeof window !== 'undefined' && window.crypto) {
-      window.crypto.getRandomValues(randomArray);
-    } else if (typeof require !== 'undefined') {
-      const crypto = require('crypto');
-      const randomBytes = crypto.randomBytes(length);
-      for (let i = 0; i < length; i++) {
-        randomArray[i] = randomBytes[i];
-      }
-    } else {
-      // Fallback to Math.random (less secure)
-      for (let i = 0; i < length; i++) {
-        randomArray[i] = Math.floor(Math.random() * 256);
-      }
-    }
-    
     for (let i = 0; i < length; i++) {
-      result += chars[randomArray[i] % chars.length];
+      result += chars[randomBytes[i] % chars.length];
     }
-    
     return result;
   }
 

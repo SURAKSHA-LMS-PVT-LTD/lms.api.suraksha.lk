@@ -318,79 +318,79 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
   ): Promise<{ success: string[]; failed: Array<{ studentUserId: string; reason: string }> }> {
     const results = { success: [], failed: [] };
 
+    // Batch fetch all data upfront to avoid N+1 queries
+    const [users, students, existingEnrollments, instituteUsers] = await Promise.all([
+      this.userRepository.find({
+        where: { id: In(studentUserIds) },
+      }),
+      this.studentRepository.find({
+        where: { userId: In(studentUserIds) },
+      }),
+      // Check existing enrollments for all students at once
+      Promise.all(
+        studentUserIds.map(id => this.repository.exists({ instituteId, classId, studentUserId: id })),
+      ),
+      this.userRepository
+        .createQueryBuilder('user')
+        .innerJoin('institute_user', 'iu', 'iu.user_id = user.id')
+        .where('iu.institute_id = :instituteId', { instituteId })
+        .andWhere('iu.user_id IN (:...studentUserIds)', { studentUserIds })
+        .andWhere('iu.status = :status', { status: 'ACTIVE' })
+        .getMany(),
+    ]);
+
+    // Build lookup maps for O(1) access
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const studentMap = new Map(students.map(s => [s.userId, s]));
+    const enrolledMap = new Map(studentUserIds.map((id, i) => [id, existingEnrollments[i]]));
+    const instituteUserSet = new Set(instituteUsers.map(u => u.id));
+
+    const enrollmentsToCreate = [];
+
     for (const studentUserId of studentUserIds) {
-      try {
-        // Check if user exists and is a student
-        const user = await this.userRepository.findOne({
-          where: { id: studentUserId }
-        });
+      if (!userMap.has(studentUserId)) {
+        results.failed.push({ studentUserId, reason: 'User not found' });
+        continue;
+      }
 
-        if (!user) {
-          results.failed.push({ studentUserId, reason: 'User not found' });
-          continue;
-        }
+      if (!instituteUserSet.has(studentUserId)) {
+        results.failed.push({ studentUserId, reason: 'Student must be enrolled in institute first' });
+        continue;
+      }
 
-        // Access control will be handled by decorators
+      if (enrolledMap.get(studentUserId)) {
+        results.failed.push({ studentUserId, reason: 'Already enrolled in class' });
+        continue;
+      }
 
-        // Check if student is enrolled in the institute
-        const instituteUserQuery = await this.userRepository
-          .createQueryBuilder('user')
-          .innerJoin('institute_user', 'iu', 'iu.user_id = user.id')
-          .where('iu.institute_id = :instituteId', { instituteId })
-          .andWhere('iu.user_id = :studentUserId', { studentUserId })
-          .andWhere('iu.status = :status', { status: 'ACTIVE' })
-          .getOne();
-
-        if (!instituteUserQuery) {
-          results.failed.push({ studentUserId, reason: 'Student must be enrolled in institute first' });
-          continue;
-        }
-
-        // Check if already enrolled
-        const exists = await this.repository.exists({
-          instituteId,
-          classId,
+      if (!studentMap.has(studentUserId)) {
+        results.failed.push({
           studentUserId,
+          reason: 'Student record not found. Student must be created through the official student registration process before class assignment.',
         });
+        continue;
+      }
 
-        if (exists) {
-          results.failed.push({ studentUserId, reason: 'Already enrolled in class' });
-          continue;
-        }
+      const timestamp = getCurrentSriLankaISO();
+      enrollmentsToCreate.push({
+        instituteId,
+        classId,
+        studentUserId,
+        isActive: true,
+        isVerified: options?.skipVerification !== false,
+        enrollmentMethod: 'teacher_assigned',
+        verifiedBy: assignedBy,
+        verifiedAt: getCurrentSriLankaTime(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      results.success.push(studentUserId);
+    }
 
-        // Create student record if doesn't exist
-        let student = await this.studentRepository.findOne({
-          where: { userId: studentUserId }
-        });
-
-        if (!student) {
-          results.failed.push({
-            studentUserId,
-            reason: 'Student record not found. Student must be created through the official student registration process before class assignment.'
-          });
-          continue;
-        }
-
-        // Assign student with automatic verification for admin/teacher assignments
-        const timestamp = getCurrentSriLankaISO();
-        const enrollmentData = {
-          instituteId,
-          classId,
-          studentUserId,
-          isActive: true,
-          isVerified: options?.skipVerification !== false, // Default to verified for admin assignments
-          enrollmentMethod: 'teacher_assigned',
-          verifiedBy: assignedBy,
-          verifiedAt: getCurrentSriLankaTime(),
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
-
-        await this.repository.create(enrollmentData);
-        results.success.push(studentUserId);
-
-      } catch (error) {
-        results.failed.push({ studentUserId, reason: error.message });
+    // Batch create all enrollments at once
+    if (enrollmentsToCreate.length > 0) {
+      for (const data of enrollmentsToCreate) {
+        await this.repository.create(data);
       }
     }
 

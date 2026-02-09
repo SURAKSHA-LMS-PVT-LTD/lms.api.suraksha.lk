@@ -42,16 +42,12 @@ export class IdCardController {
   @ApiParam({ name: 'userId', description: 'User ID' })
   @HttpCode(HttpStatus.CREATED)
   async generateUserIdCard(@Param('userId', ParseBigIntPipe) userId: string) {
-    try {
-      const url = await this.idCardGeneratorService.generateUserIdCard(userId);
-      return {
-        success: true,
-        message: 'ID card generated successfully',
-        url,
-      };
-    } catch (error) {
-      throw error;
-    }
+    const url = await this.idCardGeneratorService.generateUserIdCard(userId);
+    return {
+      success: true,
+      message: 'ID card generated successfully',
+      url,
+    };
   }
 
   @Post('regenerate/:userId')
@@ -71,16 +67,12 @@ export class IdCardController {
   @ApiParam({ name: 'userId', description: 'User ID' })
   @HttpCode(HttpStatus.CREATED)
   async regenerateUserIdCard(@Param('userId', ParseBigIntPipe) userId: string) {
-    try {
-      const url = await this.idCardGeneratorService.regenerateUserIdCard(userId);
-      return {
-        success: true,
-        message: 'ID card regenerated successfully',
-        url,
-      };
-    } catch (error) {
-      throw error;
-    }
+    const url = await this.idCardGeneratorService.regenerateUserIdCard(userId);
+    return {
+      success: true,
+      message: 'ID card regenerated successfully',
+      url,
+    };
   }
 
   @Post('generate-all')
@@ -113,21 +105,17 @@ export class IdCardController {
   })
   @HttpCode(HttpStatus.CREATED)
   async generateAllIdCards() {
-    try {
-      const results = await this.idCardGeneratorService.generateIdCardsForAllUsers();
-      return {
-        success: true,
-        message: 'Bulk ID card generation completed',
-        results,
-        summary: {
-          total: results.success.length + results.failed.length,
-          successful: results.success.length,
-          failed: results.failed.length,
-        },
-      };
-    } catch (error) {
-      throw error;
-    }
+    const results = await this.idCardGeneratorService.generateIdCardsForAllUsers();
+    return {
+      success: true,
+      message: 'Bulk ID card generation completed',
+      results,
+      summary: {
+        total: results.success.length + results.failed.length,
+        successful: results.success.length,
+        failed: results.failed.length,
+      },
+    };
   }
 
   @Get('status/:userId')
@@ -182,14 +170,10 @@ export class IdCardController {
   })
   @HttpCode(HttpStatus.OK)
   async getTemplateInfo() {
-    try {
-      const templateInfo = await this.idCardGeneratorService.getTemplateInfo();
-      return {
-        success: true,
-        templateInfo,
-      };
-    } catch (error) {
-      throw error;
-    }
+    const templateInfo = await this.idCardGeneratorService.getTemplateInfo();
+    return {
+      success: true,
+      templateInfo,
+    };
   }
 }

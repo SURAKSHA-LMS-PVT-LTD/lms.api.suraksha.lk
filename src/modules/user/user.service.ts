@@ -1720,8 +1720,13 @@ export class UsersService {
     }
   }
 
-  async getUsersByType(userType: UserType): Promise<UserResponseDto[]> {
-    const users = await this.userRepository.find({ where: { userType } });
+  async getUsersByType(userType: UserType, limit: number = 100, offset: number = 0): Promise<UserResponseDto[]> {
+    const users = await this.userRepository.find({
+      where: { userType },
+      take: limit,
+      skip: offset,
+      order: { createdAt: 'DESC' },
+    });
     return users.map(user => new UserResponseDto(user));
   }
 

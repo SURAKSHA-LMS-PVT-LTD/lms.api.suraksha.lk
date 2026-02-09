@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstitutePaymentSubmission } from './institute-payment-submission.entity';
@@ -31,6 +32,11 @@ export enum PaymentRequestStatus {
 }
 
 @Entity('institute_payments')
+@Index('idx_inst_pay_institute', ['instituteId'])
+@Index('idx_inst_pay_status', ['status'])
+@Index('idx_inst_pay_institute_status', ['instituteId', 'status'])
+@Index('idx_inst_pay_due_date', ['dueDate'])
+@Index('idx_inst_pay_created_by', ['createdBy'])
 export class InstitutePayment {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

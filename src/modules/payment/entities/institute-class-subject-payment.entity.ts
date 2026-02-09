@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, OneToMany, ValueTransformer, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, ValueTransformer, AfterLoad, Index } from 'typeorm';
 
 // Date transformer for ISO serialization
 const dateTransformer: ValueTransformer = {
@@ -26,6 +26,11 @@ export enum PaymentStatus {
 }
 
 @Entity('institute_class_subject_payments')
+@Index('idx_csp_institute', ['instituteId'])
+@Index('idx_csp_class', ['classId'])
+@Index('idx_csp_subject', ['subjectId'])
+@Index('idx_csp_institute_class_subject', ['instituteId', 'classId', 'subjectId'])
+@Index('idx_csp_status', ['status'])
 export class InstituteClassSubjectPayment {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

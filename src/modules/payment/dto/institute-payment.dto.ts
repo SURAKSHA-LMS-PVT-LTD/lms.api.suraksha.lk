@@ -2,6 +2,7 @@ import { IsNotEmpty, IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsBoo
 import { Transform, Type } from 'class-transformer';
 import { PaymentTargetType, PaymentPriority } from '../entities/institute-payment.entity';
 import { PaymentMethodType } from '../entities/institute-payment-submission.entity';
+import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 // Enhanced Bank Details DTO with comprehensive validation
 export class BankDetailsDto {
@@ -266,7 +267,6 @@ export class CreateInstitutePaymentSubmissionDto {
       const date = new Date(value);
       if (isNaN(date.getTime())) return value;
       // Ensure payment date is not in future
-      const { getCurrentSriLankaTime } = require('../../../common/utils/timezone.util');
       if (date > getCurrentSriLankaTime()) {
         throw new Error('Payment date cannot be in the future');
       }

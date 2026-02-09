@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthService } from './auth.service';
@@ -8,6 +8,7 @@ import { Country } from '../modules/user/enums/country.enum';
 
 @Injectable()
 export class DatabaseResetService {
+  private readonly logger = new Logger(DatabaseResetService.name);
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -19,7 +20,7 @@ export class DatabaseResetService {
    */
   async resetDatabaseWithDefaults(): Promise<void> {
     try {
-      console.log('🔄 Resetting database...');
+      this.logger.log('🔄 Resetting database...');
       
       // Clear all users (be careful in production!)
       await this.userRepository.clear();
@@ -36,51 +37,61 @@ export class DatabaseResetService {
       // Create default parent
       await this.createDefaultParent();
       
-      console.log('✅ Database reset completed with default users');
-      console.log('📝 Default credentials:');
-      console.log('   Admin: admin@school.com / admin123');
-      console.log('   Teacher: teacher@school.com / teacher123');
-      console.log('   Student: student@school.com / student123');
-      console.log('   Parent: parent@school.com / parent123');
+      this.logger.log('✅ Database reset completed with default users');
+      this.logger.log('📝 Default credentials:');
+      this.logger.log('   Admin: admin@school.com / admin123');
+      this.logger.log('   Teacher: teacher@school.com / teacher123');
+      this.logger.log('   Student: student@school.com / student123');
+      this.logger.log('   Parent: parent@school.com / parent123');
       
     } catch (error) {
-      console.error('❌ Database reset failed:', error);
+      this.logger.error('❌ Database reset failed:', error);
       throw error;
     }
   }
 
   /**
    * Migrate all existing passwords to new format without resetting data
+   * Processes in batches to avoid memory issues
    */
   async migrateAllPasswords(defaultPassword: string = 'password123'): Promise<number> {
     try {
-      console.log('🔄 Migrating all user passwords...');
-      
-      const users = await this.userRepository.find();
+      this.logger.log('Migrating all user passwords...');
       let migratedCount = 0;
-      
-      for (const user of users) {
-        if (user.email) {
-          // Check if password needs migration
-          const needsMigration = await this.authService.isPasswordInOldFormat(user, defaultPassword);
-          
-          if (needsMigration || !user.password) {
-            // Update to new secure format
-            const newHashedPassword = await this.authService.hashPassword(defaultPassword);
-            await this.userRepository.update(user.id, { password: newHashedPassword });
-            migratedCount++;
-            console.log(`✅ Migrated password for: ${user.email}`);
-          } else {
-            console.log(`⏩ Skipped (already secure): ${user.email}`);
+      const BATCH_SIZE = 100;
+      let offset = 0;
+
+      while (true) {
+        const users = await this.userRepository.find({
+          select: ['id', 'email', 'password'],
+          take: BATCH_SIZE,
+          skip: offset,
+          order: { id: 'ASC' },
+        });
+
+        if (users.length === 0) break;
+
+        for (const user of users) {
+          if (user.email) {
+            const needsMigration = await this.authService.isPasswordInOldFormat(user, defaultPassword);
+
+            if (needsMigration || !user.password) {
+              const newHashedPassword = await this.authService.hashPassword(defaultPassword);
+              await this.userRepository.update(user.id, { password: newHashedPassword });
+              migratedCount++;
+            }
           }
         }
+
+        offset += BATCH_SIZE;
+        if (users.length < BATCH_SIZE) break;
       }
       
-      console.log(`✅ Migration completed. ${migratedCount} passwords updated.`);
+      this.logger.log(`Migration completed. ${migratedCount} passwords updated.`);
       return migratedCount;
       
     } catch (error) {
-      console.error('❌ Password migration failed:', error);
+      this.logger.error('❌ Password migration failed:', error);
       return 0;
     }
   }
@@ -120,7 +131,7 @@ export class DatabaseResetService {
       return await this.userRepository.save(user);
       
     } catch (error) {
-      console.error('❌ User creation failed:', error);
+      this.logger.error('❌ User creation failed:', error);
       throw error;
     }
   }

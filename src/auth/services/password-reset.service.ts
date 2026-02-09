@@ -8,6 +8,7 @@ import { PasswordResetTokenEntity } from '../entities/password-reset.entity';
 import { AsyncEmailService } from '../../common/services/async-email.service';
 import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
+import { detectIdentifierType } from '../../common/utils/identifier.util';
 
 export interface InitiatePasswordResetDto {
   identifier: string;
@@ -64,46 +65,10 @@ export class PasswordResetService {
   ) {}
 
   /**
-   * 🔍 Detect identifier type and normalize
-   * Returns: { type, normalized, email }
+   * Detect identifier type - delegates to shared utility
    */
-  private detectIdentifierType(identifier: string): { 
-    type: 'email' | 'phone' | 'system_id' | 'birth_certificate', 
-    normalized: string 
-  } {
-    const trimmed = identifier.trim();
-    
-    // 📧 Email (contains @ and .)
-    if (trimmed.includes('@') && trimmed.includes('.')) {
-      return { type: 'email', normalized: trimmed.toLowerCase() };
-    }
-    
-    // 📱 Phone number
-    const phonePattern = /^(\+94|94|0)?7[012578]\d{7}$/;
-    const digitsOnly = trimmed.replace(/^\+/, '');
-    
-    if (phonePattern.test(trimmed)) {
-      let normalized = digitsOnly;
-      if (normalized.startsWith('94')) {
-        normalized = '0' + normalized.substring(2);
-      } else if (!normalized.startsWith('0')) {
-        normalized = '0' + normalized;
-      }
-      return { type: 'phone', normalized };
-    }
-    
-    // 🆔 System ID (exactly 6 digits)
-    if (/^\d{6}$/.test(trimmed)) {
-      return { type: 'system_id', normalized: trimmed };
-    }
-    
-    // 📄 Birth certificate (numeric, not 6 digits)
-    if (/^\d+$/.test(trimmed)) {
-      return { type: 'birth_certificate', normalized: trimmed };
-    }
-    
-    // Default to email if pattern doesn't match
-    return { type: 'email', normalized: trimmed.toLowerCase() };
+  private detectIdentifierType(identifier: string) {
+    return detectIdentifierType(identifier);
   }
 
   /**

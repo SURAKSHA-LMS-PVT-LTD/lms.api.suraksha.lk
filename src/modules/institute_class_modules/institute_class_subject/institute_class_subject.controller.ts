@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -182,7 +183,7 @@ export class InstituteClassSubjectController {
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('subjectId', ParseBigIntPipe) subjectId: string,
-    @Body() body: { teacherId: string }
+    @Body() body: TeacherIdDto
   ) {
     return this.instituteClassSubjectService.assignTeacher(instituteId, classId, subjectId, body.teacherId);
   }

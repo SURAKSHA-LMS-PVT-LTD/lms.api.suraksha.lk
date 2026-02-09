@@ -28,6 +28,10 @@ export enum PaymentMethodType {
 
 @Entity('institute_payment_submissions')
 @Index(['receiptFileUrl']) // For URL lookups
+@Index('idx_sub_payment', ['paymentId'])
+@Index('idx_sub_submitted_by', ['submittedBy'])
+@Index('idx_sub_status', ['status'])
+@Index('idx_sub_payment_status', ['paymentId', 'status'])
 export class InstitutePaymentSubmission {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

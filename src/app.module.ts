@@ -105,7 +105,7 @@ import { AppService } from './app.service';
         logging: false, // Disabled for faster startup
         // SSL configuration moved to extra section for MySQL 8.x compatibility
         // MySQL 8.x optimized connection pool configuration
-        poolSize: 3, // Minimal pool for faster startup
+        poolSize: 15, // Production-ready connection pool
         connectTimeout: 10000, // 10 seconds (faster timeout)
         acquireTimeout: 10000,
         timeout: 10000,
@@ -115,7 +115,7 @@ import { AppService } from './app.service';
           // MySQL2 driver optimized for MySQL 8.x
           charset: 'utf8mb4_unicode_ci',
           timezone: '+05:30', // Sri Lanka Time (UTC+5:30)
-          connectionLimit: 3, // Minimal for faster startup
+          connectionLimit: 15, // Match pool size
           connectTimeout: 10000, // 10 seconds
           // Performance optimizations for MySQL 8.x
           supportBigNumbers: true,

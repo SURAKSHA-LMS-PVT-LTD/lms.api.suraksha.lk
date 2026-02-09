@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { LayerManagementService } from './layer-management.service';
 
-// IP validation utility functions
-const ipRangeCheck = require('ip-range-check');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+import ipRangeCheck = require('ip-range-check');
 
 export interface AdminAccessControlConfig {
   isEnabledAdmin: boolean;

@@ -216,23 +216,35 @@ export class IdCardGeneratorService {
 
   async generateIdCardsForAllUsers(): Promise<{ success: string[], failed: string[] }> {
     try {
-
-      const users = await this.userRepository.find({
-        where: { isActive: true },
-        select: ['id', 'firstName', 'lastName', 'userType'],
-      });
-
       const success: string[] = [];
       const failed: string[] = [];
+      const BATCH_SIZE = 50;
+      let offset = 0;
 
-      for (const user of users) {
-        try {
-          await this.generateUserIdCard(user.id);
-          success.push(user.id);
-        } catch (error) {
-          failed.push(user.id);
-          this.logger.error(`❌ Failed to generate ID card for user: ${user.id}`, error);
+      // Process in batches to avoid memory issues
+      while (true) {
+        const users = await this.userRepository.find({
+          where: { isActive: true },
+          select: ['id', 'firstName', 'lastName', 'userType'],
+          take: BATCH_SIZE,
+          skip: offset,
+          order: { id: 'ASC' },
+        });
+
+        if (users.length === 0) break;
+
+        for (const user of users) {
+          try {
+            await this.generateUserIdCard(user.id);
+            success.push(user.id);
+          } catch (error) {
+            failed.push(user.id);
+            this.logger.error(`Failed to generate ID card for user: ${user.id}`, error);
+          }
         }
+
+        offset += BATCH_SIZE;
+        if (users.length < BATCH_SIZE) break;
       }
 
       return { success, failed };

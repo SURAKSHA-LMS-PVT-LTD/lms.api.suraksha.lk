@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { SubjectEntity } from './entities/subject.entity';
 import { SubjectRepository } from './repositories/subject.repository';
 import { CreateSubjectDto } from './dto/create-subject.dto';
@@ -14,6 +14,7 @@ import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class SubjectService {
+  private readonly logger = new Logger(SubjectService.name);
   constructor(
     private readonly subjectRepository: SubjectRepository,
     private readonly cloudStorageService: CloudStorageService,
@@ -276,13 +277,13 @@ export class SubjectService {
 
     // SUPERADMIN has access to all institutes
     if (user.u === UserType.SUPERADMIN) {
-      console.log(`[Subject Access] SUPERADMIN user ${user.s} accessing subject ${subject.id} for ${operation}`);
+      this.logger.debug(`SUPERADMIN user ${user.s} accessing subject ${subject.id} for ${operation}`);
       return;
     }
 
     // Validate user has instituteId array
     if (!user.i || !Array.isArray(user.i) || user.i.length === 0) {
-      console.error(`[Subject Access] User ${user.s} has no institute access. User type: ${user.u}`);
+      this.logger.warn(`User ${user.s} has no institute access. User type: ${user.u}`);
       throw new ForbiddenException(
         `You do not have access to any institute. Cannot ${operation} subjects.`
       );
@@ -298,13 +299,13 @@ export class SubjectService {
     );
 
     if (!hasAccessToInstitute) {
-      console.error(`[Subject Access] User ${user.s} denied access to subject ${subject.id} (institute: ${subject.instituteId}). User institutes: ${JSON.stringify(user.i.map(e => ({ i: e.i, r: e.r })))}`);
+      this.logger.warn(`User ${user.s} denied access to subject ${subject.id} (institute: ${subject.instituteId})`);
       throw new ForbiddenException(
         `You do not have permission to ${operation} subjects in institute ${subject.instituteId}. This subject belongs to a different institute or you don't have Institute Admin role.`
       );
     }
 
-    console.log(`[Subject Access] User ${user.s} granted access to subject ${subject.id} (institute: ${subject.instituteId}) for ${operation}`);
+    this.logger.debug(`User ${user.s} granted access to subject ${subject.id} (institute: ${subject.instituteId}) for ${operation}`);
   }
 
   private mapToResponseDto(subject: SubjectEntity): SubjectResponseDto {

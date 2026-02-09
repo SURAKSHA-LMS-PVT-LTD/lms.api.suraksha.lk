@@ -13,6 +13,8 @@ import { RefreshTokenEntity } from './entities/password-reset.entity';
 // ✅ CACHING SERVICES
 import { UserManagementService } from '../common/services/cache-user-management.service';
 import { CacheService } from '../common/services/cache.service';
+import { detectIdentifierType } from '../common/utils/identifier.util';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CloudStorageService } from '../common/services/cloud-storage.service';
 import { InstituteClassStudentEntity } from '../modules/institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { StudentEntity } from '../modules/student/entities/student.entity';
@@ -78,47 +80,10 @@ export class AuthService {
   }
 
   /**
-   * � Detect identifier type based on pattern
-   * Returns: 'email' | 'phone' | 'system_id' | 'birth_certificate'
+   * Detect identifier type - delegates to shared utility
    */
-  private detectIdentifierType(identifier: string): { type: 'email' | 'phone' | 'system_id' | 'birth_certificate', normalized: string } {
-    const trimmed = identifier.trim();
-    
-    // 📧 Check if it's an email (contains @ and .)
-    if (trimmed.includes('@') && trimmed.includes('.')) {
-      return { type: 'email', normalized: trimmed.toLowerCase() };
-    }
-    
-    // 📱 Check if it's a phone number
-    // Patterns: +94771234567, 94771234567, 0771234567, 771234567
-    // Must start with +94, 94, 077/071/070/078/075/076/072, or 77/71/70/78/75/76/72
-    // Must be 9-13 digits (after removing +)
-    const phonePattern = /^(\+94|94|0)?7[012578]\d{7}$/;
-    const digitsOnly = trimmed.replace(/^\+/, '');
-    
-    if (phonePattern.test(trimmed)) {
-      // Normalize to format: 0771234567 (Sri Lankan local format)
-      let normalized = digitsOnly;
-      if (normalized.startsWith('94')) {
-        normalized = '0' + normalized.substring(2);
-      } else if (!normalized.startsWith('0')) {
-        normalized = '0' + normalized;
-      }
-      return { type: 'phone', normalized };
-    }
-    
-    // 🆔 Check if it's a system registration number (exactly 6 digits)
-    if (/^\d{6}$/.test(trimmed)) {
-      return { type: 'system_id', normalized: trimmed };
-    }
-    
-    // 📄 Otherwise treat as birth certificate number (numeric, not 6 digits)
-    if (/^\d+$/.test(trimmed)) {
-      return { type: 'birth_certificate', normalized: trimmed };
-    }
-    
-    // Default to email if pattern doesn't match anything
-    return { type: 'email', normalized: trimmed.toLowerCase() };
+  private detectIdentifierType(identifier: string) {
+    return detectIdentifierType(identifier);
   }
 
   /**
@@ -937,7 +902,7 @@ export class AuthService {
    * @returns Success message
    */
   async changePasswordWithJWT(
-    changePasswordDto: any, 
+    changePasswordDto: ChangePasswordDto, 
     authorization: string
   ): Promise<{ message: string; isSuccess: boolean }> {
     

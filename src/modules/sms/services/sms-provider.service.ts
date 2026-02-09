@@ -67,6 +67,7 @@ export class SmsProviderService {
   // Provider limits
   private readonly MAX_RECIPIENTS_PER_BATCH = 500; // SMSlenz limit
   private readonly MAX_MESSAGE_LENGTH = 1500; // SMSlenz limit
+  private readonly HTTP_TIMEOUT_MS = 30000; // 30 second timeout for API calls
 
   constructor(
     private readonly configService: ConfigService,
@@ -93,6 +94,8 @@ export class SmsProviderService {
       this.validateMessage(message);
       this.validatePhoneNumber(contact);
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.HTTP_TIMEOUT_MS);
 
       const response = await fetch(this.SEND_SMS_URL, {
         method: 'POST',
@@ -106,14 +109,13 @@ export class SmsProviderService {
           contact: contact,
           message: message,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
       const data: SmsSendResponse = await response.json();
 
-      // Log full response for debugging
-
-      if (data.success || data.data?.status === 'success') {
-      } else {
+      if (!(data.success || data.data?.status === 'success')) {
         this.logger.error(`❌ SMS failed to ${contact}: ${data.message}`);
       }
 
@@ -179,6 +181,9 @@ export class SmsProviderService {
         const batch = batches[i];
 
         try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), this.HTTP_TIMEOUT_MS);
+
           const response = await fetch(this.SEND_BULK_SMS_URL, {
             method: 'POST',
             headers: {
@@ -188,11 +193,13 @@ export class SmsProviderService {
               user_id: userId,
               api_key: apiKey,
               sender_id: senderId,
-              contacts: batch, // Array of phone numbers
+              contacts: batch,
               message: message,
             }),
+            signal: controller.signal,
           });
 
+          clearTimeout(timeout);
           const data: SmsSendResponse = await response.json();
 
           if (data.success) {
@@ -200,8 +207,6 @@ export class SmsProviderService {
             totalSent += sentCount;
             campaignIds.push(data.data.campaign_id);
             lastBalance = data.data.sms_credit_balance;
-
-            // Batch sent successfully
           } else {
             totalFailed += batch.length;
             this.logger.error(`❌ Batch ${i + 1} failed: ${data.message}`);
@@ -248,6 +253,8 @@ export class SmsProviderService {
     try {
       this.validateCredentials(userId, apiKey, 'N/A');
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.HTTP_TIMEOUT_MS);
 
       const response = await fetch(this.ACCOUNT_STATUS_URL, {
         method: 'POST',
@@ -258,13 +265,11 @@ export class SmsProviderService {
           user_id: userId,
           api_key: apiKey,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
       const data: SmsAccountStatusResponse = await response.json();
-
-      if (data.success) {
-        // Account status retrieved
-      }
 
       return data;
 

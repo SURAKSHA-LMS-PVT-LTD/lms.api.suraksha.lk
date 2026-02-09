@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { EmailDto, EmailOtpVerifyDto, PhoneNumberDto, PhoneOtpVerifyDto, RejectReasonDto, FileUploadRequestDto, ImageUrlDto } from '../../common/dto/common-body.dto';
 import {
   Controller,
   Get,
@@ -21,6 +22,7 @@ import {
   UploadedFiles,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -84,7 +86,7 @@ import { UpdateTelegramIdDto } from './dto/update-telegram-id.dto';
 @UseGuards(ApiKeyOrJwtGuard, OriginValidationGuard)
 @UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
-  private readonly logger = new (require('@nestjs/common').Logger)(UsersController.name);
+  private readonly logger = new Logger(UsersController.name);
   
   constructor(
     private readonly usersService: UsersService,
@@ -3031,7 +3033,7 @@ export class UsersController {
     description: 'Upload failed or database operation error'
   })
   async uploadProfilePhoto(
-    @Body() body: { imageUrl: string },
+    @Body() body: ImageUrlDto,
     @Request() req: JwtRequest
   ) {
     const startTime = nowTimestamp();
@@ -3323,7 +3325,7 @@ export class UsersController {
     }
   })
   async requestEmailOtp(
-    @Body() body: { email: string },
+    @Body() body: EmailDto,
     @Request() req: any,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -3375,7 +3377,7 @@ export class UsersController {
     description: 'Invalid or expired OTP'
   })
   async verifyEmailOtp(
-    @Body() body: { email: string; otpCode: string },
+    @Body() body: EmailOtpVerifyDto,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -3439,7 +3441,7 @@ export class UsersController {
     }
   })
   async reRequestEmailOtp(
-    @Body() body: { email: string },
+    @Body() body: EmailDto,
     @Request() req: any,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -3506,7 +3508,7 @@ export class UsersController {
     }
   })
   async requestPhoneOtp(
-    @Body() body: { phoneNumber: string },
+    @Body() body: PhoneNumberDto,
     @Request() req: any,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -3558,7 +3560,7 @@ export class UsersController {
     description: 'Invalid or expired OTP'
   })
   async verifyPhoneOtp(
-    @Body() body: { phoneNumber: string; otpCode: string },
+    @Body() body: PhoneOtpVerifyDto,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -3622,7 +3624,7 @@ export class UsersController {
     }
   })
   async reRequestPhoneOtp(
-    @Body() body: { phoneNumber: string },
+    @Body() body: PhoneNumberDto,
     @Request() req: any,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -3705,7 +3707,7 @@ export class UsersController {
   })
   async rejectProfileImage(
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() body: { reason?: string },
+    @Body() body: RejectReasonDto,
     @Request() req: any,
   ) {
     const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;

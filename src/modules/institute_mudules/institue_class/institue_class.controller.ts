@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ImageUrlDto, TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, UploadedFile, ClassSerializerInterceptor } from '@nestjs/common';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -84,13 +85,9 @@ export class InstitueClassController {
   async create(
     @Body(new ValidationPipe({ transform: true }), ClassDateRangePipe) createInstitueClassDto: CreateInstitueClassDto
   ) {
-    try {
-      // Create class with imageUrl already in DTO (from signed URL upload)
-      const result = await this.institueClassService.create(createInstitueClassDto);
-      return result;
-    } catch (error) {
-      throw error;
-    }
+    // Create class with imageUrl already in DTO (from signed URL upload)
+    const result = await this.institueClassService.create(createInstitueClassDto);
+    return result;
   }
 
   @Get()
@@ -117,7 +114,7 @@ export class InstitueClassController {
   @ApiResponse({ status: 404, description: 'Class not found' })
   async uploadClassImage(
     @Param('id') classId: string,
-    @Body() body: { imageUrl: string }
+    @Body() body: ImageUrlDto
   ) {
     if (!body.imageUrl) {
       throw new BadRequestException('imageUrl is required');
@@ -233,14 +230,9 @@ export class InstitueClassController {
     @Param('id', ClassExistsPipe) id: string, 
     @Body(new ValidationPipe({ transform: true, whitelist: true }), ClassDateRangePipe) updateInstitueClassDto: UpdateInstitueClassDto
   ) {
-    try {
-      // Update class details with imageUrl from DTO (from signed URL upload)
-      const result = await this.institueClassService.update(id, updateInstitueClassDto);
-      
-      return result;
-    } catch (error) {
-      throw error;
-    }
+    // Update class details with imageUrl from DTO (from signed URL upload)
+    const result = await this.institueClassService.update(id, updateInstitueClassDto);
+    return result;
   }
 
   @Patch(':id/activate')
@@ -301,7 +293,7 @@ export class InstitueClassController {
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async assignTeacher(
     @Param('id', ParseBigIntPipe) id: string,
-    @Body() body: { teacherId: string }
+    @Body() body: TeacherIdDto
   ) {
     return this.institueClassService.assignTeacher(id, body.teacherId);
   }

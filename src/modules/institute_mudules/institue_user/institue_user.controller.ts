@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ImageUrlDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpCode, HttpStatus, BadRequestException, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -896,7 +897,7 @@ export class InstitueUserController {
   async uploadInstituteUserImage(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() body: { imageUrl: string }
+    @Body() body: ImageUrlDto
   ): Promise<InstituteUserImageResponseDto> {
     if (!body.imageUrl) {
       throw new BadRequestException('imageUrl is required');

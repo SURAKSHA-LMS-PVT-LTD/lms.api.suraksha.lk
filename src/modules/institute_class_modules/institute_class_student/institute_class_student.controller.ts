@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { StudentUserIdsDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { InstituteClassStudentService } from './institute_class_student.service';
@@ -166,7 +167,7 @@ export class InstituteClassStudentController {
   async bulkRemoveStudents(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
-    @Body() body: { studentUserIds: string[] }
+    @Body() body: StudentUserIdsDto
   ) {
     await this.instituteClassStudentService.bulkRemoveStudents({
       instituteId,

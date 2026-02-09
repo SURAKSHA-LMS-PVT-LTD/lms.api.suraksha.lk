@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MulterModule } from '@nestjs/platform-express';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { memoryStorage } from 'multer';
 import { PaymentEntity } from './entities/payment.entity';
 import { InstituteClassSubjectPayment } from './entities/institute-class-subject-payment.entity';
 import { InstituteClassSubjectPaymentSubmission } from './entities/institute-class-subject-payment-submission.entity';
@@ -76,7 +77,7 @@ import { EnhancedEmailService } from '../../common/services/enhanced-email.servi
       inject: [ConfigService],
     }),
     MulterModule.register({
-      storage: require('multer').memoryStorage(),
+      storage: memoryStorage(),
       limits: {
         fileSize: 2 * 1024 * 1024, // 2MB
         files: 1,

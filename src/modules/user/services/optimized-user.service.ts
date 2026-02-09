@@ -167,7 +167,8 @@ export class OptimizedUserService {
     const users = await this.userRepository.find({
       select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email'],
       where,
-      order: { firstName: 'ASC' }
+      order: { firstName: 'ASC' },
+      take: 500,
     });
 
     return users.map(user => ({

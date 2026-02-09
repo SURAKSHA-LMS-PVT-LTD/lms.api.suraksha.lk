@@ -15,6 +15,10 @@ export enum SubmissionStatus {
 
 @Entity('institute_class_subject_payment_submissions')
 @Index(['receiptUrl']) // For URL lookups
+@Index('idx_csps_payment', ['paymentId'])
+@Index('idx_csps_user', ['userId'])
+@Index('idx_csps_status', ['status'])
+@Index('idx_csps_payment_status', ['paymentId', 'status'])
 export class InstituteClassSubjectPaymentSubmission {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

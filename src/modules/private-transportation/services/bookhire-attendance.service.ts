@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -13,6 +13,7 @@ import { MarkBookhireAttendanceDto, BulkMarkAttendanceDto } from '../dto/bookhir
 
 @Injectable()
 export class BookhireAttendanceService {
+  private readonly logger = new Logger(BookhireAttendanceService.name);
   constructor(
     private readonly configService: ConfigService,
     private readonly dynamoBookhireAttendanceService: DynamoDBBookhireAttendanceService,
@@ -30,15 +31,16 @@ export class BookhireAttendanceService {
 
   /**
    * 🚗 MARK BOOKHIRE ATTENDANCE with advertising integration
+   * @param preVerifiedBookhire - Pre-fetched bookhire entity to skip redundant DB query (used by bulk operations)
    */
-  async markAttendance(markAttendanceDto: MarkBookhireAttendanceDto, ownerId: string): Promise<any> {
+  async markAttendance(markAttendanceDto: MarkBookhireAttendanceDto, ownerId: string, preVerifiedBookhire?: any): Promise<any> {
     // Set default date if not provided
     if (!markAttendanceDto.attendanceDate) {
       markAttendanceDto.attendanceDate = getCurrentSriLankaDate();
     }
 
-    // 🔍 STEP 1: Verify bookhire ownership - Optimized field selection
-    const bookhire = await this.bookhireRepository.findOne({
+    // 🔍 STEP 1: Use pre-verified bookhire or fetch from DB
+    const bookhire = preVerifiedBookhire || await this.bookhireRepository.findOne({
       where: { 
         id: markAttendanceDto.bookhireId,
         ownerId: ownerId
@@ -82,12 +84,9 @@ export class BookhireAttendanceService {
     if (isStudentUserType) {
       try {
         studentData = await this.fetchStudentWithParentDataSafe(markAttendanceDto.studentId);
-        if (studentData.student) {
-        } else {
-        }
       } catch (error) {
+        this.logger.warn(`Failed to fetch student parent data for ${markAttendanceDto.studentId}: ${error.message}`);
       }
-    } else {
     }
 
     // 🔍 STEP 4: Verify enrollment (if required by environment and user is a student)
@@ -374,7 +373,7 @@ export class BookhireAttendanceService {
           notes: record.notes
         };
 
-        const result = await this.markAttendance(singleDto, ownerId);
+        const result = await this.markAttendance(singleDto, ownerId, bookhire);
         successful.push({
           studentId: record.studentId,
           result: result.data
@@ -612,17 +611,17 @@ export class BookhireAttendanceService {
       //     { id: advertisementData.id },
       //     'currentSendings',
       //     1
-      //   ).catch(err => console.error(`Failed to increment ad sendings: ${err.message}`));
+      //   ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
       // }
 
       // 🎯 CASCADE TO PARENTS (if enabled)
       if (advertisementData.cascadeToParents && studentData.student) {
-        console.log(`🎯 CASCADE ENABLED for BookHire: Sending same ad to ALL parents of student ${attendanceRecord.studentId}`);
+        this.logger.log(`🎯 CASCADE ENABLED for BookHire: Sending same ad to ALL parents of student ${attendanceRecord.studentId}`);
         await this.cascadeAdToAllParentsBookhire(studentData, advertisementData, attendanceRecord, vehicleData);
       }
 
     } catch (error) {
-      console.error('Error in sendNotificationWithDatabaseAd:', error);
+      this.logger.error('Error in sendNotificationWithDatabaseAd:', error);
     }
   }
 
@@ -728,7 +727,7 @@ export class BookhireAttendanceService {
         occupation: studentData.student?.user?.occupation || null
       };
 
-      console.log(`🎯 [BookHire] Finding MOST MATCHING ad for user ${userProfile.userId}`);
+      this.logger.log(`🎯 [BookHire] Finding MOST MATCHING ad for user ${userProfile.userId}`);
 
       // 🔥 Use sophisticated multi-factor matching service
       // const matches = await this.advertisementMatchingService.findMostMatchingAdvertisements(userProfile, 1); // TODO: Service not available
@@ -738,7 +737,7 @@ export class BookhireAttendanceService {
         const bestMatch = matches[0];
         const advertisement = bestMatch.advertisement;
 
-        console.log(`✅ [BookHire] Found BEST matching ad: "${advertisement.title}" (Score: ${bestMatch.matchScore})`);
+        this.logger.log(`✅ [BookHire] Found BEST matching ad: "${advertisement.title}" (Score: ${bestMatch.matchScore})`);
 
         return {
           id: advertisement.id,
@@ -752,7 +751,7 @@ export class BookhireAttendanceService {
         };
       }
 
-      console.warn(`⚠️ [BookHire] No matching advertisement found, using default fallback`);
+      this.logger.warn(`⚠️ [BookHire] No matching advertisement found, using default fallback`);
 
       // Fallback to default ad if no matching ad found
       return {
@@ -766,7 +765,7 @@ export class BookhireAttendanceService {
         cascadeToParents: false
       };
     } catch (error) {
-      console.error(`❌ [BookHire] Failed to fetch matching advertisement: ${error.message}`);
+      this.logger.error(`❌ [BookHire] Failed to fetch matching advertisement: ${error.message}`);
       // Return default ad on error
       return {
         id: 'default-error-fallback',
@@ -795,7 +794,7 @@ export class BookhireAttendanceService {
     try {
       const student = studentData.student;
       if (!student) {
-        console.warn(`⚠️ [BookHire] No student data found for cascade`);
+        this.logger.warn(`⚠️ [BookHire] No student data found for cascade`);
         return;
       }
 
@@ -814,11 +813,11 @@ export class BookhireAttendanceService {
       }
 
       if (allParents.length === 0) {
-        console.warn(`⚠️ [BookHire] No parents found for cascade`);
+        this.logger.warn(`⚠️ [BookHire] No parents found for cascade`);
         return;
       }
 
-      console.log(`🎯 [BookHire] Cascading ad "${advertisementData.title}" to ${allParents.length} parent(s)`);
+      this.logger.log(`🎯 [BookHire] Cascading ad "${advertisementData.title}" to ${allParents.length} parent(s)`);
 
       // Send notification to EACH parent with the SAME ad
       const cascadePromises = allParents.map(async (parent) => {
@@ -827,7 +826,7 @@ export class BookhireAttendanceService {
           
           // Check if parent has contact info
           if (!parentUser.phoneNumber && !parentUser.email && !parentUser.telegramId) {
-            console.warn(`⚠️ [BookHire] ${parent.type} has no contact info`);
+            this.logger.warn(`⚠️ [BookHire] ${parent.type} has no contact info`);
             return;
           }
 
@@ -836,7 +835,7 @@ export class BookhireAttendanceService {
           const shouldReceiveAds = await this.shouldReceiveAdvertisements(parentSubscriptionPlan);
 
           if (!shouldReceiveAds) {
-            console.log(`ℹ️ [BookHire] ${parent.type} subscription (${parentSubscriptionPlan}) doesn't receive ads`);
+            this.logger.log(`ℹ️ [BookHire] ${parent.type} subscription (${parentSubscriptionPlan}) doesn't receive ads`);
             return;
           }
 
@@ -861,17 +860,17 @@ export class BookhireAttendanceService {
           // await this.attendanceNotificationService.sendAttendanceNotification(notificationData); // TODO: Service not available
           
         } catch (error) {
-          console.error(`❌ [BookHire] Failed to cascade ad to ${parent.type}: ${error.message}`);
+          this.logger.error(`❌ [BookHire] Failed to cascade ad to ${parent.type}: ${error.message}`);
         }
       });
 
       // Wait for all cascade notifications
       await Promise.allSettled(cascadePromises);
 
-      console.log(`✅ [BookHire] Cascade complete: Ad sent to ${allParents.length} parent(s)`);
+      this.logger.log(`✅ [BookHire] Cascade complete: Ad sent to ${allParents.length} parent(s)`);
 
     } catch (error) {
-      console.error(`❌ [BookHire] Cascade to parents failed: ${error.message}`);
+      this.logger.error(`❌ [BookHire] Cascade to parents failed: ${error.message}`);
     }
   }
 
@@ -1210,7 +1209,7 @@ export class BookhireAttendanceService {
       return false;
     } catch (error) {
       // On unexpected errors, log lightly and return false so caller can fail with BadRequest
-      console.error('Error checking enrollment:', error?.message || error);
+      this.logger.error('Error checking enrollment:', error?.message || error);
       return false;
     }
   }
