@@ -1,5 +1,6 @@
-import { IsNotEmpty, IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, MinLength, IsOptional, IsBoolean } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 export class LoginDto {
   @ApiProperty({ 
@@ -26,4 +27,20 @@ export class LoginDto {
   @IsNotEmpty({ message: 'Password is required' })
   @MinLength(1, { message: 'Password cannot be empty' })
   password: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Remember me flag for extended session',
+    example: true,
+    default: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true')
+  rememberMe?: boolean;
+
+  // Accept snake_case variant from frontend and map to rememberMe
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true')
+  remember_me?: boolean;
 }
