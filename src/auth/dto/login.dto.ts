@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MinLength, IsOptional, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, MinLength, IsOptional, IsBoolean, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -15,8 +15,20 @@ export class LoginDto {
     }
   })
   @IsString({ message: 'Identifier must be a string' })
+  // Only require identifier if email is also not provided
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate number) is required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field and map it to identifier
+  @ApiPropertyOptional({ 
+    description: '(Legacy) Email address — use "identifier" instead. If both are sent, "identifier" takes priority.',
+    example: 'user@example.com'
+  })
+  @IsOptional()
+  @IsString()
+  email?: string;
 
   @ApiProperty({ 
     description: 'User password',
