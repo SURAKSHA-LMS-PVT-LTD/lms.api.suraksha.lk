@@ -80,12 +80,12 @@ export class BookhireOwnerService {
   }
 
   async login(loginDto: BookhireOwnerLoginDto): Promise<{ owner: any; token: string }> {
-    const owner = await this.bookhireOwnerRepository.findOne({ 
-      where: { 
-        email: loginDto.email.toLowerCase(),
-        isActive: true 
-      }
-    });
+    const owner = await this.bookhireOwnerRepository
+      .createQueryBuilder('owner')
+      .addSelect('owner.password')
+      .where('owner.email = :email', { email: loginDto.email.toLowerCase() })
+      .andWhere('owner.isActive = :isActive', { isActive: true })
+      .getOne();
 
     if (!owner) {
       throw new UnauthorizedException('Invalid credentials');
@@ -182,9 +182,11 @@ export class BookhireOwnerService {
   }
 
   async changePassword(id: string, changePasswordDto: ChangeBookhireOwnerPasswordDto): Promise<void> {
-    const owner = await this.bookhireOwnerRepository.findOne({
-      where: { id }
-    });
+    const owner = await this.bookhireOwnerRepository
+      .createQueryBuilder('owner')
+      .addSelect('owner.password')
+      .where('owner.id = :id', { id })
+      .getOne();
 
     if (!owner) {
       throw new NotFoundException('Bookhire owner not found');

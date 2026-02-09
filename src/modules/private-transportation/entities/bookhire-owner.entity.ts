@@ -17,7 +17,7 @@ export class BookhireOwnerEntity {
   email: string;
 
   @Exclude()
-  @Column({ type: 'varchar', length: 255, nullable: false })
+  @Column({ type: 'varchar', length: 255, nullable: false, select: false })
   password: string;
 
   @Column({ type: 'varchar', length: 20, nullable: false })

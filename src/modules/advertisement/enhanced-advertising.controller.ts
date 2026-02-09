@@ -34,15 +34,15 @@ export class EnhancedAdvertisingController {
    * Controls which transport services students can see based on advertiser payments
    */
   @Get('student-allocations/:studentId')
-  
-  
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async getStudentAllocations(
     @Param('studentId') studentId: string,
     @Query('location') location?: string,
     @Req() req?: any,
   ) {
     try {
-      // Public access - no validation needed
+      // Access restricted to SUPERADMIN only
 
       const allocations = await this.enhancedAdvertisingService.controlStudentAllocations(
         studentId,
@@ -76,6 +76,8 @@ export class EnhancedAdvertisingController {
    */
   @Post('track-revenue')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async trackRevenue(
     @Body() body: {
       serviceId: string;
@@ -115,8 +117,8 @@ export class EnhancedAdvertisingController {
    * Provides comprehensive advertising performance metrics
    */
   @Get('analytics')
-  
-  
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async getAdvertisingAnalytics(
     @Query('timeframe') timeframe: 'daily' | 'weekly' | 'monthly' = 'monthly'
   ) {
@@ -257,8 +259,8 @@ export class EnhancedAdvertisingController {
    * Creates promotional offers for transport services
    */
   @Post('promotional-offer/:serviceId')
-  
-  
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async createPromotionalOffer(
     @Param('serviceId') serviceId: string,
     @Body() body: {
@@ -346,8 +348,8 @@ export class EnhancedAdvertisingController {
    * Provides quick overview of advertising performance
    */
   @Get('summary')
-  
-  
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async getAdvertisingSummary() {
     try {
       const analytics = await this.enhancedAdvertisingService.getAdvertisingAnalytics('monthly');
