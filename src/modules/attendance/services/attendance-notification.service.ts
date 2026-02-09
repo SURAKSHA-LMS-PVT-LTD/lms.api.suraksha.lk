@@ -38,6 +38,7 @@ export interface AttendanceNotificationData {
     content: string;
     sendingUrl?: string;
     supportivePlatforms?: string[];
+    modeOfSending?: string[];
   };
 }
 
@@ -146,27 +147,35 @@ export class AttendanceNotificationService {
     const retryConfig = this.getRetryConfig(data.subscriptionPlan);
     const isAdsEnabled = this.isAdsEnabled(data.subscriptionPlan);
 
-    // 🎯 PLATFORM-SPECIFIC FILTERING: If advertisement has supportivePlatforms, filter channels
-    if (isAdsEnabled && data.advertisementData?.supportivePlatforms && data.advertisementData.supportivePlatforms.length > 0) {
-      const supportedPlatforms = data.advertisementData.supportivePlatforms;
-      const originalChannels = [...channels];
-      
-      // Filter channels to only those supported by the advertisement
-      channels = channels.filter(channel => {
-        // Map channel names to platform enum values
-        const platformMap: Record<string, string> = {
-          'sms': 'sms',
-          'whatsapp': 'whatsapp',
-          'telegram': 'telegram',
-          'email': 'email',
-          'push': 'mobile-push' // Mobile push notifications
-        };
+    // 🎯 PLATFORM-SPECIFIC FILTERING: Use modeOfSending (primary) or supportivePlatforms (fallback) to filter channels
+    if (isAdsEnabled && data.advertisementData) {
+      // modeOfSending takes priority over supportivePlatforms for channel selection
+      const sendingModes = data.advertisementData.modeOfSending && data.advertisementData.modeOfSending.length > 0
+        ? data.advertisementData.modeOfSending
+        : (data.advertisementData.supportivePlatforms && data.advertisementData.supportivePlatforms.length > 0
+          ? data.advertisementData.supportivePlatforms
+          : null);
+
+      if (sendingModes && sendingModes.length > 0) {
+        const originalChannels = [...channels];
         
-        const platformName = platformMap[channel] || channel;
-        return supportedPlatforms.includes(platformName);
-      });
-      
-      if (channels.length < originalChannels.length) {
+        // Filter channels to only those specified by the advertisement's sending modes
+        channels = channels.filter(channel => {
+          // Map channel names to modeOfSending/platform enum values
+          const modeMap: Record<string, string[]> = {
+            'sms': ['sms'],
+            'whatsapp': ['whatsapp'],
+            'telegram': ['telegram'],
+            'email': ['email'],
+            'push': ['push-mobile', 'push-web', 'mobile-push', 'web-push']
+          };
+          
+          const possibleModes = modeMap[channel] || [channel];
+          return possibleModes.some(mode => sendingModes.includes(mode));
+        });
+        
+        if (channels.length < originalChannels.length) {
+        }
       }
     }
 
@@ -1135,11 +1144,14 @@ export class AttendanceNotificationService {
     let imageUrl: string | undefined;
     
     if (data.advertisementData && this.isAdsEnabled(data.subscriptionPlan)) {
-      // Check if push is supported for this ad
-      const supportedPlatforms = data.advertisementData.supportivePlatforms || [];
-      const isPushSupported = supportedPlatforms.length === 0 || 
-                              supportedPlatforms.includes('mobile-push') ||
-                              supportedPlatforms.includes('push');
+      // Check if push is supported for this ad (modeOfSending takes priority over supportivePlatforms)
+      const sendingModes = data.advertisementData.modeOfSending && data.advertisementData.modeOfSending.length > 0
+        ? data.advertisementData.modeOfSending
+        : (data.advertisementData.supportivePlatforms || []);
+      const isPushSupported = sendingModes.length === 0 || 
+                              sendingModes.includes('mobile-push') ||
+                              sendingModes.includes('push-mobile') ||
+                              sendingModes.includes('push');
       
       if (isPushSupported) {
         // Use ad image for rich notification

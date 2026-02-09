@@ -23,6 +23,17 @@ export enum SupportivePlatform {
   WEB_PUSH = 'web-push'
 }
 
+// 🎯 SENDING MODE: Defines which channels are used to ACTUALLY DELIVER the advertisement
+// This controls the delivery pipeline — only these channels will be used when sending
+export enum SendingMode {
+  SMS = 'sms',
+  EMAIL = 'email',
+  WHATSAPP = 'whatsapp',
+  TELEGRAM = 'telegram',
+  PUSH_WEB = 'push-web',
+  PUSH_MOBILE = 'push-mobile'
+}
+
 @Entity('advertisements')
 @Index(['isActive', 'startDate', 'endDate']) // For active ads queries (CRITICAL for attendance notifications)
 @Index(['priority']) // For priority sorting
@@ -60,6 +71,15 @@ export class AdvertisementEntity {
     nullable: true
   })
   supportivePlatforms?: SupportivePlatform[];
+
+  // 🎯 MODE OF SENDING: Which channels to actually use when delivering this advertisement
+  // Example: ['sms', 'whatsapp', 'email'] means the ad will be sent via SMS, WhatsApp, and Email
+  @Column({ 
+    type: 'set',
+    enum: SendingMode,
+    nullable: true
+  })
+  modeOfSending?: SendingMode[];
 
   @Column({ 
     type: 'enum', 

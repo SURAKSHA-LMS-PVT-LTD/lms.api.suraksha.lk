@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, HttpException, 
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { AdvertisementService } from './advertisement.service';
 import { CreateAdvertisementDto, UpdateAdvertisementDto, AdvertisementType, AdvertisementResponseDto, AdvertisementListResponseDto } from './dto/advertisement.dto';
+import { ManualAdvertisementSendDto, BulkManualAdvertisementSendDto } from './dto/manual-advertisement.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 
 // ⚠️ MULTER REMOVED: All file uploads now use signed URL client-side direct upload
@@ -454,7 +455,7 @@ export class AdvertisementController {
   @ApiResponse({ status: 403, description: 'Forbidden - SUPERADMIN role required' })
   @ApiResponse({ status: 404, description: 'Advertisement not found' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  async sendAdvertisementManually(@Body() sendDto, @Request() req: any) {
+  async sendAdvertisementManually(@Body() sendDto: ManualAdvertisementSendDto, @Request() req: any) {
     try {
       // In a real implementation, you'd validate admin permissions here
       const adminUserId = req.user?.id || 'system-admin';
@@ -526,7 +527,7 @@ export class AdvertisementController {
       }
     }
   })
-  async checkAdvertisementSending(@Body() sendDto, @Request() req: any) {
+  async checkAdvertisementSending(@Body() sendDto: ManualAdvertisementSendDto, @Request() req: any) {
     try {
       return await this.advertisementService.checkAdvertisementSending(sendDto);
     } catch (error) {
@@ -580,7 +581,7 @@ export class AdvertisementController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - SUPERADMIN role required' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  async sendBulkAdvertisementsManually(@Body() bulkSendDto, @Request() req: any) {
+  async sendBulkAdvertisementsManually(@Body() bulkSendDto: BulkManualAdvertisementSendDto, @Request() req: any) {
     try {
       // In a real implementation, you'd validate admin permissions here
       const adminUserId = req.user?.id || 'system-admin';

@@ -15,6 +15,11 @@ export interface AdvertisementDeliveryResult {
   advertisementId?: string;
   advertisementTitle?: string;
   advertisementUrl?: string;
+  advertisementContent?: string;
+  advertisementMediaType?: string;
+  advertisementSendingUrl?: string;
+  supportivePlatforms?: string[];
+  modeOfSending?: string[];
   matchScore?: number;
   deliveryMethod: 'database' | 'default' | 'none';
   reason?: string;
@@ -102,9 +107,12 @@ export class AdvertisementDeliveryService {
         attendanceData.advertisementData = {
           id: advertisementResult.advertisementId,
           mediaUrl: advertisementResult.advertisementUrl || this.defaultAdMediaUrl,
-          mediaType: 'IMAGE',
+          mediaType: advertisementResult.advertisementMediaType || 'IMAGE',
           title: advertisementResult.advertisementTitle || this.defaultAdTitle,
-          content: this.defaultAdContent
+          content: advertisementResult.advertisementContent || this.defaultAdContent,
+          sendingUrl: advertisementResult.advertisementSendingUrl,
+          supportivePlatforms: advertisementResult.supportivePlatforms || [],
+          modeOfSending: advertisementResult.modeOfSending || [],
         };
       }
 
@@ -240,6 +248,11 @@ export class AdvertisementDeliveryService {
         advertisementId: bestMatch.advertisement.id,
         advertisementTitle: bestMatch.advertisement.title,
         advertisementUrl: bestMatch.advertisement.mediaUrl,
+        advertisementContent: bestMatch.advertisement.description || '',
+        advertisementMediaType: bestMatch.advertisement.mediaType || 'image',
+        advertisementSendingUrl: bestMatch.advertisement.sendingUrl,
+        supportivePlatforms: bestMatch.advertisement.supportivePlatforms || [],
+        modeOfSending: bestMatch.advertisement.modeOfSending || [],
         matchScore: bestMatch.matchScore,
         deliveryMethod: 'database',
         timestamp: getCurrentSriLankaTime()
@@ -264,6 +277,9 @@ export class AdvertisementDeliveryService {
       success: true,
       advertisementTitle: this.defaultAdTitle,
       advertisementUrl: this.defaultAdMediaUrl,
+      advertisementContent: this.defaultAdContent,
+      supportivePlatforms: [],
+      modeOfSending: [],
       deliveryMethod: 'default',
       timestamp: getCurrentSriLankaTime()
     };

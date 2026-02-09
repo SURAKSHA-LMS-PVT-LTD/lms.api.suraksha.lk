@@ -24,6 +24,15 @@ export enum SupportivePlatform {
   WEB_PUSH = 'web-push'
 }
 
+export enum SendingMode {
+  SMS = 'sms',
+  EMAIL = 'email',
+  WHATSAPP = 'whatsapp',
+  TELEGRAM = 'telegram',
+  PUSH_WEB = 'push-web',
+  PUSH_MOBILE = 'push-mobile'
+}
+
 export class CreateAdvertisementDto {
   @ApiProperty({ 
     description: 'Advertisement title',
@@ -83,6 +92,17 @@ export class CreateAdvertisementDto {
   @IsOptional()
   @IsEnum(SupportivePlatform, { each: true })
   supportivePlatforms?: SupportivePlatform[];
+
+  @ApiPropertyOptional({ 
+    enum: SendingMode,
+    isArray: true,
+    description: 'Delivery channels to use when actually sending this advertisement (sms, email, whatsapp, telegram, push-web, push-mobile)',
+    example: [SendingMode.SMS, SendingMode.WHATSAPP, SendingMode.EMAIL]
+  })
+  @IsArray()
+  @IsOptional()
+  @IsEnum(SendingMode, { each: true })
+  modeOfSending?: SendingMode[];
 
   @ApiProperty({ 
     enum: MediaType, 
@@ -349,6 +369,16 @@ export class UpdateAdvertisementDto {
   @IsEnum(SupportivePlatform, { each: true })
   supportivePlatforms?: SupportivePlatform[];
 
+  @ApiPropertyOptional({ 
+    enum: SendingMode,
+    isArray: true,
+    description: 'Delivery channels to use when actually sending this advertisement'
+  })
+  @IsArray()
+  @IsOptional()
+  @IsEnum(SendingMode, { each: true })
+  modeOfSending?: SendingMode[];
+
   @ApiPropertyOptional({ enum: MediaType, description: 'Type of advertisement media' })
   @IsEnum(MediaType)
   @IsOptional()
@@ -574,6 +604,13 @@ export class AdvertisementResponseDto {
     description: 'Supported platforms for this advertisement' 
   })
   supportivePlatforms: SupportivePlatform[];
+
+  @ApiProperty({ 
+    enum: SendingMode, 
+    isArray: true, 
+    description: 'Delivery channels used when sending this advertisement' 
+  })
+  modeOfSending: SendingMode[];
 
   @ApiProperty({ enum: MediaType, description: 'Media type' })
   mediaType: MediaType;

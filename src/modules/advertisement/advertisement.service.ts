@@ -53,6 +53,8 @@ export class AdvertisementService {
           'endDate',
           'maxSendings',
           'currentSendings',
+          'supportivePlatforms',
+          'modeOfSending',
           'createdAt',
           'updatedAt'
         ],
@@ -87,6 +89,8 @@ export class AdvertisementService {
           'ad.endDate',
           'ad.maxSendings',
           'ad.currentSendings',
+          'ad.supportivePlatforms',
+          'ad.modeOfSending',
           'ad.createdAt'
         ])
         .where('ad.isActive = :isActive', { isActive: true })
@@ -113,6 +117,7 @@ export class AdvertisementService {
         landingUrl: createDto.landingUrl,
         sendingUrl: createDto.sendingUrl,
         supportivePlatforms: createDto.supportivePlatforms || [],
+        modeOfSending: createDto.modeOfSending || [],
         mediaType: createDto.mediaType || MediaType.IMAGE,
         targetInstituteIds: createDto.targetInstituteIds || [],
         targetCities: createDto.targetCities || [],
@@ -167,6 +172,7 @@ export class AdvertisementService {
       if (updateDto.landingUrl !== undefined) updateData.landingUrl = updateDto.landingUrl;
       if (updateDto.sendingUrl !== undefined) updateData.sendingUrl = updateDto.sendingUrl;
       if (updateDto.supportivePlatforms !== undefined) updateData.supportivePlatforms = updateDto.supportivePlatforms;
+      if (updateDto.modeOfSending !== undefined) updateData.modeOfSending = updateDto.modeOfSending;
       if (updateDto.mediaType !== undefined) updateData.mediaType = updateDto.mediaType;
       if (updateDto.targetInstituteIds !== undefined) updateData.targetInstituteIds = updateDto.targetInstituteIds;
       if (updateDto.targetCities !== undefined) updateData.targetCities = updateDto.targetCities;
@@ -221,6 +227,7 @@ export class AdvertisementService {
       landingUrl: entity.landingUrl || null,
       sendingUrl: entity.sendingUrl || null,
       supportivePlatforms: Array.isArray(entity.supportivePlatforms) ? entity.supportivePlatforms : [],
+      modeOfSending: Array.isArray(entity.modeOfSending) ? entity.modeOfSending : [],
       mediaType: entity.mediaType || MediaType.IMAGE,
       targetInstituteIds: Array.isArray(entity.targetInstituteIds) ? entity.targetInstituteIds : [],
       targetCities: Array.isArray(entity.targetCities) ? entity.targetCities : [],
@@ -330,9 +337,12 @@ export class AdvertisementService {
       }
 
       // 2. Validate ad has delivery channels configured
-      const deliveryChannels = advertisement.supportivePlatforms || [];
+      // modeOfSending is the primary delivery channel selector; supportivePlatforms is fallback
+      const deliveryChannels = (advertisement.modeOfSending && advertisement.modeOfSending.length > 0)
+        ? advertisement.modeOfSending
+        : (advertisement.supportivePlatforms || []);
       if (deliveryChannels.length === 0) {
-        throw new BadRequestException('Advertisement has no delivery channels (supportivePlatforms) configured');
+        throw new BadRequestException('Advertisement has no delivery channels configured. Set modeOfSending or supportivePlatforms.');
       }
 
       // 3. Get targeted users based on criteria
@@ -547,9 +557,12 @@ export class AdvertisementService {
   ): Promise<{ sentUsers: string[]; failedUsers: string[] }> {
     const sentUsers: string[] = [];
     const failedUsers: string[] = [];
-    const deliveryChannels = advertisement.supportivePlatforms || [];
+    // modeOfSending is the primary delivery channel selector; supportivePlatforms is fallback
+    const deliveryChannels = (advertisement.modeOfSending && advertisement.modeOfSending.length > 0)
+      ? advertisement.modeOfSending
+      : (advertisement.supportivePlatforms || []);
 
-    this.logger.log(`📡 Delivering ad "${advertisement.title}" via channels: [${deliveryChannels.join(', ')}] to ${users.length} users`);
+    this.logger.log(`📡 Delivering ad "${advertisement.title}" via channels: [${deliveryChannels.join(', ')}] (modeOfSending: [${(advertisement.modeOfSending || []).join(', ')}]) to ${users.length} users`);
 
     for (const user of users) {
       try {
@@ -572,8 +585,11 @@ export class AdvertisementService {
             mediaType: advertisement.mediaType,
             title: advertisement.title,
             content: customMessage || advertisement.description || `Check out our latest update!`,
-            // 🎯 Pass delivery channels from ad entity so notification service knows which channels to use
-            deliveryChannels: deliveryChannels,
+            sendingUrl: advertisement.sendingUrl || undefined,
+            // 🎯 supportivePlatforms = which platforms the ad supports (display/analytics)
+            supportivePlatforms: advertisement.supportivePlatforms || [],
+            // 🎯 modeOfSending = actual delivery channels used when sending (primary for channel selection)
+            modeOfSending: advertisement.modeOfSending || [],
           }
         };
 
@@ -683,8 +699,10 @@ export class AdvertisementService {
       // Build plan breakdown for analytics (no channel filtering — all targeted users are eligible)
       const packageBreakdown = this.buildPlanBreakdown(targetedUsers);
 
-      // Delivery channels come from the advertisement entity
-      const deliveryChannels = advertisement.supportivePlatforms || [];
+      // Delivery channels: modeOfSending is primary, supportivePlatforms is fallback
+      const deliveryChannels = (advertisement.modeOfSending && advertisement.modeOfSending.length > 0)
+        ? advertisement.modeOfSending
+        : (advertisement.supportivePlatforms || []);
       const deliveryMode = targetedUsers.length > 100 ? 'batch' : 'real-time';
       const estimatedTime = targetedUsers.length > 100 
         ? `${Math.ceil(targetedUsers.length / 50)} minutes` 
@@ -701,6 +719,7 @@ export class AdvertisementService {
             mediaType: advertisement.mediaType,
             isActive: advertisement.isActive,
             supportivePlatforms: deliveryChannels,
+            modeOfSending: advertisement.modeOfSending || [],
           },
           targeting: {
             totalUsers: targetedUsers.length,

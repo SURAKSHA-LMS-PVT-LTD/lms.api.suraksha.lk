@@ -803,7 +803,8 @@ export class AttendanceService {
             title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
             content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
             sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
-            supportivePlatforms: []  // Default ads support all platforms
+            supportivePlatforms: [],  // Default ads support all platforms
+            modeOfSending: []  // Default ads use all available channels
           };
         }
       }
@@ -918,6 +919,7 @@ export class AttendanceService {
             content: process.env.DEFAULT_AD_CONTENT || 'Professional education services for your child\'s bright future.',
             sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
             supportivePlatforms: [],  // Default ads support all platforms
+            modeOfSending: [],  // Default ads use all available channels
             cascadeToParents: false  // Default ads don't cascade
           };
         }
@@ -1095,6 +1097,7 @@ export class AttendanceService {
           content: advertisement.description || '',
           sendingUrl: advertisement.sendingUrl || undefined,
           supportivePlatforms: advertisement.supportivePlatforms || [],
+          modeOfSending: advertisement.modeOfSending || [],
           matchScore: bestMatch.matchScore,
           matchReasons: bestMatch.matchReasons,
           cascadeToParents: advertisement.cascadeToParents || false  // 🎯 Include cascade flag
@@ -1112,6 +1115,7 @@ export class AttendanceService {
         content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
         sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
         supportivePlatforms: [],  // Default ads support all platforms
+        modeOfSending: [],  // Default ads use all available channels
         matchScore: 0,
         matchReasons: ['No matching advertisement found in database'],
         cascadeToParents: false  // Default ads don't cascade
@@ -1127,6 +1131,7 @@ export class AttendanceService {
         content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
         sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
         supportivePlatforms: [],  // Default ads support all platforms
+        modeOfSending: [],  // Default ads use all available channels
         matchScore: 0,
         matchReasons: ['Error occurred while fetching advertisement'],
         cascadeToParents: false  // Default ads don't cascade
