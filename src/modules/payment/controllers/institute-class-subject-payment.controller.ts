@@ -15,6 +15,7 @@ import {
   DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { UseInterceptors } from '@nestjs/common';
 import { SerializeDatesInterceptor } from '../interceptors/serialize-dates.interceptor';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
@@ -43,6 +44,7 @@ export class InstituteClassSubjectPaymentController {
    * Access: Institute Admin, Teachers (with subject access)
    */
   @Post('institute/:instituteId/class/:classId/subject/:subjectId')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 🔒 10 payment creations per minute
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],

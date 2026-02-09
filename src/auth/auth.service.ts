@@ -1142,26 +1142,26 @@ export class AuthService {
         try {
           studentData = await this.studentRepository.findOne({ where: { userId } });
         } catch (error) {
-          // Student data doesn't exist
+          this.logger.warn(`Student data lookup failed for userId ${userId}: ${error.message}`);
         }
         try {
           parentData = await this.parentRepository.findOne({ where: { userId } });
         } catch (error) {
-          // Parent data doesn't exist
+          this.logger.warn(`Parent data lookup failed for userId ${userId}: ${error.message}`);
         }
       } else if (user.userType === UserType.USER_WITHOUT_PARENT) {
         // USER_WITHOUT_PARENT: join only student table
         try {
           studentData = await this.studentRepository.findOne({ where: { userId } });
         } catch (error) {
-          // Student data doesn't exist
+          this.logger.warn(`Student data lookup failed for userId ${userId}: ${error.message}`);
         }
       } else if (user.userType === UserType.USER_WITHOUT_STUDENT) {
         // USER_WITHOUT_STUDENT: join only parent table
         try {
           parentData = await this.parentRepository.findOne({ where: { userId } });
         } catch (error) {
-          // Parent data doesn't exist
+          this.logger.warn(`Parent data lookup failed for userId ${userId}: ${error.message}`);
         }
       }
 

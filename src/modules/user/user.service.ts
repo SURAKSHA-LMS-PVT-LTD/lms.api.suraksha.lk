@@ -1599,7 +1599,7 @@ export class UsersService {
       try {
         await this.userManagementService.refreshUserCache(id);
       } catch (cacheError) {
-        // Don't fail the update if cache refresh fails
+        this.logger.warn(`Cache refresh failed after profile update for user ${id}: ${cacheError.message}`);
       }
 
       return new UserResponseDto(updatedUser as UserEntity);
@@ -1665,7 +1665,7 @@ export class UsersService {
     try {
       await this.userManagementService.refreshUserCache(id);
     } catch (cacheError) {
-      // Don't fail the soft delete if cache refresh fails
+      this.logger.warn(`Cache refresh failed after soft delete for user ${id}: ${cacheError.message}`);
     }
 
     return new UserResponseDto(updatedUser);
@@ -1685,7 +1685,7 @@ export class UsersService {
     try {
       await this.userManagementService.refreshUserCache(id);
     } catch (cacheError) {
-      // Don't fail the activation if cache refresh fails
+      this.logger.warn(`Cache refresh failed after activation for user ${id}: ${cacheError.message}`);
     }
 
     return new UserResponseDto(updatedUser);
@@ -3236,7 +3236,7 @@ export class UsersService {
       try {
         await this.userManagementService.refreshUserCache(updatedUser.id);
       } catch (cacheError) {
-        // Don't fail the subscription update if cache refresh fails
+        this.logger.warn(`Cache refresh failed after subscription update for user ${updatedUser.id}: ${cacheError.message}`);
       }
 
       return updatedUser;

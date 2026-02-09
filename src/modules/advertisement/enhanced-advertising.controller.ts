@@ -20,6 +20,14 @@ import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../user/enums/user-type.enum';
 import { EnhancedAdvertisingService } from './services/enhanced-advertising.service';
+import {
+  TrackRevenueDto,
+  UpdateDynamicPricingDto,
+  UpdateAdvertisingBidDto,
+  SetCompetitorBlockingDto,
+  CreatePromotionalOfferDto,
+  UpdateSponsorshipTierDto,
+} from './dto/enhanced-advertising.dto';
 
 @Controller('enhanced-advertising')
 @UseGuards(JwtAuthGuard)
@@ -79,11 +87,7 @@ export class EnhancedAdvertisingController {
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async trackRevenue(
-    @Body() body: {
-      serviceId: string;
-      revenueType: 'impression' | 'click' | 'booking';
-      amount: number;
-    }
+    @Body() body: TrackRevenueDto
   ) {
     try {
       await this.enhancedAdvertisingService.trackRevenue(
@@ -153,7 +157,7 @@ export class EnhancedAdvertisingController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async updateDynamicPricing(
     @Param('serviceId') serviceId: string,
-    @Body() body: { demandLevel: 'low' | 'medium' | 'high' }
+    @Body() body: UpdateDynamicPricingDto
   ) {
     try {
       await this.enhancedAdvertisingService.updateDynamicPricing(
@@ -189,7 +193,7 @@ export class EnhancedAdvertisingController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async updateAdvertisingBid(
     @Param('serviceId') serviceId: string,
-    @Body() body: { bidAmount: number }
+    @Body() body: UpdateAdvertisingBidDto
   ) {
     try {
       await this.enhancedAdvertisingService.updateAdvertisingBid(
@@ -226,7 +230,7 @@ export class EnhancedAdvertisingController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async setCompetitorBlocking(
     @Param('serviceId') serviceId: string,
-    @Body() body: { competitorIds: string[] }
+    @Body() body: SetCompetitorBlockingDto
   ) {
     try {
       await this.enhancedAdvertisingService.setCompetitorBlocking(
@@ -263,13 +267,7 @@ export class EnhancedAdvertisingController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async createPromotionalOffer(
     @Param('serviceId') serviceId: string,
-    @Body() body: {
-      discountPercentage?: number;
-      freeFeatures?: string[];
-      specialMessage?: string;
-      validUntil?: string;
-      targetStudentGroups?: string[];
-    }
+    @Body() body: CreatePromotionalOfferDto
   ) {
     try {
       const offer = {
@@ -307,7 +305,7 @@ export class EnhancedAdvertisingController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   async updateSponsorshipTier(
     @Param('serviceId') serviceId: string,
-    @Body() body: { tier: 'none' | 'bronze' | 'silver' | 'gold' | 'platinum' }
+    @Body() body: UpdateSponsorshipTierDto
   ) {
     try {
       await this.enhancedAdvertisingService.updateSponsorshipTier(

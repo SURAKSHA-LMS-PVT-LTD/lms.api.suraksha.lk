@@ -94,7 +94,7 @@ async function bootstrap() {
     }
 
     // 🔒 STRICT CORS - Only allow whitelisted frontend domains
-    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const isDevelopment = process.env.NODE_ENV === 'development';
     const allowedOrigins = process.env.CORS_ORIGINS
       ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
       : [

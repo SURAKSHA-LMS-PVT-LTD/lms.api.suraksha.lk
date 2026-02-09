@@ -835,7 +835,7 @@ export class AttendanceService {
       await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
       
     } catch (error) {
-      // Silent fail - don't block attendance marking
+      this.logger.warn(`Attendance notification failed (non-blocking): ${error.message}`);
     }
   }
 

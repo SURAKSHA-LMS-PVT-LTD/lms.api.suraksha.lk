@@ -980,8 +980,7 @@ export class CloudStorageService implements OnModuleInit {
             try {
               await gcsFile.makePublic();
             } catch (aclError) {
-              // If uniform bucket-level access is enabled, the bucket itself controls access
-              // Files are already public if the bucket has public access configured
+              this.logger.warn(`ACL makePublic skipped (uniform bucket access): ${aclError.message}`);
             }
             
             const [metadata] = await gcsFile.getMetadata();

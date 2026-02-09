@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Query, Param, Body, HttpException, HttpStatus, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AttendanceService } from './attendance.service';
 import { MarkAttendanceDto, BulkAttendanceDto, AttendanceResponseDto, GetStudentAttendanceDto, GetStudentAttendanceQueryDto, StudentAttendanceResponseDto } from './dto/attendance.dto';
 import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto } from './dto/card-attendance.dto';
@@ -18,6 +19,7 @@ export class AttendanceController {
   ) {}
 
   @Post('mark')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 🔒 30 attendance marks per minute
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not, DataSource } from 'typeorm';
 import { PaymentEntity, PaymentStatus } from '../entities/payment.entity';
@@ -15,6 +15,8 @@ import { getCurrentSriLankaTime, nowTimestamp, formatSriLankaDateTime } from '..
 
 @Injectable()
 export class PaymentService {
+  private readonly logger = new Logger(PaymentService.name);
+
   constructor(
     @InjectRepository(PaymentEntity)
     private readonly paymentRepository: Repository<PaymentEntity>,
@@ -313,7 +315,7 @@ export class PaymentService {
           try {
             await this.userManagementService.refreshUserCache(updatedUser.id);
           } catch (cacheError) {
-            // Don't fail the payment verification if cache refresh fails
+            this.logger.warn(`Cache refresh failed after payment verification for user ${updatedUser.id}: ${cacheError.message}`);
           }
         }
       }
@@ -448,7 +450,7 @@ export class PaymentService {
     try {
       await this.userManagementService.refreshUserCache(userId);
     } catch (cacheError) {
-      // Don't fail the payment update if cache refresh fails
+      this.logger.warn(`Cache refresh failed after payment update for user ${userId}: ${cacheError.message}`);
     }
   }
 

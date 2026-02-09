@@ -217,7 +217,7 @@ export class StudentsService {
       try {
         await this.userManagementService.setUserCache(savedUser.id, true);
       } catch (cacheError) {
-        // Don't fail the student creation if caching fails
+        this.logger.warn(`Cache set failed after student creation for user ${savedUser.id}: ${cacheError.message}`);
       }
 
       // ✅ OPTIMIZED: Build response directly from created entities to avoid additional query
@@ -729,10 +729,7 @@ export class StudentsService {
       };
 
       // ✅ ENHANCED: Invalidate parent access caches if parent assignments changed
-      try {
-      } catch (cacheError) {
-        // Don't fail the update if cache invalidation fails
-      }
+      // Note: Cache invalidation placeholder - no-op for now
 
       const result = {
         userId: updatedStudent.userId,
@@ -780,7 +777,7 @@ export class StudentsService {
       try {
         await this.userManagementService.refreshUserCache(userId);
       } catch (cacheError) {
-        // Don't fail the update if cache refresh fails
+        this.logger.warn(`Cache refresh failed after student update for user ${userId}: ${cacheError.message}`);
       }
 
       await queryRunner.commitTransaction();

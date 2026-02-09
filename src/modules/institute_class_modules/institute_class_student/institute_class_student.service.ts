@@ -28,6 +28,8 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 export class InstituteClassStudentService implements IInstituteClassStudentService {
   constructor(
     private readonly repository: InstituteClassStudentRepository,
+    @InjectRepository(InstituteClassStudentEntity)
+    private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(StudentEntity)
@@ -319,17 +321,18 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     const results = { success: [], failed: [] };
 
     // Batch fetch all data upfront to avoid N+1 queries
-    const [users, students, existingEnrollments, instituteUsers] = await Promise.all([
+    const [users, students, existingEnrollmentRecords, instituteUsers] = await Promise.all([
       this.userRepository.find({
         where: { id: In(studentUserIds) },
       }),
       this.studentRepository.find({
         where: { userId: In(studentUserIds) },
       }),
-      // Check existing enrollments for all students at once
-      Promise.all(
-        studentUserIds.map(id => this.repository.exists({ instituteId, classId, studentUserId: id })),
-      ),
+      // ✅ FIXED: Single batch query instead of N separate exists() calls
+      this.classStudentRepository.find({
+        where: { instituteId, classId, studentUserId: In(studentUserIds) },
+        select: ['studentUserId'],
+      }),
       this.userRepository
         .createQueryBuilder('user')
         .innerJoin('institute_user', 'iu', 'iu.user_id = user.id')
@@ -342,7 +345,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     // Build lookup maps for O(1) access
     const userMap = new Map(users.map(u => [u.id, u]));
     const studentMap = new Map(students.map(s => [s.userId, s]));
-    const enrolledMap = new Map(studentUserIds.map((id, i) => [id, existingEnrollments[i]]));
+    const enrolledSet = new Set(existingEnrollmentRecords.map(e => (e as any).studentUserId));
     const instituteUserSet = new Set(instituteUsers.map(u => u.id));
 
     const enrollmentsToCreate = [];
@@ -358,7 +361,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         continue;
       }
 
-      if (enrolledMap.get(studentUserId)) {
+      if (enrolledSet.has(studentUserId)) {
         results.failed.push({ studentUserId, reason: 'Already enrolled in class' });
         continue;
       }

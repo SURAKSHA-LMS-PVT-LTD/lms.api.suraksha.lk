@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
@@ -43,6 +44,7 @@ export class InstituteClassSubjectPaymentSubmissionController {
    * Access: Students, Parents (own submissions only)
    */
   @Post('payment/:paymentId/submit')
+  @Throttle({ default: { limit: 5, ttl: 900000 } }) // 🔒 5 submissions per 15 minutes
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     student: {},

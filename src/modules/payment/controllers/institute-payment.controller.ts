@@ -13,6 +13,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
@@ -43,6 +44,7 @@ export class InstitutePaymentController {
    * Access: Institute Admin only
    */
   @Post('institute/:instituteId/payments')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 🔒 10 payment creations per minute
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],

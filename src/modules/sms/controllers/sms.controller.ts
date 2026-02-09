@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiConsumes, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { 
   JwtAuthGuard,
   FlexibleAccessGuard,
@@ -86,6 +87,7 @@ export class SmsController {
    * 🔒 Access: Institute Admin (own institute) OR SUPERADMIN (any institute)
    */
   @Post('send-custom')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 🔒 10 SMS sends per minute
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Send SMS to custom phone numbers (SUPERADMIN or Institute Admin)' })

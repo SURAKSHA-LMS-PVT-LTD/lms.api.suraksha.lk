@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, In, LessThan } from 'typeorm';
@@ -50,6 +50,8 @@ function extractUserRoleFromToken(token: string, jwtService: JwtService): UserTy
 
 @Injectable()
 export class InstitutePaymentService {
+  private readonly logger = new Logger(InstitutePaymentService.name);
+
   constructor(
     @InjectRepository(InstitutePayment)
     private paymentRepository: Repository<InstitutePayment>,
@@ -1469,7 +1471,7 @@ export class InstitutePaymentService {
       try {
         await this.userManagementService.refreshUserCache(submission.submittedBy);
       } catch (cacheError) {
-        // Don't fail the verification if cache refresh fails
+        this.logger.warn(`Cache refresh failed after payment verification for user ${submission.submittedBy}: ${cacheError.message}`);
       }
     }
 

@@ -300,7 +300,7 @@ export class FirstLoginService {
       await this.userManagementService.refreshUserCache(user.id);
       await this.userManagementService.setUserIndexes(user.id);
     } catch (cacheError) {
-      // Don't fail the first login if caching fails
+      this.logger.warn(`Cache refresh failed after first login for user ${user.id}: ${cacheError.message}`);
     }
 
     // Update log
@@ -624,7 +624,7 @@ export class FirstLoginService {
     try {
       await this.userManagementService.refreshUserCache(userId);
     } catch (cacheError) {
-      // Don't fail the profile completion if caching fails
+      this.logger.warn(`Cache refresh failed after profile completion for user ${userId}: ${cacheError.message}`);
     }
 
     return {
