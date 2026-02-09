@@ -18,6 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
+import { Public } from '../../common/decorators/public.decorator';
 import { FirstLoginService } from '../services/first-login.service';
 import { 
   InitiateFirstLoginDto, 
@@ -33,6 +34,7 @@ import {
 } from '../dto/first-login.dto';
 
 @ApiTags('First Login')
+@Public() // All first-login endpoints must be accessible without JWT
 @Controller('auth')
 export class FirstLoginController {
   private readonly logger = new Logger(FirstLoginController.name);

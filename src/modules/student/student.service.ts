@@ -23,6 +23,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { BusinessLogicException } from '../../common/exceptions/custom.exceptions';
 import { log } from 'console';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class StudentsService {
@@ -612,14 +613,11 @@ export class StudentsService {
       queryBuilder.andWhere('student.isActive = :isActive', { isActive });
     }
 
-    // Apply sorting
-    const sortField = sortBy || 'createdAt';
-    const order = sortOrder || 'DESC';
-    if (sortField.includes('.')) {
-      queryBuilder.orderBy(sortField, order);
-    } else {
-      queryBuilder.orderBy(`student.${sortField}`, order);
-    }
+    // Apply sorting (SQL injection safe — allowlist validated)
+    const validStudentSortFields = ['createdAt', 'updatedAt', 'studentId', 'bloodGroup', 'isActive'] as const;
+    const sortField = sanitizeSortField(sortBy, validStudentSortFields, 'createdAt');
+    const order = sanitizeSortOrder(sortOrder);
+    queryBuilder.orderBy(`student.${sortField}`, order);
 
     // Apply pagination
     const pageNumber = page ?? 1;

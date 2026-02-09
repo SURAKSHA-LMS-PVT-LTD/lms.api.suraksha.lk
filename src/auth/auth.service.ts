@@ -14,6 +14,7 @@ import { RefreshTokenEntity } from './entities/password-reset.entity';
 import { UserManagementService } from '../common/services/cache-user-management.service';
 import { CacheService } from '../common/services/cache.service';
 import { detectIdentifierType } from '../common/utils/identifier.util';
+import { maskPii } from '../common/utils/pii-masking.util';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CloudStorageService } from '../common/services/cloud-storage.service';
 import { InstituteClassStudentEntity } from '../modules/institute_class_modules/institute_class_student/entities/institute_class_student.entity';
@@ -106,7 +107,7 @@ export class AuthService {
       // 🔍 STEP 1: Detect identifier type and normalize
       const { type, normalized } = this.detectIdentifierType(identifier);
       
-      this.logger.log(`🔐 Login attempt with ${type}: ${normalized}`);
+      this.logger.log(`🔐 Login attempt with ${type}: ${maskPii(normalized)}`);
 
       // ⚡ STEP 2: Try cache-first authentication for email
       if (type === 'email') {
@@ -147,12 +148,12 @@ export class AuthService {
             } as UserEntity;
           }
         } else {
-          this.logger.debug(`📭 Cache MISS for email: ${normalized}`);
+          this.logger.debug(`📭 Cache MISS for email: ${maskPii(normalized)}`);
         }
       }
 
       // 📊 STEP 3: Database query based on identifier type
-      this.logger.log(`⚠️ Querying database for ${type}: ${normalized}`);
+      this.logger.log(`⚠️ Querying database for ${type}: ${maskPii(normalized)}`);
       
       let whereClause: any = {};
       
@@ -172,7 +173,7 @@ export class AuthService {
           break;
       }
       
-      this.logger.debug(`🔍 WHERE clause: ${JSON.stringify(whereClause)}`);
+      this.logger.debug(`🔍 WHERE clause type: ${type}`);
       
       const user = await this.userRepository.findOne({ 
         where: whereClause,
@@ -180,11 +181,11 @@ export class AuthService {
       });
       
       if (!user) {
-        this.logger.warn(`❌ User not found with ${type}: ${normalized}`);
+        this.logger.warn(`❌ User not found with ${type}: ${maskPii(normalized)}`);
         throw new UnauthorizedException('Invalid credentials');
       }
       
-      this.logger.debug(`✅ User found: ID=${user.id}, email=${user.email}, hasPassword=${!!user.password}`);
+      this.logger.debug(`✅ User found: ID=${user.id}, hasPassword=${!!user.password}`);
 
       // 🔐 STEP 4: Verify password
       const isPasswordValid = await this.comparePassword(password, user.password);

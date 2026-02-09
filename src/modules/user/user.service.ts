@@ -40,6 +40,7 @@ import {
 import { maskPhoneNumber, maskEmail } from '../../common/utils/phone-mask.util';
 import { UserManagementService } from '../../common/services/cache-user-management.service';
 import { now, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class UsersService {
@@ -1396,8 +1397,10 @@ export class UsersService {
         queryBuilder.andWhere('user.isActive = :isActive', { isActive });
       }
 
-      // Apply sorting
-      queryBuilder.orderBy(`user.${sortBy}`, sortOrder);
+      // Apply sorting (SQL injection safe — allowlist validated)
+      const validUserSortFields = ['createdAt', 'updatedAt', 'firstName', 'lastName', 'email', 'phoneNumber', 'nic', 'city', 'district', 'province', 'country', 'userType'] as const;
+      const safeSortField = sanitizeSortField(sortBy, validUserSortFields, 'createdAt');
+      queryBuilder.orderBy(`user.${safeSortField}`, sortOrder);
 
       // Apply pagination
       const pageNumber = page || 1;

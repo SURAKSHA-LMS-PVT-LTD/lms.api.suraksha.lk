@@ -65,7 +65,7 @@ export class InstituteLectureEntity {
   meetingId?: string;
 
   @Exclude()
-  @Column({ name: 'meeting_password', type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'meeting_password', type: 'varchar', length: 50, nullable: true, select: false })
   meetingPassword?: string;
 
   // Recording for online/hybrid lectures

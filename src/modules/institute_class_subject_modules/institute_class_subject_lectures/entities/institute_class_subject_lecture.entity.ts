@@ -95,7 +95,7 @@ export class InstituteClassSubjectLecture {
   meetingId?: string;
 
   @Exclude()
-  @Column({ name: 'meeting_password', type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'meeting_password', type: 'varchar', length: 50, nullable: true, select: false })
   meetingPassword?: string;
 
   @Column({ name: 'recording_url', type: 'text', nullable: true })

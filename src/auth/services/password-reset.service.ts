@@ -9,6 +9,7 @@ import { AsyncEmailService } from '../../common/services/async-email.service';
 import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
 import { detectIdentifierType } from '../../common/utils/identifier.util';
+import { maskPii } from '../../common/utils/pii-masking.util';
 
 export interface InitiatePasswordResetDto {
   identifier: string;
@@ -83,7 +84,7 @@ export class PasswordResetService {
     // 🔍 Detect identifier type and normalize
     const { type, normalized } = this.detectIdentifierType(dto.identifier);
     
-    this.logger.log(`🔐 Password reset request with ${type}: ${normalized}`);
+    this.logger.log(`🔐 Password reset request with ${type}: ${maskPii(normalized)}`);
 
     // Build query based on identifier type
     let whereClause: any = { isActive: true };

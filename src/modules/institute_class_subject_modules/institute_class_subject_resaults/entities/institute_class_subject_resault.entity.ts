@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index } from 'typeorm';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
@@ -11,6 +11,9 @@ import { Grade } from '../../../institute_class_exams/enums/exam.enum';
  * Maps to the 'institute_class_subject_results' table in the database.
  */
 @Entity('institute_class_subject_results')
+@Index('idx_result_institute_class_subject', ['instituteId', 'classId', 'subjectId'])
+@Index('idx_result_student', ['studentId'])
+@Index('idx_result_exam', ['examId'])
 export class InstituteClassSubjectResault {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

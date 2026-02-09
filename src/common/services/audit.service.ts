@@ -22,7 +22,10 @@ export interface AuditLogEntry {
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger('AuditService');
-  private auditLogs: AuditLogEntry[] = []; // In production, use a database
+  // Bounded circular buffer — keeps only the last MAX_ENTRIES logs in memory.
+  // Prevents OOM in production. For persistent audit trails, integrate a database.
+  private static readonly MAX_ENTRIES = 10_000;
+  private auditLogs: AuditLogEntry[] = [];
 
   async createAuditLog(entry: Partial<AuditLogEntry>): Promise<void> {
     const auditEntry: AuditLogEntry = {
@@ -39,7 +42,10 @@ export class AuditService {
       ...entry,
     };
 
-    // Store in memory (in production, save to database)
+    // Bounded buffer: evict oldest entries when full
+    if (this.auditLogs.length >= AuditService.MAX_ENTRIES) {
+      this.auditLogs.splice(0, Math.floor(AuditService.MAX_ENTRIES * 0.1)); // evict oldest 10%
+    }
     this.auditLogs.push(auditEntry);
 
     // Log to console with detailed formatting

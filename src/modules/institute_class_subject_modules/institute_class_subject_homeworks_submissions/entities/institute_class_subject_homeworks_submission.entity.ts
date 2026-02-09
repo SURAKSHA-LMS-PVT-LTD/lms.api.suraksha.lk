@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer, AfterLoad, Index } from 'typeorm';
 // Date transformer for ISO serialization
 const dateTransformer: ValueTransformer = {
   to: (value: Date | string | null) => value,
@@ -31,6 +31,9 @@ import { UserEntity } from '../../../user/entities/user.entity';
 
 
 @Entity('institute_class_subject_homeworks_submissions')
+@Index('idx_submission_homework', ['homeworkId'])
+@Index('idx_submission_student', ['studentId'])
+@Index('idx_submission_homework_student', ['homeworkId', 'studentId'])
 export class InstituteClassSubjectHomeworksSubmission {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

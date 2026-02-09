@@ -33,6 +33,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../../../modules/user/enums/user-type.enum';
+import { Public } from '../../../common/decorators/public.decorator';
 
 interface BookhireOwnerRequest extends Request {
   user: {
@@ -49,6 +50,7 @@ export class BookhireOwnerAuthController {
 
   // ✅ PUBLIC: Registration endpoint with rate limiting
   @Post('register')
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 requests per minute
   @ApiOperation({ summary: 'Register a new bookhire owner (PUBLIC - Rate Limited)' })
   @ApiResponse({ 
@@ -71,6 +73,7 @@ export class BookhireOwnerAuthController {
 
   // ✅ PUBLIC: Login endpoint with rate limiting
   @Post('login')
+  @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login bookhire owner (PUBLIC - Rate Limited)' })

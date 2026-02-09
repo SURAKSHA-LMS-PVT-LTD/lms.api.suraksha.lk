@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AwsSesEmailService } from './aws-ses-email.service';
+import { maskEmail } from '../../common/utils/pii-masking.util';
 
 @Injectable()
 export class EmailService {
@@ -28,13 +29,13 @@ export class EmailService {
       const emailSent = await this.awsSesEmailService.sendFirstLoginOTP(email, otp, firstName, instituteName);
       
       if (!emailSent) {
-        this.logger.warn(`AWS SES failed, falling back to mock email for ${email}`);
+        this.logger.warn(`AWS SES failed, falling back to mock email for ${maskEmail(email)}`);
         await this.mockSendEmail(email, otp, firstName, 'First Login');
       } else {
       }
 
     } catch (error) {
-      this.logger.error(`Error sending first login OTP to ${email}:`, error);
+      this.logger.error(`Error sending first login OTP to ${maskEmail(email)}:`, error);
       // Fallback to mock email in case of any errors
       await this.mockSendEmail(email, otp, firstName, 'First Login');
     }
@@ -53,13 +54,13 @@ export class EmailService {
       const emailSent = await this.awsSesEmailService.sendPasswordResetOTP(email, otp, firstName);
       
       if (!emailSent) {
-        this.logger.warn(`AWS SES failed, falling back to mock email for ${email}`);
+        this.logger.warn(`AWS SES failed, falling back to mock email for ${maskEmail(email)}`);
         await this.mockSendEmail(email, otp, firstName, 'Password Reset');
       } else {
       }
 
     } catch (error) {
-      this.logger.error(`Error sending password reset OTP to ${email}:`, error);
+      this.logger.error(`Error sending password reset OTP to ${maskEmail(email)}:`, error);
       // Fallback to mock email in case of any errors
       await this.mockSendEmail(email, otp, firstName, 'Password Reset');
     }
@@ -99,13 +100,13 @@ export class EmailService {
       const emailSent = await this.awsSesEmailService.sendChangePasswordOTP(email, otp, firstName);
       
       if (!emailSent) {
-        this.logger.warn(`AWS SES failed, falling back to mock email for ${email}`);
+        this.logger.warn(`AWS SES failed, falling back to mock email for ${maskEmail(email)}`);
         await this.mockSendEmail(email, otp, firstName, 'Change Password');
       } else {
       }
 
     } catch (error) {
-      this.logger.error(`Error sending change password OTP to ${email}:`, error);
+      this.logger.error(`Error sending change password OTP to ${maskEmail(email)}:`, error);
       // Fallback to mock email in case of any errors
       await this.mockSendEmail(email, otp, firstName, 'Change Password');
     }
@@ -121,7 +122,7 @@ export class EmailService {
     try {
       if (this.isDevelopment) {
         this.logger.warn(`=== DEVELOPMENT MODE ===`);
-        this.logger.warn(`Password Change Success notification for ${email} (${firstName})`);
+        this.logger.warn(`Password Change Success notification for ${maskEmail(email)} (${firstName})`);
         this.logger.warn(`=== END DEVELOPMENT MODE ===`);
       }
 
@@ -129,13 +130,13 @@ export class EmailService {
       const emailSent = await this.awsSesEmailService.sendPasswordChangeSuccess(email, firstName, ipAddress, userAgent);
       
       if (!emailSent) {
-        this.logger.warn(`AWS SES failed, falling back to mock email for ${email}`);
+        this.logger.warn(`AWS SES failed, falling back to mock email for ${maskEmail(email)}`);
         await this.mockSendEmail(email, 'N/A', firstName, 'Password Change Success');
       } else {
       }
 
     } catch (error) {
-      this.logger.error(`Error sending password change success notification to ${email}:`, error);
+      this.logger.error(`Error sending password change success notification to ${maskEmail(email)}:`, error);
       // Fallback to mock email in case of any errors
       await this.mockSendEmail(email, 'N/A', firstName, 'Password Change Success');
     }
@@ -152,7 +153,7 @@ export class EmailService {
     try {
       if (this.isDevelopment) {
         this.logger.warn(`=== DEVELOPMENT MODE ===`);
-        this.logger.warn(`Security Alert for ${email} (${firstName}): ${alertType}`);
+        this.logger.warn(`Security Alert for ${maskEmail(email)} (${firstName}): ${alertType}`);
         this.logger.warn(`=== END DEVELOPMENT MODE ===`);
       }
 
@@ -160,13 +161,13 @@ export class EmailService {
       const emailSent = await this.awsSesEmailService.sendSecurityAlert(email, firstName, alertType, ipAddress, location);
       
       if (!emailSent) {
-        this.logger.warn(`AWS SES failed, falling back to mock email for ${email}`);
+        this.logger.warn(`AWS SES failed, falling back to mock email for ${maskEmail(email)}`);
         await this.mockSendEmail(email, 'N/A', firstName, `Security Alert - ${alertType}`);
       } else {
       }
 
     } catch (error) {
-      this.logger.error(`Error sending security alert to ${email}:`, error);
+      this.logger.error(`Error sending security alert to ${maskEmail(email)}:`, error);
       // Fallback to mock email in case of any errors
       await this.mockSendEmail(email, 'N/A', firstName, `Security Alert - ${alertType}`);
     }

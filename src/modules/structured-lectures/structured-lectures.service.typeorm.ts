@@ -7,6 +7,7 @@ import { CreateLectureDto, UpdateLectureDto } from './dto/lecture.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { LectureResponseDto, LectureListResponseDto, LectureQueryDto } from './dto/lecture.dto';
 import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class StructuredLecturesServiceTypeorm {
@@ -128,7 +129,9 @@ export class StructuredLecturesServiceTypeorm {
       );
     }
     if (queryDto.sortBy) {
-      queryBuilder.orderBy(`lecture.${queryDto.sortBy}`, queryDto.sortOrder || 'DESC');
+      const validLectureSortFields = ['createdAt', 'updatedAt', 'title', 'grade', 'isActive', 'startDate', 'endDate'] as const;
+      const safeSortBy = sanitizeSortField(queryDto.sortBy, validLectureSortFields, 'createdAt');
+      queryBuilder.orderBy(`lecture.${safeSortBy}`, sanitizeSortOrder(queryDto.sortOrder));
     }
 
     queryBuilder.skip(skip).take(limit);
@@ -283,7 +286,7 @@ export class StructuredLecturesServiceTypeorm {
     let queryBuilder: SelectQueryBuilder<LectureEntity> = this.lectureRepository
       .createQueryBuilder('lecture')
       .leftJoinAndSelect('lecture.documents', 'documents')
-      .orderBy(`lecture.${sortBy}`, sortOrder);
+      .orderBy(`lecture.${sanitizeSortField(sortBy, ['createdAt', 'updatedAt', 'title', 'grade', 'isActive', 'startDate', 'endDate'])}`, sanitizeSortOrder(sortOrder));
 
     // Apply filters
     if (search) {

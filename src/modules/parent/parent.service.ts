@@ -30,6 +30,7 @@ import { Language } from '../user/enums/language.enum';
 // Utils & Exceptions
 import { maskPhoneNumber } from '../../common/utils/phone-mask.util';
 import { BusinessLogicException } from '../../common/exceptions/custom.exceptions';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class ParentsService {
@@ -358,14 +359,11 @@ export class ParentsService {
       queryBuilder.andWhere('parent.isActive = :isActive', { isActive });
     }
 
-    // Apply sorting
-    const sortField = sortBy || 'createdAt';
-    const order = sortOrder || 'DESC';
-    if (sortField.includes('.')) {
-      queryBuilder.orderBy(sortField, order);
-    } else {
-      queryBuilder.orderBy(`parent.${sortField}`, order);
-    }
+    // Apply sorting (SQL injection safe — allowlist validated)
+    const validParentSortFields = ['createdAt', 'updatedAt', 'firstName', 'lastName', 'email', 'phoneNumber', 'occupation', 'workplace', 'educationLevel'] as const;
+    const sortField = sanitizeSortField(sortBy, validParentSortFields, 'createdAt');
+    const order = sanitizeSortOrder(sortOrder);
+    queryBuilder.orderBy(`parent.${sortField}`, order);
 
     // Apply pagination
     const pageNumber = page ?? 1;

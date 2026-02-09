@@ -13,6 +13,7 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
 import { UserManagementService } from '../../common/services/cache-user-management.service';
 import { CacheService } from '../../common/services/cache.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
+import { maskPii } from '../../common/utils/pii-masking.util';
 import { 
   InitiateFirstLoginDto, 
   VerifyOtpDto, 
@@ -118,7 +119,7 @@ export class FirstLoginService {
         ipAddress: ipAddress || 'Unknown'
       });
     } catch (emailError) {
-      this.logger.error(`❌ Failed to send first login OTP email to ${dto.email}: ${emailError.message}`);
+      this.logger.error(`❌ Failed to send first login OTP email to ${maskPii(dto.email)}: ${emailError.message}`);
       // Don't fail the request - OTP is stored in database, user can retry
     }
 

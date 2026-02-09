@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, ValueTransformer, OneToMany, Index } from 'typeorm';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
@@ -21,6 +21,9 @@ const dateTransformer: ValueTransformer = {
  */
 
 @Entity('institute_class_subject_homeworks')
+@Index('idx_homework_institute_class_subject', ['instituteId', 'classId', 'subjectId'])
+@Index('idx_homework_teacher', ['teacherId'])
+@Index('idx_homework_active', ['isActive'])
 export class InstituteClassSubjectHomework {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

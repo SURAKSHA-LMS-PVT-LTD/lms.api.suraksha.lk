@@ -20,7 +20,7 @@ async function resetAllPasswords() {
     const migratedCount = await passwordMigrationService.bulkMigrateWithDefaultPassword('password123');
     
     console.log(`✅ Successfully reset ${migratedCount} user passwords`);
-    console.log('📝 Default password for all users: password123');
+    console.log('📝 Default password has been set for all users');
     console.log('⚠️  Please ask users to change their passwords after first login');
     
   } catch (error) {

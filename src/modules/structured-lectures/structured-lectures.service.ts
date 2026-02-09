@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { StructuredLectureEntity } from './entities/structured-lecture.entity';
 import { LectureResponseDto, LectureListResponseDto, CreateLectureDto, UpdateLectureDto, LectureQueryDto } from './dto/lecture.dto';
 import { now } from '../../common/utils/timezone.util';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class StructuredLecturesService {
@@ -235,8 +236,9 @@ export class StructuredLecturesService {
       );
     }
 
-    const sortBy = queryDto.sortBy || 'createdAt';
-    const sortOrder = queryDto.sortOrder || 'DESC';
+    const validLectureSortFields = ['createdAt', 'updatedAt', 'title', 'grade', 'isActive', 'startDate', 'endDate'] as const;
+    const sortBy = sanitizeSortField(queryDto.sortBy, validLectureSortFields, 'createdAt');
+    const sortOrder = sanitizeSortOrder(queryDto.sortOrder);
     queryBuilder.orderBy(`lecture.${sortBy}`, sortOrder);
 
     queryBuilder.skip(skip).take(limit);

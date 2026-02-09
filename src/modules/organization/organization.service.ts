@@ -16,6 +16,7 @@ import { InstituteUserType } from '../institute_mudules/institue_user/enums/inst
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { EnhancedJwtPayload, ROLE_BITMASKS, USER_TYPE_COMPACT } from '../../auth/interfaces/enhanced-jwt-payload.interface';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class OrganizationService {
@@ -558,9 +559,10 @@ export class OrganizationService {
     // Get total count
     const total = await query.getCount();
 
-    // Add sorting and pagination
-    const sortBy = pagination['sortBy'] || 'createdAt';
-    const sortOrder = pagination['sortOrder'] === 'asc' ? 'ASC' : 'DESC';
+    // Add sorting and pagination (SQL injection safe — allowlist validated)
+    const validOrgSortFields = ['createdAt', 'updatedAt', 'name', 'memberCount', 'causeCount'] as const;
+    const sortBy = sanitizeSortField(pagination['sortBy'], validOrgSortFields, 'createdAt');
+    const sortOrder = sanitizeSortOrder(pagination['sortOrder']);
     
     if (sortBy === 'memberCount') {
       // Sort by organization users count
@@ -735,9 +737,10 @@ export class OrganizationService {
     // Get total count
     const total = await this.instituteRepository.count();
 
-    // Add sorting
-    const sortBy = pagination['sortBy'] || 'name';
-    const sortOrder = pagination['sortOrder'] === 'asc' ? 'ASC' : 'DESC';
+    // Add sorting (SQL injection safe — allowlist validated)
+    const validInstSortFields = ['name', 'createdAt', 'updatedAt', 'organizationCount'] as const;
+    const sortBy = sanitizeSortField(pagination['sortBy'], validInstSortFields, 'name');
+    const sortOrder = sanitizeSortOrder(pagination['sortOrder']);
 
     if (sortBy === 'organizationCount') {
       query.orderBy('organizationCount', sortOrder);

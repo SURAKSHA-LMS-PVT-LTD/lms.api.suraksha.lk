@@ -3,6 +3,7 @@ import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
 
 @Entity('lecture_documents')
+@Index('idx_lecture_documents_lecture_id', ['lectureId'])
 export class LectureDocumentEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

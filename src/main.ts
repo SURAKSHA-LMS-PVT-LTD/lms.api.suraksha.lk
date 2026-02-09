@@ -5,6 +5,7 @@ import { validateAll } from './config/validate-environment';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
+import * as compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
 import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
 
@@ -76,6 +77,16 @@ async function bootstrap() {
       console.log('✅ Security headers enabled (Helmet)');
     }
 
+    // 🚀 PERFORMANCE: Enable gzip/brotli compression for all responses
+    app.use(compression({
+      threshold: 1024, // Only compress responses > 1KB
+      level: 6,        // Balance between speed and compression ratio
+    }));
+
+    if (!isProduction) {
+      console.log('✅ Response compression enabled');
+    }
+
     // 🍪 Enable cookie parser for secure refresh token handling
     app.use(cookieParser());
     if (!isProduction) {
@@ -105,11 +116,10 @@ async function bootstrap() {
           return callback(null, true);
         }
 
-        // 🔒 PRODUCTION MODE: STRICT - Reject requests without origin header
+        // 🔒 PRODUCTION MODE: Allow requests without origin (server-to-server, mobile apps)
+        // These are NOT cross-origin and don't need CORS validation
         if (!origin) {
-          console.warn('🚫 CORS blocked: No origin header in production mode');
-          callback(new Error('Access denied: Origin header required'));
-          return;
+          return callback(null, true);
         }
 
         // Check if origin is in whitelist

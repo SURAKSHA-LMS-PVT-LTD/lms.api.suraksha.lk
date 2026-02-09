@@ -4,6 +4,7 @@ import { Repository, FindOptionsWhere, FindManyOptions, SelectQueryBuilder } fro
 import { StudentEntity } from '../entities/student.entity';
 import { IStudentRepository, StudentFilters, StudentQueryOptions } from '../interfaces/student.interface';
 import { STUDENT_CONSTANTS } from '../constants/student.constants';
+import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
 @Injectable()
 export class StudentRepository implements IStudentRepository {
@@ -204,15 +205,11 @@ export class StudentRepository implements IStudentRepository {
       );
     }
 
-    // Apply sorting
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder || 'DESC';
-    
-    if (sortBy.includes('.')) {
-      queryBuilder.orderBy(sortBy, sortOrder);
-    } else {
-      queryBuilder.orderBy(`student.${sortBy}`, sortOrder);
-    }
+    // Apply sorting (SQL injection safe — allowlist validated)
+    const validSortFields = ['createdAt', 'updatedAt', 'studentId', 'bloodGroup', 'isActive'] as const;
+    const sortBy = sanitizeSortField(filters.sortBy, validSortFields, 'createdAt');
+    const sortOrder = sanitizeSortOrder(filters.sortOrder);
+    queryBuilder.orderBy(`student.${sortBy}`, sortOrder);
 
     // Apply pagination
     if (filters.page && filters.limit) {
