@@ -103,7 +103,7 @@ Authenticates user credentials and returns tokens for mobile applications.
   @ApiResponse({ status: 400, description: 'Validation error - missing required fields' })
   @ApiResponse({ status: 429, description: 'Too many login attempts. Try again in 15 minutes.' })
   async loginMobile(
-    @Body(new ValidationPipe({ transform: true })) loginDto: MobileLoginDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) loginDto: MobileLoginDto,
     @Req() req: ExpressRequest
   ) {
     try {
@@ -194,7 +194,7 @@ The old token becomes invalid immediately.
   @ApiResponse({ status: 400, description: 'Missing required fields' })
   @ApiResponse({ status: 429, description: 'Too many refresh attempts' })
   async refreshMobileToken(
-    @Body(new ValidationPipe({ transform: true })) refreshDto: MobileRefreshTokenDto,
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) refreshDto: MobileRefreshTokenDto,
     @Req() req: ExpressRequest
   ) {
     try {
@@ -258,7 +258,7 @@ Logs out the user from the mobile device by revoking the refresh token.
   })
   @ApiResponse({ status: 400, description: 'Missing required fields' })
   async logoutMobile(
-    @Body(new ValidationPipe({ transform: true })) logoutDto: MobileLogoutDto
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })) logoutDto: MobileLogoutDto
   ) {
     try {
       const result = await this.authService.logoutMobile(

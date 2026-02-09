@@ -1,5 +1,6 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, MaxLength, IsBoolean, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 /**
  * 📱 Mobile Login DTO
@@ -20,8 +21,16 @@ export class MobileLoginDto {
     }
   })
   @IsString({ message: 'Identifier must be a string' })
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate number) is required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field and map it to identifier
+  @ApiPropertyOptional({ description: '(Legacy) Email — use "identifier" instead' })
+  @IsOptional()
+  @IsString()
+  email?: string;
 
   @ApiProperty({ 
     description: 'User password',
@@ -38,9 +47,17 @@ export class MobileLoginDto {
     example: 'android_1706438400000_abc123xyz'
   })
   @IsString({ message: 'Device ID must be a string' })
+  @ValidateIf((o) => !o.device_id)
   @IsNotEmpty({ message: 'Device ID is required for mobile login' })
   @MaxLength(255, { message: 'Device ID must not exceed 255 characters' })
+  @Transform(({ value, obj }) => value || obj.device_id || '')
   deviceId: string;
+
+  // Legacy support: accept snake_case "device_id"
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  device_id?: string;
 
   @ApiPropertyOptional({
     description: 'Device name for user-friendly session management display',
@@ -51,6 +68,12 @@ export class MobileLoginDto {
   @MaxLength(100, { message: 'Device name must not exceed 100 characters' })
   deviceName?: string;
 
+  // Legacy support: accept snake_case "device_name"
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  device_name?: string;
+
   @ApiPropertyOptional({
     description: 'Platform type (android/ios)',
     example: 'android',
@@ -59,6 +82,29 @@ export class MobileLoginDto {
   @IsString({ message: 'Platform must be a string' })
   @IsOptional()
   platform?: 'android' | 'ios';
+
+  @ApiPropertyOptional({ description: 'Remember me flag for extended session' })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true')
+  rememberMe?: boolean;
+
+  // Accept snake_case variant
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true')
+  remember_me?: boolean;
+
+  // Accept FCM token at login for push notification registration
+  @ApiPropertyOptional({ description: 'Firebase Cloud Messaging token for push notifications' })
+  @IsOptional()
+  @IsString()
+  fcmToken?: string;
+
+  // Legacy snake_case variant
+  @IsOptional()
+  @IsString()
+  fcm_token?: string;
 }
 
 /**
@@ -72,17 +118,32 @@ export class MobileRefreshTokenDto {
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
   })
   @IsString({ message: 'Refresh token must be a string' })
+  @ValidateIf((o) => !o.refreshToken)
   @IsNotEmpty({ message: 'Refresh token is required' })
+  @Transform(({ value, obj }) => value || obj.refreshToken || '')
   refresh_token: string;
+
+  // Accept camelCase variant
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
 
   @ApiProperty({
     description: 'Unique device identifier (must match the one used during login)',
     example: 'android_1706438400000_abc123xyz'
   })
   @IsString({ message: 'Device ID must be a string' })
+  @ValidateIf((o) => !o.device_id)
   @IsNotEmpty({ message: 'Device ID is required' })
   @MaxLength(255, { message: 'Device ID must not exceed 255 characters' })
+  @Transform(({ value, obj }) => value || obj.device_id || '')
   deviceId: string;
+
+  // Accept snake_case variant
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  device_id?: string;
 }
 
 /**
@@ -96,17 +157,32 @@ export class MobileLogoutDto {
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
   })
   @IsString({ message: 'Refresh token must be a string' })
+  @ValidateIf((o) => !o.refreshToken)
   @IsNotEmpty({ message: 'Refresh token is required' })
+  @Transform(({ value, obj }) => value || obj.refreshToken || '')
   refresh_token: string;
+
+  // Accept camelCase variant
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
 
   @ApiProperty({
     description: 'Unique device identifier',
     example: 'android_1706438400000_abc123xyz'
   })
   @IsString({ message: 'Device ID must be a string' })
+  @ValidateIf((o) => !o.device_id)
   @IsNotEmpty({ message: 'Device ID is required' })
   @MaxLength(255, { message: 'Device ID must not exceed 255 characters' })
+  @Transform(({ value, obj }) => value || obj.device_id || '')
   deviceId: string;
+
+  // Accept snake_case variant
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  device_id?: string;
 }
 
 /**

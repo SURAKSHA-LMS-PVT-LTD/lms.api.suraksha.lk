@@ -25,8 +25,10 @@ import {
   MinLength, 
   Matches, 
   IsOptional,
-  Length 
+  Length,
+  ValidateIf
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 import { FlexibleAccessGuard } from '../guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../decorators/flexible-access.decorator';
@@ -46,8 +48,15 @@ export class InitiatePasswordResetDto {
     required: true
   })
   @IsString({ message: 'Identifier must be a string' })
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate) is required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field
+  @IsOptional()
+  @IsString()
+  email?: string;
 }
 
 export class VerifyPasswordResetOtpDto {
@@ -57,8 +66,15 @@ export class VerifyPasswordResetOtpDto {
     required: true
   })
   @IsString({ message: 'Identifier must be a string' })
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier is required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field
+  @IsOptional()
+  @IsString()
+  email?: string;
 
   @ApiProperty({
     description: '6-digit OTP code received via email',
@@ -75,8 +91,15 @@ export class VerifyPasswordResetOtpDto {
 
 export class ResetPasswordDto {
   @IsString({ message: 'Identifier must be a string' })
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate) is required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field
+  @IsOptional()
+  @IsString()
+  email?: string;
 
   @IsString({ message: 'OTP must be a string' })
   @Length(6, 6, { message: 'OTP must be exactly 6 characters' })

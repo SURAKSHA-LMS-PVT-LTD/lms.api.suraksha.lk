@@ -28,8 +28,11 @@ import {
   IsString, 
   MinLength, 
   Matches,
-  Length 
+  Length,
+  IsOptional,
+  ValidateIf
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from './guards/flexible-access.guard';
 import { RequireAnyOfRoles } from './decorators/flexible-access.decorator';
@@ -51,8 +54,15 @@ export class ForgotPasswordDto {
     }
   })
   @IsString({ message: 'Identifier must be a string' })
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier (email/phone/system ID/birth certificate) required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field and map to identifier
+  @IsOptional()
+  @IsString()
+  email?: string;
 }
 
 // Step 2 DTO: Identifier + OTP + New Password
@@ -62,8 +72,15 @@ export class ResetPasswordDto {
     example: 'user@example.com'
   })
   @IsString({ message: 'Identifier must be a string' })
+  @ValidateIf((o) => !o.email)
   @IsNotEmpty({ message: 'Identifier required' })
+  @Transform(({ value, obj }) => value || obj.email || '')
   identifier: string;
+
+  // Legacy support: accept "email" field
+  @IsOptional()
+  @IsString()
+  email?: string;
 
   @ApiProperty({
     description: '6-digit OTP from email',
@@ -94,6 +111,20 @@ export class ResetPasswordDto {
   @MinLength(8, { message: 'Min 8 characters' })
   @IsNotEmpty({ message: 'Confirm password required' })
   confirmPassword: string;
+
+  // Legacy: accept confirm_password or confirmNewPassword
+  @IsOptional()
+  @IsString()
+  confirm_password?: string;
+
+  @IsOptional()
+  @IsString()
+  confirmNewPassword?: string;
+
+  // Legacy: accept new_password
+  @IsOptional()
+  @IsString()
+  new_password?: string;
 }
 
 export class ChangePasswordAuthDto {
@@ -128,6 +159,11 @@ export class ChangePasswordAuthDto {
   @IsString({ message: 'Confirm password must be a string' })
   @IsNotEmpty({ message: 'Please confirm your new password' })
   confirmPassword: string;
+
+  // Legacy: accept confirmNewPassword
+  @IsOptional()
+  @IsString()
+  confirmNewPassword?: string;
 }
 
 export class RefreshTokenDto {
@@ -137,8 +173,15 @@ export class RefreshTokenDto {
     required: true
   })
   @IsString({ message: 'Refresh token must be a string' })
+  @ValidateIf((o) => !o.refreshToken)
   @IsNotEmpty({ message: 'Refresh token is required' })
+  @Transform(({ value, obj }) => value || obj.refreshToken || '')
   refresh_token: string;
+
+  // Accept camelCase variant
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
 }
 
 @ApiTags('Authentication')

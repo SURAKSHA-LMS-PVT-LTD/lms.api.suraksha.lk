@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MinLength, MaxLength, Matches, Validate, ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MinLength, MaxLength, Matches, Validate, ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments } from 'class-validator';
 import { ApiProperty, ApiExtraModels } from '@nestjs/swagger';
 import { IsStrongPassword, IsPasswordMatch } from '../../common/validators/password.validator';
 
@@ -42,4 +42,9 @@ export class ChangePasswordDto {
   @IsNotEmpty({ message: 'Password confirmation is required' })
   @IsPasswordMatch('newPassword', { message: 'Password confirmation must match the new password' })
   confirmNewPassword: string;
+
+  // Legacy: accept "confirmPassword" as alias
+  @IsOptional()
+  @IsString()
+  confirmPassword?: string;
 }
