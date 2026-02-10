@@ -62,13 +62,6 @@ export class SessionResponseDto {
     example: false
   })
   isCurrent: boolean;
-
-  @Expose()
-  @ApiProperty({
-    description: 'Human-readable time until expiry',
-    example: '6 days'
-  })
-  expiresInHuman: string;
 }
 
 /**

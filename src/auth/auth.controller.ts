@@ -645,8 +645,7 @@ export class AuthController {
         userAgent: session.userAgent,
         createdAt: session.createdAt,
         expiresAt: session.expiresAt,
-        isCurrent: false,
-        expiresInHuman: this.authService.calculateExpiresInHuman(session.expiresAt)
+        isCurrent: false
       })
     );
 
