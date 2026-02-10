@@ -1312,6 +1312,7 @@ export class AuthService {
     }
 
     // 🔐 SECURITY: Store hashed token in database (prevents theft on DB breach)
+    const currentTime = now();
     await this.refreshTokenRepository.save({
       token: this.hashToken(refreshToken),
       userId: userId,
@@ -1321,9 +1322,10 @@ export class AuthService {
       platform: 'web',       // 📱 Default to web for cookie-based auth
       deviceId: null,        // 📱 No device ID for web
       deviceName: null,      // 📱 No device name for web
+      lastActiveAt: currentTime, // Track when token was created
       isRevoked: false,
-      createdAt: now(),
-      updatedAt: now()
+      createdAt: currentTime,
+      updatedAt: currentTime
     });
 
     return refreshToken;
@@ -1422,10 +1424,16 @@ export class AuthService {
         }
       }
 
+      // Update lastActiveAt to track when this session was last used
+      await this.refreshTokenRepository.update(
+        { id: tokenRecord.id },
+        { lastActiveAt: now(), updatedAt: now() }
+      );
+
       // Revoke old refresh token (token rotation)
       await this.refreshTokenRepository.update(
         { id: tokenRecord.id },
-        { isRevoked: true }
+        { isRevoked: true, updatedAt: now() }
       );
 
       // Generate new access token with current hierarchy
@@ -1880,42 +1888,132 @@ export class AuthService {
   }
 
   /**
-   * 📱 Get active sessions for user
+   * 📱 Get active sessions for user with pagination
    * Returns list of active refresh tokens with device info
+   * Only returns non-sensitive information
    */
-  async getActiveSessions(userId: string): Promise<Array<{
-    id: string;
-    platform: string;
-    deviceId: string | null;
-    deviceName: string | null;
-    ipAddress: string | null;
-    createdAt: Date;
-    expiresAt: Date;
-  }>> {
+  async getActiveSessions(
+    userId: string,
+    options?: {
+      page?: number;
+      limit?: number;
+      platform?: 'web' | 'android' | 'ios';
+      sortBy?: 'createdAt' | 'expiresAt' | 'platform';
+      sortOrder?: 'ASC' | 'DESC';
+    }
+  ): Promise<{
+    sessions: Array<{
+      id: string;
+      platform: string;
+      deviceName: string | null;
+      userAgent: string | null;
+      createdAt: Date;
+      lastActiveAt: Date | null;
+      expiresAt: Date;
+      isRevoked: boolean;
+    }>;
+    total: number;
+    summary: {
+      totalSessions: number;
+      webSessions: number;
+      androidSessions: number;
+      iosSessions: number;
+    };
+  }> {
+    const page = options?.page || 1;
+    const limit = options?.limit || 50;
+    const sortBy = options?.sortBy || 'createdAt';
+    const sortOrder = options?.sortOrder || 'DESC';
+
+    // Build where clause - only return non-revoked sessions
+    const where: any = {
+      userId: userId,
+      isRevoked: false
+    };
+
+    if (options?.platform) {
+      where.platform = options.platform;
+    }
+
+    // Get total count for pagination
+    const total = await this.refreshTokenRepository.count({ where });
+
+    // Get sessions with pagination - only non-sensitive fields
     const sessions = await this.refreshTokenRepository.find({
-      where: {
-        userId: userId,
-        isRevoked: false
-      },
-      select: ['id', 'platform', 'deviceId', 'deviceName', 'ipAddress', 'createdAt', 'expiresAt'],
-      order: { createdAt: 'DESC' }
+      where,
+      select: ['id', 'platform', 'deviceName', 'userAgent', 'createdAt', 'lastActiveAt', 'expiresAt', 'isRevoked'],
+      order: { [sortBy]: sortOrder },
+      skip: (page - 1) * limit,
+      take: limit
     });
 
-    return sessions.filter(s => s.expiresAt > now());
+    // Filter out expired sessions
+    const activeSessions = sessions.filter(s => s.expiresAt > now());
+
+    // Calculate summary statistics (from all non-expired sessions, not just current page)
+    const allActiveSessions = await this.refreshTokenRepository.find({
+      where: { userId, isRevoked: false },
+      select: ['platform', 'expiresAt']
+    });
+
+    const nonExpired = allActiveSessions.filter(s => s.expiresAt > now());
+    const summary = {
+      totalSessions: nonExpired.length,
+      webSessions: nonExpired.filter(s => s.platform === 'web').length,
+      androidSessions: nonExpired.filter(s => s.platform === 'android').length,
+      iosSessions: nonExpired.filter(s => s.platform === 'ios').length
+    };
+
+    return {
+      sessions: activeSessions,
+      total: nonExpired.length, // Total non-expired sessions
+      summary
+    };
   }
 
   /**
    * 📱 Revoke all sessions for user
    * Used for security events (password change, etc.)
+   * @returns Number of sessions revoked
    */
-  async revokeAllUserSessions(userId: string): Promise<void> {
+  async revokeAllUserSessions(userId: string): Promise<number> {
     try {
-      await this.refreshTokenRepository.update(
+      const result = await this.refreshTokenRepository.update(
         { userId: userId, isRevoked: false },
         { isRevoked: true, updatedAt: now() }
       );
+      return result.affected || 0;
     } catch (error) {
       this.logger.error(`Failed to revoke all sessions: ${error.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Calculate human-readable expiration time
+   * @param expiresAt - The expiration date
+   * @returns String like "7 days" or "2 hours" or "Expired"
+   */
+  calculateExpiresInHuman(expiresAt: Date): string {
+    const currentTime = now();
+    
+    if (expiresAt <= currentTime) {
+      return 'Expired';
+    }
+
+    const diffMs = expiresAt.getTime() - currentTime.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 0) {
+      return `${diffDays} day${diffDays !== 1 ? 's' : ''}`;
+    } else if (diffHours > 0) {
+      return `${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+    } else if (diffMinutes > 0) {
+      return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+    } else {
+      return 'Less than 1 minute';
     }
   }
 

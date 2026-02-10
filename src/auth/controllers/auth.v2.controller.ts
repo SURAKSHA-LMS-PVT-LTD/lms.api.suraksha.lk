@@ -5,6 +5,7 @@ import { AuthService } from '../auth.service';
 import { LoginDto } from '../dto/login.dto';
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
+import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { RefreshTokenDto } from '../auth.controller';
 
 @ApiTags('Authentication V2')
@@ -54,7 +55,7 @@ export class AuthV2Controller {
     const user = await this.authService.validateUser(loginDto.identifier, loginDto.password);
     
     const clientInfo = {
-      ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent') || 'unknown'
     };
 
@@ -128,7 +129,7 @@ export class AuthV2Controller {
     }
 
     const clientInfo = {
-      ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent') || 'unknown'
     };
 

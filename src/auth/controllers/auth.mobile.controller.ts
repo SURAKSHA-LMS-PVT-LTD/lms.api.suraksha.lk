@@ -14,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from '../auth.service';
 import { Request as ExpressRequest } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
+import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { 
   MobileLoginDto, 
   MobileRefreshTokenDto, 
@@ -115,7 +116,7 @@ Authenticates user credentials and returns tokens for mobile applications.
 
       // Extract client info
       const clientInfo = {
-        ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent') || 'unknown'
       };
 
@@ -203,7 +204,7 @@ The old token becomes invalid immediately.
   ) {
     try {
       const clientInfo = {
-        ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent') || 'unknown'
       };
 

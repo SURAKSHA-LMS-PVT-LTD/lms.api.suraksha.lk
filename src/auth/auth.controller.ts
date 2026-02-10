@@ -14,9 +14,10 @@ import {
   UseGuards,
   Request,
   HttpStatus,
-  ValidationPipe
+  ValidationPipe,
+  Query
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiProperty, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiProperty, ApiBearerAuth, ApiConsumes, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -39,6 +40,14 @@ import { RequireAnyOfRoles } from './decorators/flexible-access.decorator';
 import { UserType } from '../modules/user/enums/user-type.enum';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 import { Public } from '../common/decorators/public.decorator';
+import { 
+  GetSessionsQueryDto, 
+  GetSessionsResponseDto, 
+  SessionResponseDto,
+  RevokeSessionResponseDto,
+  RevokeAllSessionsResponseDto
+} from './dto/session-management.dto';
+import { getClientIp } from '../common/utils/ip-extractor.util';
 
 // =================== DTOs FOR PASSWORD RESET ===================
 
@@ -321,7 +330,7 @@ export class AuthController {
   ) {
     try {
       const clientInfo = {
-        ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent') || 'unknown'
       };
 
@@ -365,7 +374,7 @@ export class AuthController {
   ) {
     try {
       const clientInfo = {
-        ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent') || 'unknown'
       };
 
@@ -420,7 +429,7 @@ export class AuthController {
   ) {
     try {
       const clientInfo = {
-        ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent') || 'unknown'
       };
 
@@ -482,7 +491,7 @@ export class AuthController {
       }
 
       const clientInfo = {
-        ipAddress: req.ip || req.connection.remoteAddress || 'unknown',
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent') || 'unknown'
       };
 
@@ -579,45 +588,81 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Get active sessions',
-    description: 'Returns all active sessions (devices) for the authenticated user. Useful for "manage devices" UI.'
+    description: 'Returns all active sessions (devices) for the authenticated user with pagination. Useful for "manage devices" UI.'
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (1-indexed)',
+    example: 1
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of items per page (1-100)',
+    example: 10
+  })
+  @ApiQuery({
+    name: 'platform',
+    required: false,
+    enum: ['web', 'android', 'ios'],
+    description: 'Filter by platform'
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['createdAt', 'expiresAt', 'platform'],
+    description: 'Field to sort by',
+    example: 'createdAt'
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['ASC', 'DESC'],
+    description: 'Sort order',
+    example: 'DESC'
   })
   @ApiResponse({ 
     status: 200, 
     description: 'Active sessions retrieved',
-    schema: {
-      example: {
-        success: true,
-        sessions: [
-          {
-            id: 'session-uuid',
-            platform: 'web',
-            deviceId: null,
-            deviceName: null,
-            ipAddress: '192.168.1.1',
-            createdAt: '2026-02-10T10:00:00.000Z',
-            expiresAt: '2026-02-17T10:00:00.000Z'
-          },
-          {
-            id: 'session-uuid-2',
-            platform: 'android',
-            deviceId: 'android_170643_abc123',
-            deviceName: 'Samsung Galaxy S21',
-            ipAddress: '10.0.0.5',
-            createdAt: '2026-02-09T08:00:00.000Z',
-            expiresAt: '2026-03-11T08:00:00.000Z'
-          }
-        ],
-        total: 2
-      }
-    }
+    type: GetSessionsResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getActiveSessions(@Request() req: JwtRequest) {
-    const sessions = await this.authService.getActiveSessions(req.user.s);
+  async getActiveSessions(
+    @Request() req: JwtRequest,
+    @Query(ValidationPipe) query: GetSessionsQueryDto
+  ): Promise<GetSessionsResponseDto> {
+    const result = await this.authService.getActiveSessions(req.user.s, query);
+
+    // Map sessions to DTOs with user-friendly field names
+    const sessions: SessionResponseDto[] = result.sessions.map(session => ({
+      id: session.id,
+      deviceType: session.platform as 'web' | 'android' | 'ios',
+      deviceName: session.deviceName,
+      userAgent: session.userAgent ? session.userAgent.substring(0, 100) : null, // Truncate to 100 chars
+      firstLogin: session.createdAt,
+      lastLogin: session.lastActiveAt,
+      expiresIn: this.authService.calculateExpiresInHuman(session.expiresAt),
+      isRevoked: session.isRevoked
+    }));
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(result.total / query.limit);
+
     return {
       success: true,
       sessions,
-      total: sessions.length
+      pagination: {
+        total: result.total,
+        page: query.page,
+        limit: query.limit,
+        totalPages,
+        hasNext: query.page < totalPages,
+        hasPrev: query.page > 1
+      },
+      summary: result.summary
     };
   }
 
@@ -632,37 +677,47 @@ export class AuthController {
     summary: 'Revoke a specific session',
     description: 'Revokes a specific session by its ID. Use this to remotely log out a device.'
   })
-  @ApiResponse({ status: 200, description: 'Session revoked successfully' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Session revoked successfully',
+    type: RevokeSessionResponseDto
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async revokeSession(
     @Param('sessionId') sessionId: string,
     @Request() req: JwtRequest
-  ) {
+  ): Promise<RevokeSessionResponseDto> {
     await this.authService.revokeSessionById(req.user.s, sessionId);
     return {
       success: true,
-      message: 'Session revoked successfully'
+      message: 'Session revoked successfully',
+      sessionId
     };
   }
 
   /**
-   * Revoke all sessions except the current one
+   * Revoke all sessions for the authenticated user
    */
   @Post('sessions/revoke-all')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: 'Revoke all other sessions',
+    summary: 'Revoke all sessions',
     description: 'Revokes all active sessions for the user. Useful for "log out everywhere" feature.'
   })
-  @ApiResponse({ status: 200, description: 'All sessions revoked' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'All sessions revoked',
+    type: RevokeAllSessionsResponseDto
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async revokeAllSessions(@Request() req: JwtRequest) {
-    await this.authService.revokeAllUserSessions(req.user.s);
+  async revokeAllSessions(@Request() req: JwtRequest): Promise<RevokeAllSessionsResponseDto> {
+    const revokedCount = await this.authService.revokeAllUserSessions(req.user.s);
     return {
       success: true,
-      message: 'All sessions revoked successfully'
+      message: 'All sessions revoked successfully',
+      revokedCount
     };
   }
 }

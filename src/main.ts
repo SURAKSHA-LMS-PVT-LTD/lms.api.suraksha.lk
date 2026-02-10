@@ -50,6 +50,14 @@ async function bootstrap() {
       console.log('✅ NestJS app created successfully');
     }
 
+    // 🌐 CLOUD RUN: Trust proxy headers for real client IP
+    // Google Cloud Run/Load Balancers add X-Forwarded-For headers
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp.set('trust proxy', true);
+    if (!isProduction) {
+      console.log('✅ Trust proxy enabled (reads X-Forwarded-For headers)');
+    }
+
     // 🚫 SECURITY: Silent 403 filter - Return empty response for unauthorized access
     app.useGlobalFilters(new SilentForbiddenExceptionFilter());
     if (!isProduction) {

@@ -147,6 +147,13 @@ export class RefreshTokenEntity {
   @Column({ type: 'varchar', length: 100, nullable: true })
   deviceName: string | null;
 
+  /**
+   * 📱 Last active timestamp - updated on token refresh
+   * Used to show when session was last used
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  lastActiveAt: Date | null;
+
   @Column({ type: 'timestamp' })
   createdAt: Date;
 
