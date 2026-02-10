@@ -70,11 +70,11 @@ export class AuthV2Controller {
     );
 
     // 🔐 SECURITY: Set refresh token in httpOnly cookie (for browsers)
-    // Cookie maxAge matches refresh token expiry (30d if rememberMe, 7d otherwise)
+    // Cookie maxAge matches refresh token expiry (30d if rememberMe, or JWT_REFRESH_EXPIRES_IN env var)
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieMaxAge = rememberMe 
-      ? 30 * 24 * 60 * 60 * 1000  // 30 days
-      : 7 * 24 * 60 * 60 * 1000;  // 7 days
+      ? 30 * 24 * 60 * 60 * 1000  // 30 days in milliseconds
+      : result.refresh_expires_in * 1000;  // Convert seconds to milliseconds (uses env var)
 
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript

@@ -248,10 +248,11 @@ export class AuthService {
       rememberMe
     );
 
-    // Calculate expiry info for frontend
-    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+    // Calculate expiry info for frontend (must match JwtModule signOptions)
+    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRATION') || this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
     const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
-    const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400; // 30d or 7d in seconds
+    const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+    const refresh_expires_in = rememberMe ? 30 * 86400 : this.parseExpiryToSeconds(baseRefreshExpiresIn);
 
     return {
       access_token,
@@ -1311,14 +1312,10 @@ export class AuthService {
       expiresIn: refreshExpiresIn
     });
 
-    // Calculate expiry date
+    // Calculate expiry date (convert all time units to seconds, then to Date)
     const expiresAt = now();
-    const daysMatch = refreshExpiresIn.match(/(\d+)d/);
-    if (daysMatch) {
-      expiresAt.setDate(expiresAt.getDate() + parseInt(daysMatch[1]));
-    } else {
-      expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
-    }
+    const expirySeconds = this.parseExpiryToSeconds(refreshExpiresIn);
+    expiresAt.setSeconds(expiresAt.getSeconds() + expirySeconds);
 
     // 🔐 SECURITY: Store hashed token in database (prevents theft on DB breach)
     const currentTime = now();
@@ -1453,10 +1450,11 @@ export class AuthService {
         isRememberMe
       );
 
-      // Calculate expiry info for frontend
-      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+      // Calculate expiry info for frontend (must match JwtModule signOptions)
+      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRATION') || this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
       const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
-      const refresh_expires_in = isRememberMe ? 30 * 86400 : 7 * 86400;
+      const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+      const refresh_expires_in = isRememberMe ? 30 * 86400 : this.parseExpiryToSeconds(baseRefreshExpiresIn);
 
       return {
         access_token,
@@ -1581,12 +1579,13 @@ export class AuthService {
       rememberMe
     );
 
-    // Get access token expiry (default 1 hour = 3600 seconds)
-    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+    // Get access token expiry (must match JwtModule signOptions)
+    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRATION') || this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
     const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
 
     // 🔐 SSO: Calculate refresh token expiry based on rememberMe
-    const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400;
+    const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+    const refresh_expires_in = rememberMe ? 30 * 86400 : this.parseExpiryToSeconds(baseRefreshExpiresIn);
 
     return {
       access_token,
@@ -1642,14 +1641,10 @@ export class AuthService {
       expiresIn: refreshExpiresIn
     });
 
-    // Calculate expiry date
+    // Calculate expiry date (convert all time units to seconds, then to Date)
     const expiresAt = now();
-    const daysMatch = refreshExpiresIn.match(/(\d+)d/);
-    if (daysMatch) {
-      expiresAt.setDate(expiresAt.getDate() + parseInt(daysMatch[1]));
-    } else {
-      expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
-    }
+    const expirySeconds = this.parseExpiryToSeconds(refreshExpiresIn);
+    expiresAt.setSeconds(expiresAt.getSeconds() + expirySeconds);
 
     // 🔐 SECURITY: Store hashed token in database
     await this.refreshTokenRepository.save({
@@ -1790,10 +1785,11 @@ export class AuthService {
         isRememberMe
       );
 
-      // Get access token expiry
-      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+      // Get access token expiry (must match JwtModule signOptions)
+      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRATION') || this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
       const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
-      const refresh_expires_in = isRememberMe ? 30 * 86400 : 7 * 86400;
+      const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+      const refresh_expires_in = isRememberMe ? 30 * 86400 : this.parseExpiryToSeconds(baseRefreshExpiresIn);
 
       return {
         access_token,
