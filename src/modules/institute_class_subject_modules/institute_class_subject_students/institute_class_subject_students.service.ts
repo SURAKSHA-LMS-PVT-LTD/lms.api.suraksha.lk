@@ -10,6 +10,11 @@ import { SubjectParentResponseDto, SubjectParentQueryDto, PaginatedSubjectParent
 import { SelfEnrollDto, SelfEnrollResponseDto } from './dto/self-enroll.dto';
 import { TeacherAssignStudentsDto, TeacherAssignResponseDto } from './dto/teacher-assign.dto';
 import { UpdateEnrollmentSettingsDto, EnrollmentSettingsResponseDto } from './dto/enrollment-settings.dto';
+import {
+  UnverifiedStudentResponseDto,
+  VerificationActionResponseDto,
+  BulkVerificationResponseDto,
+} from './dto/verify-enrollment.dto';
 import { InstituteClassSubjectStudent } from './entities/institute_class_subject_student.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
@@ -306,6 +311,7 @@ export class InstituteClassSubjectStudentsService {
       .andWhere('enrollment.classId = :classId', { classId })
       .andWhere('enrollment.subjectId = :subjectId', { subjectId })
       .andWhere('enrollment.isActive = :isActive', { isActive: true })
+      .andWhere('enrollment.verificationStatus = :verificationStatus', { verificationStatus: 'verified' })
       .orderBy('enrollment.createdAt', 'ASC')
       .getMany();
 
@@ -814,10 +820,12 @@ export class InstituteClassSubjectStudentsService {
    */
   async selfEnroll(studentId: string, enrollDto: SelfEnrollDto): Promise<SelfEnrollResponseDto> {
     try {
-      // Find the class subject by enrollment key
+      // Find the class subject by instituteId, classId, subjectId
       const classSubject = await this.classSubjectRepository.findOne({
         where: {
-          enrollmentKey: enrollDto.enrollmentKey,
+          instituteId: enrollDto.instituteId,
+          classId: enrollDto.classId,
+          subjectId: enrollDto.subjectId,
           enrollmentEnabled: true,
           isActive: true,
         },
@@ -825,8 +833,16 @@ export class InstituteClassSubjectStudentsService {
       });
 
       if (!classSubject) {
-        throw new NotFoundException('Invalid enrollment key or enrollment is disabled');
+        throw new NotFoundException('Subject not found or self-enrollment is disabled for this subject');
       }
+
+      // Validate enrollment key
+      if (classSubject.enrollmentKey && classSubject.enrollmentKey !== enrollDto.enrollmentKey) {
+        throw new BadRequestException('Invalid enrollment key');
+      }
+
+      // If no enrollment key is set but enrollment is enabled, allow open enrollment
+      // (enrollmentKey is null means open enrollment)
 
       // Check if student is enrolled in the class
       const classEnrollment = await this.classStudentRepository.findOne({
@@ -853,10 +869,16 @@ export class InstituteClassSubjectStudentsService {
       });
 
       if (existingEnrollment) {
+        if (existingEnrollment.verificationStatus === 'rejected') {
+          throw new ConflictException('Your enrollment was previously rejected. Please contact the teacher or admin.');
+        }
+        if (existingEnrollment.verificationStatus === 'pending') {
+          throw new ConflictException('Your enrollment is already pending verification');
+        }
         throw new ConflictException('You are already enrolled in this subject');
       }
 
-      // Create enrollment
+      // Create enrollment with pending verification status
       const timestamp = getCurrentSriLankaISO();
       const enrollment = this.studentRepository.create({
         instituteId: classSubject.instituteId,
@@ -866,6 +888,7 @@ export class InstituteClassSubjectStudentsService {
         enrollmentMethod: 'self_enrolled',
         enrolledBy: null, // Self-enrolled
         isActive: true,
+        verificationStatus: 'pending',
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -876,13 +899,14 @@ export class InstituteClassSubjectStudentsService {
       await this.userManagementService.refreshUserCache(studentId);
 
       return {
-        message: `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}`,
+        message: `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Awaiting verification by teacher or admin.`,
         instituteId: classSubject.instituteId,
         classId: classSubject.classId,
         subjectId: classSubject.subjectId,
         subjectName: classSubject.subject.name,
         className: classSubject.class.name,
         enrollmentMethod: 'self_enrolled',
+        verificationStatus: 'pending',
         enrolledAt: getCurrentSriLankaTime(),
       };
     } catch (error) {
@@ -1148,6 +1172,354 @@ export class InstituteClassSubjectStudentsService {
         throw error;
       }
       throw new BadRequestException(`Failed to get enrollment settings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get unverified (pending) students for a specific class subject
+   * Used by institute admins and teachers to review pending enrollments
+   */
+  async getUnverifiedStudents(
+    instituteId: string,
+    classId: string,
+    subjectId: string
+  ): Promise<UnverifiedStudentResponseDto[]> {
+    try {
+      const pendingEnrollments = await this.studentRepository
+        .createQueryBuilder('enrollment')
+        .leftJoin('enrollment.student', 'student')
+        .addSelect([
+          'student.id',
+          'student.firstName',
+          'student.lastName',
+          'student.email',
+          'student.imageUrl'
+        ])
+        .where('enrollment.instituteId = :instituteId', { instituteId })
+        .andWhere('enrollment.classId = :classId', { classId })
+        .andWhere('enrollment.subjectId = :subjectId', { subjectId })
+        .andWhere('enrollment.verificationStatus = :status', { status: 'pending' })
+        .andWhere('enrollment.isActive = :isActive', { isActive: true })
+        .orderBy('enrollment.createdAt', 'ASC')
+        .getMany();
+
+      return pendingEnrollments.map(enrollment => ({
+        instituteId: enrollment.instituteId,
+        classId: enrollment.classId,
+        subjectId: enrollment.subjectId,
+        studentId: enrollment.studentId,
+        studentFirstName: enrollment.student?.firstName,
+        studentLastName: enrollment.student?.lastName,
+        studentEmail: enrollment.student?.email,
+        studentImageUrl: enrollment.student?.imageUrl,
+        enrollmentMethod: enrollment.enrollmentMethod,
+        verificationStatus: enrollment.verificationStatus,
+        enrolledAt: enrollment.createdAt,
+      }));
+    } catch (error) {
+      throw new BadRequestException(`Failed to get unverified students: ${error.message}`);
+    }
+  }
+
+  /**
+   * Verify a single student's enrollment
+   */
+  async verifyStudentEnrollment(
+    verifierId: string,
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    studentId: string
+  ): Promise<VerificationActionResponseDto> {
+    try {
+      const enrollment = await this.studentRepository.findOne({
+        where: {
+          instituteId,
+          classId,
+          subjectId,
+          studentId,
+        },
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Student enrollment not found');
+      }
+
+      if (enrollment.verificationStatus === 'verified') {
+        throw new ConflictException('Student enrollment is already verified');
+      }
+
+      if (enrollment.verificationStatus === 'rejected') {
+        throw new BadRequestException('Cannot verify a rejected enrollment. Student must re-enroll.');
+      }
+
+      const timestamp = getCurrentSriLankaISO();
+      await this.studentRepository.update(
+        { instituteId, classId, subjectId, studentId },
+        {
+          verificationStatus: 'verified',
+          verifiedBy: verifierId,
+          verifiedAt: timestamp,
+          updatedAt: timestamp,
+        }
+      );
+
+      // Refresh student cache after verification
+      await this.userManagementService.refreshUserCache(studentId);
+
+      return {
+        message: 'Student enrollment verified successfully',
+        instituteId,
+        classId,
+        subjectId,
+        studentId,
+        verificationStatus: 'verified',
+        actionBy: verifierId,
+        actionAt: getCurrentSriLankaTime(),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to verify student enrollment: ${error.message}`);
+    }
+  }
+
+  /**
+   * Reject a single student's enrollment
+   */
+  async rejectStudentEnrollment(
+    verifierId: string,
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    studentId: string,
+    rejectionReason?: string
+  ): Promise<VerificationActionResponseDto> {
+    try {
+      const enrollment = await this.studentRepository.findOne({
+        where: {
+          instituteId,
+          classId,
+          subjectId,
+          studentId,
+        },
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Student enrollment not found');
+      }
+
+      if (enrollment.verificationStatus === 'rejected') {
+        throw new ConflictException('Student enrollment is already rejected');
+      }
+
+      const timestamp = getCurrentSriLankaISO();
+      await this.studentRepository.update(
+        { instituteId, classId, subjectId, studentId },
+        {
+          verificationStatus: 'rejected',
+          verifiedBy: verifierId,
+          verifiedAt: timestamp,
+          rejectionReason: rejectionReason || null,
+          isActive: false,
+          updatedAt: timestamp,
+        }
+      );
+
+      // Refresh student cache after rejection
+      await this.userManagementService.refreshUserCache(studentId);
+
+      return {
+        message: 'Student enrollment rejected',
+        instituteId,
+        classId,
+        subjectId,
+        studentId,
+        verificationStatus: 'rejected',
+        actionBy: verifierId,
+        actionAt: getCurrentSriLankaTime(),
+        rejectionReason,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ConflictException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to reject student enrollment: ${error.message}`);
+    }
+  }
+
+  /**
+   * Bulk verify student enrollments
+   */
+  async bulkVerifyStudentEnrollments(
+    verifierId: string,
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    studentIds: string[]
+  ): Promise<BulkVerificationResponseDto> {
+    try {
+      const successful: { studentId: string; studentName: string }[] = [];
+      const failed: { studentId: string; reason: string }[] = [];
+
+      // Batch fetch enrollments and users
+      const [enrollments, users] = await Promise.all([
+        this.studentRepository.find({
+          where: {
+            instituteId,
+            classId,
+            subjectId,
+            studentId: In(studentIds),
+          },
+        }),
+        this.userRepository.find({
+          where: { id: In(studentIds) },
+          select: ['id', 'firstName', 'lastName'],
+        }),
+      ]);
+
+      const enrollmentMap = new Map(enrollments.map(e => [e.studentId, e]));
+      const userMap = new Map(users.map(u => [u.id, u]));
+      const cacheRefreshIds: string[] = [];
+
+      const timestamp = getCurrentSriLankaISO();
+
+      for (const studentId of studentIds) {
+        const enrollment = enrollmentMap.get(studentId);
+        const user = userMap.get(studentId);
+        const studentName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+
+        if (!enrollment) {
+          failed.push({ studentId, reason: 'Enrollment not found' });
+          continue;
+        }
+
+        if (enrollment.verificationStatus === 'verified') {
+          failed.push({ studentId, reason: 'Already verified' });
+          continue;
+        }
+
+        if (enrollment.verificationStatus === 'rejected') {
+          failed.push({ studentId, reason: 'Cannot verify a rejected enrollment' });
+          continue;
+        }
+
+        await this.studentRepository.update(
+          { instituteId, classId, subjectId, studentId },
+          {
+            verificationStatus: 'verified',
+            verifiedBy: verifierId,
+            verifiedAt: timestamp,
+            updatedAt: timestamp,
+          }
+        );
+
+        cacheRefreshIds.push(studentId);
+        successful.push({ studentId, studentName });
+      }
+
+      // Refresh caches in parallel
+      await Promise.all(
+        cacheRefreshIds.map(id => this.userManagementService.refreshUserCache(id)),
+      );
+
+      return {
+        message: `Successfully verified ${successful.length} student(s)`,
+        successCount: successful.length,
+        failedCount: failed.length,
+        verificationStatus: 'verified',
+        successful,
+        failed,
+      };
+    } catch (error) {
+      throw new BadRequestException(`Failed to bulk verify student enrollments: ${error.message}`);
+    }
+  }
+
+  /**
+   * Bulk reject student enrollments
+   */
+  async bulkRejectStudentEnrollments(
+    verifierId: string,
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    studentIds: string[],
+    rejectionReason?: string
+  ): Promise<BulkVerificationResponseDto> {
+    try {
+      const successful: { studentId: string; studentName: string }[] = [];
+      const failed: { studentId: string; reason: string }[] = [];
+
+      // Batch fetch enrollments and users
+      const [enrollments, users] = await Promise.all([
+        this.studentRepository.find({
+          where: {
+            instituteId,
+            classId,
+            subjectId,
+            studentId: In(studentIds),
+          },
+        }),
+        this.userRepository.find({
+          where: { id: In(studentIds) },
+          select: ['id', 'firstName', 'lastName'],
+        }),
+      ]);
+
+      const enrollmentMap = new Map(enrollments.map(e => [e.studentId, e]));
+      const userMap = new Map(users.map(u => [u.id, u]));
+      const cacheRefreshIds: string[] = [];
+
+      const timestamp = getCurrentSriLankaISO();
+
+      for (const studentId of studentIds) {
+        const enrollment = enrollmentMap.get(studentId);
+        const user = userMap.get(studentId);
+        const studentName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+
+        if (!enrollment) {
+          failed.push({ studentId, reason: 'Enrollment not found' });
+          continue;
+        }
+
+        if (enrollment.verificationStatus === 'rejected') {
+          failed.push({ studentId, reason: 'Already rejected' });
+          continue;
+        }
+
+        await this.studentRepository.update(
+          { instituteId, classId, subjectId, studentId },
+          {
+            verificationStatus: 'rejected',
+            verifiedBy: verifierId,
+            verifiedAt: timestamp,
+            rejectionReason: rejectionReason || null,
+            isActive: false,
+            updatedAt: timestamp,
+          }
+        );
+
+        cacheRefreshIds.push(studentId);
+        successful.push({ studentId, studentName });
+      }
+
+      // Refresh caches in parallel
+      await Promise.all(
+        cacheRefreshIds.map(id => this.userManagementService.refreshUserCache(id)),
+      );
+
+      return {
+        message: `Successfully rejected ${successful.length} student(s)`,
+        successCount: successful.length,
+        failedCount: failed.length,
+        verificationStatus: 'rejected',
+        successful,
+        failed,
+      };
+    } catch (error) {
+      throw new BadRequestException(`Failed to bulk reject student enrollments: ${error.message}`);
     }
   }
 

@@ -27,6 +27,18 @@ export class InstituteClassSubjectStudentResponseDto {
   @ApiProperty({ description: 'ID of the user who enrolled the student', example: '123', required: false })
   enrolledBy?: string;
 
+  @ApiProperty({ description: 'Verification status', example: 'verified', enum: ['verified', 'pending', 'rejected'] })
+  verificationStatus: 'verified' | 'pending' | 'rejected';
+
+  @ApiProperty({ description: 'ID of user who verified/rejected', example: '100', required: false })
+  verifiedBy?: string;
+
+  @ApiProperty({ description: 'Verification timestamp', required: false })
+  verifiedAt?: Date;
+
+  @ApiProperty({ description: 'Reason for rejection', required: false })
+  rejectionReason?: string;
+
   @ApiProperty({ description: 'Creation date', example: '2024-01-15T10:00:00Z' })
   createdAt: Date;
 
@@ -40,6 +52,12 @@ export class InstituteClassSubjectStudentResponseDto {
     dto.subjectId = entity.subjectId;
     dto.studentId = entity.studentId;
     dto.isActive = entity.isActive;
+    dto.enrollmentMethod = entity.enrollmentMethod;
+    dto.enrolledBy = entity.enrolledBy;
+    dto.verificationStatus = entity.verificationStatus;
+    dto.verifiedBy = entity.verifiedBy;
+    dto.verifiedAt = entity.verifiedAt;
+    dto.rejectionReason = entity.rejectionReason;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;
     

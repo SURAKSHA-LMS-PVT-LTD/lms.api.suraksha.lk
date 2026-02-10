@@ -64,6 +64,23 @@ export class InstituteClassSubjectStudent {
   @JoinColumn([{ name: 'enrolled_by' }])
   enrolledByTeacher?: UserEntity;
 
+  // Verification tracking for self-enrolled students
+  @Column({ name: 'verification_status', type: 'enum', enum: ['verified', 'pending', 'rejected'], default: 'verified', comment: 'Verification status: verified (default for teacher_assigned), pending (for self_enrolled), rejected' })
+  verificationStatus: 'verified' | 'pending' | 'rejected';
+
+  @Column({ name: 'verified_by', type: 'bigint', nullable: true, comment: 'Admin/Teacher who verified or rejected the enrollment' })
+  verifiedBy?: string;
+
+  @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn([{ name: 'verified_by' }])
+  verifier?: UserEntity;
+
+  @Column({ name: 'verified_at', type: 'timestamp', nullable: true })
+  verifiedAt?: Date;
+
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true, comment: 'Reason for rejecting the enrollment' })
+  rejectionReason?: string;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

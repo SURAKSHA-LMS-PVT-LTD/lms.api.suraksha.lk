@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsBoolean, ValidateNested, ArrayNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export class SelfEnrollClassDto {
   @ApiProperty({ 
@@ -50,19 +51,46 @@ export class AdminTeacherAssignClassDto {
   assignmentNotes?: string;
 }
 
+export class StudentVerificationDto {
+  @ApiProperty({ 
+    description: 'Student user ID to verify',
+    example: '123'
+  })
+  @IsString()
+  @IsNotEmpty()
+  studentUserId: string;
+
+  @ApiProperty({ 
+    description: 'Whether to approve (true) or reject (false) the enrollment',
+    example: true
+  })
+  @IsBoolean()
+  approve: boolean;
+
+  @ApiProperty({ 
+    description: 'Optional notes for the verification decision',
+    example: 'Valid enrollment',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class BulkVerifyStudentsDto {
   @ApiProperty({ 
     description: 'Array of verification decisions',
+    type: [StudentVerificationDto],
     example: [
       { studentUserId: '123', approve: true, notes: 'Valid enrollment' },
       { studentUserId: '456', approve: false, notes: 'Missing documents' }
     ]
   })
-  verifications: Array<{
-    studentUserId: string;
-    approve: boolean;
-    notes?: string;
-  }>;
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => StudentVerificationDto)
+  verifications: StudentVerificationDto[];
 }
 
 export class ClassEnrollmentSettingsDto {

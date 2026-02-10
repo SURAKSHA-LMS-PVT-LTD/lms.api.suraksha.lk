@@ -12,6 +12,15 @@ import { InstituteClassSubjectStudentResponseDto } from './dto/institute_class_s
 import { SelfEnrollDto, SelfEnrollResponseDto } from './dto/self-enroll.dto';
 import { TeacherAssignStudentsDto, TeacherAssignResponseDto } from './dto/teacher-assign.dto';
 import { UpdateEnrollmentSettingsDto, EnrollmentSettingsResponseDto } from './dto/enrollment-settings.dto';
+import {
+  VerifyEnrollmentDto,
+  RejectEnrollmentDto,
+  BulkVerifyEnrollmentDto,
+  BulkRejectEnrollmentDto,
+  UnverifiedStudentResponseDto,
+  VerificationActionResponseDto,
+  BulkVerificationResponseDto,
+} from './dto/verify-enrollment.dto';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { SubjectParentResponseDto, SubjectParentQueryDto, PaginatedSubjectParentResponseDto } from './dto/subject-parent-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
@@ -68,6 +77,233 @@ export class InstituteClassSubjectStudentsController {
     @Param('subjectId', ParseBigIntPipe) subjectId: string
   ): Promise<InstituteClassSubjectStudentResponseDto[]> {
     return await this.studentsService.getStudentsInClassSubject(instituteId, classId, subjectId);
+  }
+
+  // ==========================================
+  // ENROLLMENT VERIFICATION ENDPOINTS
+  // (Must be declared BEFORE wildcard param routes like :instituteId/:classId/:subjectId/:studentId)
+  // ==========================================
+
+  @Get('unverified-students/:instituteId/:classId/:subjectId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Get unverified (pending) students for a class subject',
+    description: `
+    **Returns:** List of students who have self-enrolled and are awaiting verification
+    **Authorization:**
+    - Institute admins can view unverified students for any subject in their institute
+    - Teachers can view unverified students for subjects they are assigned to
+    - Superadmins can view all
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'List of unverified students',
+    type: [UnverifiedStudentResponseDto]
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getUnverifiedStudents(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string
+  ): Promise<UnverifiedStudentResponseDto[]> {
+    return await this.studentsService.getUnverifiedStudents(instituteId, classId, subjectId);
+  }
+
+  @Patch('verify-enrollment/:instituteId/:classId/:subjectId/:studentId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Verify a student enrollment',
+    description: `
+    **Verifies a pending student enrollment:**
+    - Changes verification status from 'pending' to 'verified'
+    - Records who verified and when
+    - Only pending enrollments can be verified
+    
+    **Authorization:**
+    - Institute admins can verify students for any subject in their institute
+    - Teachers can verify students for subjects they are assigned to
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiParam({ name: 'studentId', description: 'Student ID to verify' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Student enrollment verified successfully',
+    type: VerificationActionResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Student enrollment not found' })
+  @ApiResponse({ status: 409, description: 'Student enrollment is already verified' })
+  async verifyStudentEnrollment(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Request() req: JwtRequest
+  ): Promise<VerificationActionResponseDto> {
+    return await this.studentsService.verifyStudentEnrollment(
+      req.user.s,
+      instituteId,
+      classId,
+      subjectId,
+      studentId
+    );
+  }
+
+  @Patch('reject-enrollment/:instituteId/:classId/:subjectId/:studentId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Reject a student enrollment',
+    description: `
+    **Rejects a pending or verified student enrollment:**
+    - Changes verification status to 'rejected'
+    - Sets isActive to false
+    - Records who rejected and when
+    - Optionally includes rejection reason
+    
+    **Authorization:**
+    - Institute admins can reject students for any subject in their institute
+    - Teachers can reject students for subjects they are assigned to
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiParam({ name: 'studentId', description: 'Student ID to reject' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Student enrollment rejected',
+    type: VerificationActionResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Student enrollment not found' })
+  @ApiResponse({ status: 409, description: 'Student enrollment is already rejected' })
+  async rejectStudentEnrollment(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Body() rejectDto: RejectEnrollmentDto,
+    @Request() req: JwtRequest
+  ): Promise<VerificationActionResponseDto> {
+    return await this.studentsService.rejectStudentEnrollment(
+      req.user.s,
+      instituteId,
+      classId,
+      subjectId,
+      studentId,
+      rejectDto.rejectionReason
+    );
+  }
+
+  @Patch('bulk-verify-enrollment/:instituteId/:classId/:subjectId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Bulk verify multiple student enrollments',
+    description: `
+    **Bulk verifies multiple pending student enrollments:**
+    - Changes verification status from 'pending' to 'verified' for all provided students
+    - Records who verified and when
+    - Returns details of successful and failed verifications
+    
+    **Authorization:**
+    - Institute admins can verify students for any subject in their institute
+    - Teachers can verify students for subjects they are assigned to
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bulk verification result',
+    type: BulkVerificationResponseDto
+  })
+  async bulkVerifyEnrollment(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Body() bulkDto: BulkVerifyEnrollmentDto,
+    @Request() req: JwtRequest
+  ): Promise<BulkVerificationResponseDto> {
+    return await this.studentsService.bulkVerifyStudentEnrollments(
+      req.user.s,
+      instituteId,
+      classId,
+      subjectId,
+      bulkDto.studentIds
+    );
+  }
+
+  @Patch('bulk-reject-enrollment/:instituteId/:classId/:subjectId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Bulk reject multiple student enrollments',
+    description: `
+    **Bulk rejects multiple student enrollments:**
+    - Changes verification status to 'rejected' for all provided students
+    - Sets isActive to false
+    - Records who rejected and when
+    - Optionally includes rejection reason applied to all
+    - Returns details of successful and failed rejections
+    
+    **Authorization:**
+    - Institute admins can reject students for any subject in their institute
+    - Teachers can reject students for subjects they are assigned to
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bulk rejection result',
+    type: BulkVerificationResponseDto
+  })
+  async bulkRejectEnrollment(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Body() bulkDto: BulkRejectEnrollmentDto,
+    @Request() req: JwtRequest
+  ): Promise<BulkVerificationResponseDto> {
+    return await this.studentsService.bulkRejectStudentEnrollments(
+      req.user.s,
+      instituteId,
+      classId,
+      subjectId,
+      bulkDto.studentIds,
+      bulkDto.rejectionReason
+    );
   }
 
   @Get('student/:studentId')
@@ -437,23 +673,26 @@ export class InstituteClassSubjectStudentsController {
     parent: {}
   })
   @ApiOperation({ 
-    summary: 'Self-enroll in a subject using enrollment key',
+    summary: 'Self-enroll in a subject using institute ID, class ID, subject ID, and enrollment key',
     description: `
     **Student Self-Enrollment:**
     - Students can enroll themselves in subjects if enrollment is enabled
-    - Requires a valid enrollment key from the teacher
+    - Requires institute ID, class ID, subject ID, and valid enrollment key
     - Student must be enrolled in the class first
     - Prevents duplicate enrollments
+    - Creates enrollment with **pending** verification status
+    - Admin or teacher must verify the enrollment before it becomes active
     
     **Security Features:**
-    - Validates enrollment key and enabled status
+    - Validates enrollment key against the subject's stored key
     - Checks class enrollment prerequisites
     - Prevents duplicate subject enrollments
+    - Differentiates between pending, rejected, and verified states
     `
   })
   @ApiResponse({ 
     status: 201, 
-    description: 'Successfully enrolled in subject',
+    description: 'Successfully enrolled in subject (pending verification)',
     type: SelfEnrollResponseDto
   })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -616,4 +855,5 @@ export class InstituteClassSubjectStudentsController {
       subjectId
     );
   }
+
 }

@@ -18,8 +18,8 @@ import { InstituteEntity } from '../../../institute/entities/institute.entity';
 @Index('idx_class_subjects_class', ['classId', 'isActive'])
 // Institute subject management
 @Index('idx_class_subjects_institute', ['instituteId', 'isActive'])
-// Enrollment key lookup
-@Index('idx_class_subjects_enrollment_key', ['enrollmentKey'], { unique: true, where: 'enrollment_key IS NOT NULL' })
+// Enrollment key lookup (non-unique - uniqueness enforced in application logic since MySQL doesn't support partial unique indexes)
+@Index('idx_class_subjects_enrollment_key', ['enrollmentKey'])
 export class InstituteClassSubjectEntity {
 
   @PrimaryColumn({ name: 'institute_id', type: 'bigint' })
