@@ -1898,9 +1898,7 @@ export class AuthService {
     sessions: Array<{
       id: string;
       platform: string;
-      deviceId: string | null;
       deviceName: string | null;
-      ipAddress: string | null;
       userAgent: string | null;
       createdAt: Date;
       expiresAt: Date;
@@ -1932,10 +1930,10 @@ export class AuthService {
     // Get total count for pagination
     const total = await this.refreshTokenRepository.count({ where });
 
-    // Get sessions with pagination
+    // Get sessions with pagination - exclude sensitive data (ipAddress, deviceId)
     const sessions = await this.refreshTokenRepository.find({
       where,
-      select: ['id', 'platform', 'deviceId', 'deviceName', 'ipAddress', 'userAgent', 'createdAt', 'expiresAt', 'isRevoked'],
+      select: ['id', 'platform', 'deviceName', 'userAgent', 'createdAt', 'expiresAt', 'isRevoked'],
       order: { [sortBy]: sortOrder },
       skip: (page - 1) * limit,
       take: limit

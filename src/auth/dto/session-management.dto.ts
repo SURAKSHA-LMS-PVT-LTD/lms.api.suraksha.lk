@@ -21,25 +21,11 @@ export class SessionResponseDto {
   platform: 'web' | 'android' | 'ios';
 
   @ApiProperty({
-    description: 'Device identifier',
-    example: 'android_170643_abc123def456',
-    nullable: true
-  })
-  deviceId: string | null;
-
-  @ApiProperty({
     description: 'User-friendly device name (null for web)',
     example: 'Samsung Galaxy S21',
     nullable: true
   })
   deviceName: string | null;
-
-  @ApiProperty({
-    description: 'IP address',
-    example: '192.168.1.100',
-    nullable: true
-  })
-  ipAddress: string | null;
 
   @ApiProperty({
     description: 'User agent string',

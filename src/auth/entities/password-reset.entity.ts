@@ -107,10 +107,10 @@ export class RefreshTokenEntity {
   @Column({ type: 'bigint' })
   userId: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ name: 'expiresAt', type: 'timestamp' })
   expiresAt: Date;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'isRevoked', type: 'boolean', default: false })
   isRevoked: boolean;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
@@ -147,10 +147,9 @@ export class RefreshTokenEntity {
   @Column({ type: 'varchar', length: 100, nullable: true })
   deviceName: string | null;
 
-
-  @Column({ type: 'timestamp' })
+  @Column({ name: 'createdAt', type: 'datetime' })
   createdAt: Date;
 
-  @Column({ type: 'timestamp' })
+  @Column({ name: 'updatedAt', type: 'datetime' })
   updatedAt: Date;
 }

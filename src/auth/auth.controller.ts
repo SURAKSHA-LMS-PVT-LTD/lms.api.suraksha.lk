@@ -636,13 +636,14 @@ export class AuthController {
   ): Promise<GetSessionsResponseDto> {
     const result = await this.authService.getActiveSessions(req.user.s, query);
 
+    // Debug: Log what we get from database
+    console.log('📅 Sessions from DB (first):', JSON.stringify(result.sessions[0], null, 2));
+
     // Map sessions to DTOs
     const sessions: SessionResponseDto[] = result.sessions.map(session => ({
       id: session.id,
       platform: session.platform as 'web' | 'android' | 'ios',
-      deviceId: session.deviceId,
       deviceName: session.deviceName,
-      ipAddress: session.ipAddress,
       userAgent: session.userAgent,
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
