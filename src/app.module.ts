@@ -51,6 +51,7 @@ import { StructuredLecturesModule } from './modules/structured-lectures/structur
 import { UserCardManagementModule } from './modules/user-card-management/user-card-management.module';
 import { PushNotificationModule } from './modules/push-notifications/push-notification.module';
 import { GoogleAuthModule } from './modules/google-auth/google-auth.module';
+import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-access.module';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
@@ -149,7 +150,8 @@ import { AppService } from './app.service';
     InstituteClassSubjectStudentsModule,
     InstituteClassSubjectHomeworksModule,
     InstituteClassSubjectHomeworksSubmissionsModule,
-    GoogleAuthModule, // Add Google OAuth 2.0 for Drive integration
+    GoogleAuthModule, // Add Google OAuth 2.0 for Drive integration (legacy - online tokens)
+    UserDriveAccessModule, // Secure Google Drive access with persistent encrypted tokens
     ExamplesModule, // Add examples module
     IdCardModule, // Add ID card generation module
     InstituteClassExamModule, // Add institute class exams module
