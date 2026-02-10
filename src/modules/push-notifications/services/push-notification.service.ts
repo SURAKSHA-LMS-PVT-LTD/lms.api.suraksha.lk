@@ -606,10 +606,10 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform with read status - optimized without sender join and timestamps
+    // Transform using plainToInstance to preserve dates and work with ClassSerializerInterceptor
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
-      return {
+      const plainObj = {
         id: notification.id,
         title: notification.title,
         body: notification.body,
@@ -627,6 +627,7 @@ export class PushNotificationService {
         isRead,
         sentAt: notification.sentAt || notification.createdAt
       };
+      return plainToInstance(UserNotificationResponseDto, plainObj, { excludeExtraneousValues: true });
     });
 
     return {
@@ -656,10 +657,10 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform with read status - optimized without sender join and timestamps
+    // Transform using plainToInstance to preserve dates and work with ClassSerializerInterceptor
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
-      return {
+      const plainObj = {
         id: notification.id,
         title: notification.title,
         body: notification.body,
@@ -677,6 +678,7 @@ export class PushNotificationService {
         isRead,
         sentAt: notification.sentAt || notification.createdAt
       };
+      return plainToInstance(UserNotificationResponseDto, plainObj, { excludeExtraneousValues: true });
     });
 
     return {

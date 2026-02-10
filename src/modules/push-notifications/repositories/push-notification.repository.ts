@@ -65,6 +65,21 @@ export class PushNotificationRepository {
   ): Promise<{ data: PushNotificationEntity[]; total: number; unreadCount: number }> {
     const queryBuilder = this.repository
       .createQueryBuilder('notification')
+      .select([
+        'notification.id',
+        'notification.title',
+        'notification.body',
+        'notification.imageUrl',
+        'notification.icon',
+        'notification.actionUrl',
+        'notification.dataPayload',
+        'notification.scope',
+        'notification.priority',
+        'notification.senderRole',
+        'notification.sentAt',
+        'notification.createdAt',
+        'notification.updatedAt'
+      ])
       .leftJoinAndSelect('notification.institute', 'institute')
       .leftJoinAndSelect('notification.class', 'class')
       .leftJoinAndSelect('notification.subject', 'subject')
@@ -105,6 +120,21 @@ export class PushNotificationRepository {
   ): Promise<{ data: PushNotificationEntity[]; total: number; unreadCount: number }> {
     const queryBuilder = this.repository
       .createQueryBuilder('notification')
+      .select([
+        'notification.id',
+        'notification.title',
+        'notification.body',
+        'notification.imageUrl',
+        'notification.icon',
+        'notification.actionUrl',
+        'notification.dataPayload',
+        'notification.scope',
+        'notification.priority',
+        'notification.senderRole',
+        'notification.sentAt',
+        'notification.createdAt',
+        'notification.updatedAt'
+      ])
       .where('notification.scope = :scope', { scope: NotificationScope.GLOBAL })
       .andWhere('notification.status = :status', { status: NotificationStatus.SENT });
 

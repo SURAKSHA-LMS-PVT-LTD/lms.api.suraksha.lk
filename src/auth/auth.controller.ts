@@ -636,16 +636,19 @@ export class AuthController {
   ): Promise<GetSessionsResponseDto> {
     const result = await this.authService.getActiveSessions(req.user.s, query);
 
-    // Map sessions - rename date fields to avoid ClassSerializerInterceptor
-    const sessions = result.sessions.map(session => ({
-      id: session.id,
-      platform: session.platform as 'web' | 'android' | 'ios',
-      deviceName: session.deviceName,
-      userAgent: session.userAgent,
-      firstLogin: session.createdAt,
-      tokenExpiry: session.expiresAt,
-      isCurrent: false
-    }));
+    // Transform using plainToInstance to preserve dates with ClassSerializerInterceptor
+    const sessions = result.sessions.map(session => {
+      const plainObj = {
+        id: session.id,
+        platform: session.platform as 'web' | 'android' | 'ios',
+        deviceName: session.deviceName,
+        userAgent: session.userAgent,
+        firstLogin: session.createdAt,
+        tokenExpiry: session.expiresAt,
+        isCurrent: false
+      };
+      return plainObj; // Return plain object since SessionResponseDto doesn't use @Expose()
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(result.total / query.limit);
