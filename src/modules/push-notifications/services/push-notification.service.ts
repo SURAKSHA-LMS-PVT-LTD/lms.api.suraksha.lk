@@ -67,7 +67,39 @@ export class PushNotificationService {
     }
 
     const result = await this.notificationRepository.findOne(notification.id);
-    return plainToInstance(PushNotificationResponseDto, result, { excludeExtraneousValues: true });
+    // Manual mapping to preserve dates
+    return {
+      id: result.id,
+      title: result.title,
+      body: result.body,
+      imageUrl: result.imageUrl,
+      icon: result.icon,
+      actionUrl: result.actionUrl,
+      dataPayload: result.dataPayload,
+      scope: result.scope,
+      targetUserTypes: result.targetUserTypes,
+      instituteId: result.instituteId,
+      institute: result.institute,
+      classId: result.classId,
+      class: result.class,
+      subjectId: result.subjectId,
+      subject: result.subject,
+      priority: result.priority,
+      status: result.status,
+      collapseKey: result.collapseKey,
+      timeToLive: result.timeToLive,
+      scheduledAt: result.scheduledAt,
+      sentAt: result.sentAt,
+      senderId: result.senderId,
+      senderRole: result.senderRole,
+      sender: result.sender,
+      totalRecipients: result.totalRecipients,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      readCount: result.readCount,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt
+    } as PushNotificationResponseDto;
   }
 
   /**
@@ -512,8 +544,42 @@ export class PushNotificationService {
     const { data, total } = await this.notificationRepository.findAll(queryDto);
     const { page = 1, limit = 10 } = queryDto;
 
+    // Manual mapping to preserve dates
+    const mappedData = data.map(n => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      imageUrl: n.imageUrl,
+      icon: n.icon,
+      actionUrl: n.actionUrl,
+      dataPayload: n.dataPayload,
+      scope: n.scope,
+      targetUserTypes: n.targetUserTypes,
+      instituteId: n.instituteId,
+      institute: n.institute,
+      classId: n.classId,
+      class: n.class,
+      subjectId: n.subjectId,
+      subject: n.subject,
+      priority: n.priority,
+      status: n.status,
+      collapseKey: n.collapseKey,
+      timeToLive: n.timeToLive,
+      scheduledAt: n.scheduledAt,
+      sentAt: n.sentAt,
+      senderId: n.senderId,
+      senderRole: n.senderRole,
+      sender: n.sender,
+      totalRecipients: n.totalRecipients,
+      sentCount: n.sentCount,
+      failedCount: n.failedCount,
+      readCount: n.readCount,
+      createdAt: n.createdAt,
+      updatedAt: n.updatedAt
+    } as PushNotificationResponseDto));
+
     return {
-      data: plainToInstance(PushNotificationResponseDto, data, { excludeExtraneousValues: true }),
+      data: mappedData,
       total,
       page,
       limit,
@@ -540,13 +606,26 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform with read status
+    // Transform with read status - manual mapping to avoid class-transformer issues with timestamps
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
       return {
-        ...plainToInstance(UserNotificationResponseDto, notification, { excludeExtraneousValues: true }),
+        id: notification.id,
+        title: notification.title,
+        body: notification.body,
+        imageUrl: notification.imageUrl,
+        icon: notification.icon,
+        actionUrl: notification.actionUrl,
+        dataPayload: notification.dataPayload,
+        scope: notification.scope,
+        priority: notification.priority,
+        institute: notification.institute,
+        class: notification.class,
+        subject: notification.subject,
+        sender: notification.sender,
+        senderRole: notification.senderRole,
         isRead,
-        readAt: isRead ? undefined : undefined, // Could track read time if needed
+        createdAt: notification.createdAt
       };
     });
 
@@ -577,12 +656,26 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform with read status
+    // Transform with read status - manual mapping to avoid class-transformer issues with timestamps
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
       return {
-        ...plainToInstance(UserNotificationResponseDto, notification, { excludeExtraneousValues: true }),
+        id: notification.id,
+        title: notification.title,
+        body: notification.body,
+        imageUrl: notification.imageUrl,
+        icon: notification.icon,
+        actionUrl: notification.actionUrl,
+        dataPayload: notification.dataPayload,
+        scope: notification.scope,
+        priority: notification.priority,
+        institute: notification.institute,
+        class: notification.class,
+        subject: notification.subject,
+        sender: notification.sender,
+        senderRole: notification.senderRole,
         isRead,
+        createdAt: notification.createdAt
       };
     });
 
@@ -604,7 +697,39 @@ export class PushNotificationService {
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }
-    return plainToInstance(PushNotificationResponseDto, notification, { excludeExtraneousValues: true });
+    // Manual mapping to preserve dates
+    return {
+      id: notification.id,
+      title: notification.title,
+      body: notification.body,
+      imageUrl: notification.imageUrl,
+      icon: notification.icon,
+      actionUrl: notification.actionUrl,
+      dataPayload: notification.dataPayload,
+      scope: notification.scope,
+      targetUserTypes: notification.targetUserTypes,
+      instituteId: notification.instituteId,
+      institute: notification.institute,
+      classId: notification.classId,
+      class: notification.class,
+      subjectId: notification.subjectId,
+      subject: notification.subject,
+      priority: notification.priority,
+      status: notification.status,
+      collapseKey: notification.collapseKey,
+      timeToLive: notification.timeToLive,
+      scheduledAt: notification.scheduledAt,
+      sentAt: notification.sentAt,
+      senderId: notification.senderId,
+      senderRole: notification.senderRole,
+      sender: notification.sender,
+      totalRecipients: notification.totalRecipients,
+      sentCount: notification.sentCount,
+      failedCount: notification.failedCount,
+      readCount: notification.readCount,
+      createdAt: notification.createdAt,
+      updatedAt: notification.updatedAt
+    } as PushNotificationResponseDto;
   }
 
   /**

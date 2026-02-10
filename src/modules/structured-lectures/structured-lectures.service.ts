@@ -14,47 +14,14 @@ export class StructuredLecturesService {
     ) {}
 
   async findAll() {
-    // Optimize: Select only necessary fields instead of SELECT *
-    return this.lectureRepository.find({
-      select: [
-        'id',
-        'instituteId',
-        'classId',
-        'title',
-        'description',
-        'subjectId',
-        'grade',
-        'videoUrl',
-        'thumbnailUrl',
-        'attachments',
-        'isActive',
-        'createdBy',
-        'createdAt',
-        'updatedAt'
-      ]
-    });
+    // Fetch all fields to avoid timestamp deserialization issues
+    return this.lectureRepository.find();
   }
 
   async findOne(id: string) {
-    // Optimize: Select only necessary fields instead of SELECT *
+    // Fetch all fields to avoid timestamp deserialization issues
     return this.lectureRepository.findOne({ 
-      where: { id },
-      select: [
-        'id',
-        'instituteId',
-        'classId',
-        'title',
-        'description',
-        'subjectId',
-        'grade',
-        'videoUrl',
-        'thumbnailUrl',
-        'attachments',
-        'isActive',
-        'createdBy',
-        'createdAt',
-        'updatedAt'
-      ]
+      where: { id }
     });
   }
 
@@ -331,25 +298,9 @@ export class StructuredLecturesService {
   }
 
   async getLecturesBySubjectAndGradeAsDto(subjectId: string, grade: number, activeFilter: boolean): Promise<LectureListResponseDto> {
-    // Optimize: Select only fields needed for DTO
+    // Fetch all fields to avoid timestamp deserialization issues
     const entities = await this.lectureRepository.find({
-      where: { subjectId, grade, isActive: activeFilter },
-      select: [
-        'id',
-        'instituteId',
-        'classId',
-        'title',
-        'description',
-        'subjectId',
-        'grade',
-        'videoUrl',
-        'thumbnailUrl',
-        'attachments',
-        'isActive',
-        'createdBy',
-        'createdAt',
-        'updatedAt'
-      ]
+      where: { subjectId, grade, isActive: activeFilter }
     });
 
     return {

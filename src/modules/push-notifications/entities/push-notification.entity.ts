@@ -133,10 +133,10 @@ export class PushNotificationEntity {
   timeToLive: number;
 
   // Scheduling
-  @Column({ name: 'scheduled_at', type: 'datetime', nullable: true, comment: 'When to send the notification (null for immediate)' })
+  @Column({ name: 'scheduled_at', type: 'timestamp', nullable: true, comment: 'When to send the notification (null for immediate)' })
   scheduledAt?: Date;
 
-  @Column({ name: 'sent_at', type: 'datetime', nullable: true })
+  @Column({ name: 'sent_at', type: 'timestamp', nullable: true })
   sentAt?: Date;
 
   // Sender information
@@ -164,9 +164,9 @@ export class PushNotificationEntity {
   readCount: number;
 
   // Timestamps
-  @Column({ name: 'created_at', type: 'datetime' })
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @Column({ name: 'updated_at', type: 'datetime' })
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

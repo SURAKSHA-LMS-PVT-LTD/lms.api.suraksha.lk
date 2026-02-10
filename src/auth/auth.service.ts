@@ -644,10 +644,19 @@ export class AuthService {
    */
   private async getAllInstitutes(): Promise<any[]> {
     try {
-      const institutes = await this.instituteRepository.find({
-        select: ['id', 'name', 'email', 'phone', 'address', 'createdAt'],
+      const institutesRaw = await this.instituteRepository.find({
         order: { createdAt: 'DESC' }
       });
+
+      // Map to return only needed fields
+      const institutes = institutesRaw.map(inst => ({
+        id: inst.id,
+        name: inst.name,
+        email: inst.email,
+        phone: inst.phone,
+        address: inst.address,
+        createdAt: inst.createdAt
+      }));
 
       return institutes || [];
     } catch (error) {
@@ -1930,22 +1939,31 @@ export class AuthService {
     // Get total count for pagination
     const total = await this.refreshTokenRepository.count({ where });
 
-    // Get sessions with pagination - exclude sensitive data (ipAddress, deviceId)
-    const sessions = await this.refreshTokenRepository.find({
+    // Get sessions with pagination - fetch all fields, then exclude sensitive data manually
+    const sessionsRaw = await this.refreshTokenRepository.find({
       where,
-      select: ['id', 'platform', 'deviceName', 'userAgent', 'createdAt', 'expiresAt', 'isRevoked'],
       order: { [sortBy]: sortOrder },
       skip: (page - 1) * limit,
       take: limit
     });
+
+    // Map to exclude sensitive fields (ipAddress, deviceId, token)
+    const sessions = sessionsRaw.map(s => ({
+      id: s.id,
+      platform: s.platform,
+      deviceName: s.deviceName,
+      userAgent: s.userAgent,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      isRevoked: s.isRevoked
+    }));
 
     // Filter out expired sessions
     const activeSessions = sessions.filter(s => s.expiresAt > now());
 
     // Calculate summary statistics (from all non-expired sessions, not just current page)
     const allActiveSessions = await this.refreshTokenRepository.find({
-      where: { userId, isRevoked: false },
-      select: ['platform', 'expiresAt']
+      where: { userId, isRevoked: false }
     });
 
     const nonExpired = allActiveSessions.filter(s => s.expiresAt > now());

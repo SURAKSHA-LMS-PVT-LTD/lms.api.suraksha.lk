@@ -107,7 +107,7 @@ export class RefreshTokenEntity {
   @Column({ type: 'bigint' })
   userId: string;
 
-  @Column({ name: 'expiresAt', type: 'datetime' })
+  @Column({ name: 'expiresAt', type: 'timestamp' })
   expiresAt: Date;
 
   @Column({ name: 'isRevoked', type: 'boolean', default: false })
