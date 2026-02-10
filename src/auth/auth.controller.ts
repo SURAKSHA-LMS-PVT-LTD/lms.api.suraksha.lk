@@ -245,8 +245,7 @@ export class AuthController {
   }
 
   @Post('change-password')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Change user password with current password verification (Authenticated users only)' })
   @ApiResponse({ status: 200, description: 'Password changed successfully' })
@@ -446,8 +445,10 @@ export class AuthController {
   /**
    * Refresh access token using refresh token from cookie
    */
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 🔒 SECURITY: 10 refresh attempts per minute
   @ApiOperation({ 
     summary: 'Refresh access token',
     description: 'Generate a new access token using the refresh token from httpOnly cookie. Validates user hierarchy and permissions. Old refresh token will be revoked.'
@@ -519,6 +520,7 @@ export class AuthController {
   /**
    * Logout and revoke refresh token from cookie
    */
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 

@@ -2,6 +2,7 @@ import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/com
 import { AuthGuard } from '@nestjs/passport';
 import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 
 /**
  * API Key or JWT Guard
@@ -41,8 +42,11 @@ export class ApiKeyOrJwtGuard extends AuthGuard('jwt') {
     // Get special API key from environment (no fallback for security)
     const specialApiKey = this.configService.get<string>('SPECIAL_API_KEY');
     
-    // Check if token matches the special API key
-    if (specialApiKey && token === specialApiKey) {
+    // 🔒 SECURITY: Use constant-time comparison to prevent timing attacks
+    if (specialApiKey && token.length === specialApiKey.length) {
+      const tokenBuffer = Buffer.from(token, 'utf-8');
+      const keyBuffer = Buffer.from(specialApiKey, 'utf-8');
+      if (crypto.timingSafeEqual(tokenBuffer, keyBuffer)) {
       // API Key authentication successful
       // Set user on request and mark as API key authenticated
       // 🔒 SECURITY: API key gets a dedicated type, NOT superadmin equivalence
@@ -57,6 +61,7 @@ export class ApiKeyOrJwtGuard extends AuthGuard('jwt') {
       // Mark the request to skip JWT validation in handleRequest
       request._isApiKeyAuthenticated = true;
       return true;
+      }
     }
 
     // If not API key, fall back to JWT authentication

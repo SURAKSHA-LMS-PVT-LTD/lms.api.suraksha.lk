@@ -175,10 +175,9 @@ export class PasswordResetService {
 
     return {
       success: true,
-      message: 'Password reset code sent to your email address. Please check your inbox.',
+      message: 'If an account with this identifier exists, you will receive a password reset code.',
       data: {
         identifier: dto.identifier,
-        email: user.email, // For backward compatibility
         expiresInMinutes: 15
       }
     };
@@ -217,6 +216,22 @@ export class PasswordResetService {
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
+    // 🔐 SECURITY: Check for brute force — block after 5 failed OTP attempts
+    const latestToken = await this.passwordResetTokenRepository.findOne({
+      where: {
+        email: user.email,
+        tokenType: 'PASSWORD_RESET',
+        isUsed: false
+      },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (latestToken && latestToken.attemptCount >= 5) {
+      // Auto-invalidate the token after too many failures
+      await this.passwordResetTokenRepository.update(latestToken.id, { isUsed: true, updatedAt: now() });
+      throw new BadRequestException('Too many failed OTP attempts. Please request a new code.');
+    }
+
     // Verify OTP using the user's email
     const resetToken = await this.passwordResetTokenRepository.findOne({
       where: {
@@ -231,7 +246,7 @@ export class PasswordResetService {
       // Increment failed attempts for security monitoring
       await this.passwordResetTokenRepository.increment(
         { email: user.email, tokenType: 'PASSWORD_RESET' },
-        'failedAttempts',
+        'attemptCount',
         1
       );
       throw new BadRequestException('Invalid or expired OTP code');
@@ -303,6 +318,21 @@ export class PasswordResetService {
       throw new NotFoundException('User not found');
     }
 
+    // 🔐 SECURITY: Check for brute force — block after 5 failed OTP attempts
+    const latestResetToken = await this.passwordResetTokenRepository.findOne({
+      where: {
+        email: user.email,
+        tokenType: 'PASSWORD_RESET',
+        isUsed: false
+      },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (latestResetToken && latestResetToken.attemptCount >= 5) {
+      await this.passwordResetTokenRepository.update(latestResetToken.id, { isUsed: true, updatedAt: now() });
+      throw new BadRequestException('Too many failed OTP attempts. Please request a new code.');
+    }
+
     // Verify OTP using the user's email
     const resetToken = await this.passwordResetTokenRepository.findOne({
       where: {
@@ -315,6 +345,14 @@ export class PasswordResetService {
 
     const currentTime = now();
     if (!resetToken || resetToken.expiresAt < currentTime) {
+      // 🔐 SECURITY: Increment failed attempts on wrong OTP
+      if (latestResetToken) {
+        await this.passwordResetTokenRepository.increment(
+          { id: latestResetToken.id },
+          'attemptCount',
+          1
+        );
+      }
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
@@ -334,9 +372,9 @@ export class PasswordResetService {
       userAgent
     });
 
-    // TODO: Add password change confirmation email template to EnhancedEmailService
-    // For now, skip sending confirmation email
-
+    // 🔐 SECURITY: Revoke all refresh tokens on password reset
+    // Forces re-login on all devices, preventing stolen token reuse
+    await this.authService.revokeAllUserSessions(user.id);
 
     return {
       success: true,
@@ -396,9 +434,8 @@ export class PasswordResetService {
       password: hashedPassword
     });
 
-    // TODO: Add password change confirmation email template to EnhancedEmailService
-    // For now, skip sending confirmation email
-
+    // 🔐 SECURITY: Revoke all refresh tokens on password change
+    await this.authService.revokeAllUserSessions(userId);
 
     return {
       success: true,
@@ -555,9 +592,8 @@ export class PasswordResetService {
       userAgent
     });
 
-    // TODO: Add password change confirmation email template to EnhancedEmailService
-    // For now, skip sending confirmation email
-
+    // 🔐 SECURITY: Revoke all refresh tokens on password change via OTP
+    await this.authService.revokeAllUserSessions(user.id);
 
     return {
       success: true,

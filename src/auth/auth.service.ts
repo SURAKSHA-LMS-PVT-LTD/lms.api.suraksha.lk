@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, BadRequestException, InternalServerE
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { UserEntity } from '../modules/user/entities/user.entity';
@@ -810,6 +811,19 @@ export class AuthService {
       // Step 6: Refresh user cache (non-blocking, don't fail if cache update fails)
       this.refreshUserCacheAsync(userId);
 
+      // 🔐 SECURITY: Revoke all refresh tokens on password change
+      // This forces re-login on all devices, preventing stolen token reuse
+      try {
+        await transactionManager.update(
+          this.refreshTokenRepository.target,
+          { userId: userId.trim(), isRevoked: false },
+          { isRevoked: true, updatedAt: now() }
+        );
+        this.logger.log(`🔐 All sessions revoked for user ${userId} after password change`);
+      } catch (revokeError) {
+        this.logger.warn(`⚠️ Failed to revoke sessions after password change: ${revokeError.message}`);
+      }
+
       return {
         message: 'Password changed successfully',
         isSuccess: true
@@ -1297,9 +1311,9 @@ export class AuthService {
       expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
     }
 
-    // Store refresh token in database (web platform by default)
+    // 🔐 SECURITY: Store hashed token in database (prevents theft on DB breach)
     await this.refreshTokenRepository.save({
-      token: refreshToken,
+      token: this.hashToken(refreshToken),
       userId: userId,
       expiresAt: expiresAt,
       ipAddress: ipAddress,
@@ -1348,13 +1362,10 @@ export class AuthService {
         throw new UnauthorizedException('Invalid token type');
       }
 
-      // Check if token exists and is not revoked
-      const tokenRecord = await this.refreshTokenRepository.findOne({
-        where: {
-          token: refreshToken,
-          userId: payload.sub,
-          isRevoked: false
-        }
+      // 🔐 SECURITY: Lookup by hashed token (with plain-text fallback for migration)
+      const tokenRecord = await this.findRefreshTokenRecord(refreshToken, {
+        userId: payload.sub,
+        isRevoked: false
       });
 
       if (!tokenRecord) {
@@ -1472,11 +1483,20 @@ export class AuthService {
         secret: refreshSecret
       });
 
-      // Revoke token
-      await this.refreshTokenRepository.update(
-        { token: refreshToken, userId: payload.sub },
+      // 🔐 SECURITY: Revoke by hashed token (with plain-text fallback)
+      const tokenHash = this.hashToken(refreshToken);
+      const result = await this.refreshTokenRepository.update(
+        { token: tokenHash, userId: payload.sub },
         { isRevoked: true }
       );
+
+      // Fallback: try plain text for legacy tokens
+      if (result.affected === 0) {
+        await this.refreshTokenRepository.update(
+          { token: refreshToken, userId: payload.sub },
+          { isRevoked: true }
+        );
+      }
 
       return { success: true };
     } catch (error) {
@@ -1556,10 +1576,7 @@ export class AuthService {
     const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
 
     // 🔐 SSO: Calculate refresh token expiry based on rememberMe
-    // loginMobile always defaults to false; caller can pass rememberMe via DTO
-    const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
-    const refreshDaysMatch = baseRefreshExpiresIn.match(/(\d+)d/);
-    const refresh_expires_in = refreshDaysMatch ? parseInt(refreshDaysMatch[1]) * 86400 : 7 * 86400;
+    const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400;
 
     return {
       access_token,
@@ -1624,9 +1641,9 @@ export class AuthService {
       expiresAt.setDate(expiresAt.getDate() + 7); // Default 7 days
     }
 
-    // Store refresh token with device info
+    // 🔐 SECURITY: Store hashed token in database
     await this.refreshTokenRepository.save({
-      token: refreshToken,
+      token: this.hashToken(refreshToken),
       userId: userId,
       expiresAt: expiresAt,
       ipAddress: ipAddress,
@@ -1682,14 +1699,11 @@ export class AuthService {
         throw new UnauthorizedException('Device ID mismatch - token may have been stolen');
       }
 
-      // Check if token exists and is not revoked
-      const tokenRecord = await this.refreshTokenRepository.findOne({
-        where: {
-          token: refreshToken,
-          userId: payload.sub,
-          isRevoked: false,
-          deviceId: deviceId
-        }
+      // 🔐 SECURITY: Lookup by hashed token (with plain-text fallback for migration)
+      const tokenRecord = await this.findRefreshTokenRecord(refreshToken, {
+        userId: payload.sub,
+        isRevoked: false,
+        deviceId: deviceId
       });
 
       if (!tokenRecord) {
@@ -1809,15 +1823,28 @@ export class AuthService {
         secret: refreshSecret
       });
 
-      // Revoke token with device verification
-      const result = await this.refreshTokenRepository.update(
+      // 🔐 SECURITY: Revoke by hashed token (with plain-text fallback)
+      const tokenHash = this.hashToken(refreshToken);
+      let result = await this.refreshTokenRepository.update(
         { 
-          token: refreshToken, 
+          token: tokenHash, 
           userId: payload.sub,
           deviceId: deviceId 
         },
         { isRevoked: true, updatedAt: now() }
       );
+
+      // Fallback: try plain text for legacy tokens
+      if (result.affected === 0) {
+        result = await this.refreshTokenRepository.update(
+          { 
+            token: refreshToken, 
+            userId: payload.sub,
+            deviceId: deviceId 
+          },
+          { isRevoked: true, updatedAt: now() }
+        );
+      }
 
       if (result.affected === 0) {
         this.logger.warn(`⚠️ Logout attempt for non-existent token: user ${payload.sub}, device ${deviceId}`);
@@ -1908,7 +1935,48 @@ export class AuthService {
   }
 
   /**
-   * 🔧 Parse JWT expiry string to seconds
+   * � SECURITY: Hash refresh token with SHA-256 before storing in DB
+   * Prevents token theft from database breaches
+   */
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * 🔐 SECURITY: Find refresh token record by hash (with plain-text fallback for migration)
+   * Tries hashed lookup first; falls back to plain text for pre-migration tokens
+   */
+  private async findRefreshTokenRecord(
+    token: string,
+    additionalWhere: Record<string, any> = {}
+  ): Promise<RefreshTokenEntity | null> {
+    const tokenHash = this.hashToken(token);
+
+    // 1. Try hashed lookup first (new tokens)
+    let record = await this.refreshTokenRepository.findOne({
+      where: { token: tokenHash, ...additionalWhere }
+    });
+
+    if (record) return record;
+
+    // 2. Fallback: plain-text lookup (legacy tokens before migration)
+    record = await this.refreshTokenRepository.findOne({
+      where: { token: token, ...additionalWhere }
+    });
+
+    if (record) {
+      // 🔄 Auto-migrate: update plain-text token to hashed version
+      await this.refreshTokenRepository.update(
+        { id: record.id },
+        { token: tokenHash, updatedAt: now() }
+      );
+    }
+
+    return record;
+  }
+
+  /**
+   * �🔧 Parse JWT expiry string to seconds
    */
   private parseExpiryToSeconds(expiresIn: string): number {
     const match = expiresIn.match(/^(\d+)([smhd])$/);

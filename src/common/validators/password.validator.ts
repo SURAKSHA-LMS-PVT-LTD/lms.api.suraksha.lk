@@ -40,8 +40,8 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
       return false;
     }
 
-    // Length check (8-20 characters - practical limit)
-    if (password.length < 8 || password.length > 20) {
+    // Length check (8-128 characters)
+    if (password.length < 8 || password.length > 128) {
       return false;
     }
 
@@ -79,8 +79,8 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
       return 'Password must be at least 8 characters long';
     }
 
-    if (password.length > 20) {
-      return 'Password cannot exceed 20 characters (practical security limit)';
+    if (password.length > 128) {
+      return 'Password cannot exceed 128 characters';
     }
 
     if (!/[a-z]/.test(password)) {
