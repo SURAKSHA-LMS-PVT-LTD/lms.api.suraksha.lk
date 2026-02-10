@@ -40,11 +40,7 @@ interface JwtRequest extends Request {
 
 @ApiTags('User Card Orders')
 @Controller('user-card')
-@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-@RequireAnyOfRoles({
-  student: {},
-  parent: {}
-})
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UserCardOrderController {
   constructor(
