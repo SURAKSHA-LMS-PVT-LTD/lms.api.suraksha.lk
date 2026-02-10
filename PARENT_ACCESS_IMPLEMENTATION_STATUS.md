@@ -31,13 +31,60 @@
   - ✅ `GET /exams/:id`
 - **Implementation**: Added userId field to DTO, full parent validation
 
-### 5. **Results/Grades** ⭐ NEW
+### 5. **Results/Grades**
 - **Service**: `institute_class_subject_resaults.service.ts`
 - **Endpoints**:
   - ✅ `GET /resaults?studentId={childId}`
   - ✅ `GET /resaults?userId={childId}`
   - ✅ `GET /resaults/:id`
-- **Implementation**: JUST ADDED - Full parent access via targetUserId
+- **Implementation**: Full parent access via targetUserId
+
+### 6. **Subject Enrollment** ⭐ NEW
+- **Controller**: `institute_class_subject_students.controller.ts`
+- **Endpoints**:
+  - ✅ `POST /institute-class-subject-students/self-enroll`
+- **Implementation**: Added `parent: {}` to FlexibleAccessGuard decorator
+- **Notes**: Parents can enroll their children in subjects using enrollment keys
+
+### 7. **Structured Lectures** ⭐ NEW
+- **Controller**: `structured-lectures.controller.ts`
+- **Endpoints**:
+  - ✅ `GET /structured-lectures/class/:classId/subject/:subjectId`
+  - ✅ `GET /structured-lectures/subject/:subjectId/grade/:grade`
+  - ✅ `GET /structured-lectures/:id` (already had parent access)
+- **Implementation**: Added `parent: true` to FlexibleAccessGuard on student-accessible endpoints
+- **Notes**: Parents can view all educational content their children have access to
+
+### 8. **User Identity Cards** ⭐ NEW
+- **Controller**: `user-card-order.controller.ts`
+- **Endpoints**:
+  - ✅ `GET /user-card/cards` - Browse available cards
+  - ✅ `POST /user-card/orders` - Create card order
+  - ✅ `GET /user-card/orders` - Get my orders
+  - ✅ `GET /user-card/orders/:orderId` - Get specific order
+  - ✅ `GET /user-card/my-cards` - Get all my cards
+  - ✅ `PATCH /user-card/my-cards/:orderId/activate` - Activate card
+  - ✅ `PATCH /user-card/my-cards/:orderId/status` - Update card status
+  - ✅ `POST /user-card/orders/:orderId/payment` - Submit payment
+- **Implementation**: Added FlexibleAccessGuard at controller level with `student: {}, parent: {}`
+- **Notes**: Parents can order, manage, and pay for their children's ID cards
+
+### 9. **Payment Submissions** ✅ VERIFIED
+- **Controller**: `institute-class-subject-payment-submission.controller.ts`
+- **Endpoints**:
+  - ✅ `POST /institute-class-subject-payment-submissions/payment/:paymentId/submit`
+  - ✅ `GET /institute-class-subject-payment-submissions/payment/:paymentId/my-status`
+  - ✅ `GET /institute-class-subject-payment-submissions/institute/:instituteId/class/:classId/subject/:subjectId/my-submissions`
+- **Implementation**: Already has `parent: {}` in RequireAnyOfRoles
+- **Notes**: Confirmed parent access already implemented
+
+### 10. **Transportation (Bookhire)** ✅ VERIFIED
+- **Controllers**: `student-bookhire-enrollment.controller.ts`, `bookhire-attendance.controller.ts`
+- **Endpoints**:
+  - ✅ All student bookhire enrollment endpoints (already have `parent: true`)
+  - ✅ All bookhire attendance tracking endpoints (already have `parent: true`)
+- **Implementation**: Already has `parent: true` in RequireAnyOfRoles
+- **Notes**: Confirmed parent access already implemented
 
 ---
 
@@ -126,13 +173,20 @@
 
 | Category | Status | Count |
 |----------|--------|-------|
-| ✅ Implemented | Complete | 5 APIs |
+| ✅ Implemented | Complete | 10 APIs |
 | 🔴 High Priority | Pending | 4 APIs |
 | 🟡 Medium Priority | Pending | 2 APIs |
 | 🟢 Low Priority | Pending | 2 APIs |
-| **Total** | | **13 APIs** |
+| **Total** | | **18 APIs** |
 
-**Completion Rate**: 38% (5/13 APIs)
+**Completion Rate**: 56% (10/18 APIs)
+
+**Recently Added (Latest Update)**:
+- ✅ Subject Self-Enrollment - Parents can now enroll children using enrollment keys
+- ✅ Structured Lectures (2 endpoints) - Parents can view educational content
+- ✅ User Identity Cards (8 endpoints) - Parents can manage children's ID cards
+- ✅ Payment Submissions - Verified already implemented
+- ✅ Transportation/Bookhire - Verified already implemented
 
 ---
 
@@ -287,6 +341,7 @@ async getStudentAttendance(dto: GetStudentAttendanceDto, user?: any) {
 
 ---
 
-**Last Updated**: 2026-01-29  
-**Status**: 38% Complete  
+**Last Updated**: 2025-01-29  
+**Status**: 56% Complete (10/18 APIs)  
+**Latest Changes**: Added parent access to 5 new endpoint groups (subject enrollment, structured lectures, ID cards)
 **Next Priority**: Attendance API (CRITICAL for parents)

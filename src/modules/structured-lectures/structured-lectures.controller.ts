@@ -136,7 +136,8 @@ export class StructuredLecturesController {
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
     teacher: true,
-    student: true
+    student: true,
+    parent: true
   })
   @ApiOperation({ 
     summary: 'Get lectures by class ID and subject ID',
@@ -188,7 +189,8 @@ export class StructuredLecturesController {
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
     teacher: true,
-    student: true
+    student: true,
+    parent: true
   })
   @ApiOperation({ 
     summary: 'Get lectures by subject ID and grade (grouped by lessons)',

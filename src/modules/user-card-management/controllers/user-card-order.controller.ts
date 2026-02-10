@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { CardService } from '../services/card.service';
 import { CardOrderService } from '../services/card-order.service';
 import { CardPaymentService } from '../services/card-payment.service';
@@ -38,7 +40,11 @@ interface JwtRequest extends Request {
 
 @ApiTags('User Card Orders')
 @Controller('user-card')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+@RequireAnyOfRoles({
+  student: {},
+  parent: {}
+})
 @ApiBearerAuth()
 export class UserCardOrderController {
   constructor(

@@ -433,7 +433,8 @@ export class InstituteClassSubjectStudentsController {
   @Post('self-enroll')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    student: {}
+    student: {},
+    parent: {}
   })
   @ApiOperation({ 
     summary: 'Self-enroll in a subject using enrollment key',
