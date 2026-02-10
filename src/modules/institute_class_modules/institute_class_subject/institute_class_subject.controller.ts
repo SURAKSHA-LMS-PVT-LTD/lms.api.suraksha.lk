@@ -1,6 +1,6 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { TeacherIdDto } from '../../../common/dto/common-body.dto';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InstituteClassSubjectService } from './institute_class_subject.service';
@@ -77,12 +77,12 @@ export class InstituteClassSubjectController {
   @Get()
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
-    teacher: { requireClass: true },
-    student: { requireClass: true },
+    teacher: {},
+    student: {},
     attendanceMarker: true,  // Institute-level access (no class requirement)
     instituteAdmin: true
   })
-  @ApiOperation({ summary: 'Get subjects for a specific class (Attendance Marker has institute-level access)' })
+  @ApiOperation({ summary: 'Get subjects for a specific class (Teachers, Students, Attendance Marker, Institute Admin)' })
   @ApiResponse({ status: 200, description: 'Subjects retrieved successfully', type: PaginatedInstituteClassSubjectResponseDto })
 
 
@@ -99,12 +99,12 @@ export class InstituteClassSubjectController {
   @Get(':subjectId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
-    teacher: { requireClass: true, requireSubject: true },
-    student: { requireClass: true },
+    teacher: {},
+    student: {},
     attendanceMarker: true,  // Institute-level access (no class requirement)
     instituteAdmin: true
   })
-  @ApiOperation({ summary: 'Get a specific subject assignment (Attendance Marker has institute-level access)' })
+  @ApiOperation({ summary: 'Get a specific subject assignment (Teachers, Students, Attendance Marker, Institute Admin)' })
   @ApiParam({ name: 'subjectId', description: 'Subject ID' })
   @ApiResponse({ status: 200, description: 'Subject assignment retrieved successfully', type: InstituteClassSubjectResponseDto })
   @ApiResponse({ status: 404, description: 'Subject assignment not found' })
@@ -208,6 +208,74 @@ export class InstituteClassSubjectController {
     @Param('subjectId', ParseBigIntPipe) subjectId: string
   ) {
     return this.instituteClassSubjectService.unassignTeacher(instituteId, classId, subjectId);
+  }
+
+  @Get(':subjectId/enrollment-key')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: {}
+  })
+  @ApiOperation({ 
+    summary: 'Get enrollment key for a specific class subject',
+    description: `
+    **Returns:** The enrollment key and enrollment status for a specific subject in a class.
+    - If enrollment is enabled and a key is set, returns the key
+    - If enrollment is enabled but no key is set, it means open enrollment
+    - If enrollment is disabled, returns enrollmentEnabled: false
+    
+    **Authorization:**
+    - Institute admins can view enrollment keys for any subject
+    - Teachers in the institute can view enrollment keys
+    - Superadmins can view all
+    `
+  })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Enrollment key retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Subject assignment not found' })
+  async getEnrollmentKey(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+  ) {
+    return this.instituteClassSubjectService.getEnrollmentKey(instituteId, classId, subjectId);
+  }
+
+  @Post('self-enroll-teacher')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ 
+    teacher: {}
+  })
+  @ApiOperation({ 
+    summary: 'Teacher self-enrolls to teach a subject in a class',
+    description: `
+    **Teacher Self-Enrollment:**
+    - Teachers can assign themselves to teach a subject in a class
+    - Requires enrollment to be enabled for the subject
+    - If an enrollment key is set, the teacher must provide the correct key
+    - Prevents duplicate teacher assignments (if subject already has a teacher)
+    - Only teachers in the institute can self-enroll
+    `
+  })
+  @ApiResponse({ status: 201, description: 'Teacher successfully self-enrolled to subject' })
+  @ApiResponse({ status: 400, description: 'Bad request or invalid enrollment key' })
+  @ApiResponse({ status: 404, description: 'Subject not found or enrollment is disabled' })
+  @ApiResponse({ status: 409, description: 'Subject already has a teacher assigned' })
+  async selfEnrollTeacher(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Body() body: { subjectId: string; enrollmentKey?: string },
+    @Request() req: any,
+  ) {
+    const teacherId = req.user.s;
+    return this.instituteClassSubjectService.selfEnrollTeacher(
+      instituteId,
+      classId,
+      body.subjectId,
+      teacherId,
+      body.enrollmentKey,
+    );
   }
 
   @Get('teacher/:teacherId')

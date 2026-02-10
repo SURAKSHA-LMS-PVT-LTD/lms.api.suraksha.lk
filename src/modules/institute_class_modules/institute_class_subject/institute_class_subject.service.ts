@@ -7,11 +7,13 @@ import { SubjectResponseDto } from '../../subject/dto/subject-response.dto';
 import { InstituteClassSubjectRepository } from './repositories/institute-class-subject.repository';
 import { IInstituteClassSubjectStats } from './interfaces/institute-class-subject.interface';
 import { INSTITUTE_CLASS_SUBJECT_CONSTANTS } from './constants/institute-class-subject.constants';
+import { UserManagementService } from '../../../common/services/cache-user-management.service';
 
 @Injectable()
 export class InstituteClassSubjectService {
   constructor(
     private readonly instituteClassSubjectRepository: InstituteClassSubjectRepository,
+    private readonly userManagementService: UserManagementService,
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectDto): Promise<InstituteClassSubjectSuccessResponseDto> {
@@ -118,6 +120,27 @@ export class InstituteClassSubjectService {
     }
 
     return this.mapToResponseDto(entity);
+  }
+
+  /**
+   * Get enrollment key for a specific class subject
+   */
+  async getEnrollmentKey(instituteId: string, classId: string, subjectId: string) {
+    const entity = await this.instituteClassSubjectRepository.findOneWithRelations(
+      instituteId,
+      classId,
+      subjectId,
+    );
+
+    if (!entity) {
+      throw new NotFoundException(INSTITUTE_CLASS_SUBJECT_CONSTANTS.ERRORS.NOT_FOUND);
+    }
+
+    return {
+      subjectId: entity.subjectId,
+      enrollmentEnabled: entity.enrollmentEnabled,
+      enrollmentKey: entity.enrollmentEnabled ? (entity.enrollmentKey || null) : null,
+    };
   }
 
   /**
@@ -316,6 +339,9 @@ export class InstituteClassSubjectService {
       { teacherId }
     );
 
+    // Refresh teacher cache so they get immediate access
+    await this.userManagementService.refreshUserCache(teacherId);
+
     return {
       success: true,
       message: 'Teacher assigned to subject successfully',
@@ -324,6 +350,67 @@ export class InstituteClassSubjectService {
         classId,
         subjectId,
         teacherId
+      }
+    };
+  }
+
+  /**
+   * Teacher self-enrolls to teach a subject in a class
+   * - Checks enrollment is enabled for the subject
+   * - Validates enrollment key if one is set
+   * - Checks no teacher is already assigned (or allows if no teacher yet)
+   * - Assigns the requesting teacher to the subject
+   */
+  async selfEnrollTeacher(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    teacherId: string,
+    enrollmentKey?: string,
+  ) {
+    const entity = await this.instituteClassSubjectRepository.findOneWithRelations(instituteId, classId, subjectId);
+
+    if (!entity) {
+      throw new NotFoundException(INSTITUTE_CLASS_SUBJECT_CONSTANTS.ERRORS.NOT_FOUND);
+    }
+
+    // Check if enrollment is enabled for this subject
+    if (!entity.enrollmentEnabled) {
+      throw new BadRequestException('Self-enrollment is not enabled for this subject. Please contact an institute admin.');
+    }
+
+    // Validate enrollment key if one is set on the subject
+    if (entity.enrollmentKey && entity.enrollmentKey !== enrollmentKey) {
+      throw new BadRequestException('Invalid enrollment key');
+    }
+
+    // Check if the subject already has a teacher assigned
+    if (entity.teacherId) {
+      if (entity.teacherId === teacherId) {
+        throw new ConflictException('You are already assigned as the teacher for this subject');
+      }
+      throw new ConflictException('This subject already has a teacher assigned. Please contact an institute admin to change the assignment.');
+    }
+
+    // Assign the teacher - immediate access, no verification needed
+    await this.instituteClassSubjectRepository.update(
+      instituteId,
+      classId,
+      subjectId,
+      { teacherId }
+    );
+
+    // Refresh teacher cache so they get immediate access to the subject
+    await this.userManagementService.refreshUserCache(teacherId);
+
+    return {
+      success: true,
+      message: 'Successfully self-enrolled as teacher for this subject. You now have immediate access.',
+      data: {
+        instituteId,
+        classId,
+        subjectId,
+        teacherId,
       }
     };
   }

@@ -89,7 +89,7 @@ export class InstituteClassSubjectStudentsController {
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireSubject: true }
+    teacher: {}
   })
   @ApiOperation({ 
     summary: 'Get unverified (pending) students for a class subject',
@@ -97,7 +97,7 @@ export class InstituteClassSubjectStudentsController {
     **Returns:** List of students who have self-enrolled and are awaiting verification
     **Authorization:**
     - Institute admins can view unverified students for any subject in their institute
-    - Teachers can view unverified students for subjects they are assigned to
+    - Teachers can view unverified students for any subject in their institute
     - Superadmins can view all
     `
   })
@@ -123,7 +123,7 @@ export class InstituteClassSubjectStudentsController {
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireSubject: true }
+    teacher: {}
   })
   @ApiOperation({ 
     summary: 'Verify a student enrollment',
@@ -135,7 +135,7 @@ export class InstituteClassSubjectStudentsController {
     
     **Authorization:**
     - Institute admins can verify students for any subject in their institute
-    - Teachers can verify students for subjects they are assigned to
+    - Teachers can verify students for any subject in their institute
     `
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -170,7 +170,7 @@ export class InstituteClassSubjectStudentsController {
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireSubject: true }
+    teacher: {}
   })
   @ApiOperation({ 
     summary: 'Reject a student enrollment',
@@ -183,7 +183,7 @@ export class InstituteClassSubjectStudentsController {
     
     **Authorization:**
     - Institute admins can reject students for any subject in their institute
-    - Teachers can reject students for subjects they are assigned to
+    - Teachers can reject students for any subject in their institute
     `
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -220,7 +220,7 @@ export class InstituteClassSubjectStudentsController {
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireSubject: true }
+    teacher: {}
   })
   @ApiOperation({ 
     summary: 'Bulk verify multiple student enrollments',
@@ -232,7 +232,7 @@ export class InstituteClassSubjectStudentsController {
     
     **Authorization:**
     - Institute admins can verify students for any subject in their institute
-    - Teachers can verify students for subjects they are assigned to
+    - Teachers can verify students for any subject in their institute
     `
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -264,7 +264,7 @@ export class InstituteClassSubjectStudentsController {
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireSubject: true }
+    teacher: {}
   })
   @ApiOperation({ 
     summary: 'Bulk reject multiple student enrollments',
@@ -278,7 +278,7 @@ export class InstituteClassSubjectStudentsController {
     
     **Authorization:**
     - Institute admins can reject students for any subject in their institute
-    - Teachers can reject students for subjects they are assigned to
+    - Teachers can reject students for any subject in their institute
     `
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
