@@ -157,11 +157,11 @@ export class FlexibleAccessGuard implements CanActivate {
         config.instituteAdmin || 
         config.teacher || 
         config.student || 
-        config.parent || 
         config.anyInstituteRole;
       
-      // Only throw if endpoint requires ONLY institute roles (no global access configured)
-      const hasOnlyInstituteChecks = hasInstituteBasedChecks && !config.global;
+      // Only throw if endpoint requires ONLY institute roles (no global or parent access configured)
+      // Parent access doesn't require institute membership - parents use JWT 'c' (children) array
+      const hasOnlyInstituteChecks = hasInstituteBasedChecks && !config.global && !config.parent;
       
       if (hasOnlyInstituteChecks) {
         throw new ForbiddenException(
