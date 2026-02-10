@@ -25,13 +25,13 @@ export class PasswordResetTokenEntity {
   @Column({ type: 'boolean', default: false, name: 'isUsed' })
   isUsed: boolean;
 
-  @Column({ type: 'timestamp', nullable: true, name: 'usedAt' })
+  @Column({ type: 'datetime', nullable: true, name: 'usedAt' })
   usedAt?: Date;
 
   @Column({ type: 'boolean', default: false, name: 'isOtpVerified' })
   isOtpVerified: boolean;
 
-  @Column({ type: 'timestamp', name: 'expiresAt' })
+  @Column({ type: 'datetime', name: 'expiresAt' })
   expiresAt: Date;
 
   @Column({ type: 'varchar', length: 45, nullable: true, name: 'ipAddress' })
@@ -43,10 +43,10 @@ export class PasswordResetTokenEntity {
   @Column({ type: 'int', default: 0, name: 'attemptCount' })
   attemptCount: number;
 
-  @Column({ name: 'createdAt', type: 'timestamp' })
+  @Column({ name: 'createdAt', type: 'datetime' })
   createdAt: Date;
 
-  @Column({ name: 'updatedAt', type: 'timestamp' })
+  @Column({ name: 'updatedAt', type: 'datetime' })
   updatedAt: Date;
 }
 
@@ -79,10 +79,10 @@ export class UserFirstLoginLogEntity {
   @Column({ type: 'text', nullable: true, name: 'notes' })
   notes?: string;
 
-  @Column({ name: 'createdAt', type: 'timestamp' })
+  @Column({ name: 'createdAt', type: 'datetime' })
   createdAt: Date;
 
-  @Column({ name: 'updatedAt', type: 'timestamp' })
+  @Column({ name: 'updatedAt', type: 'datetime' })
   updatedAt: Date;
 }
 
@@ -107,7 +107,7 @@ export class RefreshTokenEntity {
   @Column({ type: 'bigint' })
   userId: string;
 
-  @Column({ name: 'expiresAt', type: 'timestamp' })
+  @Column({ name: 'expiresAt', type: 'datetime' })
   expiresAt: Date;
 
   @Column({ name: 'isRevoked', type: 'boolean', default: false })
