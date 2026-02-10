@@ -1322,7 +1322,6 @@ export class AuthService {
       platform: 'web',       // 📱 Default to web for cookie-based auth
       deviceId: null,        // 📱 No device ID for web
       deviceName: null,      // 📱 No device name for web
-      lastActiveAt: currentTime, // Track when token was created
       isRevoked: false,
       createdAt: currentTime,
       updatedAt: currentTime
@@ -1423,12 +1422,6 @@ export class AuthService {
           }
         }
       }
-
-      // Update lastActiveAt to track when this session was last used
-      await this.refreshTokenRepository.update(
-        { id: tokenRecord.id },
-        { lastActiveAt: now(), updatedAt: now() }
-      );
 
       // Revoke old refresh token (token rotation)
       await this.refreshTokenRepository.update(
@@ -1905,10 +1898,11 @@ export class AuthService {
     sessions: Array<{
       id: string;
       platform: string;
+      deviceId: string | null;
       deviceName: string | null;
+      ipAddress: string | null;
       userAgent: string | null;
       createdAt: Date;
-      lastActiveAt: Date | null;
       expiresAt: Date;
       isRevoked: boolean;
     }>;
@@ -1938,10 +1932,10 @@ export class AuthService {
     // Get total count for pagination
     const total = await this.refreshTokenRepository.count({ where });
 
-    // Get sessions with pagination - only non-sensitive fields
+    // Get sessions with pagination
     const sessions = await this.refreshTokenRepository.find({
       where,
-      select: ['id', 'platform', 'deviceName', 'userAgent', 'createdAt', 'lastActiveAt', 'expiresAt', 'isRevoked'],
+      select: ['id', 'platform', 'deviceId', 'deviceName', 'ipAddress', 'userAgent', 'createdAt', 'expiresAt', 'isRevoked'],
       order: { [sortBy]: sortOrder },
       skip: (page - 1) * limit,
       take: limit

@@ -5,7 +5,6 @@ import { Type } from 'class-transformer';
 /**
  * 📱 Session Response DTO
  * Represents a single active session/device
- * Only returns non-sensitive information
  */
 export class SessionResponseDto {
   @ApiProperty({
@@ -15,11 +14,18 @@ export class SessionResponseDto {
   id: string;
 
   @ApiProperty({
-    description: 'Device type (platform)',
+    description: 'Device platform',
     enum: ['web', 'android', 'ios'],
     example: 'android'
   })
-  deviceType: 'web' | 'android' | 'ios';
+  platform: 'web' | 'android' | 'ios';
+
+  @ApiProperty({
+    description: 'Device identifier',
+    example: 'android_170643_abc123def456',
+    nullable: true
+  })
+  deviceId: string | null;
 
   @ApiProperty({
     description: 'User-friendly device name (null for web)',
@@ -29,36 +35,46 @@ export class SessionResponseDto {
   deviceName: string | null;
 
   @ApiProperty({
-    description: 'User agent string (truncated to 100 chars)',
+    description: 'IP address',
+    example: '192.168.1.100',
+    nullable: true
+  })
+  ipAddress: string | null;
+
+  @ApiProperty({
+    description: 'User agent string',
     example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     nullable: true
   })
   userAgent: string | null;
 
-  @ApiProperty({
-    description: 'First login time (when session was created)',
-    example: '2026-02-10T10:00:00.000Z'
+  @ApiProperty({ 
+    example: '2026-02-10T10:30:00.000Z',
+    description: 'When the session was created',
+    type: String,
+    format: 'date-time'
   })
-  firstLogin: Date;
+  createdAt: Date;
+
+  @ApiProperty({ 
+    example: '2026-03-12T10:30:00.000Z',
+    description: 'When the session will expire',
+    type: String,
+    format: 'date-time'
+  })
+  expiresAt: Date;
 
   @ApiProperty({
-    description: 'Last login time (when session was last used)',
-    example: '2026-02-10T14:20:00.000Z',
-    nullable: true
+    description: 'Whether this is the current session',
+    example: false
   })
-  lastLogin: Date | null;
+  isCurrent: boolean;
 
   @ApiProperty({
     description: 'Human-readable time until expiry',
     example: '6 days'
   })
-  expiresIn: string;
-
-  @ApiProperty({
-    description: 'Whether this session is revoked',
-    example: false
-  })
-  isRevoked: boolean;
+  expiresInHuman: string;
 }
 
 /**

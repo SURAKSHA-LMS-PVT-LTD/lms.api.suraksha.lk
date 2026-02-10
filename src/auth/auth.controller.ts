@@ -636,16 +636,18 @@ export class AuthController {
   ): Promise<GetSessionsResponseDto> {
     const result = await this.authService.getActiveSessions(req.user.s, query);
 
-    // Map sessions to DTOs with user-friendly field names
+    // Map sessions to DTOs
     const sessions: SessionResponseDto[] = result.sessions.map(session => ({
       id: session.id,
-      deviceType: session.platform as 'web' | 'android' | 'ios',
+      platform: session.platform as 'web' | 'android' | 'ios',
+      deviceId: session.deviceId,
       deviceName: session.deviceName,
-      userAgent: session.userAgent ? session.userAgent.substring(0, 100) : null, // Truncate to 100 chars
-      firstLogin: session.createdAt,
-      lastLogin: session.lastActiveAt,
-      expiresIn: this.authService.calculateExpiresInHuman(session.expiresAt),
-      isRevoked: session.isRevoked
+      ipAddress: session.ipAddress,
+      userAgent: session.userAgent,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      isCurrent: false,
+      expiresInHuman: this.authService.calculateExpiresInHuman(session.expiresAt)
     }));
 
     // Calculate pagination metadata
