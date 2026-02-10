@@ -606,15 +606,29 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Map entity to DTO using plainToInstance for proper serialization
-    const transformedData = data.map(notification => 
-      plainToInstance(UserNotificationResponseDto, {
-        ...notification,
-        isRead: readIds.has(notification.id),
-        sender: null,
-        sentAt: notification.sentAt || notification.createdAt
-      }, { excludeExtraneousValues: true })
-    );
+    // Debug: log raw entity sentAt values
+    if (data.length > 0) {
+      this.logger.debug(`[findByInstituteId] First notification raw - id: ${data[0].id}, sentAt: ${data[0].sentAt}, createdAt: ${data[0].createdAt}`);
+    }
+
+    // Return plain objects directly (no plainToInstance to avoid serialization stripping sentAt)
+    const transformedData = data.map(notification => ({
+      id: notification.id,
+      title: notification.title,
+      body: notification.body,
+      imageUrl: notification.imageUrl,
+      icon: notification.icon,
+      actionUrl: notification.actionUrl,
+      dataPayload: notification.dataPayload,
+      scope: notification.scope,
+      priority: notification.priority,
+      institute: notification.institute,
+      class: notification.class,
+      subject: notification.subject,
+      senderRole: notification.senderRole,
+      isRead: readIds.has(notification.id),
+      sentAt: notification.sentAt || notification.createdAt
+    }));
 
     return {
       data: transformedData,
@@ -643,15 +657,24 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Map entity to DTO using plainToInstance for proper serialization
-    const transformedData = data.map(notification => 
-      plainToInstance(UserNotificationResponseDto, {
-        ...notification,
-        isRead: readIds.has(notification.id),
-        sender: null,
-        sentAt: notification.sentAt || notification.createdAt
-      }, { excludeExtraneousValues: true })
-    );
+    // Return plain objects directly (no plainToInstance to avoid serialization stripping sentAt)
+    const transformedData = data.map(notification => ({
+      id: notification.id,
+      title: notification.title,
+      body: notification.body,
+      imageUrl: notification.imageUrl,
+      icon: notification.icon,
+      actionUrl: notification.actionUrl,
+      dataPayload: notification.dataPayload,
+      scope: notification.scope,
+      priority: notification.priority,
+      institute: notification.institute,
+      class: notification.class,
+      subject: notification.subject,
+      senderRole: notification.senderRole,
+      isRead: readIds.has(notification.id),
+      sentAt: notification.sentAt || notification.createdAt
+    }));
 
     return {
       data: transformedData,

@@ -8,9 +8,7 @@ import {
   Req,
   HttpCode,
   HttpStatus,
-  Body,
-  UseInterceptors,
-  ClassSerializerInterceptor
+  Body
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -41,7 +39,6 @@ import {
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('push-notifications')
-@UseInterceptors(ClassSerializerInterceptor)
 export class PushNotificationUserController {
   constructor(private readonly pushNotificationService: PushNotificationService) {}
 

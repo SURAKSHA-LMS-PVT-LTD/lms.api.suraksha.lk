@@ -142,9 +142,9 @@ export class DataMaskingInterceptor implements NestInterceptor {
       }
     }
 
-    // Recursively mask nested objects
+    // Recursively mask nested objects (skip Date instances)
     for (const key in maskedData) {
-      if (maskedData.hasOwnProperty(key) && typeof maskedData[key] === 'object') {
+      if (maskedData.hasOwnProperty(key) && typeof maskedData[key] === 'object' && maskedData[key] !== null && !(maskedData[key] instanceof Date)) {
         maskedData[key] = this.maskData(maskedData[key]);
       }
     }
