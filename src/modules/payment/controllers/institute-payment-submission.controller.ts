@@ -66,7 +66,6 @@ export class InstitutePaymentSubmissionController {
   @UsePipes(new ValidationPipe({ 
     transform: true, 
     whitelist: true, 
-    forbidNonWhitelisted: true,
     transformOptions: { enableImplicitConversion: true }
   }))
   async submitPayment(

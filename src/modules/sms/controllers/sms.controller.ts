@@ -631,7 +631,7 @@ export class SmsController {
       displayName: dto.displayName,
       phoneNumber: dto.phoneNumber,
       isActive: dto.isActive
-    });
+    }, userId);
   }
 
   /**

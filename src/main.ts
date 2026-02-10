@@ -163,7 +163,9 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
-        forbidNonWhitelisted: true, // Reject requests with unknown properties
+        // NOTE: forbidNonWhitelisted removed globally to prevent 400 errors when frontend
+        // sends extra properties (e.g. userId, role, scope). whitelist:true still STRIPS
+        // unknown properties for security. Use forbidNonWhitelisted on specific endpoints only.
         transform: true,
         transformOptions: {
           // ⚠️ SECURITY NOTE: enableImplicitConversion auto-converts query/param strings to numbers/booleans.

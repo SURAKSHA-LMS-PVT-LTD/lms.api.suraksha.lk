@@ -966,7 +966,6 @@ export class InstitueClassController {
   @UsePipes(new ValidationPipe({ 
     transform: true, 
     whitelist: true, 
-    forbidNonWhitelisted: true,
     validateCustomDecorators: true
   }))
   @ApiOperation({
@@ -1189,7 +1188,6 @@ export class InstitueClassController {
   @UsePipes(new ValidationPipe({ 
     transform: true, 
     whitelist: true, 
-    forbidNonWhitelisted: true,
     validateCustomDecorators: true
   }))
   @ApiOperation({

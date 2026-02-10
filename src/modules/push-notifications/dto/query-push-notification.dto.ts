@@ -115,6 +115,11 @@ export class QueryUserNotificationsDto {
   @Transform(({ value }) => value?.toString())
   instituteId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by notification scope', enum: NotificationScope })
+  @IsOptional()
+  @IsEnum(NotificationScope)
+  scope?: NotificationScope;
+
   @ApiPropertyOptional({ description: 'Search in title and body' })
   @IsOptional()
   @IsString()

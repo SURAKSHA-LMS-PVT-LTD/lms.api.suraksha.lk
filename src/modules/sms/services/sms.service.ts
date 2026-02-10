@@ -1110,7 +1110,8 @@ export class SmsService {
       displayName: string;
       phoneNumber: string;
       isActive: boolean;
-    }
+    },
+    userId?: string
   ): Promise<any> {
 
     // Validate instituteId
@@ -1162,7 +1163,7 @@ export class SmsService {
         newCredentials.verificationStage = SmsVerificationStage.PRE_APPROVED;
         newCredentials.isActive = true;
         newCredentials.senderMasks = [];
-        newCredentials.createdBy = instituteId.toString();
+        newCredentials.createdBy = userId || null; // FK references users.id, must be a valid user ID (not instituteId)
         
         try {
           // Save with explicit UUID
