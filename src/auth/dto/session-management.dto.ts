@@ -21,11 +21,25 @@ export class SessionResponseDto {
   platform: 'web' | 'android' | 'ios';
 
   @ApiProperty({
+    description: 'Device ID (null for web)',
+    example: 'device_1234567890_abc',
+    nullable: true
+  })
+  deviceId: string | null;
+
+  @ApiProperty({
     description: 'User-friendly device name (null for web)',
     example: 'Samsung Galaxy S21',
     nullable: true
   })
   deviceName: string | null;
+
+  @ApiProperty({
+    description: 'IP address of the session',
+    example: '192.168.1.100',
+    nullable: true
+  })
+  ipAddress: string | null;
 
   @ApiProperty({
     description: 'User agent string',
@@ -40,7 +54,7 @@ export class SessionResponseDto {
     type: String,
     format: 'date-time'
   })
-  firstLogin: Date;
+  createdAt: Date;
 
   @ApiProperty({ 
     example: '2026-03-12T10:30:00.000Z',
@@ -48,13 +62,20 @@ export class SessionResponseDto {
     type: String,
     format: 'date-time'
   })
-  tokenExpiry: Date;
+  expiresAt: Date;
 
   @ApiProperty({
     description: 'Whether this is the current session',
     example: false
   })
   isCurrent: boolean;
+
+  @ApiProperty({
+    description: 'Human-readable time until expiry',
+    example: '30 days',
+    type: String
+  })
+  expiresInHuman: string;
 }
 
 /**

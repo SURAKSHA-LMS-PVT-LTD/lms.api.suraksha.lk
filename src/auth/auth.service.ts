@@ -1907,7 +1907,9 @@ export class AuthService {
     sessions: Array<{
       id: string;
       platform: string;
+      deviceId: string | null;
       deviceName: string | null;
+      ipAddress: string | null;
       userAgent: string | null;
       createdAt: Date;
       expiresAt: Date;
@@ -1947,11 +1949,13 @@ export class AuthService {
       take: limit
     });
 
-    // Map to exclude sensitive fields (ipAddress, deviceId, token)
+    // Map sessions including all necessary fields
     const sessions = sessionsRaw.map(s => ({
       id: s.id,
       platform: s.platform,
+      deviceId: s.deviceId,
       deviceName: s.deviceName,
+      ipAddress: s.ipAddress,
       userAgent: s.userAgent,
       createdAt: s.createdAt,
       expiresAt: s.expiresAt,

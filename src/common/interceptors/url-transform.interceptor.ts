@@ -30,6 +30,11 @@ export class UrlTransformInterceptor implements NestInterceptor {
   private transformUrls(data: any): any {
     if (!data) return data;
 
+    // Skip Date instances to prevent them from being spread into empty objects
+    if (data instanceof Date) {
+      return data;
+    }
+
     // Handle arrays
     if (Array.isArray(data)) {
       return data.map(item => this.transformUrls(item));
