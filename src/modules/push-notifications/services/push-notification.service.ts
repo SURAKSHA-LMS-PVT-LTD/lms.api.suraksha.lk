@@ -606,7 +606,7 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform with read status - manual mapping to avoid class-transformer issues with timestamps
+    // Transform with read status - optimized without sender join and timestamps
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
       return {
@@ -622,10 +622,9 @@ export class PushNotificationService {
         institute: notification.institute,
         class: notification.class,
         subject: notification.subject,
-        sender: notification.sender,
+        sender: null,
         senderRole: notification.senderRole,
-        isRead,
-        createdAt: notification.createdAt
+        isRead
       };
     });
 
@@ -656,7 +655,7 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform with read status - manual mapping to avoid class-transformer issues with timestamps
+    // Transform with read status - optimized without sender join and timestamps
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
       return {
@@ -672,10 +671,9 @@ export class PushNotificationService {
         institute: notification.institute,
         class: notification.class,
         subject: notification.subject,
-        sender: notification.sender,
+        sender: null,
         senderRole: notification.senderRole,
-        isRead,
-        createdAt: notification.createdAt
+        isRead
       };
     });
 

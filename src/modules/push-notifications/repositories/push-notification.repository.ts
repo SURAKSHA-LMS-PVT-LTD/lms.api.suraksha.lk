@@ -68,7 +68,6 @@ export class PushNotificationRepository {
       .leftJoinAndSelect('notification.institute', 'institute')
       .leftJoinAndSelect('notification.class', 'class')
       .leftJoinAndSelect('notification.subject', 'subject')
-      .leftJoinAndSelect('notification.sender', 'sender')
       .where('notification.instituteId = :instituteId', { instituteId })
       .andWhere('notification.status = :status', { status: NotificationStatus.SENT });
 
@@ -106,7 +105,6 @@ export class PushNotificationRepository {
   ): Promise<{ data: PushNotificationEntity[]; total: number; unreadCount: number }> {
     const queryBuilder = this.repository
       .createQueryBuilder('notification')
-      .leftJoinAndSelect('notification.sender', 'sender')
       .where('notification.scope = :scope', { scope: NotificationScope.GLOBAL })
       .andWhere('notification.status = :status', { status: NotificationStatus.SENT });
 

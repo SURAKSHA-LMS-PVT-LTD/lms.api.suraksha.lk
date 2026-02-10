@@ -1,18 +1,20 @@
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsInt, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Type, Expose } from 'class-transformer';
 
 /**
  * 📱 Session Response DTO
  * Represents a single active session/device
  */
 export class SessionResponseDto {
+  @Expose()
   @ApiProperty({
     description: 'Session ID (needed for revocation)',
     example: '550e8400-e29b-41d4-a716-446655440000'
   })
   id: string;
 
+  @Expose()
   @ApiProperty({
     description: 'Device platform',
     enum: ['web', 'android', 'ios'],
@@ -20,6 +22,7 @@ export class SessionResponseDto {
   })
   platform: 'web' | 'android' | 'ios';
 
+  @Expose()
   @ApiProperty({
     description: 'User-friendly device name (null for web)',
     example: 'Samsung Galaxy S21',
@@ -27,6 +30,7 @@ export class SessionResponseDto {
   })
   deviceName: string | null;
 
+  @Expose()
   @ApiProperty({
     description: 'User agent string',
     example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -34,6 +38,7 @@ export class SessionResponseDto {
   })
   userAgent: string | null;
 
+  @Expose()
   @ApiProperty({ 
     example: '2026-02-10T10:30:00.000Z',
     description: 'When the session was created',
@@ -42,6 +47,7 @@ export class SessionResponseDto {
   })
   createdAt: Date;
 
+  @Expose()
   @ApiProperty({ 
     example: '2026-03-12T10:30:00.000Z',
     description: 'When the session will expire',
@@ -50,12 +56,14 @@ export class SessionResponseDto {
   })
   expiresAt: Date;
 
+  @Expose()
   @ApiProperty({
     description: 'Whether this is the current session',
     example: false
   })
   isCurrent: boolean;
 
+  @Expose()
   @ApiProperty({
     description: 'Human-readable time until expiry',
     example: '6 days'
@@ -127,18 +135,21 @@ export class GetSessionsQueryDto {
  * 📊 Paginated Sessions Response
  */
 export class GetSessionsResponseDto {
+  @Expose()
   @ApiProperty({
     description: 'Success status',
     example: true
   })
   success: boolean;
 
+  @Expose()
   @ApiProperty({
     description: 'List of sessions',
     type: [SessionResponseDto]
   })
   sessions: SessionResponseDto[];
 
+  @Expose()
   @ApiProperty({
     description: 'Pagination metadata',
     example: {
@@ -159,6 +170,7 @@ export class GetSessionsResponseDto {
     hasPrev: boolean;
   };
 
+  @Expose()
   @ApiProperty({
     description: 'Summary statistics',
     example: {
