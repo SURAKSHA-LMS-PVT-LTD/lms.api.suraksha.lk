@@ -194,6 +194,7 @@ export interface MobileLoginResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
+  refresh_expires_in: number;
   payload?: {
     s: string;
     u: number;
@@ -217,6 +218,7 @@ export interface MobileRefreshResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
+  refresh_expires_in: number;
   user: {
     id: string;
     email: string;

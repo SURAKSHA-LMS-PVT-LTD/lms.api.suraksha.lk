@@ -123,6 +123,9 @@ Authenticates user credentials and returns tokens for mobile applications.
       const platform: 'android' | 'ios' = loginDto.platform || 
         (loginDto.deviceId.toLowerCase().includes('ios') ? 'ios' : 'android');
 
+      // 🔐 SSO: Pass rememberMe flag for extended session
+      const rememberMe = loginDto.rememberMe || loginDto.remember_me || false;
+
       // Generate tokens with device tracking
       const result = await this.authService.loginMobile(
         user,
@@ -130,7 +133,8 @@ Authenticates user credentials and returns tokens for mobile applications.
         platform,
         clientInfo.ipAddress,
         clientInfo.userAgent,
-        loginDto.deviceName
+        loginDto.deviceName,
+        rememberMe
       );
 
       return result;

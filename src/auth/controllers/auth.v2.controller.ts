@@ -26,6 +26,8 @@ export class AuthV2Controller {
       example: {
         access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         refresh_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        expires_in: 3600,
+        refresh_expires_in: 604800,
         payload: {
           s: '12345',
           u: 'STUDENT',
@@ -55,20 +57,29 @@ export class AuthV2Controller {
       ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
       userAgent: req.get('User-Agent') || 'unknown'
     };
+
+    // 🔐 SSO: Pass rememberMe flag for extended session
+    const rememberMe = loginDto.rememberMe || loginDto.remember_me || false;
     
     const result = await this.authService.loginV2(
       user,
       clientInfo.ipAddress,
-      clientInfo.userAgent
+      clientInfo.userAgent,
+      rememberMe
     );
 
     // 🔐 SECURITY: Set refresh token in httpOnly cookie (for browsers)
+    // Cookie maxAge matches refresh token expiry (30d if rememberMe, 7d otherwise)
     const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = rememberMe 
+      ? 30 * 24 * 60 * 60 * 1000  // 30 days
+      : 7 * 24 * 60 * 60 * 1000;  // 7 days
+
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
       secure: isProduction,  // HTTPS only in production
       sameSite: isProduction ? 'strict' : 'lax', // CSRF protection (lax for local development)
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: cookieMaxAge,
       path: '/',
       domain: isProduction ? undefined : 'localhost' // Set domain for localhost
     });
@@ -128,12 +139,15 @@ export class AuthV2Controller {
     );
 
     // 🔐 SECURITY: Set new refresh token in httpOnly cookie (for browsers)
+    // Cookie maxAge matches the refresh token's actual expiry
     const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = result.refresh_expires_in * 1000; // Convert seconds to ms
+
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
       secure: isProduction,  // HTTPS only in production
       sameSite: isProduction ? 'strict' : 'lax', // CSRF protection
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: cookieMaxAge,
       path: '/',
       domain: isProduction ? undefined : 'localhost'
     });

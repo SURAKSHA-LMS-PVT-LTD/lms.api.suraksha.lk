@@ -494,11 +494,13 @@ export class AuthController {
 
       // Set new refresh token in httpOnly cookie
       const isProduction = process.env.NODE_ENV === 'production';
+      const cookieMaxAge = result.refresh_expires_in * 1000; // Convert seconds to ms
+
       res.cookie('refresh_token', result.refresh_token, {
         httpOnly: true,
         secure: isProduction, // HTTPS only in production
         sameSite: isProduction ? 'strict' : 'lax', // Lax for local development
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: cookieMaxAge,
         path: '/',
         domain: isProduction ? undefined : 'localhost' // Set domain for localhost
       });
@@ -506,6 +508,7 @@ export class AuthController {
       // Return only access token and user info (not refresh token)
       return {
         access_token: result.access_token,
+        expires_in: result.expires_in,
         user: result.user
       };
     } catch (error) {
@@ -561,5 +564,103 @@ export class AuthController {
     } catch (error) {
       throw new BadRequestException('Failed to logout');
     }
+  }
+
+  // =================== SESSION MANAGEMENT ===================
+
+  /**
+   * Get all active sessions for the current user
+   */
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Get active sessions',
+    description: 'Returns all active sessions (devices) for the authenticated user. Useful for "manage devices" UI.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Active sessions retrieved',
+    schema: {
+      example: {
+        success: true,
+        sessions: [
+          {
+            id: 'session-uuid',
+            platform: 'web',
+            deviceId: null,
+            deviceName: null,
+            ipAddress: '192.168.1.1',
+            createdAt: '2026-02-10T10:00:00.000Z',
+            expiresAt: '2026-02-17T10:00:00.000Z'
+          },
+          {
+            id: 'session-uuid-2',
+            platform: 'android',
+            deviceId: 'android_170643_abc123',
+            deviceName: 'Samsung Galaxy S21',
+            ipAddress: '10.0.0.5',
+            createdAt: '2026-02-09T08:00:00.000Z',
+            expiresAt: '2026-03-11T08:00:00.000Z'
+          }
+        ],
+        total: 2
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getActiveSessions(@Request() req: JwtRequest) {
+    const sessions = await this.authService.getActiveSessions(req.user.s);
+    return {
+      success: true,
+      sessions,
+      total: sessions.length
+    };
+  }
+
+  /**
+   * Revoke a specific session by session ID
+   */
+  @Post('sessions/revoke/:sessionId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Revoke a specific session',
+    description: 'Revokes a specific session by its ID. Use this to remotely log out a device.'
+  })
+  @ApiResponse({ status: 200, description: 'Session revoked successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async revokeSession(
+    @Param('sessionId') sessionId: string,
+    @Request() req: JwtRequest
+  ) {
+    await this.authService.revokeSessionById(req.user.s, sessionId);
+    return {
+      success: true,
+      message: 'Session revoked successfully'
+    };
+  }
+
+  /**
+   * Revoke all sessions except the current one
+   */
+  @Post('sessions/revoke-all')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Revoke all other sessions',
+    description: 'Revokes all active sessions for the user. Useful for "log out everywhere" feature.'
+  })
+  @ApiResponse({ status: 200, description: 'All sessions revoked' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async revokeAllSessions(@Request() req: JwtRequest) {
+    await this.authService.revokeAllUserSessions(req.user.s);
+    return {
+      success: true,
+      message: 'All sessions revoked successfully'
+    };
   }
 }

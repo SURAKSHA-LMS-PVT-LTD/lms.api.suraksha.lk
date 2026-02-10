@@ -222,23 +222,41 @@ export class AuthService {
    * Generate enhanced JWT token with embedded institute/class/child access metadata.
    * This is the only login method - JWT v2 format.
    * Now includes refresh token for secure token renewal.
+   * 
+   * @param user - Authenticated user entity
+   * @param ipAddress - Client IP for audit
+   * @param userAgent - Client user agent for audit
+   * @param rememberMe - If true, refresh token lasts 30 days instead of 7
    */
-  async loginV2(user: UserEntity, ipAddress?: string, userAgent?: string): Promise<EnhancedLoginResponse & { refresh_token: string }> {
+  async loginV2(
+    user: UserEntity,
+    ipAddress?: string,
+    userAgent?: string,
+    rememberMe: boolean = false
+  ): Promise<EnhancedLoginResponse & { refresh_token: string; expires_in: number; refresh_expires_in: number }> {
     const payload = await this.enhancedJwtService.buildPayload(user);
     
     // Generate access token (short-lived)
     const access_token = await this.jwtService.signAsync(payload);
     
-    // Generate refresh token (long-lived)
+    // Generate refresh token (long-lived, extended if rememberMe)
     const refresh_token = await this.generateRefreshToken(
       user.id,
       ipAddress,
-      userAgent
+      userAgent,
+      rememberMe
     );
+
+    // Calculate expiry info for frontend
+    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+    const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
+    const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400; // 30d or 7d in seconds
 
     return {
       access_token,
       refresh_token,
+      expires_in,
+      refresh_expires_in,
       payload,
       user: {
         id: user.id,
@@ -1237,14 +1255,22 @@ export class AuthService {
   /**
    * 🔄 Generate refresh token
    * Creates a new refresh token for token renewal
+   * @param userId - User ID
+   * @param ipAddress - Client IP for audit
+   * @param userAgent - Client user agent for audit
+   * @param rememberMe - If true, token lasts 30 days; otherwise uses JWT_REFRESH_EXPIRES_IN (default 7d)
    */
   async generateRefreshToken(
     userId: string,
     ipAddress?: string,
-    userAgent?: string
+    userAgent?: string,
+    rememberMe: boolean = false
   ): Promise<string> {
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
-    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+    const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+
+    // 🔐 SSO: rememberMe extends refresh token to 30 days
+    const refreshExpiresIn = rememberMe ? '30d' : baseRefreshExpiresIn;
 
     if (!refreshSecret) {
       throw new Error('JWT_REFRESH_SECRET is not configured');
@@ -1253,7 +1279,8 @@ export class AuthService {
     // Generate refresh token with minimal payload
     const payload = { 
       sub: userId,
-      type: 'refresh'
+      type: 'refresh',
+      rm: rememberMe // Track rememberMe in token for refresh chain
     };
 
     const refreshToken = await this.jwtService.signAsync(payload, {
@@ -1299,6 +1326,8 @@ export class AuthService {
   ): Promise<{ 
     access_token: string; 
     refresh_token: string;
+    expires_in: number;
+    refresh_expires_in: number;
     user: {
       id: string;
       email: string;
@@ -1358,9 +1387,10 @@ export class AuthService {
       }
 
       // 🔐 SECURITY: Validate user hierarchy and permissions
-      // Check if user still has valid institute access for non-superadmin users
-      if (user.userType !== UserType.SUPERADMIN) {
-        // Check if user has active institute access
+      // Only fully revoke for INACTIVE users (above). For institute access,
+      // log a warning but still allow refresh — the JWT payload will simply
+      // have empty institute access, and the frontend should guide the user.
+      if (user.userType !== UserType.SUPERADMIN && user.userType !== UserType.ORGANIZATION_MANAGER) {
         const instituteAccess = await this.instituteUserRepository.find({
           where: {
             userId: user.id,
@@ -1370,30 +1400,18 @@ export class AuthService {
         });
 
         if (!instituteAccess || instituteAccess.length === 0) {
-          // Revoke tokens for users without institute access
-          await this.refreshTokenRepository.update(
-            { userId: user.id },
-            { isRevoked: true }
+          this.logger.warn(`⚠️ User ${user.id} has no institute access — session continues with limited access`);
+        } else {
+          const hasActiveInstitute = instituteAccess.some(
+            access => access.institute && access.institute.isActive
           );
-          throw new UnauthorizedException('User has no valid institute access');
-        }
-
-        // Check if all institutes are still active
-        const hasActiveInstitute = instituteAccess.some(
-          access => access.institute && access.institute.isActive
-        );
-
-        if (!hasActiveInstitute) {
-          // Revoke tokens if user has no active institutes
-          await this.refreshTokenRepository.update(
-            { userId: user.id },
-            { isRevoked: true }
-          );
-          throw new UnauthorizedException('User has no access to active institutes');
+          if (!hasActiveInstitute) {
+            this.logger.warn(`⚠️ User ${user.id} has no ACTIVE institutes — session continues with limited access`);
+          }
         }
       }
 
-      // Revoke old refresh token
+      // Revoke old refresh token (token rotation)
       await this.refreshTokenRepository.update(
         { id: tokenRecord.id },
         { isRevoked: true }
@@ -1403,16 +1421,27 @@ export class AuthService {
       const jwtPayload = await this.enhancedJwtService.buildPayload(user);
       const access_token = await this.jwtService.signAsync(jwtPayload);
 
-      // Generate new refresh token
+      // 🔐 SSO: Preserve rememberMe from original token chain
+      const isRememberMe = payload.rm === true;
+
+      // Generate new refresh token (preserving rememberMe)
       const new_refresh_token = await this.generateRefreshToken(
         user.id,
         ipAddress,
-        userAgent
+        userAgent,
+        isRememberMe
       );
+
+      // Calculate expiry info for frontend
+      const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
+      const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
+      const refresh_expires_in = isRememberMe ? 30 * 86400 : 7 * 86400;
 
       return {
         access_token,
         refresh_token: new_refresh_token,
+        expires_in,
+        refresh_expires_in,
         user: {
           id: user.id,
           email: user.email,
@@ -1478,6 +1507,7 @@ export class AuthService {
    * 📱 Mobile Login - Returns refresh token in response body
    * For mobile apps (iOS/Android) that cannot use httpOnly cookies
    * Tracks device ID for session management
+   * @param rememberMe - If true, refresh token lasts 30 days
    */
   async loginMobile(
     user: UserEntity,
@@ -1485,11 +1515,13 @@ export class AuthService {
     platform: 'android' | 'ios',
     ipAddress?: string,
     userAgent?: string,
-    deviceName?: string
+    deviceName?: string,
+    rememberMe: boolean = false
   ): Promise<{
     access_token: string;
     refresh_token: string;
     expires_in: number;
+    refresh_expires_in: number;
     payload: any;
     user: {
       id: string;
@@ -1508,24 +1540,32 @@ export class AuthService {
     // Revoke any existing tokens for this device (single device session)
     await this.revokeDeviceTokens(user.id, deviceId);
     
-    // Generate refresh token with device tracking
+    // Generate refresh token with device tracking (and rememberMe support)
     const refresh_token = await this.generateMobileRefreshToken(
       user.id,
       deviceId,
       platform,
       ipAddress,
       userAgent,
-      deviceName
+      deviceName,
+      rememberMe
     );
 
     // Get access token expiry (default 1 hour = 3600 seconds)
     const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
     const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
 
+    // 🔐 SSO: Calculate refresh token expiry based on rememberMe
+    // loginMobile always defaults to false; caller can pass rememberMe via DTO
+    const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+    const refreshDaysMatch = baseRefreshExpiresIn.match(/(\d+)d/);
+    const refresh_expires_in = refreshDaysMatch ? parseInt(refreshDaysMatch[1]) * 86400 : 7 * 86400;
+
     return {
       access_token,
       refresh_token,
       expires_in,
+      refresh_expires_in,
       payload,
       user: {
         id: user.id,
@@ -1540,6 +1580,7 @@ export class AuthService {
   /**
    * 📱 Generate Mobile Refresh Token
    * Creates refresh token with device and platform tracking
+   * @param rememberMe - If true, token lasts 30 days; otherwise uses JWT_REFRESH_EXPIRES_IN (default 7d)
    */
   async generateMobileRefreshToken(
     userId: string,
@@ -1547,10 +1588,14 @@ export class AuthService {
     platform: 'android' | 'ios',
     ipAddress?: string,
     userAgent?: string,
-    deviceName?: string
+    deviceName?: string,
+    rememberMe: boolean = false
   ): Promise<string> {
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
-    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+    const baseRefreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '7d';
+
+    // 🔐 SSO: rememberMe extends refresh token to 30 days
+    const refreshExpiresIn = rememberMe ? '30d' : baseRefreshExpiresIn;
 
     if (!refreshSecret) {
       throw new Error('JWT_REFRESH_SECRET is not configured');
@@ -1561,7 +1606,8 @@ export class AuthService {
       sub: userId,
       type: 'refresh',
       platform: platform,
-      deviceId: deviceId
+      deviceId: deviceId,
+      rm: rememberMe // Track rememberMe for refresh chain
     };
 
     const refreshToken = await this.jwtService.signAsync(payload, {
@@ -1609,6 +1655,7 @@ export class AuthService {
     access_token: string;
     refresh_token: string;
     expires_in: number;
+    refresh_expires_in: number;
     user: {
       id: string;
       email: string;
@@ -1670,8 +1717,10 @@ export class AuthService {
         throw new UnauthorizedException('User account is inactive');
       }
 
-      // SECURITY: Validate user hierarchy for non-superadmin users
-      if (user.userType !== UserType.SUPERADMIN) {
+      // 🔐 SECURITY: Soft hierarchy validation for mobile
+      // Only fully revoke for INACTIVE users (above). For institute access,
+      // log a warning but still allow refresh — JWT payload will have empty access.
+      if (user.userType !== UserType.SUPERADMIN && user.userType !== UserType.ORGANIZATION_MANAGER) {
         const instituteAccess = await this.instituteUserRepository.find({
           where: {
             userId: user.id,
@@ -1681,17 +1730,14 @@ export class AuthService {
         });
 
         if (!instituteAccess || instituteAccess.length === 0) {
-          await this.revokeDeviceTokens(user.id, deviceId);
-          throw new UnauthorizedException('User has no valid institute access');
-        }
-
-        const hasActiveInstitute = instituteAccess.some(
-          access => access.institute && access.institute.isActive
-        );
-
-        if (!hasActiveInstitute) {
-          await this.revokeDeviceTokens(user.id, deviceId);
-          throw new UnauthorizedException('User has no access to active institutes');
+          this.logger.warn(`⚠️ Mobile user ${user.id} has no institute access — session continues with limited access`);
+        } else {
+          const hasActiveInstitute = instituteAccess.some(
+            access => access.institute && access.institute.isActive
+          );
+          if (!hasActiveInstitute) {
+            this.logger.warn(`⚠️ Mobile user ${user.id} has no ACTIVE institutes — session continues with limited access`);
+          }
         }
       }
 
@@ -1705,7 +1751,10 @@ export class AuthService {
       const jwtPayload = await this.enhancedJwtService.buildPayload(user);
       const access_token = await this.jwtService.signAsync(jwtPayload);
 
-      // Generate new refresh token for device
+      // 🔐 SSO: Preserve rememberMe from original token chain
+      const isRememberMe = payload.rm === true;
+
+      // Generate new refresh token for device (preserving rememberMe)
       const platform = tokenRecord.platform as 'android' | 'ios';
       const new_refresh_token = await this.generateMobileRefreshToken(
         user.id,
@@ -1713,17 +1762,20 @@ export class AuthService {
         platform,
         ipAddress,
         userAgent,
-        tokenRecord.deviceName
+        tokenRecord.deviceName,
+        isRememberMe
       );
 
       // Get access token expiry
       const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
       const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
+      const refresh_expires_in = isRememberMe ? 30 * 86400 : 7 * 86400;
 
       return {
         access_token,
         refresh_token: new_refresh_token,
         expires_in,
+        refresh_expires_in,
         user: {
           id: user.id,
           email: user.email,
@@ -1837,6 +1889,21 @@ export class AuthService {
       );
     } catch (error) {
       this.logger.error(`Failed to revoke all sessions: ${error.message}`);
+    }
+  }
+
+  /**
+   * 🔐 Revoke a specific session by session ID
+   * Validates that the session belongs to the requesting user
+   */
+  async revokeSessionById(userId: string, sessionId: string): Promise<void> {
+    const result = await this.refreshTokenRepository.update(
+      { id: sessionId, userId: userId, isRevoked: false },
+      { isRevoked: true, updatedAt: now() }
+    );
+
+    if (result.affected === 0) {
+      throw new UnauthorizedException('Session not found or already revoked');
     }
   }
 
