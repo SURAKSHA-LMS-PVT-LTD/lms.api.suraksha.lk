@@ -33,7 +33,7 @@ import {
   IsOptional,
   ValidateIf
 } from 'class-validator';
-import { Transform, plainToInstance } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from './guards/flexible-access.guard';
 import { RequireAnyOfRoles } from './decorators/flexible-access.decorator';
@@ -636,23 +636,21 @@ export class AuthController {
   ): Promise<GetSessionsResponseDto> {
     const result = await this.authService.getActiveSessions(req.user.s, query);
 
-    // Map sessions to DTOs using plainToInstance to preserve dates
-    const sessions = result.sessions.map(session => 
-      plainToInstance(SessionResponseDto, {
-        id: session.id,
-        platform: session.platform as 'web' | 'android' | 'ios',
-        deviceName: session.deviceName,
-        userAgent: session.userAgent,
-        createdAt: session.createdAt,
-        expiresAt: session.expiresAt,
-        isCurrent: false
-      })
-    );
+    // Map sessions - rename date fields to avoid ClassSerializerInterceptor
+    const sessions = result.sessions.map(session => ({
+      id: session.id,
+      platform: session.platform as 'web' | 'android' | 'ios',
+      deviceName: session.deviceName,
+      userAgent: session.userAgent,
+      firstLogin: session.createdAt,
+      tokenExpiry: session.expiresAt,
+      isCurrent: false
+    }));
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(result.total / query.limit);
 
-    return plainToInstance(GetSessionsResponseDto, {
+    return {
       success: true,
       sessions,
       pagination: {
@@ -664,7 +662,7 @@ export class AuthController {
         hasPrev: query.page > 1
       },
       summary: result.summary
-    });
+    };
   }
 
   /**

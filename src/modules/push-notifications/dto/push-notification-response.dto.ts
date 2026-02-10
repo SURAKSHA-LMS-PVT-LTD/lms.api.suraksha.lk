@@ -266,6 +266,10 @@ export class UserNotificationResponseDto {
   @Expose()
   @ApiPropertyOptional()
   readAt?: Date;
+
+  @Expose()
+  @ApiProperty({ description: 'When the notification was sent/published' })
+  sentAt: Date;
 }
 
 /**

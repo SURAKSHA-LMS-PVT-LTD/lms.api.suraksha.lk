@@ -624,7 +624,8 @@ export class PushNotificationService {
         subject: notification.subject,
         sender: null,
         senderRole: notification.senderRole,
-        isRead
+        isRead,
+        sentAt: notification.sentAt || notification.createdAt
       };
     });
 
@@ -673,7 +674,8 @@ export class PushNotificationService {
         subject: notification.subject,
         sender: null,
         senderRole: notification.senderRole,
-        isRead
+        isRead,
+        sentAt: notification.sentAt || notification.createdAt
       };
     });
 
