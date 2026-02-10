@@ -606,29 +606,15 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform using plainToInstance to preserve dates and work with ClassSerializerInterceptor
-    const transformedData = data.map(notification => {
-      const isRead = readIds.has(notification.id);
-      const plainObj = {
-        id: notification.id,
-        title: notification.title,
-        body: notification.body,
-        imageUrl: notification.imageUrl,
-        icon: notification.icon,
-        actionUrl: notification.actionUrl,
-        dataPayload: notification.dataPayload,
-        scope: notification.scope,
-        priority: notification.priority,
-        institute: notification.institute,
-        class: notification.class,
-        subject: notification.subject,
+    // Map entity to DTO using plainToInstance for proper serialization
+    const transformedData = data.map(notification => 
+      plainToInstance(UserNotificationResponseDto, {
+        ...notification,
+        isRead: readIds.has(notification.id),
         sender: null,
-        senderRole: notification.senderRole,
-        isRead,
         sentAt: notification.sentAt || notification.createdAt
-      };
-      return plainToInstance(UserNotificationResponseDto, plainObj, { excludeExtraneousValues: true });
-    });
+      }, { excludeExtraneousValues: true })
+    );
 
     return {
       data: transformedData,
@@ -657,29 +643,15 @@ export class PushNotificationService {
     const notificationIds = data.map(n => n.id);
     const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
 
-    // Transform using plainToInstance to preserve dates and work with ClassSerializerInterceptor
-    const transformedData = data.map(notification => {
-      const isRead = readIds.has(notification.id);
-      const plainObj = {
-        id: notification.id,
-        title: notification.title,
-        body: notification.body,
-        imageUrl: notification.imageUrl,
-        icon: notification.icon,
-        actionUrl: notification.actionUrl,
-        dataPayload: notification.dataPayload,
-        scope: notification.scope,
-        priority: notification.priority,
-        institute: notification.institute,
-        class: notification.class,
-        subject: notification.subject,
+    // Map entity to DTO using plainToInstance for proper serialization
+    const transformedData = data.map(notification => 
+      plainToInstance(UserNotificationResponseDto, {
+        ...notification,
+        isRead: readIds.has(notification.id),
         sender: null,
-        senderRole: notification.senderRole,
-        isRead,
         sentAt: notification.sentAt || notification.createdAt
-      };
-      return plainToInstance(UserNotificationResponseDto, plainObj, { excludeExtraneousValues: true });
-    });
+      }, { excludeExtraneousValues: true })
+    );
 
     return {
       data: transformedData,
