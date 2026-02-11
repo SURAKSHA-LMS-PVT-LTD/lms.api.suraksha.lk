@@ -280,4 +280,5 @@ Logs out the user from the mobile device by revoking the refresh token.
       };
     }
   }
+
 }

@@ -1407,31 +1407,6 @@ export class AuthService {
         throw new UnauthorizedException('User account is inactive');
       }
 
-      // 🔐 SECURITY: Validate user hierarchy and permissions
-      // Only fully revoke for INACTIVE users (above). For institute access,
-      // log a warning but still allow refresh — the JWT payload will simply
-      // have empty institute access, and the frontend should guide the user.
-      if (user.userType !== UserType.SUPERADMIN && user.userType !== UserType.ORGANIZATION_MANAGER) {
-        const instituteAccess = await this.instituteUserRepository.find({
-          where: {
-            userId: user.id,
-            status: InstituteUserStatus.ACTIVE
-          },
-          relations: ['institute']
-        });
-
-        if (!instituteAccess || instituteAccess.length === 0) {
-          this.logger.warn(`⚠️ User ${user.id} has no institute access — session continues with limited access`);
-        } else {
-          const hasActiveInstitute = instituteAccess.some(
-            access => access.institute && access.institute.isActive
-          );
-          if (!hasActiveInstitute) {
-            this.logger.warn(`⚠️ User ${user.id} has no ACTIVE institutes — session continues with limited access`);
-          }
-        }
-      }
-
       // Revoke old refresh token (token rotation)
       await this.refreshTokenRepository.update(
         { id: tokenRecord.id },
@@ -1739,30 +1714,6 @@ export class AuthService {
       if (!user.isActive) {
         await this.revokeDeviceTokens(user.id, deviceId);
         throw new UnauthorizedException('User account is inactive');
-      }
-
-      // 🔐 SECURITY: Soft hierarchy validation for mobile
-      // Only fully revoke for INACTIVE users (above). For institute access,
-      // log a warning but still allow refresh — JWT payload will have empty access.
-      if (user.userType !== UserType.SUPERADMIN && user.userType !== UserType.ORGANIZATION_MANAGER) {
-        const instituteAccess = await this.instituteUserRepository.find({
-          where: {
-            userId: user.id,
-            status: InstituteUserStatus.ACTIVE
-          },
-          relations: ['institute']
-        });
-
-        if (!instituteAccess || instituteAccess.length === 0) {
-          this.logger.warn(`⚠️ Mobile user ${user.id} has no institute access — session continues with limited access`);
-        } else {
-          const hasActiveInstitute = instituteAccess.some(
-            access => access.institute && access.institute.isActive
-          );
-          if (!hasActiveInstitute) {
-            this.logger.warn(`⚠️ Mobile user ${user.id} has no ACTIVE institutes — session continues with limited access`);
-          }
-        }
       }
 
       // Revoke old refresh token (token rotation)
@@ -2088,7 +2039,7 @@ export class AuthService {
   }
 
   /**
-   * �🔧 Parse JWT expiry string to seconds
+   * 🔧 Parse JWT expiry string to seconds
    */
   private parseExpiryToSeconds(expiresIn: string): number {
     const match = expiresIn.match(/^(\d+)([smhd])$/);
@@ -2105,4 +2056,5 @@ export class AuthService {
       default: return 3600;
     }
   }
+
 }

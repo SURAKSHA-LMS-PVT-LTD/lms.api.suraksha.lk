@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from '../auth.service';
@@ -157,4 +157,5 @@ export class AuthV2Controller {
     // Available for all clients: web browsers, mobile apps, and SSO integrations
     return result;
   }
+
 }
