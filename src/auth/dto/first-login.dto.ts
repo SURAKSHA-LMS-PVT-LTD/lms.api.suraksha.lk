@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength, Matches, IsOptional, Length, MaxLength, IsUrl } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, Matches, IsOptional, Length, MaxLength, IsUrl, IsEnum, IsBoolean } from 'class-validator';
 import { IsStrongPassword, IsPasswordMatch } from '../../common/validators/password.validator';
 
 export class InitiateFirstLoginDto {
@@ -598,27 +598,185 @@ export class CompleteProfileDto {
   @IsString()
   bloodGroup?: string;
 
-  // Parent-specific fields
-  @ApiPropertyOptional({ 
-    description: 'Occupation (for parents)',
-    example: 'Software Engineer'
-  })
+  // Parent-specific fields (CompleteProfileDto)
+  @ApiPropertyOptional({ description: 'Occupation (for parents)', example: 'Software Engineer' })
   @IsOptional()
   @IsString()
   occupation?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Workplace (for parents)',
-    example: 'Tech Solutions Pvt Ltd'
-  })
+  @ApiPropertyOptional({ description: 'Workplace (for parents)', example: 'Tech Solutions Pvt Ltd' })
   @IsOptional()
   @IsString()
   workplace?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Education level (for parents)',
-    example: 'Bachelor\'s Degree'
-  })
+  @ApiPropertyOptional({ description: 'Education level (for parents)', example: 'Bachelor\'s Degree' })
+  @IsOptional()
+  @IsString()
+  educationLevel?: string;
+}
+
+// ============================================================
+// 📱 PHONE-BASED FIRST LOGIN DTOs
+// ============================================================
+
+export class InitiateFirstLoginByPhoneDto {
+  @ApiProperty({ description: 'Phone number (Sri Lankan: 077X, 94X, +94X)', example: '0771234567' })
+  @IsString()
+  @IsNotEmpty()
+  phoneNumber: string;
+}
+
+export class VerifyPhoneOtpFirstLoginDto {
+  @ApiProperty({ description: 'Phone number used in initiation', example: '0771234567' })
+  @IsString()
+  @IsNotEmpty()
+  phoneNumber: string;
+
+  @ApiProperty({ description: '6-digit OTP code received via SMS', example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6, { message: 'OTP must be exactly 6 digits' })
+  otp: string;
+}
+
+export class RequestEmailOtpFirstLoginDto {
+  @ApiProperty({ description: 'Email address to verify', example: 'user@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+}
+
+export class VerifyEmailOtpFirstLoginDto {
+  @ApiProperty({ description: 'Email address being verified', example: 'user@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({ description: '6-digit OTP code received via email', example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6, { message: 'OTP must be exactly 6 digits' })
+  otpCode: string;
+}
+
+export class CompleteFirstLoginProfileDto {
+  @ApiProperty({ description: 'First name', example: 'Sugath' })
+  @IsString()
+  @IsNotEmpty()
+  firstName: string;
+
+  @ApiProperty({ description: 'Last name', example: 'Perera' })
+  @IsString()
+  @IsNotEmpty()
+  lastName: string;
+
+  @ApiProperty({ description: 'New password (min 6 chars)', example: 'MyPassword123!' })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
+  password: string;
+
+  @ApiProperty({ description: 'Confirm password', example: 'MyPassword123!' })
+  @IsString()
+  @IsNotEmpty()
+  confirmPassword: string;
+
+  @ApiPropertyOptional({ description: 'User type', example: 'USER', enum: ['USER', 'USER_WITHOUT_PARENT', 'USER_WITHOUT_STUDENT'] })
+  @IsOptional()
+  @IsString()
+  userType?: string;
+
+  @ApiPropertyOptional({ description: 'Name with initials', example: 'S. Perera' })
+  @IsOptional()
+  @IsString()
+  nameWithInitials?: string;
+
+  @ApiPropertyOptional({ description: 'Date of birth (YYYY-MM-DD)', example: '2005-03-15' })
+  @IsOptional()
+  @IsString()
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ description: 'Gender', example: 'MALE', enum: ['MALE', 'FEMALE', 'OTHER'] })
+  @IsOptional()
+  @IsString()
+  gender?: string;
+
+  @ApiPropertyOptional({ description: 'NIC number', example: '200512345678' })
+  @IsOptional()
+  @IsString()
+  nic?: string;
+
+  @ApiPropertyOptional({ description: 'Address line 1', example: '123 Main Street' })
+  @IsOptional()
+  @IsString()
+  addressLine1?: string;
+
+  @ApiPropertyOptional({ description: 'Address line 2' })
+  @IsOptional()
+  @IsString()
+  addressLine2?: string;
+
+  @ApiPropertyOptional({ description: 'City', example: 'Colombo' })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'District', example: 'COLOMBO' })
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @ApiPropertyOptional({ description: 'Province', example: 'WESTERN' })
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @ApiPropertyOptional({ description: 'Country', example: 'SRI_LANKA' })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional({ description: 'Profile image URL (only if no existing image)' })
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Emergency contact (student)' })
+  @IsOptional()
+  @IsString()
+  emergencyContact?: string;
+
+  @ApiPropertyOptional({ description: 'Medical conditions (student)' })
+  @IsOptional()
+  @IsString()
+  medicalConditions?: string;
+
+  @ApiPropertyOptional({ description: 'Allergies (student)' })
+  @IsOptional()
+  @IsString()
+  allergies?: string;
+
+  @ApiPropertyOptional({ description: 'Blood group (student)', enum: ['A+','A-','B+','B-','AB+','AB-','O+','O-'] })
+  @IsOptional()
+  @IsString()
+  bloodGroup?: string;
+
+  @ApiPropertyOptional({ description: 'Occupation (parent)' })
+  @IsOptional()
+  @IsString()
+  occupation?: string;
+
+  @ApiPropertyOptional({ description: 'Workplace (parent)' })
+  @IsOptional()
+  @IsString()
+  workplace?: string;
+
+  @ApiPropertyOptional({ description: 'Work phone (parent)' })
+  @IsOptional()
+  @IsString()
+  workPhone?: string;
+
+  @ApiPropertyOptional({ description: 'Education level (parent)' })
   @IsOptional()
   @IsString()
   educationLevel?: string;

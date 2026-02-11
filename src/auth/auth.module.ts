@@ -36,12 +36,14 @@ import { CacheModule } from '../common/modules/cache.module';
 import { EnhancedJwtService } from './services/enhanced-jwt.service';
 import { AsyncEmailService } from '../common/services/async-email.service';
 import { EnhancedEmailService } from '../common/services/enhanced-email.service';
+import { InstantSmsModule } from '../modules/sms/instant-sms.module';
 
 @Module({
   imports: [
     ConfigModule,
     PassportModule,
     CacheModule,
+    InstantSmsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

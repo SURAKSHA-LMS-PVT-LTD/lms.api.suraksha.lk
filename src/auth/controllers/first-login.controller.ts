@@ -30,7 +30,12 @@ import {
   EnhancedOtpVerificationResponseDto,
   CompleteProfileDto,
   EnhancedVerifyOtpDto,
-  EnhancedOtpCompleteVerificationResponseDto
+  EnhancedOtpCompleteVerificationResponseDto,
+  InitiateFirstLoginByPhoneDto,
+  VerifyPhoneOtpFirstLoginDto,
+  RequestEmailOtpFirstLoginDto,
+  VerifyEmailOtpFirstLoginDto,
+  CompleteFirstLoginProfileDto
 } from '../dto/first-login.dto';
 
 @ApiTags('First Login')
@@ -322,5 +327,105 @@ export class FirstLoginController {
     
     
     return await this.firstLoginService.completeProfile(dto, authorization, ipAddress, userAgent);
+  }
+
+  // ============================================================
+  // 📱 PHONE-BASED FIRST LOGIN ENDPOINTS
+  // ============================================================
+
+  @Post('first-login/phone/initiate')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 900000 } }) // 3 requests per 15 minutes
+  @ApiOperation({
+    summary: 'Initiate first login by phone number',
+    description: 'Send SMS OTP to phone number for admin-created users doing first login'
+  })
+  @ApiBody({ type: InitiateFirstLoginByPhoneDto })
+  @ApiResponse({ status: 200, description: 'OTP sent via SMS' })
+  @ApiResponse({ status: 404, description: 'No user found with this phone number' })
+  @ApiResponse({ status: 400, description: 'Invalid phone number or already completed first login' })
+  async initiateFirstLoginByPhone(
+    @Body() dto: InitiateFirstLoginByPhoneDto,
+    @Req() req: Request
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return await this.firstLoginService.initiateFirstLoginByPhone(dto, ipAddress, userAgent);
+  }
+
+  @Post('first-login/phone/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } }) // 5 attempts per 15 minutes
+  @ApiOperation({
+    summary: 'Verify phone OTP and get annotated profile',
+    description: 'Verify SMS OTP, mark phone as verified, return user profile with field annotations and a JWT for subsequent steps'
+  })
+  @ApiBody({ type: VerifyPhoneOtpFirstLoginDto })
+  @ApiResponse({ status: 200, description: 'Phone verified - annotated profile returned with JWT' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
+  async verifyPhoneOtpFirstLogin(
+    @Body() dto: VerifyPhoneOtpFirstLoginDto,
+    @Req() req: Request
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return await this.firstLoginService.verifyPhoneOtpFirstLogin(dto, ipAddress, userAgent);
+  }
+
+  @Post('first-login/email/request-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 900000 } })
+  @ApiOperation({
+    summary: 'Request email verification OTP during first login',
+    description: 'Send OTP to user-provided email for verification. Requires JWT from phone verification step.'
+  })
+  @ApiBody({ type: RequestEmailOtpFirstLoginDto })
+  @ApiResponse({ status: 200, description: 'Email OTP sent' })
+  @ApiResponse({ status: 400, description: 'Email already taken or invalid token' })
+  async requestEmailOtpFirstLogin(
+    @Body() dto: RequestEmailOtpFirstLoginDto,
+    @Headers('authorization') authorization: string,
+    @Req() req: Request
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    return await this.firstLoginService.requestEmailOtpFirstLogin(dto, authorization, ipAddress);
+  }
+
+  @Post('first-login/email/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @ApiOperation({
+    summary: 'Verify email OTP during first login',
+    description: 'Verify email OTP and mark email as verified. Requires JWT from phone verification step.'
+  })
+  @ApiBody({ type: VerifyEmailOtpFirstLoginDto })
+  @ApiResponse({ status: 200, description: 'Email verified successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
+  async verifyEmailOtpFirstLogin(
+    @Body() dto: VerifyEmailOtpFirstLoginDto,
+    @Headers('authorization') authorization: string,
+    @Req() req: Request
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    return await this.firstLoginService.verifyEmailOtpFirstLogin(dto, authorization, ipAddress);
+  }
+
+  @Post('first-login/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Complete first login profile',
+    description: 'Save all profile fields, set password, update student/parent data, and return real login tokens. Requires JWT from phone verification step.'
+  })
+  @ApiBody({ type: CompleteFirstLoginProfileDto })
+  @ApiResponse({ status: 200, description: 'Profile completed - real login tokens returned' })
+  @ApiResponse({ status: 400, description: 'Validation error or invalid token' })
+  async completeFirstLoginProfile(
+    @Body() dto: CompleteFirstLoginProfileDto,
+    @Headers('authorization') authorization: string,
+    @Req() req: Request
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return await this.firstLoginService.completeFirstLoginProfile(dto, authorization, ipAddress, userAgent);
   }
 }
