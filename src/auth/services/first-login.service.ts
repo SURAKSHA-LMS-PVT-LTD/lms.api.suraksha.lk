@@ -33,7 +33,11 @@ import {
   VerifyPhoneOtpFirstLoginDto,
   RequestEmailOtpFirstLoginDto,
   VerifyEmailOtpFirstLoginDto,
-  CompleteFirstLoginProfileDto
+  CompleteFirstLoginProfileDto,
+  InitiateFirstLoginDto2,
+  VerifyFirstLoginOtpDto,
+  RequestPhoneOtpFirstLoginDto,
+  VerifyPhoneOtpInFlowDto
 } from '../dto/first-login.dto';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { ProfileCompletionStatus, calculateProfileCompletion, determineProfileStatus } from '../../modules/user/enums/profile-completion-status.enum';
@@ -900,63 +904,175 @@ export class FirstLoginService {
   }
 
   // ============================================================
-  // 📱 PHONE-BASED FIRST LOGIN FLOW
+  // 📱 MULTI-IDENTIFIER FIRST LOGIN FLOW  
+  //    Supports: phone, email, systemId
   // ============================================================
 
   /**
-   * Step 1: Initiate first login by phone number
-   * - Find user by phone
-   * - Check user exists and hasn't completed first login
-   * - Send SMS OTP
+   * Detect identifier type from a raw string.
+   * Returns: 'phone' | 'email' | 'systemId'
    */
-  async initiateFirstLoginByPhone(
-    dto: InitiateFirstLoginByPhoneDto,
+  private detectIdentifierType(identifier: string): 'phone' | 'email' | 'systemId' {
+    const trimmed = identifier.trim();
+    // Email: contains @
+    if (trimmed.includes('@')) return 'email';
+    // Phone: starts with 0, +94, 94 and contains mostly digits
+    const digitsOnly = trimmed.replace(/[+\-\s()]/g, '');
+    if (/^(0|94|\+94)\d{8,11}$/.test(digitsOnly)) return 'phone';
+    // Otherwise: systemId (e.g., STU-0001)
+    return 'systemId';
+  }
+
+  /**
+   * Step 1: Unified first login initiation.
+   * - Accept phone, email, or systemId
+   * - Find user
+   * - Determine verification requirements based on what contact info exists
+   * - Send OTP to best available channel
+   * - Return verification requirements
+   */
+  async initiateFirstLoginUnified(
+    dto: InitiateFirstLoginDto2,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ success: boolean; message: string; expiresInMinutes: number }> {
-    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
-    if (!normalizedPhone) {
-      throw new BadRequestException('Invalid phone number format. Use Sri Lankan format: 077X, 94X, +94X');
-    }
+  ): Promise<{
+    success: boolean;
+    message: string;
+    otpSentVia: 'phone' | 'email' | null;
+    maskedDestination: string | null;
+    expiresInMinutes: number;
+    verificationsRequired: { phone: boolean; email: boolean };
+    userHasPhone: boolean;
+    userHasEmail: boolean;
+    userId: string;
+  }> {
+    const identifierType = this.detectIdentifierType(dto.identifier);
+    let user: UserEntity | null = null;
 
-    // Find user by phone number
-    const user = await this.userRepository.findOne({
-      where: { phoneNumber: normalizedPhone, isActive: true },
-      select: ['id', 'phoneNumber', 'firstName', 'password', 'firstLoginCompleted']
-    });
+    // ── Find user by identifier ──
+    if (identifierType === 'phone') {
+      const normalizedPhone = normalizeSriLankanPhone(dto.identifier);
+      if (!normalizedPhone) {
+        throw new BadRequestException('Invalid phone number format. Use Sri Lankan format: 077X, 94X, +94X');
+      }
+      user = await this.userRepository.findOne({
+        where: { phoneNumber: normalizedPhone, isActive: true },
+        select: ['id', 'phoneNumber', 'email', 'firstName', 'password', 'firstLoginCompleted',
+                 'userType', 'isPhoneVerified', 'isEmailVerified']
+      });
+    } else if (identifierType === 'email') {
+      const email = dto.identifier.trim().toLowerCase();
+      user = await this.userRepository.findOne({
+        where: { email, isActive: true },
+        select: ['id', 'phoneNumber', 'email', 'firstName', 'password', 'firstLoginCompleted',
+                 'userType', 'isPhoneVerified', 'isEmailVerified']
+      });
+    } else {
+      // systemId → look up in students table first
+      const { StudentEntity } = await import('../../modules/student/entities/student.entity');
+      const studentRepo = this.userRepository.manager.getRepository(StudentEntity);
+      const student = await studentRepo.findOne({
+        where: { studentId: dto.identifier.trim(), isActive: true },
+        select: ['userId']
+      });
+      if (student) {
+        user = await this.userRepository.findOne({
+          where: { id: student.userId, isActive: true },
+          select: ['id', 'phoneNumber', 'email', 'firstName', 'password', 'firstLoginCompleted',
+                   'userType', 'isPhoneVerified', 'isEmailVerified']
+        });
+      }
+    }
 
     if (!user) {
-      throw new NotFoundException('No user found with this phone number. Please contact your institute admin.');
+      throw new NotFoundException('No user found with this identifier. Please contact your institute admin.');
     }
 
-    // Check if already completed first login
+    // Check if already completed
     if (user.firstLoginCompleted && user.password) {
       throw new BadRequestException('First login already completed. Please use regular login.');
     }
 
-    // Rate limit: max 3 OTP requests per hour for this phone
-    const oneHourAgoMs = nowTimestamp() - (60 * 60 * 1000);
-    const recentTokens = await this.passwordResetTokenRepository.count({
-      where: {
-        email: normalizedPhone, // Store phone in email field (varchar)
-        tokenType: 'FIRST_LOGIN' as any,
-      }
-    });
+    // ── Determine verification requirements ──
+    const hasPhone = !!user.phoneNumber;
+    const hasEmail = !!user.email;
 
-    // Invalidate previous OTPs for this phone
+    // Verification requirements:
+    // - If user has phone → phone must be verified
+    // - If user has email → email must be verified
+    // - At least one must exist, otherwise user can't do first login
+    if (!hasPhone && !hasEmail) {
+      throw new BadRequestException(
+        'This user account has no phone number or email. Please contact your institute admin to add contact information.'
+      );
+    }
+
+    const phoneNeedsVerification = hasPhone && !user.isPhoneVerified;
+    const emailNeedsVerification = hasEmail && !user.isEmailVerified;
+
+    // ── Send OTP to best available channel ──
+    // Priority: phone first (instant SMS), email second
+    let otpSentVia: 'phone' | 'email' | null = null;
+    let maskedDestination: string | null = null;
+
+    if (hasPhone && !user.isPhoneVerified) {
+      // Send SMS OTP
+      const normalizedPhone = user.phoneNumber!;
+      await this.sendFirstLoginPhoneOtp(normalizedPhone, user.id, ipAddress, userAgent);
+      otpSentVia = 'phone';
+      maskedDestination = maskPii(normalizedPhone);
+    } else if (hasEmail && !user.isEmailVerified) {
+      // Send Email OTP
+      await this.sendFirstLoginEmailOtp(user.email!, user.id, user.firstName, ipAddress, userAgent);
+      otpSentVia = 'email';
+      maskedDestination = maskPii(user.email!);
+    } else {
+      // Both already verified (edge case — user is re-hitting initiate)
+      // Resend to phone if available, else email
+      if (hasPhone) {
+        await this.sendFirstLoginPhoneOtp(user.phoneNumber!, user.id, ipAddress, userAgent);
+        otpSentVia = 'phone';
+        maskedDestination = maskPii(user.phoneNumber!);
+      } else {
+        await this.sendFirstLoginEmailOtp(user.email!, user.id, user.firstName, ipAddress, userAgent);
+        otpSentVia = 'email';
+        maskedDestination = maskPii(user.email!);
+      }
+    }
+
+    return {
+      success: true,
+      message: `OTP sent via ${otpSentVia === 'phone' ? 'SMS' : 'email'} to ${maskedDestination}. Valid for 15 minutes.`,
+      otpSentVia,
+      maskedDestination,
+      expiresInMinutes: 15,
+      verificationsRequired: {
+        phone: phoneNeedsVerification,
+        email: emailNeedsVerification,
+      },
+      userHasPhone: hasPhone,
+      userHasEmail: hasEmail,
+      userId: user.id,
+    };
+  }
+
+  /**
+   * Helper: Send OTP via SMS for first login
+   */
+  private async sendFirstLoginPhoneOtp(
+    phoneNumber: string, userId: string, ipAddress?: string, userAgent?: string
+  ) {
+    // Invalidate previous OTPs
     await this.passwordResetTokenRepository.update(
-      { email: normalizedPhone, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
+      { email: phoneNumber, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
       { isUsed: true, updatedAt: now() }
     );
 
-    // Generate OTP
     const otp = this.generateOTP();
-    const expiryTimeMs = nowTimestamp() + (15 * 60 * 1000); // 15 minutes
-    const expiresAt = new Date(expiryTimeMs);
+    const expiresAt = new Date(nowTimestamp() + (15 * 60 * 1000));
 
-    // Save OTP token (store phone in email field)
     const resetToken = this.passwordResetTokenRepository.create({
-      email: normalizedPhone,
+      email: phoneNumber,
       otp,
       tokenType: 'FIRST_LOGIN' as any,
       expiresAt,
@@ -969,105 +1085,214 @@ export class FirstLoginService {
 
     // Log
     const loginLog = this.firstLoginLogRepository.create({
-      userId: user.id,
-      email: normalizedPhone,
+      userId,
+      email: phoneNumber,
       status: 'OTP_SENT',
       createdAt: now(),
       updatedAt: now(),
       ipAddress,
       userAgent,
-      notes: 'Phone-based first login OTP sent via SMS'
+      notes: 'First login OTP sent via SMS'
     });
     await this.firstLoginLogRepository.save(loginLog);
 
-    // Send SMS OTP
     try {
       await this.smsProvider.sendSms({
-        contact: normalizedPhone,
+        contact: phoneNumber,
         message: `Your Suraksha LMS first login code is: ${otp}. Valid for 15 minutes. Do not share this code.`,
         senderId: 'SurakshaLMS',
       });
     } catch (smsError) {
-      this.logger.error(`❌ Failed to send first login SMS to ${maskPii(normalizedPhone)}: ${smsError.message}`);
+      this.logger.error(`❌ Failed to send first login SMS to ${maskPii(phoneNumber)}: ${smsError.message}`);
     }
-
-    return {
-      success: true,
-      message: `OTP sent to ${maskPii(normalizedPhone)} via SMS. Valid for 15 minutes.`,
-      expiresInMinutes: 15
-    };
   }
 
   /**
-   * Step 2: Verify phone OTP and return annotated user profile
-   * - Verify SMS OTP
-   * - Mark phone as verified
-   * - Return user profile with field annotations (editable, required, current values)
-   * - Return a simple JWT for subsequent steps
+   * Helper: Send OTP via email for first login
    */
-  async verifyPhoneOtpFirstLogin(
-    dto: VerifyPhoneOtpFirstLoginDto,
+  private async sendFirstLoginEmailOtp(
+    email: string, userId: string, userName?: string, ipAddress?: string, userAgent?: string
+  ) {
+    // Invalidate previous OTPs
+    await this.passwordResetTokenRepository.update(
+      { email, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
+      { isUsed: true, updatedAt: now() }
+    );
+
+    const otp = this.generateOTP();
+    const expiresAt = new Date(nowTimestamp() + (15 * 60 * 1000));
+
+    const resetToken = this.passwordResetTokenRepository.create({
+      email,
+      otp,
+      tokenType: 'FIRST_LOGIN' as any,
+      expiresAt,
+      createdAt: now(),
+      updatedAt: now(),
+      ipAddress,
+      userAgent,
+    });
+    await this.passwordResetTokenRepository.save(resetToken);
+
+    // Log
+    const loginLog = this.firstLoginLogRepository.create({
+      userId,
+      email,
+      status: 'OTP_SENT',
+      createdAt: now(),
+      updatedAt: now(),
+      ipAddress,
+      userAgent,
+      notes: 'First login OTP sent via email'
+    });
+    await this.firstLoginLogRepository.save(loginLog);
+
+    try {
+      await this.enhancedEmailService.sendOTP({
+        email,
+        otp,
+        userName: userName || email.split('@')[0],
+        expiryMinutes: '15',
+        requestType: 'First Login',
+        ipAddress: ipAddress || 'Unknown'
+      });
+    } catch (emailError) {
+      this.logger.error(`❌ Failed to send first login email to ${maskPii(email)}: ${emailError.message}`);
+    }
+  }
+
+  /**
+   * Step 2: Verify initial OTP (phone OR email).
+   * On success:
+   *  - Mark the channel as verified
+   *  - Return JWT + annotated profile
+   *  - Tell frontend what additional verifications are still needed
+   */
+  async verifyFirstLoginOtp(
+    dto: VerifyFirstLoginOtpDto,
     ipAddress?: string,
     userAgent?: string
   ): Promise<any> {
-    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
-    if (!normalizedPhone) {
-      throw new BadRequestException('Invalid phone number format');
+    let lookupIdentifier: string;
+    if (dto.channel === 'phone') {
+      lookupIdentifier = normalizeSriLankanPhone(dto.identifier) || dto.identifier;
+    } else {
+      lookupIdentifier = dto.identifier.trim().toLowerCase();
     }
 
     // Find OTP token
     const resetToken = await this.passwordResetTokenRepository.findOne({
       where: {
-        email: normalizedPhone,
+        email: lookupIdentifier,
         otp: dto.otp,
         tokenType: 'FIRST_LOGIN' as any,
         isUsed: false,
-        isOtpVerified: false
+        isOtpVerified: false,
       }
     });
 
     if (!resetToken) {
       await this.passwordResetTokenRepository.increment(
-        { email: normalizedPhone, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
+        { email: lookupIdentifier, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
         'attemptCount', 1
       );
       throw new BadRequestException('Invalid or expired OTP');
     }
 
-    // Check expiry
     if (now() > resetToken.expiresAt) {
       await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
       throw new BadRequestException('OTP has expired. Please request a new one.');
     }
 
-    // Check attempts
     if (resetToken.attemptCount >= 5) {
       await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
       throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
     }
 
-    // Mark OTP as verified
+    // Mark OTP verified
     await this.passwordResetTokenRepository.update(resetToken.id, {
-      isOtpVerified: true,
-      updatedAt: now(),
+      isOtpVerified: true, updatedAt: now(),
     });
 
-    // Find user
-    const user = await this.userRepository.findOne({
-      where: { phoneNumber: normalizedPhone, isActive: true },
-    });
+    // Find user by identifier
+    let user: UserEntity | null = null;
+    if (dto.channel === 'phone') {
+      user = await this.userRepository.findOne({
+        where: { phoneNumber: lookupIdentifier, isActive: true }
+      });
+    } else {
+      user = await this.userRepository.findOne({
+        where: { email: lookupIdentifier, isActive: true }
+      });
+    }
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    // Mark phone as verified
-    await this.userRepository.update(user.id, {
-      isPhoneVerified: true,
-      updatedAt: now()
-    });
+    // Mark this channel as verified
+    if (dto.channel === 'phone') {
+      await this.userRepository.update(user.id, { isPhoneVerified: true, updatedAt: now() });
+      user.isPhoneVerified = true;
+    } else {
+      await this.userRepository.update(user.id, { isEmailVerified: true, updatedAt: now() });
+      user.isEmailVerified = true;
+    }
 
-    // Get student/parent data if exists
+    // Build annotated profile
+    const { profile, studentFields, parentFields } = await this.buildAnnotatedProfile(user);
+
+    // Create JWT for subsequent steps
+    const access_token = this.jwtService.sign(
+      { sub: user.id, type: 'first_login_profile', iat: Math.floor(nowTimestamp() / 1000) },
+      { expiresIn: '30d' }
+    );
+
+    // Calculate remaining verifications
+    const stillNeedsPhoneVerification = !!user.phoneNumber && !user.isPhoneVerified;
+    const stillNeedsEmailVerification = !!user.email && !user.isEmailVerified;
+
+    // Log
+    const loginLog = this.firstLoginLogRepository.create({
+      userId: user.id,
+      email: lookupIdentifier,
+      status: 'OTP_VERIFIED',
+      createdAt: now(),
+      updatedAt: now(),
+      ipAddress,
+      userAgent,
+      notes: `${dto.channel} OTP verified - annotated profile returned`
+    });
+    await this.firstLoginLogRepository.save(loginLog);
+
+    return {
+      success: true,
+      message: `${dto.channel === 'phone' ? 'Phone' : 'Email'} verified successfully. Complete your profile.`,
+      access_token,
+      userId: user.id,
+      isPhoneVerified: user.isPhoneVerified,
+      isEmailVerified: user.isEmailVerified,
+      hasPassword: !!user.password,
+      verificationsStillRequired: {
+        phone: stillNeedsPhoneVerification,
+        email: stillNeedsEmailVerification,
+      },
+      userHasPhone: !!user.phoneNumber,
+      userHasEmail: !!user.email,
+      profile,
+      studentFields,
+      parentFields,
+    };
+  }
+
+  /**
+   * Build annotated profile with field metadata for frontend
+   */
+  private async buildAnnotatedProfile(user: UserEntity): Promise<{
+    profile: Record<string, any>;
+    studentFields?: Record<string, any>;
+    parentFields?: Record<string, any>;
+  }> {
     const { StudentEntity } = await import('../../modules/student/entities/student.entity');
     const { ParentEntity } = await import('../../modules/parent/entities/parent.entity');
     const studentRepo = this.userRepository.manager.getRepository(StudentEntity);
@@ -1076,13 +1301,6 @@ export class FirstLoginService {
     const student = await studentRepo.findOne({ where: { userId: user.id } });
     const parent = await parentRepo.findOne({ where: { userId: user.id } });
 
-    // Create simple JWT for profile completion (30 day expiry)
-    const access_token = this.jwtService.sign(
-      { sub: user.id, type: 'first_login_profile', iat: Math.floor(nowTimestamp() / 1000) },
-      { expiresIn: '30d' }
-    );
-
-    // Build annotated profile
     const profile: Record<string, any> = {
       id: { value: user.id, editable: false, required: false },
       firstName: { value: user.firstName || null, editable: true, required: true },
@@ -1090,11 +1308,18 @@ export class FirstLoginService {
       nameWithInitials: { value: user.nameWithInitials || null, editable: true, required: false },
       email: {
         value: user.email || null,
-        editable: !user.email, // Can add if empty; can't change if admin set it
+        editable: !user.email, // Can add email if empty; can't change if admin set it
         required: true,
-        needsVerification: true
+        needsVerification: !user.isEmailVerified,
+        isVerified: user.isEmailVerified,
       },
-      phoneNumber: { value: normalizedPhone, editable: false, required: true },
+      phoneNumber: {
+        value: user.phoneNumber || null,
+        editable: !user.phoneNumber, // Can add phone if empty; can't change if already set
+        required: true,
+        needsVerification: user.phoneNumber ? !user.isPhoneVerified : false,
+        isVerified: user.isPhoneVerified,
+      },
       userType: {
         value: user.userType || UserType.USER,
         editable: true,
@@ -1113,7 +1338,7 @@ export class FirstLoginService {
       country: { value: user.country || 'SRI_LANKA', editable: true, required: false },
       imageUrl: {
         value: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
-        editable: !user.imageUrl, // Can upload only if no existing image
+        editable: !user.imageUrl,
         required: false
       },
     };
@@ -1122,6 +1347,7 @@ export class FirstLoginService {
     let studentFields: Record<string, any> | undefined;
     if (student) {
       studentFields = {
+        studentId: { value: student.studentId || null, editable: false, required: false },
         emergencyContact: { value: student.emergencyContact || null, editable: true, required: false },
         medicalConditions: { value: student.medicalConditions || null, editable: true, required: false },
         allergies: { value: student.allergies || null, editable: true, required: false },
@@ -1143,38 +1369,141 @@ export class FirstLoginService {
       };
     }
 
-    // Log
-    const loginLog = this.firstLoginLogRepository.create({
-      userId: user.id,
-      email: normalizedPhone,
-      status: 'OTP_VERIFIED',
-      createdAt: now(),
-      updatedAt: now(),
-      ipAddress,
-      userAgent,
-      notes: 'Phone OTP verified - annotated profile returned'
-    });
-    await this.firstLoginLogRepository.save(loginLog);
+    return { profile, studentFields, parentFields };
+  }
 
+  /**
+   * Phone-only initiation (backward compat / direct phone entry)
+   */
+  async initiateFirstLoginByPhone(
+    dto: InitiateFirstLoginByPhoneDto,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{ success: boolean; message: string; expiresInMinutes: number }> {
+    // Delegate to unified method
+    const result = await this.initiateFirstLoginUnified(
+      { identifier: dto.phoneNumber }, ipAddress, userAgent
+    );
     return {
-      success: true,
-      message: 'Phone verified successfully. Complete your profile.',
-      access_token,
-      userId: user.id,
-      isPhoneVerified: true,
-      isEmailVerified: user.isEmailVerified || false,
-      hasPassword: !!user.password,
-      profile,
-      studentFields,
-      parentFields,
+      success: result.success,
+      message: result.message,
+      expiresInMinutes: result.expiresInMinutes,
     };
   }
 
   /**
-   * Step 3: Send email OTP during first login
-   * - User provides email -> check it's not taken by another user
-   * - Send OTP via email
-   * - Requires first-login JWT token
+   * Verify phone OTP (backward compat / direct phone verify)
+   */
+  async verifyPhoneOtpFirstLogin(
+    dto: VerifyPhoneOtpFirstLoginDto,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<any> {
+    return this.verifyFirstLoginOtp(
+      { identifier: dto.phoneNumber, otp: dto.otp, channel: 'phone' },
+      ipAddress, userAgent
+    );
+  }
+
+  /**
+   * Request phone OTP during profile completion (requires JWT).
+   * Used when user initiated via email/systemId and needs to verify their phone.
+   */
+  async requestPhoneOtpInFlow(
+    dto: RequestPhoneOtpFirstLoginDto,
+    authorizationHeader: string,
+    ipAddress?: string
+  ): Promise<{ success: boolean; message: string; expiresInMinutes: number }> {
+    const userId = this.extractUserIdFromToken(authorizationHeader);
+    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format. Use Sri Lankan format: 077X, 94X, +94X');
+    }
+
+    // Check phone not taken by another user
+    const existingUser = await this.userRepository.findOne({
+      where: { phoneNumber: normalizedPhone },
+      select: ['id']
+    });
+    if (existingUser && existingUser.id !== userId) {
+      throw new BadRequestException('This phone number is already registered by another user.');
+    }
+
+    // Update user's phone if not set yet
+    const user = await this.userRepository.findOne({ where: { id: userId, isActive: true } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (!user.phoneNumber) {
+      await this.userRepository.update(userId, { phoneNumber: normalizedPhone, updatedAt: now() });
+    }
+
+    await this.sendFirstLoginPhoneOtp(normalizedPhone, userId, ipAddress);
+
+    return {
+      success: true,
+      message: `OTP sent to ${maskPii(normalizedPhone)} via SMS. Valid for 15 minutes.`,
+      expiresInMinutes: 15
+    };
+  }
+
+  /**
+   * Verify phone OTP during profile completion (requires JWT).
+   */
+  async verifyPhoneOtpInFlow(
+    dto: VerifyPhoneOtpInFlowDto,
+    authorizationHeader: string,
+    ipAddress?: string
+  ): Promise<{ success: boolean; message: string; phoneNumber: string }> {
+    const userId = this.extractUserIdFromToken(authorizationHeader);
+    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format');
+    }
+
+    // Find OTP token
+    const resetToken = await this.passwordResetTokenRepository.findOne({
+      where: {
+        email: normalizedPhone,
+        otp: dto.otp,
+        tokenType: 'FIRST_LOGIN' as any,
+        isUsed: false,
+      },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    if (now() > resetToken.expiresAt) {
+      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
+      throw new BadRequestException('OTP has expired. Please request a new one.');
+    }
+
+    // Mark verified
+    resetToken.isUsed = true;
+    resetToken.isOtpVerified = true;
+    resetToken.updatedAt = now();
+    await this.passwordResetTokenRepository.save(resetToken);
+
+    // Update user
+    await this.userRepository.update(userId, {
+      phoneNumber: normalizedPhone,
+      isPhoneVerified: true,
+      updatedAt: now()
+    });
+
+    this.logger.log(`✅ Phone verified in-flow for user ${userId}: ${maskPii(normalizedPhone)}`);
+
+    return {
+      success: true,
+      message: 'Phone number verified successfully.',
+      phoneNumber: normalizedPhone
+    };
+  }
+
+  /**
+   * Request email OTP during first login (requires JWT).
    */
   async requestEmailOtpFirstLogin(
     dto: RequestEmailOtpFirstLoginDto,
@@ -1200,10 +1529,8 @@ export class FirstLoginService {
       { isUsed: true, updatedAt: now() }
     );
 
-    // Generate OTP
     const otp = this.generateOTP();
-    const expiryTimeMs = nowTimestamp() + (15 * 60 * 1000);
-    const expiresAt = new Date(expiryTimeMs);
+    const expiresAt = new Date(nowTimestamp() + (15 * 60 * 1000));
 
     const resetToken = this.passwordResetTokenRepository.create({
       email,
@@ -1216,7 +1543,6 @@ export class FirstLoginService {
     });
     await this.passwordResetTokenRepository.save(resetToken);
 
-    // Send OTP email
     try {
       await this.enhancedEmailService.sendOTP({
         email,
@@ -1238,9 +1564,7 @@ export class FirstLoginService {
   }
 
   /**
-   * Step 4: Verify email OTP during first login
-   * - Verify email OTP
-   * - Update user email and mark as verified
+   * Verify email OTP during first login (requires JWT).
    */
   async verifyEmailOtpFirstLogin(
     dto: VerifyEmailOtpFirstLoginDto,
@@ -1250,7 +1574,6 @@ export class FirstLoginService {
     const userId = this.extractUserIdFromToken(authorizationHeader);
     const email = dto.email.toLowerCase();
 
-    // Find OTP
     const resetToken = await this.passwordResetTokenRepository.findOne({
       where: {
         email,
@@ -1265,19 +1588,16 @@ export class FirstLoginService {
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
-    // Check expiry
     if (now() > resetToken.expiresAt) {
       await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
       throw new BadRequestException('OTP has expired. Please request a new one.');
     }
 
-    // Mark OTP as used
     resetToken.isUsed = true;
     resetToken.isOtpVerified = true;
     resetToken.updatedAt = now();
     await this.passwordResetTokenRepository.save(resetToken);
 
-    // Update user email and mark as verified
     await this.userRepository.update(userId, {
       email,
       isEmailVerified: true,
@@ -1294,13 +1614,13 @@ export class FirstLoginService {
   }
 
   /**
-   * Step 5: Complete first login profile
-   * - Save all profile data
-   * - Set password (required)
-   * - Update user type if changed
-   * - Update student/parent data
-   * - Mark firstLoginCompleted = true
-   * - Return real login tokens (access + refresh)
+   * Step Final: Complete first login profile.
+   * - Save all profile data + password
+   * - Enforce verification requirements:
+   *   • If user has phone → must be verified
+   *   • If user has email → must be verified
+   *   • At least one contact method must exist and be verified
+   * - Return real login tokens
    */
   async completeFirstLoginProfile(
     dto: CompleteFirstLoginProfileDto,
@@ -1311,18 +1631,35 @@ export class FirstLoginService {
   ): Promise<any> {
     const userId = this.extractUserIdFromToken(authorizationHeader);
 
-    // Validate passwords match
     if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Passwords do not match');
     }
 
-    // Get user
     const user = await this.userRepository.findOne({
       where: { id: userId, isActive: true }
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    // ── Enforce verification requirements ──
+    const hasPhone = !!user.phoneNumber;
+    const hasEmail = !!user.email;
+    const errors: string[] = [];
+
+    if (hasPhone && !user.isPhoneVerified) {
+      errors.push('Phone number must be verified before completing profile.');
+    }
+    if (hasEmail && !user.isEmailVerified) {
+      errors.push('Email must be verified before completing profile.');
+    }
+    if (!hasPhone && !hasEmail) {
+      errors.push('At least one contact method (phone or email) is required.');
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException(errors.join(' '));
     }
 
     // Hash password
@@ -1338,11 +1675,9 @@ export class FirstLoginService {
       updatedAt: now(),
     };
 
-    // Name with initials (auto-generate if not provided)
     updateData.nameWithInitials = dto.nameWithInitials ||
       `${dto.firstName.charAt(0).toUpperCase()}. ${dto.lastName}`;
 
-    // User type change (only USER/USER_WITHOUT_PARENT/USER_WITHOUT_STUDENT allowed)
     if (dto.userType) {
       const allowedTypes = [UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT];
       if (allowedTypes.includes(dto.userType as UserType)) {
@@ -1350,7 +1685,6 @@ export class FirstLoginService {
       }
     }
 
-    // Optional fields
     if (dto.dateOfBirth) updateData.dateOfBirth = new Date(dto.dateOfBirth);
     if (dto.gender) {
       const { Gender } = await import('../../modules/user/enums/gender.enum');
@@ -1381,20 +1715,18 @@ export class FirstLoginService {
       }
     }
 
-    // Profile image: only allow if user has no existing image
     if (dto.imageUrl && !user.imageUrl) {
       updateData.imageUrl = dto.imageUrl;
     }
 
-    // Calculate profile completion
+    // Profile completion
     const mergedUser = { ...user, ...updateData, password: hashedPassword };
     updateData.profileCompletionStatus = determineProfileStatus(mergedUser as any);
     updateData.profileCompletionPercentage = calculateProfileCompletion(mergedUser as any);
 
-    // Save user
     await this.userRepository.update(userId, updateData);
 
-    // Update student-specific data
+    // Student data
     const { StudentEntity } = await import('../../modules/student/entities/student.entity');
     const studentRepo = this.userRepository.manager.getRepository(StudentEntity);
     const student = await studentRepo.findOne({ where: { userId } });
@@ -1409,7 +1741,7 @@ export class FirstLoginService {
       }
     }
 
-    // Update parent-specific data
+    // Parent data
     const { ParentEntity } = await import('../../modules/parent/entities/parent.entity');
     const parentRepo = this.userRepository.manager.getRepository(ParentEntity);
     const parent = await parentRepo.findOne({ where: { userId } });
@@ -1424,11 +1756,19 @@ export class FirstLoginService {
       }
     }
 
-    // Invalidate all first-login OTP tokens for this user
-    await this.passwordResetTokenRepository.update(
-      { email: user.phoneNumber || '', tokenType: 'FIRST_LOGIN' as any, isUsed: false },
-      { isUsed: true, updatedAt: now() }
-    );
+    // Invalidate all first-login OTP tokens
+    if (user.phoneNumber) {
+      await this.passwordResetTokenRepository.update(
+        { email: user.phoneNumber, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
+        { isUsed: true, updatedAt: now() }
+      );
+    }
+    if (user.email) {
+      await this.passwordResetTokenRepository.update(
+        { email: user.email, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
+        { isUsed: true, updatedAt: now() }
+      );
+    }
 
     // Refresh cache
     try {
@@ -1438,7 +1778,7 @@ export class FirstLoginService {
       this.logger.warn(`Cache refresh failed after first login for user ${userId}: ${cacheError.message}`);
     }
 
-    // Log completion
+    // Log
     const loginLog = this.firstLoginLogRepository.create({
       userId,
       email: user.email || user.phoneNumber || '',
@@ -1447,15 +1787,13 @@ export class FirstLoginService {
       updatedAt: now(),
       ipAddress,
       userAgent,
-      notes: 'Phone-based first login completed - profile saved, password set'
+      notes: 'First login completed - profile saved, password set'
     });
     await this.firstLoginLogRepository.save(loginLog);
 
-    // Generate real login tokens via AuthService
+    // Real login tokens
     const updatedUser = await this.userRepository.findOne({ where: { id: userId } });
-    if (!updatedUser) {
-      throw new NotFoundException('User not found after update');
-    }
+    if (!updatedUser) throw new NotFoundException('User not found after update');
 
     const loginResult = await this.authService.loginV2(
       updatedUser, ipAddress, userAgent, rememberMe
@@ -1479,7 +1817,7 @@ export class FirstLoginService {
    */
   private extractUserIdFromToken(authorizationHeader: string): string {
     if (!authorizationHeader || !authorizationHeader.startsWith('Bearer ')) {
-      throw new BadRequestException('Authorization header required. Use the token from phone verification step.');
+      throw new BadRequestException('Authorization header required. Use the token from verification step.');
     }
 
     const token = authorizationHeader.substring(7);
@@ -1487,7 +1825,7 @@ export class FirstLoginService {
     try {
       payload = this.jwtService.verify(token);
     } catch {
-      throw new BadRequestException('Invalid or expired token. Please verify your phone again.');
+      throw new BadRequestException('Invalid or expired token. Please verify your identity again.');
     }
 
     const userId = payload.sub;

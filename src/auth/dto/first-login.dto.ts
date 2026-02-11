@@ -616,9 +616,49 @@ export class CompleteProfileDto {
 }
 
 // ============================================================
-// 📱 PHONE-BASED FIRST LOGIN DTOs
+// 📱 MULTI-IDENTIFIER FIRST LOGIN DTOs
 // ============================================================
 
+/**
+ * Step 1: Unified initiation — user provides phone, email, or systemId.
+ * Backend auto-detects the identifier type and finds the user.
+ */
+export class InitiateFirstLoginDto2 {
+  @ApiProperty({
+    description: 'User identifier — can be phone number, email address, or system student ID',
+    examples: ['0771234567', 'student@gmail.com', 'STU-0001']
+  })
+  @IsString()
+  @IsNotEmpty()
+  identifier: string;
+}
+
+/**
+ * Step 2: Verify OTP — works for both phone SMS OTP and email OTP.
+ * The channel field tells the backend which OTP channel to verify.
+ */
+export class VerifyFirstLoginOtpDto {
+  @ApiProperty({ description: 'The identifier used to receive OTP (normalized phone or email)', example: '94771234567' })
+  @IsString()
+  @IsNotEmpty()
+  identifier: string;
+
+  @ApiProperty({ description: '6-digit OTP code', example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6, { message: 'OTP must be exactly 6 digits' })
+  otp: string;
+
+  @ApiProperty({ description: 'OTP channel', example: 'phone', enum: ['phone', 'email'] })
+  @IsString()
+  @IsNotEmpty()
+  channel: 'phone' | 'email';
+}
+
+/**
+ * Step 3 (in-flow): Request phone OTP verification during profile completion.
+ * Used when user initiated via email/systemId and now needs to verify phone.
+ */
 export class InitiateFirstLoginByPhoneDto {
   @ApiProperty({ description: 'Phone number (Sri Lankan: 077X, 94X, +94X)', example: '0771234567' })
   @IsString()
@@ -626,6 +666,9 @@ export class InitiateFirstLoginByPhoneDto {
   phoneNumber: string;
 }
 
+/**
+ * Verify phone OTP during first login.
+ */
 export class VerifyPhoneOtpFirstLoginDto {
   @ApiProperty({ description: 'Phone number used in initiation', example: '0771234567' })
   @IsString()
@@ -657,6 +700,32 @@ export class VerifyEmailOtpFirstLoginDto {
   @IsNotEmpty()
   @Length(6, 6, { message: 'OTP must be exactly 6 digits' })
   otpCode: string;
+}
+
+/**
+ * Request phone OTP during profile completion (requires JWT).
+ */
+export class RequestPhoneOtpFirstLoginDto {
+  @ApiProperty({ description: 'Phone number to verify (Sri Lankan format)', example: '0771234567' })
+  @IsString()
+  @IsNotEmpty()
+  phoneNumber: string;
+}
+
+/**
+ * Verify phone OTP during profile completion (requires JWT).
+ */
+export class VerifyPhoneOtpInFlowDto {
+  @ApiProperty({ description: 'Phone number being verified', example: '0771234567' })
+  @IsString()
+  @IsNotEmpty()
+  phoneNumber: string;
+
+  @ApiProperty({ description: '6-digit OTP code received via SMS', example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6, { message: 'OTP must be exactly 6 digits' })
+  otp: string;
 }
 
 export class CompleteFirstLoginProfileDto {
