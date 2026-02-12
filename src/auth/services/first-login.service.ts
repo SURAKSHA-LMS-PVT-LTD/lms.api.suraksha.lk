@@ -945,6 +945,8 @@ export class FirstLoginService {
     userHasPhone: boolean;
     userHasEmail: boolean;
     userId: string;
+    accessToken?: string;
+    requiresContactInfo?: boolean;
   }> {
     const identifierType = this.detectIdentifierType(dto.identifier);
     let user: UserEntity | null = null;
@@ -957,35 +959,30 @@ export class FirstLoginService {
       }
       user = await this.userRepository.findOne({
         where: { phoneNumber: normalizedPhone, isActive: true },
-        select: ['id', 'phoneNumber', 'email', 'firstName', 'password', 'firstLoginCompleted',
+        select: ['id', 'phoneNumber', 'email', 'firstName', 'nameWithInitials', 'password', 'firstLoginCompleted',
                  'userType', 'isPhoneVerified', 'isEmailVerified']
       });
     } else if (identifierType === 'email') {
       const email = dto.identifier.trim().toLowerCase();
       user = await this.userRepository.findOne({
         where: { email, isActive: true },
-        select: ['id', 'phoneNumber', 'email', 'firstName', 'password', 'firstLoginCompleted',
+        select: ['id', 'phoneNumber', 'email', 'firstName', 'nameWithInitials', 'password', 'firstLoginCompleted',
                  'userType', 'isPhoneVerified', 'isEmailVerified']
       });
     } else {
-      // systemId → look up in students table first
-      const { StudentEntity } = await import('../../modules/student/entities/student.entity');
-      const studentRepo = this.userRepository.manager.getRepository(StudentEntity);
-      const student = await studentRepo.findOne({
-        where: { studentId: dto.identifier.trim(), isActive: true },
-        select: ['userId']
+      // User ID → Global registration (not institute-specific)
+      // Look up directly in users table by ID
+      user = await this.userRepository.findOne({
+        where: { id: dto.identifier.trim(), isActive: true },
+        select: ['id', 'phoneNumber', 'email', 'firstName', 'nameWithInitials', 'password', 'firstLoginCompleted',
+                 'userType', 'isPhoneVerified', 'isEmailVerified']
       });
-      if (student) {
-        user = await this.userRepository.findOne({
-          where: { id: student.userId, isActive: true },
-          select: ['id', 'phoneNumber', 'email', 'firstName', 'password', 'firstLoginCompleted',
-                   'userType', 'isPhoneVerified', 'isEmailVerified']
-        });
+      
+      if (!user) {
+        throw new NotFoundException(
+          `No user found with ID "${dto.identifier}". This is a global registration - please use your email or phone number to login.`
+        );
       }
-    }
-
-    if (!user) {
-      throw new NotFoundException('No user found with this identifier. Please contact your institute admin.');
     }
 
     // Check if already completed
@@ -996,19 +993,82 @@ export class FirstLoginService {
     // ── Determine verification requirements ──
     const hasPhone = !!user.phoneNumber;
     const hasEmail = !!user.email;
-
-    // Verification requirements:
-    // - If user has phone → phone must be verified
-    // - If user has email → email must be verified
-    // - At least one must exist, otherwise user can't do first login
-    if (!hasPhone && !hasEmail) {
-      throw new BadRequestException(
-        'This user account has no phone number or email. Please contact your institute admin to add contact information.'
-      );
-    }
-
     const phoneNeedsVerification = hasPhone && !user.isPhoneVerified;
     const emailNeedsVerification = hasEmail && !user.isEmailVerified;
+
+    // ── SPECIAL HANDLING FOR USER ID LOGIN ──
+    // User ID is proof of identity, so skip OTP and issue JWT directly
+    // User must add/verify contacts in-flow based on their account status
+    if (identifierType === 'systemId') {
+      const accessToken = this.generateFirstLoginAccessToken(user.id);
+      
+      // Case 1: No phone AND no email → Must add at least one contact
+      if (!hasPhone && !hasEmail) {
+        return {
+          success: true,
+          message: 'Please add your phone number or email to continue registration.',
+          otpSentVia: null,
+          maskedDestination: null,
+          expiresInMinutes: 0,
+          verificationsRequired: { phone: false, email: false },
+          userHasPhone: false,
+          userHasEmail: false,
+          userId: user.id,
+          accessToken,
+          requiresContactInfo: true,
+        };
+      }
+      
+      // Case 2: Has contacts but none verified → Must verify existing contacts
+      if (phoneNeedsVerification || emailNeedsVerification) {
+        let message = 'Please verify your ';
+        if (phoneNeedsVerification && emailNeedsVerification) {
+          message += 'phone number and email';
+        } else if (phoneNeedsVerification) {
+          message += `phone number (${maskPii(user.phoneNumber!)})`;
+        } else {
+          message += `email (${maskPii(user.email!)})`;
+        }
+        message += ' to continue.';
+        
+        return {
+          success: true,
+          message,
+          otpSentVia: null,
+          maskedDestination: null,
+          expiresInMinutes: 0,
+          verificationsRequired: { phone: phoneNeedsVerification, email: emailNeedsVerification },
+          userHasPhone: hasPhone,
+          userHasEmail: hasEmail,
+          userId: user.id,
+          accessToken,
+          requiresContactInfo: false,
+        };
+      }
+      
+      // Case 3: At least one contact verified → Proceed to profile completion
+      return {
+        success: true,
+        message: 'User ID verified. Please complete your profile.',
+        otpSentVia: null,
+        maskedDestination: null,
+        expiresInMinutes: 0,
+        verificationsRequired: { phone: false, email: false },
+        userHasPhone: hasPhone,
+        userHasEmail: hasEmail,
+        userId: user.id,
+        accessToken,
+        requiresContactInfo: false,
+      };
+    }
+
+    // ── PHONE/EMAIL LOGIN FLOW (requires OTP) ──
+    // At least one contact must exist
+    if (!hasPhone && !hasEmail) {
+      throw new BadRequestException(
+        'This user account has no phone number or email. Please use your User ID to login and add contact information.'
+      );
+    }
 
     // ── Send OTP to best available channel ──
     // Priority: phone first (instant SMS), email second
@@ -1023,7 +1083,8 @@ export class FirstLoginService {
       maskedDestination = maskPii(normalizedPhone);
     } else if (hasEmail && !user.isEmailVerified) {
       // Send Email OTP
-      await this.sendFirstLoginEmailOtp(user.email!, user.id, user.firstName, ipAddress, userAgent);
+      const userName = user.nameWithInitials || user.firstName || 'User';
+      await this.sendFirstLoginEmailOtp(user.email!, user.id, userName, ipAddress, userAgent);
       otpSentVia = 'email';
       maskedDestination = maskPii(user.email!);
     } else {
@@ -1034,7 +1095,8 @@ export class FirstLoginService {
         otpSentVia = 'phone';
         maskedDestination = maskPii(user.phoneNumber!);
       } else {
-        await this.sendFirstLoginEmailOtp(user.email!, user.id, user.firstName, ipAddress, userAgent);
+        const userName = user.nameWithInitials || user.firstName || 'User';
+        await this.sendFirstLoginEmailOtp(user.email!, user.id, userName, ipAddress, userAgent);
         otpSentVia = 'email';
         maskedDestination = maskPii(user.email!);
       }
@@ -1159,6 +1221,17 @@ export class FirstLoginService {
     } catch (emailError) {
       this.logger.error(`❌ Failed to send first login email to ${maskPii(email)}: ${emailError.message}`);
     }
+  }
+
+  /**
+   * Helper: Generate JWT access token for first login flow
+   * Used for userId logins that skip initial OTP verification
+   */
+  private generateFirstLoginAccessToken(userId: string): string {
+    return this.jwtService.sign(
+      { sub: userId, type: 'first_login_profile', iat: Math.floor(nowTimestamp() / 1000) },
+      { expiresIn: '30d' }
+    );
   }
 
   /**
@@ -1326,7 +1399,15 @@ export class FirstLoginService {
         required: true,
         options: [UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT]
       },
-      dateOfBirth: { value: user.dateOfBirth ? user.dateOfBirth.toISOString().split('T')[0] : null, editable: true, required: false },
+      dateOfBirth: { 
+        value: user.dateOfBirth 
+          ? (user.dateOfBirth instanceof Date 
+              ? user.dateOfBirth.toISOString().split('T')[0] 
+              : user.dateOfBirth) 
+          : null, 
+        editable: true, 
+        required: false 
+      },
       gender: { value: user.gender || null, editable: true, required: false, options: ['MALE', 'FEMALE', 'OTHER'] },
       nic: { value: user.nic || null, editable: true, required: false },
       birthCertificateNo: { value: user.birthCertificateNo || null, editable: false, required: false },
@@ -1513,6 +1594,15 @@ export class FirstLoginService {
     const userId = this.extractUserIdFromToken(authorizationHeader);
     const email = dto.email.toLowerCase();
 
+    // Get user for name
+    const currentUser = await this.userRepository.findOne({
+      where: { id: userId, isActive: true },
+      select: ['id', 'firstName', 'nameWithInitials']
+    });
+    if (!currentUser) {
+      throw new NotFoundException('User not found');
+    }
+
     // Check email not taken by another user
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -1543,11 +1633,12 @@ export class FirstLoginService {
     });
     await this.passwordResetTokenRepository.save(resetToken);
 
+    const userName = currentUser.nameWithInitials || currentUser.firstName || 'User';
     try {
       await this.enhancedEmailService.sendOTP({
         email,
         otp,
-        userName: email.split('@')[0],
+        userName,
         expiryMinutes: '15',
         requestType: 'Email Verification (First Login)',
         ipAddress: ipAddress || 'Unknown'

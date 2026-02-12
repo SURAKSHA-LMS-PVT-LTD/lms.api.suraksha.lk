@@ -14,18 +14,22 @@ Users can initiate first login using **any** of these identifiers:
 |------|---------|------------------|
 | Phone | `0771234567`, `+94771234567` | Starts with `0`, `94`, or `+94`, digits only |
 | Email | `student@school.lk` | Contains `@` |
-| System ID | `STU-0001`, `A123` | Anything else |
+| User ID | `a1b2c3d4-uuid-format` | Anything else (UUID format) |
 
 The backend auto-detects the type — the frontend just sends the raw string.
+
+**Note:** This is a **global registration** flow, not institute-specific. Users should primarily use their **email** or **phone number**. User ID lookup is available but less common.
 
 ---
 
 ## Flow Overview
 
+### **Phone/Email Login** (requires OTP):
+
 ```
 ┌──────────────────────────────┐
 │  1. Enter Identifier         │  POST /auth/first-login/initiate
-│     (phone, email, systemId) │  → OTP sent via best channel
+│     (phone or email)         │  → OTP sent via best channel
 │     → Returns verification   │    (phone SMS or email)
 │       requirements           │
 └──────────────┬───────────────┘
@@ -52,16 +56,55 @@ The backend auto-detects the type — the frontend just sends the raw string.
 └──────────────────────────────────────────────────┘
 ```
 
+### **User ID Login** (NO OTP required):
+
+```
+┌──────────────────────────────┐
+│  1. Enter User ID            │  POST /auth/first-login/initiate
+│     (UUID format)            │  → JWT issued immediately
+│                              │    (no OTP sent)
+└──────────────┬───────────────┘
+               ▼
+    ┌────── Contact Status? ──────┐
+    │                              │
+    ▼                              ▼
+  No Contacts                Has Unverified Contacts
+    │                              │
+    ▼                              ▼
+┌──────────────┐           ┌──────────────┐
+│ Add Phone/   │           │ Verify       │
+│ Email        │           │ Existing     │
+│ → Verify     │           │ Contacts     │
+└──────┬───────┘           └──────┬───────┘
+       ▼                          ▼
+┌──────────────────────────────────────┐
+│  Complete Profile + Set Password     │
+│  → Real login tokens                 │
+└──────────────────────────────────────┘
+```
+
 ---
 
 ## Scenarios by User Data
+
+### **Phone/Email Login:**
 
 | User Has | OTP sent via | After Step 2, still needs | In-flow add needed? |
 |----------|-------------|---------------------------|---------------------|
 | Phone only | SMS | Email verification | Yes — add email → verify email |
 | Email only | Email | Phone verification | Yes — add phone → verify phone |
 | Phone + Email | SMS (priority) | Email verification | No — request email OTP → verify |
-| Neither | ❌ Error 400 | N/A | Contact admin |
+| Neither | ❌ Error: Use User ID | N/A | Must use User ID login |
+
+### **User ID Login:**
+
+| User Has | OTP sent? | Response includes | Action needed |
+|----------|-----------|-------------------|---------------|
+| No contacts | ❌ No | `accessToken`, `requiresContactInfo: true` | Add phone/email → verify |
+| Unverified contacts | ❌ No | `accessToken`, verification requirements | Verify existing contacts |
+| Verified contacts | ❌ No | `accessToken` | Complete profile only |
+
+**Note:** User ID login **skips OTP verification** because the User ID itself proves identity. Frontend receives `accessToken` immediately in Step 1.
 
 ---
 
@@ -76,12 +119,13 @@ POST /auth/first-login/initiate
 Content-Type: application/json
 
 {
-  "identifier": "0771234567"       // or "student@school.lk" or "STU-0001"
+  "identifier": "0771234567"       // or "student@school.lk" or "user-uuid-id"
 }
 ```
 
 ### Success Response (200)
 
+#### **Phone/Email Login Response:**
 ```json
 {
   "success": true,
@@ -99,22 +143,84 @@ Content-Type: application/json
 }
 ```
 
+#### **User ID Login Response (No Contacts):**
+```json
+{
+  "success": true,
+  "message": "Please add your phone number or email to continue registration.",
+  "otpSentVia": null,
+  "maskedDestination": null,
+  "expiresInMinutes": 0,
+  "verificationsRequired": {
+    "phone": false,
+    "email": false
+  },
+  "userHasPhone": false,
+  "userHasEmail": false,
+  "userId": "uuid-here",
+  "accessToken": "eyJhbG...",
+  "requiresContactInfo": true
+}
+```
+
+#### **User ID Login Response (Unverified Contacts):**
+```json
+{
+  "success": true,
+  "message": "Please verify your phone number (077***4567) and email (k***@school.lk) to continue.",
+  "otpSentVia": null,
+  "maskedDestination": null,
+  "expiresInMinutes": 0,
+  "verificationsRequired": {
+    "phone": true,
+    "email": true
+  },
+  "userHasPhone": true,
+  "userHasEmail": true,
+  "userId": "uuid-here",
+  "accessToken": "eyJhbG...",
+  "requiresContactInfo": false
+}
+```
+
+#### **User ID Login Response (Verified Contacts):**
+```json
+{
+  "success": true,
+  "message": "User ID verified. Please complete your profile.",
+  "otpSentVia": null,
+  "maskedDestination": null,
+  "expiresInMinutes": 0,
+  "verificationsRequired": {
+    "phone": false,
+    "email": false
+  },
+  "userHasPhone": true,
+  "userHasEmail": true,
+  "userId": "uuid-here",
+  "accessToken": "eyJhbG...",
+  "requiresContactInfo": false
+}
+```
+
 ### Response Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `otpSentVia` | `"phone"` \| `"email"` | Channel the OTP was sent through |
-| `maskedDestination` | `string` | Masked phone/email for display |
+| `otpSentVia` | `"phone"` \| `"email"` \| `null` | Channel OTP was sent (null for User ID login) |
+| `maskedDestination` | `string` \| `null` | Masked phone/email for display |
 | `verificationsRequired.phone` | `boolean` | Whether phone verification is needed |
 | `verificationsRequired.email` | `boolean` | Whether email verification is needed |
 | `userHasPhone` | `boolean` | Whether user has a phone number on file |
 | `userHasEmail` | `boolean` | Whether user has an email on file |
+| `accessToken` | `string?` | **Only present for User ID login** - JWT for subsequent steps |
+| `requiresContactInfo` | `boolean?` | **Only present for User ID login** - Whether user needs to add contacts |
 
 ### Error Responses
 
 | Status | Scenario |
 |--------|----------|
-| 400 | No contact info on account — tell user to contact admin |
+| 400 | **(Phone/Email only)** No contact info — tell user to use User ID |
 | 400 | First login already completed — redirect to regular login |
 | 404 | No user found with this identifier |
 | 429 | Rate limited (3 requests per 15 minutes) |
@@ -131,16 +237,34 @@ const res = await fetch(`${API_BASE}/auth/first-login/initiate`, {
 const data = await res.json();
 
 if (data.success) {
-  // Store for next step
-  setOtpChannel(data.otpSentVia);         // 'phone' or 'email'
-  setIdentifier(userInput.trim());
-  setVerificationsRequired(data.verificationsRequired);
-  setUserHasPhone(data.userHasPhone);
-  setUserHasEmail(data.userHasEmail);
-
-  // Show OTP input
-  showMessage(`OTP sent via ${data.otpSentVia === 'phone' ? 'SMS' : 'email'} to ${data.maskedDestination}`);
-  navigateTo('verify-otp');
+  // Check if User ID login (has accessToken)
+  if (data.accessToken) {
+    // User ID login - store token and skip OTP
+    localStorage.setItem('firstLoginToken', data.accessToken);
+    setUserId(data.userId);
+    setVerificationsRequired(data.verificationsRequired);
+    
+    if (data.requiresContactInfo) {
+      // No contacts - show add contact form
+      navigateTo('add-contact');
+    } else if (data.verificationsRequired.phone || data.verificationsRequired.email) {
+      // Has unverified contacts - show verify contact form
+      navigateTo('verify-contacts');
+    } else {
+      // All verified - go to profile completion
+      navigateTo('complete-profile');
+    }
+  } else {
+    // Phone/Email login - OTP sent
+    setOtpChannel(data.otpSentVia);
+    setIdentifier(userInput.trim());
+    setVerificationsRequired(data.verificationsRequired);
+    setUserHasPhone(data.userHasPhone);
+    setUserHasEmail(data.userHasEmail);
+    
+    showMessage(`OTP sent via ${data.otpSentVia === 'phone' ? 'SMS' : 'email'} to ${data.maskedDestination}`);
+    navigateTo('verify-otp');
+  }
 }
 ```
 
@@ -578,42 +702,65 @@ The backend rejects the request if:
    → Real login tokens
 ```
 
-### Example C: User has Phone Only, initiates with System ID
+### Example C: User has Phone Only, initiates with User ID
+
+**NEW: User ID login skips OTP!**
 
 ```
-1. POST /auth/first-login/initiate  { identifier: "STU-0001" }
-   → otpSentVia: "phone", verificationsRequired: { phone: true, email: false }
+1. POST /auth/first-login/initiate  { identifier: "a1b2-c3d4-uuid" }
+   → accessToken: "eyJhb...", message: "Please verify your phone number (077***4567) to continue."
+   → verificationsRequired: { phone: true, email: false }
 
-2. POST /auth/first-login/verify-otp  { identifier: "STU-0001", otp: "123456", channel: "phone" }
-   → JWT + profile, verificationsStillRequired: { phone: false, email: false }
-   NOTE: profile.email will have { value: null, editable: true, required: true }
+2. POST /auth/first-login/phone/request-otp  (use accessToken from step 1)
+   → SMS OTP sent
 
-3. POST /auth/first-login/email/request-otp  { email: "newmail@school.lk" }
-   → Email OTP sent (user adds new email)
+3. POST /auth/first-login/phone/verify-in-flow  { phoneNumber: "0771234567", otp: "123456" }
+   → Phone verified
 
-4. POST /auth/first-login/email/verify  { email: "newmail@school.lk", otpCode: "654321" }
-   → Email verified
+4. (Optional) Add email if required:
+   POST /auth/first-login/email/request-otp  { email: "newmail@school.lk" }
+   POST /auth/first-login/email/verify  { email: "newmail@school.lk", otpCode: "654321" }
 
 5. POST /auth/first-login/complete  { firstName, lastName, password, ... }
    → Real login tokens
 ```
 
-### Example D: User has Email Only, initiates with System ID
+### Example D: User has NO Contacts, initiates with User ID
+
+**NEW: Must add contacts first!**
 
 ```
-1. POST /auth/first-login/initiate  { identifier: "STU-0001" }
-   → otpSentVia: "email", verificationsRequired: { phone: false, email: true }
+1. POST /auth/first-login/initiate  { identifier: "a1b2-c3d4-uuid" }
+   → accessToken: "eyJhb...", message: "Please add your phone number or email to continue registration."
+   → requiresContactInfo: true
+   → verificationsRequired: { phone: false, email: false }
 
-2. POST /auth/first-login/verify-otp  { identifier: "STU-0001", otp: "123456", channel: "email" }
-   → JWT + profile, verificationsStillRequired: { phone: false, email: false }
-
-3. POST /auth/first-login/phone/request-otp  { phoneNumber: "0771234567" }
+2. POST /auth/first-login/phone/request-otp  { phoneNumber: "0771234567" }
    → SMS OTP sent (user adds new phone)
 
-4. POST /auth/first-login/phone/verify-in-flow  { phoneNumber: "0771234567", otp: "789012" }
-   → Phone verified
+3. POST /auth/first-login/phone/verify-in-flow  { phoneNumber: "0771234567", otp: "789012" }
+   → Phone verified and added
 
-5. POST /auth/first-login/complete  { firstName, lastName, password, ... }
+4. POST /auth/first-login/email/request-otp  { email: "kasun@school.lk" }
+   → Email OTP sent (user adds email)
+
+5. POST /auth/first-login/email/verify  { email: "kasun@school.lk", otpCode: "654321" }
+   → Email verified
+
+6. POST /auth/first-login/complete  { firstName, lastName, password, ... }
+   → Real login tokens
+```
+
+### Example E: User has Verified Contacts, initiates with User ID
+
+**NEW: Skip straight to profile!**
+
+```
+1. POST /auth/first-login/initiate  { identifier: "a1b2-c3d4-uuid" }
+   → accessToken: "eyJhb...", message: "User ID verified. Please complete your profile."
+   → verificationsRequired: { phone: false, email: false }
+
+2. POST /auth/first-login/complete  { firstName, lastName, password, ... }
    → Real login tokens
 ```
 
