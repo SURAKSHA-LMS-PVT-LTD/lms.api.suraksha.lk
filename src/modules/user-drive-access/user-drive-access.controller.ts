@@ -13,6 +13,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { Public } from '../../common/decorators/public.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -125,6 +126,7 @@ export class UserDriveAccessController {
   }
 
   @Get('callback')
+  @Public() // OAuth callback must be public - Google redirects here without JWT token
   @ApiOperation({
     summary: 'Google OAuth2 callback (internal — do not call directly)',
     description: 'Google redirects here after consent. Exchanges code for tokens, stores securely, redirects to frontend.',
