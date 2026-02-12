@@ -1,4 +1,4 @@
-import { Injectable, ExecutionContext } from '@nestjs/common';
+import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
@@ -22,5 +22,25 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     // Default JWT validation
     return super.canActivate(context);
+  }
+
+  handleRequest(err, user, info, context: ExecutionContext) {
+    // Check if route is public BEFORE throwing error
+    const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    // Allow public routes to proceed without authentication
+    if (isPublic) {
+      return user; // Can be undefined for public routes
+    }
+
+    // For protected routes, throw error if no user
+    if (err || !user) {
+      throw err || new UnauthorizedException();
+    }
+
+    return user;
   }
 }
