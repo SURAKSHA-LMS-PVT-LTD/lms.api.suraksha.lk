@@ -33,17 +33,41 @@ export class HomeworkSubmissionSimpleDto {
   @ApiPropertyOptional({ description: 'Google Drive view URL' })
   driveViewUrl?: string;
 
+  @ApiPropertyOptional({ description: 'Google Drive file name' })
+  driveFileName?: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive file MIME type' })
+  driveMimeType?: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive file size in bytes' })
+  driveFileSize?: number;
+
   @ApiPropertyOptional({ description: 'Submission type', enum: ['UPLOAD', 'GOOGLE_DRIVE'] })
   submissionType?: string;
 
   @ApiPropertyOptional({ description: 'Teacher remarks/feedback' })
   remarks?: string;
 
+  @ApiPropertyOptional({ description: 'Has correction file uploaded by teacher', example: true })
+  hasCorrectionFile?: boolean;
+
+  @ApiPropertyOptional({ description: 'Has teacher remarks/feedback', example: true })
+  hasRemarks?: boolean;
+
+  @ApiPropertyOptional({ description: 'Is corrected by teacher (has file or remarks)', example: true })
+  isCorrected?: boolean;
+
+  @ApiPropertyOptional({ description: 'Correction status', enum: ['corrected', 'pending'], example: 'corrected' })
+  correctionStatus?: string;
+
   @ApiProperty({ description: 'Is active', example: true })
   isActive: boolean;
 
   @ApiProperty({ description: 'Created at' })
   createdAt?: Date;
+
+  @ApiProperty({ description: 'Updated at' })
+  updatedAt?: Date;
 }
 
 /**
@@ -196,6 +220,14 @@ export class InstituteClassSubjectHomeworkResponseDto {
   @ApiPropertyOptional({ description: 'Total submissions count (for teachers)' })
   @Expose()
   submissionCount?: number;
+
+  @ApiPropertyOptional({ description: 'Number of corrected submissions', example: 5 })
+  @Expose()
+  correctedCount?: number;
+
+  @ApiPropertyOptional({ description: 'Number of submissions pending correction', example: 2 })
+  @Expose()
+  pendingCorrectionCount?: number;
 
   @ApiPropertyOptional({ description: 'Whether current user has submitted', example: true })
   @Expose()

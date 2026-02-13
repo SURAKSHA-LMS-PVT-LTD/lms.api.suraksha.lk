@@ -301,25 +301,60 @@ export class InstituteClassSubjectHomeworksService {
 
         // Submissions already filtered by userId in query
         if (query.includeSubmissions && homework.submissions) {
-          baseResponse.mySubmissions = homework.submissions.map(sub => ({
-            id: sub.id,
-            submissionDate: sub.submissionDate,
-            fileUrl: sub.fileUrl 
-              ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
-              : null,
-            teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
-              ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
-              : null,
-            driveFileId: sub.driveFileId || null,
-            driveViewUrl: sub.driveFileId 
-              ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
-              : null,
-            submissionType: sub.submissionType || 'UPLOAD',
-            remarks: sub.remarks || null,
-            isActive: sub.isActive,
-            createdAt: sub.createdAt,
-          }));
-          baseResponse.hasSubmitted = homework.submissions.length > 0;
+          baseResponse.mySubmissions = homework.submissions.map(sub => {
+            const hasCorrectionFile = !!sub.teacherCorrectionFileUrl;
+            const hasRemarks = !!sub.remarks;
+            const hasCorrectionData = hasCorrectionFile || hasRemarks;
+            const submissionType = sub.submissionType || 'UPLOAD';
+            
+            return {
+              id: sub.id,
+              submissionDate: sub.submissionDate,
+              submissionType,
+              
+              // Student's submission - handle differently based on type
+              // For UPLOAD: Use cloud storage service for S3 URLs
+              // For GOOGLE_DRIVE: Use Drive URLs directly, don't apply cloud storage
+              fileUrl: submissionType === 'UPLOAD' && sub.fileUrl
+                ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
+                : (submissionType === 'GOOGLE_DRIVE' && sub.fileUrl ? sub.fileUrl : null),
+              
+              // Google Drive specific fields
+              driveFileId: sub.driveFileId || null,
+              driveViewUrl: sub.driveFileId 
+                ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
+                : null,
+              driveFileName: sub.driveFileName || null,
+              driveMimeType: sub.driveMimeType || null,
+              driveFileSize: sub.driveFileSize || null,
+              
+              // Teacher's corrections - always use cloud storage service (corrections are always uploads, not Drive)
+              teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
+                ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
+                : null,
+              remarks: sub.remarks || null,
+              
+              // Correction status metadata
+              hasCorrectionFile,
+              hasRemarks,
+              isCorrected: hasCorrectionData,
+              correctionStatus: hasCorrectionData ? 'corrected' : 'pending',
+              
+              isActive: sub.isActive,
+              createdAt: sub.createdAt,
+              updatedAt: sub.updatedAt,
+            };
+          });
+          
+          const totalSubmissions = homework.submissions.length;
+          const correctedSubmissions = homework.submissions.filter(
+            sub => sub.teacherCorrectionFileUrl || sub.remarks
+          ).length;
+          
+          baseResponse.hasSubmitted = totalSubmissions > 0;
+          baseResponse.submissionCount = totalSubmissions;
+          baseResponse.correctedCount = correctedSubmissions;
+          baseResponse.pendingCorrectionCount = totalSubmissions - correctedSubmissions;
         }
 
         return baseResponse;
@@ -475,25 +510,60 @@ export class InstituteClassSubjectHomeworksService {
 
       // Submissions already filtered by userId in query
       if (includeSubmissions && homework.submissions) {
-        response.mySubmissions = homework.submissions.map(sub => ({
-          id: sub.id,
-          submissionDate: sub.submissionDate,
-          fileUrl: sub.fileUrl 
-            ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
-            : null,
-          teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
-            ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
-            : null,
-          driveFileId: sub.driveFileId || null,
-          driveViewUrl: sub.driveFileId 
-            ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
-            : null,
-          submissionType: sub.submissionType || 'UPLOAD',
-          remarks: sub.remarks || null,
-          isActive: sub.isActive,
-          createdAt: sub.createdAt,
-        }));
-        response.hasSubmitted = homework.submissions.length > 0;
+        response.mySubmissions = homework.submissions.map(sub => {
+          const hasCorrectionFile = !!sub.teacherCorrectionFileUrl;
+          const hasRemarks = !!sub.remarks;
+          const hasCorrectionData = hasCorrectionFile || hasRemarks;
+          const submissionType = sub.submissionType || 'UPLOAD';
+          
+          return {
+            id: sub.id,
+            submissionDate: sub.submissionDate,
+            submissionType,
+            
+            // Student's submission - handle differently based on type
+            // For UPLOAD: Use cloud storage service for S3 URLs
+            // For GOOGLE_DRIVE: Use Drive URLs directly, don't apply cloud storage
+            fileUrl: submissionType === 'UPLOAD' && sub.fileUrl
+              ? this.cloudStorageService.getFullUrl(sub.fileUrl) 
+              : (submissionType === 'GOOGLE_DRIVE' && sub.fileUrl ? sub.fileUrl : null),
+            
+            // Google Drive specific fields
+            driveFileId: sub.driveFileId || null,
+            driveViewUrl: sub.driveFileId 
+              ? `https://drive.google.com/file/d/${sub.driveFileId}/view` 
+              : null,
+            driveFileName: sub.driveFileName || null,
+            driveMimeType: sub.driveMimeType || null,
+            driveFileSize: sub.driveFileSize || null,
+            
+            // Teacher's corrections - always use cloud storage service (corrections are always uploads, not Drive)
+            teacherCorrectionFileUrl: sub.teacherCorrectionFileUrl 
+              ? this.cloudStorageService.getFullUrl(sub.teacherCorrectionFileUrl) 
+              : null,
+            remarks: sub.remarks || null,
+            
+            // Correction status metadata
+            hasCorrectionFile,
+            hasRemarks,
+            isCorrected: hasCorrectionData,
+            correctionStatus: hasCorrectionData ? 'corrected' : 'pending',
+            
+            isActive: sub.isActive,
+            createdAt: sub.createdAt,
+            updatedAt: sub.updatedAt,
+          };
+        });
+        
+        const totalSubmissions = homework.submissions.length;
+        const correctedSubmissions = homework.submissions.filter(
+          sub => sub.teacherCorrectionFileUrl || sub.remarks
+        ).length;
+        
+        response.hasSubmitted = totalSubmissions > 0;
+        response.submissionCount = totalSubmissions;
+        response.correctedCount = correctedSubmissions;
+        response.pendingCorrectionCount = totalSubmissions - correctedSubmissions;
       }
 
       return response as InstituteClassSubjectHomeworkResponseDto;

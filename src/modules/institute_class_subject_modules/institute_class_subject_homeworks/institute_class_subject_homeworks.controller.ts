@@ -94,24 +94,109 @@ export class InstituteClassSubjectHomeworksController {
     summary: 'Get all homework assignments (Optimized)', 
     description: `Retrieves homework assignments with advanced filtering, pagination, and search capabilities.
     
-**Performance Optimizations:**
-- Single query with all joins for optimal performance
-- Efficient filtering using proper database indexes
-- No submission data included by default (use includeSubmissions=true)
-- Consistent sorting with secondary ordering
+**COMPLETE URL EXAMPLES WITH PAGINATION:**
 
-**Usage Examples:**
-- \`GET /homeworks?instituteId=44&classId=40&search=mathematics\`
-- \`GET /homeworks?teacherId=40&fromDate=2025-08-01&toDate=2025-08-31\`
-- \`GET /homeworks?page=1&limit=20&sortBy=startDate&sortOrder=ASC\`
-- \`GET /homeworks?classId=40&includeReferences=true&includeSubmissions=true\` (get complete view)
+1. Basic with pagination:
+   \`GET /institute-class-subject-homeworks?page=1&limit=10\`
 
-**Include Options:**
+2. Filter by institute & class with pagination:
+   \`GET /institute-class-subject-homeworks?instituteId=44&classId=40&page=1&limit=20\`
+
+3. Search with pagination and sorting:
+   \`GET /institute-class-subject-homeworks?search=mathematics&page=1&limit=10&sortBy=startDate&sortOrder=DESC\`
+
+4. Complete with all filters and includes:
+   \`GET /institute-class-subject-homeworks?instituteId=44&classId=40&subjectId=2&page=1&limit=20&sortBy=startDate&sortOrder=DESC&includeReferences=true&includeSubmissions=true\`
+
+5. Date range with pagination:
+   \`GET /institute-class-subject-homeworks?fromDate=2025-08-01&toDate=2025-08-31&page=1&limit=10\`
+
+6. Student view (submissions auto-filtered by JWT):
+   \`GET /institute-class-subject-homeworks?instituteId=101&classId=1000&subjectId=2&includeSubmissions=true&page=1&limit=10\`
+
+**RESPONSE STRUCTURE (for frontend implementation):**
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "123",
+      "title": "Mathematics Homework 1",
+      "description": "Solve problems 1-10",
+      "startDate": "2025-08-01T00:00:00.000Z",
+      "endDate": "2025-08-10T23:59:59.000Z",
+      "instituteId": "44",
+      "classId": "40",
+      "subjectId": "2",
+      "teacherId": "15",
+      "isActive": true,
+      "references": [],  // if includeReferences=true
+      "mySubmissions": [  // if includeSubmissions=true
+        {
+          "id": "456",
+          "submissionDate": "2025-08-09T15:30:00.000Z",
+          "submissionType": "UPLOAD",  // or "GOOGLE_DRIVE"
+          
+          // For UPLOAD submissions - full S3 URL from cloud storage
+          "fileUrl": "https://storage.googleapis.com/.../submission.pdf",
+          
+          // For GOOGLE_DRIVE submissions - Drive URL (not modified by cloud storage)
+          "driveFileId": "abc123xyz",
+          "driveViewUrl": "https://drive.google.com/file/d/abc123xyz/view",
+          "driveFileName": "homework_submission.pdf",
+          "driveMimeType": "application/pdf",
+          "driveFileSize": 204800,
+          
+          // Teacher's correction (always S3/cloud storage, never Drive)
+          "teacherCorrectionFileUrl": "https://storage.googleapis.com/.../corrected.pdf",
+          "remarks": "Good work, but review problem 5",
+          
+          // Correction status
+          "hasCorrectionFile": true,
+          "hasRemarks": true,
+          "isCorrected": true,
+          "correctionStatus": "corrected",
+          
+          "createdAt": "2025-08-09T15:30:00.000Z",
+          "updatedAt": "2025-08-10T10:00:00.000Z"
+        }
+      ],
+      "hasSubmitted": true,
+      "submissionCount": 1,
+      "correctedCount": 1,
+      "pendingCorrectionCount": 0
+    }
+  ],
+  "meta": {
+    "total": 45,
+    "page": 1,
+    "limit": 10,
+    "totalPages": 5
+  }
+}
+\`\`\`
+
+**URL HANDLING:**
+- **S3/Cloud Storage files** (submissionType: "UPLOAD"): Full cloud storage URLs applied automatically
+- **Google Drive files** (submissionType: "GOOGLE_DRIVE"): Drive URLs returned as-is, no cloud storage service applied
+- **Teacher corrections**: Always S3/cloud storage URLs (corrections are never stored in Drive)
+
+**PAGINATION PARAMETERS:**
+- \`page\` (default: 1) - Current page number
+- \`limit\` (default: 10, max: 100) - Items per page
+- Use \`meta.totalPages\` to build pagination UI
+- Use \`meta.total\` for "Showing X of Y results"
+
+**INCLUDE OPTIONS:**
 - \`includeReferences=true\` - Include reference materials (videos, PDFs, links)
-- \`includeSubmissions=true\` - Include submissions (automatically filtered by JWT userId)
+- \`includeSubmissions=true\` - Include student's submissions (JWT filtered)
+  * **ALWAYS includes teacher corrections when available:**
+    - \`teacherCorrectionFileUrl\` - Teacher's correction file
+    - \`remarks\` - Teacher's feedback/comments
+    - \`correctionStatus\` - Whether corrected or pending
+  * No separate parameter needed for corrections - they're included automatically
 
-**Note:** Submissions are ALWAYS filtered by the authenticated user's ID from JWT token for security.
-Students see their own submissions automatically. Do NOT pass userId parameter.` 
+**SECURITY NOTE:**
+Submissions are ALWAYS filtered by JWT token userId. Students automatically see only their own submissions with all corrections.` 
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
@@ -144,12 +229,23 @@ Students see their own submissions automatically. Do NOT pass userId parameter.`
     summary: 'Get homeworks by class and subject (Optimized)', 
     description: `Retrieves homework assignments for a specific class and subject with optional additional filtering.
     
-**Performance Optimizations:**
-- Uses the same optimized single-query architecture as the main endpoint
-- All query parameters from the main \`findAll\` endpoint can be used here as well
-- Fast, efficient filtering with proper database indexes
+**COMPLETE URL EXAMPLES WITH PAGINATION:**
 
-**Additional Filters:** All query parameters from the main \`findAll\` endpoint work here too.` 
+1. Basic class & subject with pagination:
+   \`GET /institute-class-subject-homeworks/class/40/subject/2?page=1&limit=10\`
+
+2. With date range and pagination:
+   \`GET /institute-class-subject-homeworks/class/40/subject/2?fromDate=2025-08-01&toDate=2025-08-31&page=1&limit=20\`
+
+3. With search and sorting:
+   \`GET /institute-class-subject-homeworks/class/40/subject/2?search=homework&sortBy=startDate&sortOrder=DESC&page=1&limit=10\`
+
+4. Student view with submissions:
+   \`GET /institute-class-subject-homeworks/class/1000/subject/2?includeSubmissions=true&page=1&limit=10\`
+
+**RESPONSE:** Same paginated structure as main endpoint (see above)
+
+**PAGINATION:** All pagination parameters (page, limit) supported` 
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
@@ -168,6 +264,8 @@ Students see their own submissions automatically. Do NOT pass userId parameter.`
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page', example: 10 })
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field', enum: ['title', 'startDate', 'endDate', 'createdAt'], example: 'startDate' })
   @ApiQuery({ name: 'sortOrder', required: false, description: 'Sort order', enum: ['ASC', 'DESC'], example: 'DESC' })
+  @ApiQuery({ name: 'includeReferences', required: false, type: Boolean, description: 'Include reference materials', example: true })
+  @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions (JWT filtered)', example: true })
   @HttpCode(HttpStatus.OK)
   async findByClassAndSubject(
     @Param('classId', ParseBigIntPipe) classId: string, 
@@ -188,12 +286,23 @@ Students see their own submissions automatically. Do NOT pass userId parameter.`
     summary: 'Get homeworks by institute (Optimized)', 
     description: `Retrieves homework assignments for a specific institute with optional additional filtering.
     
-**Performance Optimizations:**
-- Single query with all joins
-- Efficient filtering using proper indexes
-- All query parameters from the main \`findAll\` endpoint can be used here as well
+**COMPLETE URL EXAMPLES WITH PAGINATION:**
 
-**Additional Filters:** All query parameters from the main \`findAll\` endpoint work here too.` 
+1. Basic institute with pagination:
+   \`GET /institute-class-subject-homeworks/institute/44?page=1&limit=20\`
+
+2. Filter by class with pagination:
+   \`GET /institute-class-subject-homeworks/institute/44?classId=40&page=1&limit=10\`
+
+3. Filter by teacher and date range:
+   \`GET /institute-class-subject-homeworks/institute/44?teacherId=15&fromDate=2025-08-01&toDate=2025-08-31&page=1&limit=20\`
+
+4. Complete with all filters:
+   \`GET /institute-class-subject-homeworks/institute/44?classId=40&subjectId=2&search=math&sortBy=startDate&sortOrder=DESC&page=1&limit=10\`
+
+**RESPONSE:** Same paginated structure as main endpoint (see above)
+
+**PAGINATION:** All pagination parameters (page, limit) supported` 
   })
   @ApiResponse({ 
     status: HttpStatus.OK, 
@@ -212,6 +321,8 @@ Students see their own submissions automatically. Do NOT pass userId parameter.`
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page', example: 10 })
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field', enum: ['title', 'startDate', 'endDate', 'createdAt'], example: 'startDate' })
   @ApiQuery({ name: 'sortOrder', required: false, description: 'Sort order', enum: ['ASC', 'DESC'], example: 'DESC' })
+  @ApiQuery({ name: 'includeReferences', required: false, type: Boolean, description: 'Include reference materials', example: true })
+  @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions (JWT filtered)', example: true })
   @HttpCode(HttpStatus.OK)
   async findByInstitute(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
