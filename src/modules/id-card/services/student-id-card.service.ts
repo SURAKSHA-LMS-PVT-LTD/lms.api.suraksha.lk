@@ -76,14 +76,14 @@ export class StudentIdCardService {
 
         // Calculate positions
         const marginX = (A4_WIDTH - CARD_WIDTH) / 2;
-        const titleY = 0.4 * INCH;
+        const titleY = 0.4 * INCH;  // Title at top
         const verticalSpacing = 0.12 * INCH;  // ~3mm between cards
 
         // Title at top
         doc.fontSize(16)
           .fillColor(COLORS.borderColor)
           .font('Helvetica-Bold')
-          .text('STUDENT ID CARD', 0, titleY, {
+          .text('USER ID CARD', 0, titleY, {
             width: A4_WIDTH,
             align: 'center',
           });
@@ -96,17 +96,12 @@ export class StudentIdCardService {
             align: 'center',
           });
 
-        // Front card position - starts below title
-        const frontY = titleY + 0.6 * INCH;
-
-        // Label
-        doc.fontSize(10)
-          .fillColor(COLORS.borderColor)
-          .font('Helvetica-Bold')
-          .text('FRONT SIDE', 0, frontY + CARD_HEIGHT + 0.15 * INCH, {
-            width: A4_WIDTH,
-            align: 'center',
-          });
+        // Calculate total cards height and center vertically
+        const cardsHeight = CARD_HEIGHT + verticalSpacing + CARD_HEIGHT;
+        const cardsStartY = titleY + 0.8 * INCH + (A4_HEIGHT - titleY - 0.8 * INCH - cardsHeight - 1.2 * INCH) / 2;
+        
+        // Front card position - vertically centered in available space
+        const frontY = cardsStartY;
 
         // Draw front side
         await this.drawFrontSide(doc, marginX, frontY, config);
@@ -114,7 +109,19 @@ export class StudentIdCardService {
         // Back card position - below front card
         const backY = frontY + CARD_HEIGHT + verticalSpacing;
 
-        // Label
+        // Draw back side
+        await this.drawBackSide(doc, marginX, backY, config);
+
+        // FRONT SIDE label - centered at top of front card
+        doc.fontSize(10)
+          .fillColor(COLORS.borderColor)
+          .font('Helvetica-Bold')
+          .text('FRONT SIDE', 0, frontY - 0.25 * INCH, {
+            width: A4_WIDTH,
+            align: 'center',
+          });
+
+        // BACK SIDE label - centered below back card
         doc.fontSize(10)
           .fillColor(COLORS.borderColor)
           .font('Helvetica-Bold')
@@ -123,33 +130,32 @@ export class StudentIdCardService {
             align: 'center',
           });
 
-        // Draw back side
-        await this.drawBackSide(doc, marginX, backY, config);
-
-        // Draw fold line between cards
+        // Draw fold line between cards (extended length)
         const foldLineY = frontY + CARD_HEIGHT + verticalSpacing / 2;
+        const foldLineStartX = marginX - 1.5 * INCH;  // Extend to left
+        const foldLineEndX = marginX + CARD_WIDTH + 1.5 * INCH;  // Extend to right
         doc
           .save()
           .strokeColor(COLORS.borderColor)
           .lineWidth(1)
           .dash(5, 5)
-          .moveTo(marginX, foldLineY)
-          .lineTo(marginX + CARD_WIDTH, foldLineY)
+          .moveTo(foldLineStartX, foldLineY)
+          .lineTo(foldLineEndX, foldLineY)
           .stroke()
           .restore();
 
-        // Fold line label on left
+        // Fold line label at start of line (left side)
         doc
           .fontSize(8)
           .fillColor(COLORS.borderColor)
           .font('Helvetica-Bold')
-          .text('FOLD LINE', marginX - 1.2 * INCH, foldLineY - 0.08 * INCH, {
+          .text('FOLD LINE', foldLineStartX - 0.1 * INCH, foldLineY - 0.08 * INCH, {
             width: 1.0 * INCH,
             align: 'right',
           });
 
-        // Draw fold instruction icon on right side
-        const iconX = marginX + CARD_WIDTH + 0.3 * INCH;
+        // Draw fold instruction icon at end of line (right side)
+        const iconX = foldLineEndX + 0.1 * INCH;
         const iconY = foldLineY - 0.5 * INCH;
         const iconSize = 0.8 * INCH;
 
@@ -212,6 +218,25 @@ export class StudentIdCardService {
             align: 'center',
           });
 
+        // Draw cutting lines with scissors icons (1mm padding from card)
+        const cutPadding = 0.04 * INCH; // 1mm ≈ 0.04"
+        const cutLeft = marginX - cutPadding;
+        const cutRight = marginX + CARD_WIDTH + cutPadding;
+        const cutTop = frontY - cutPadding;
+        const cutBottom = backY + CARD_HEIGHT + cutPadding;
+
+        // Top cutting line
+        this.drawCuttingLine(doc, cutLeft, cutTop, cutRight, cutTop, 'horizontal');
+
+        // Bottom cutting line
+        this.drawCuttingLine(doc, cutLeft, cutBottom, cutRight, cutBottom, 'horizontal');
+
+        // Left cutting line
+        this.drawCuttingLine(doc, cutLeft, cutTop, cutLeft, cutBottom, 'vertical');
+
+        // Right cutting line
+        this.drawCuttingLine(doc, cutRight, cutTop, cutRight, cutBottom, 'vertical');
+
         // Footer instructions at bottom
         doc.fontSize(7)
           .fillColor(COLORS.textSecondary)
@@ -258,7 +283,29 @@ export class StudentIdCardService {
   }
 
   /**
-   * Draw front side of ID card
+   * Draw Cutting Line
+   */
+  private drawCuttingLine(
+    doc: any,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    orientation: 'horizontal' | 'vertical',
+  ): void {
+    // Draw dashed cutting line
+    doc
+      .save()
+      .strokeColor(COLORS.textSecondary)
+      .lineWidth(0.5)
+      .dash(3, 3)
+      .moveTo(x1, y1)
+      .lineTo(x2, y2)
+      .stroke()
+      .restore();
+  }
+
+  /**   * Draw front side of ID card
    */
   private async drawFrontSide(
     doc: PDFKit.PDFDocument,
@@ -278,13 +325,6 @@ export class StudentIdCardService {
     doc
       .roundedRect(x, y, CARD_WIDTH, headerHeight, cornerRadius)
       .fill(COLORS.headerColor);
-
-    // "FRONT SIDE" text at top left
-    doc
-      .fontSize(7)
-      .fillColor(COLORS.white)
-      .font('Helvetica-Bold')
-      .text('FRONT SIDE', x + 0.1 * INCH, y + 0.08 * INCH);
 
     // Organization name at top
     doc
