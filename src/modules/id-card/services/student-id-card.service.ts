@@ -132,8 +132,8 @@ export class StudentIdCardService {
 
         // Draw fold line between cards (extended length)
         const foldLineY = frontY + CARD_HEIGHT + verticalSpacing / 2;
-        const foldLineStartX = marginX - 1.5 * INCH;  // Extend to left
-        const foldLineEndX = marginX + CARD_WIDTH + 1.5 * INCH;  // Extend to right
+        const foldLineStartX = marginX - 1.0 * INCH;  // Extend 1" to left
+        const foldLineEndX = marginX + CARD_WIDTH + 1.0 * INCH;  // Extend 1" to right
         doc
           .save()
           .strokeColor(COLORS.borderColor)
@@ -144,15 +144,26 @@ export class StudentIdCardService {
           .stroke()
           .restore();
 
-        // Fold line label at start of line (left side)
+        // Fold line label at start position (above the line)
         doc
           .fontSize(8)
           .fillColor(COLORS.borderColor)
           .font('Helvetica-Bold')
-          .text('FOLD LINE', foldLineStartX - 0.1 * INCH, foldLineY - 0.08 * INCH, {
+          .text('FOLD LINE', foldLineStartX, foldLineY - 0.25 * INCH, {
             width: 1.0 * INCH,
-            align: 'right',
+            align: 'left',
           });
+
+        // Draw starting section marker (arrow pointing to line start)
+        const arrowSize = 0.12 * INCH;
+        doc
+          .save()
+          .fillColor(COLORS.borderColor)
+          .moveTo(foldLineStartX, foldLineY)
+          .lineTo(foldLineStartX - arrowSize, foldLineY - arrowSize / 2)
+          .lineTo(foldLineStartX - arrowSize, foldLineY + arrowSize / 2)
+          .fill()
+          .restore();
 
         // Draw fold instruction icon at end of line (right side)
         const iconX = foldLineEndX + 0.1 * INCH;
