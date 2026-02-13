@@ -214,7 +214,7 @@ export class PushNotificationAdminController {
   }
 
   /**
-   * Determine sender role based on user and notification scope
+   * TEST ENDPOINT: Send a test notification to all users with active FCM tokens
    */
   private getSenderRole(user: any, scope: NotificationScope): string {
     // Check user type from JWT

@@ -109,6 +109,16 @@ export class FcmNotificationService implements OnModuleInit {
     }
 
     try {
+      // Sanitize data payload - FCM requires all data values to be strings
+      const sanitizedData: { [key: string]: string } = {};
+      if (data) {
+        for (const [key, value] of Object.entries(data)) {
+          if (value !== null && value !== undefined) {
+            sanitizedData[key] = String(value);
+          }
+        }
+      }
+
       const message: admin.messaging.Message = {
         token: fcmToken,
         notification: {
@@ -116,7 +126,7 @@ export class FcmNotificationService implements OnModuleInit {
           body: notification.body,
           imageUrl: notification.imageUrl,
         },
-        data: data || {},
+        data: sanitizedData,
         android: {
           priority: options?.priority === 'high' ? 'high' : 'normal',
           ttl: options?.timeToLive || 86400000, // 24 hours default
@@ -483,6 +493,16 @@ export class FcmNotificationService implements OnModuleInit {
     }
 
     try {
+      // Sanitize data payload - FCM requires all data values to be strings
+      const sanitizedData: { [key: string]: string } = {};
+      if (data) {
+        for (const [key, value] of Object.entries(data)) {
+          if (value !== null && value !== undefined) {
+            sanitizedData[key] = String(value);
+          }
+        }
+      }
+
       const message: admin.messaging.Message = {
         topic,
         notification: {
@@ -490,7 +510,7 @@ export class FcmNotificationService implements OnModuleInit {
           body: notification.body,
           imageUrl: notification.imageUrl,
         },
-        data: data || {},
+        data: sanitizedData,
         android: {
           priority: options?.priority === 'high' ? 'high' : 'normal',
           ttl: options?.timeToLive || 86400000,

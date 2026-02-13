@@ -184,6 +184,20 @@ export class UserFcmTokenRepository {
   }
 
   /**
+   * Get all unique user IDs that have active FCM tokens
+   * Useful for sending broadcast notifications to all users
+   */
+  async getAllUserIdsWithActiveTokens(): Promise<string[]> {
+    const results = await this.repository
+      .createQueryBuilder('fcmToken')
+      .select('DISTINCT fcmToken.userId', 'userId')
+      .where('fcmToken.isActive = :isActive', { isActive: true })
+      .getRawMany();
+    
+    return results.map(result => result.userId);
+  }
+
+  /**
    * Remove the oldest inactive device when user reaches device limit
    * Priority: Remove oldest inactive device first, then oldest active device
    */
