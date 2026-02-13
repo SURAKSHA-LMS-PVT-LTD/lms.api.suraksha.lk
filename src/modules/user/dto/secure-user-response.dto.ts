@@ -78,6 +78,10 @@ export class UserSummaryResponseDto {
   @Expose()
   lastName?: string;
 
+  @ApiPropertyOptional({ description: 'Name with initials', example: 'J. Doe' })
+  @Expose()
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'Email address', example: 'john.doe@example.com' })
   @Expose()
   email?: string;

@@ -102,7 +102,9 @@ export class InstituteClassSubjectStudentsService {
         'student.id',
         'student.firstName',
         'student.lastName',
+        'student.nameWithInitials',
         'student.email',
+        'student.imageUrl',
         'student.isActive'
       ]);
 
@@ -129,7 +131,9 @@ export class InstituteClassSubjectStudentsService {
         'student.id',
         'student.firstName',
         'student.lastName',
+        'student.nameWithInitials',
         'student.email',
+        'student.imageUrl',
         'student.isActive'
       ])
       .where('enrollment.instituteId = :instituteId', { instituteId })
@@ -177,7 +181,9 @@ export class InstituteClassSubjectStudentsService {
         'student.id',
         'student.firstName',
         'student.lastName',
-        'student.email'
+        'student.nameWithInitials',
+        'student.email',
+        'student.imageUrl'
       ])
       .where('enrollment.instituteId = :instituteId', { instituteId })
       .andWhere('enrollment.classId = :classId', { classId })
@@ -305,7 +311,9 @@ export class InstituteClassSubjectStudentsService {
         'student.id',
         'student.firstName',
         'student.lastName',
-        'student.email'
+        'student.nameWithInitials',
+        'student.email',
+        'student.imageUrl'
       ])
       .where('enrollment.instituteId = :instituteId', { instituteId })
       .andWhere('enrollment.classId = :classId', { classId })
@@ -336,7 +344,9 @@ export class InstituteClassSubjectStudentsService {
         'student.id',
         'student.firstName',
         'student.lastName',
-        'student.email'
+        'student.nameWithInitials',
+        'student.email',
+        'student.imageUrl'
       ])
       .where('enrollment.studentId = :studentId', { studentId })
       .andWhere('enrollment.isActive = :isActive', { isActive: true })
@@ -1192,6 +1202,7 @@ export class InstituteClassSubjectStudentsService {
           'student.id',
           'student.firstName',
           'student.lastName',
+          'student.nameWithInitials',
           'student.email',
           'student.imageUrl'
         ])
@@ -1210,6 +1221,7 @@ export class InstituteClassSubjectStudentsService {
         studentId: enrollment.studentId,
         studentFirstName: enrollment.student?.firstName,
         studentLastName: enrollment.student?.lastName,
+        studentNameWithInitials: enrollment.student?.nameWithInitials,
         studentEmail: enrollment.student?.email,
         studentImageUrl: enrollment.student?.imageUrl,
         enrollmentMethod: enrollment.enrollmentMethod,

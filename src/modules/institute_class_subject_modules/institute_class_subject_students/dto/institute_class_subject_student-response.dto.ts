@@ -67,6 +67,7 @@ export class InstituteClassSubjectStudentResponseDto {
         id: entity.student.id,
         firstName: entity.student.firstName,
         lastName: entity.student.lastName,
+        nameWithInitials: entity.student.nameWithInitials,
         email: entity.student.email,
         userType: entity.student.userType,
         imageUrl: entity.student.imageUrl

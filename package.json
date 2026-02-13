@@ -27,7 +27,8 @@
     "start:dev:local": "STORAGE_PROVIDER=local npm run start:dev",
     "test:storage": "node test-public-apis.js",
     "validate:env": "ts-node src/config/validate-environment.ts",
-    "security:check": "npm run validate:env"
+    "security:check": "npm run validate:env",
+    "generate:id-card": "ts-node -r tsconfig-paths/register generate-sample-id.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.879.0",
@@ -37,6 +38,7 @@
     "@aws-sdk/s3-presigned-post": "^3.940.0",
     "@aws-sdk/s3-request-presigner": "^3.685.0",
     "@google-cloud/storage": "^7.17.0",
+    "@napi-rs/canvas": "^0.1.92",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.6",
@@ -76,6 +78,7 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
     "qrcode": "^1.5.4",
     "redis": "^4.7.1",
     "reflect-metadata": "^0.2.2",
@@ -96,6 +99,7 @@
     "@types/nodemailer": "^6.4.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
+    "@types/pdfkit": "^0.17.5",
     "@types/qrcode": "^1.5.5",
     "@types/uuid": "^10.0.0",
     "prettier": "^3.3.3",

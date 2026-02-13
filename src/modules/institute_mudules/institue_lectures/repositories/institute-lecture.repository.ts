@@ -63,7 +63,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         .addSelect(['class.id', 'class.name', 'class.grade'])
         // Only select instructor name fields
         .leftJoin('lecture.instructor', 'instructor')
-        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName'])
+        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName', 'instructor.nameWithInitials', 'instructor.email', 'instructor.imageUrl'])
         .orderBy('lecture.startTime', 'ASC');
 
       if (filters) {
@@ -106,7 +106,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         .leftJoin('lecture.class', 'class')
         .addSelect(['class.id', 'class.name', 'class.grade'])
         .leftJoin('lecture.instructor', 'instructor')
-        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName'])
+        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName', 'instructor.nameWithInitials', 'instructor.email', 'instructor.imageUrl'])
         .where('lecture.id = :id', { id })
         .getOne();
       
@@ -133,7 +133,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         .leftJoin('lecture.class', 'class')
         .addSelect(['class.id', 'class.name', 'class.grade'])
         .leftJoin('lecture.instructor', 'instructor')
-        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName'])
+        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName', 'instructor.nameWithInitials', 'instructor.email', 'instructor.imageUrl'])
         .where('lecture.instituteId = :instituteId', { instituteId })
         .orderBy('lecture.startTime', 'ASC')
         .getMany();

@@ -1409,7 +1409,7 @@ export class InstitutePaymentService {
       .leftJoin('submission.payment', 'payment')
       .addSelect(['payment.instituteId'])
       .leftJoin('submission.submitter', 'submitter')
-      .addSelect(['submitter.firstName', 'submitter.lastName'])
+      .addSelect(['submitter.id', 'submitter.firstName', 'submitter.lastName', 'submitter.nameWithInitials', 'submitter.email', 'submitter.imageUrl'])
       .where('submission.id = :submissionId', { submissionId })
       .getOne();
 

@@ -233,7 +233,7 @@ export class InstituteClassSubjectExamsService {
       
       if (needsCreator || true) { // Always include for now, can optimize later
         queryBuilder.leftJoin('exam.creator', 'creator')
-          .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.email']);
+          .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.nameWithInitials', 'creator.email', 'creator.imageUrl']);
       }
 
       // Apply all filters efficiently using proper column names
@@ -389,7 +389,7 @@ export class InstituteClassSubjectExamsService {
         .leftJoin('exam.subject', 'subject')
         .addSelect(['subject.id', 'subject.name', 'subject.code'])
         .leftJoin('exam.creator', 'creator')
-        .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.email'])
+        .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.nameWithInitials', 'creator.email', 'creator.imageUrl'])
         .where('exam.id = :id', { id })
         .getOne();
 
@@ -541,7 +541,7 @@ export class InstituteClassSubjectExamsService {
         .leftJoin('exam.subject', 'subject')
         .addSelect(['subject.id', 'subject.name', 'subject.code'])
         .leftJoin('exam.creator', 'creator')
-        .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.email'])
+        .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.nameWithInitials', 'creator.email', 'creator.imageUrl'])
         .where('exam.id = :id', { id })
         .getOne();
 
@@ -610,7 +610,9 @@ export class InstituteClassSubjectExamsService {
           'creator.id',
           'creator.firstName',
           'creator.lastName',
-          'creator.email'
+          'creator.nameWithInitials',
+          'creator.email',
+          'creator.imageUrl'
         ])
         .where('exam.id = :id', { id })
         .getOne();
@@ -665,7 +667,7 @@ export class InstituteClassSubjectExamsService {
         .leftJoin('exam.subject', 'subject')
         .addSelect(['subject.id', 'subject.name', 'subject.code'])
         .leftJoin('exam.creator', 'creator')
-        .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.email'])
+        .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.nameWithInitials', 'creator.email', 'creator.imageUrl'])
         .where('exam.scheduleDate >= :now', { now: getCurrentSriLankaTime() })
         .andWhere('exam.isActive = :isActive', { isActive: true })
         .andWhere('exam.status IN (:...statuses)', { statuses: ['scheduled', 'active'] });
@@ -728,7 +730,9 @@ export class InstituteClassSubjectExamsService {
           'creator.id',
           'creator.firstName',
           'creator.lastName',
-          'creator.email'
+          'creator.nameWithInitials',
+          'creator.email',
+          'creator.imageUrl'
         ])
         .where('exam.id = :id', { id })
         .getOne();

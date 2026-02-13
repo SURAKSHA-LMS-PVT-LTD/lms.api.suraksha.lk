@@ -530,14 +530,15 @@ export class ParentsService {
       .createQueryBuilder('parent')
       .select(['parent.userId'])
       .leftJoin('parent.user', 'user')
-      .addSelect(['user.id', 'user.firstName', 'user.lastName'])
+      .addSelect(['user.id', 'user.firstName', 'user.lastName', 'user.nameWithInitials', 'user.email', 'user.imageUrl'])
       .leftJoin('parent.childrenAsFather', 'childrenAsFather')
       .addSelect(['childrenAsFather.userId'])
       .leftJoin('childrenAsFather.user', 'childrenAsFatherUser')
       .addSelect([
         'childrenAsFatherUser.id', 
         'childrenAsFatherUser.firstName', 
-        'childrenAsFatherUser.lastName', 
+        'childrenAsFatherUser.lastName',
+        'childrenAsFatherUser.nameWithInitials',
         'childrenAsFatherUser.phoneNumber',
         'childrenAsFatherUser.email',
         'childrenAsFatherUser.imageUrl'
@@ -548,7 +549,8 @@ export class ParentsService {
       .addSelect([
         'childrenAsMotherUser.id', 
         'childrenAsMotherUser.firstName', 
-        'childrenAsMotherUser.lastName', 
+        'childrenAsMotherUser.lastName',
+        'childrenAsMotherUser.nameWithInitials',
         'childrenAsMotherUser.phoneNumber',
         'childrenAsMotherUser.email',
         'childrenAsMotherUser.imageUrl'
