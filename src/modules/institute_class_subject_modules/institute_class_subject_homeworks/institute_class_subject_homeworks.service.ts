@@ -229,12 +229,13 @@ export class InstituteClassSubjectHomeworksService {
         queryBuilder.leftJoinAndSelect('homework.references', 'reference', 'reference.isActive = :refActive', { refActive: true });
       }
 
-      // 🚀 PERFORMANCE: Load submissions ONLY with userId filter (never all submissions)
-      // Usage: Students get own (JWT userId), Teachers/Admins pass userId query param for specific student
-      const targetUserId = query.userId || user?.userId || user?.id || user?.s;
+      // PERFORMANCE & SECURITY: Load submissions ONLY with JWT userId
+      // CRITICAL: Always use JWT token userId, NOT query.userId (security)
+      // Students see their own submissions, Teachers/Admins see student's via JWT
+      const targetUserId = user?.s || user?.id || user?.userId;
       
       if (query.includeSubmissions && targetUserId) {
-        // Load ONLY specific user's submissions (homework_id + user_id filter)
+        // Load ONLY specific user's submissions filtered by JWT userId
         queryBuilder.leftJoinAndSelect(
           'homework.submissions', 
           'submission', 
