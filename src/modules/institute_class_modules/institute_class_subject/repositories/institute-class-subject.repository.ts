@@ -205,6 +205,8 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
         'ics.subjectId',
         'ics.teacherId',
         'ics.isActive',
+        'ics.enrollmentEnabled',
+        'ics.enrollmentKey',
         'ics.createdAt',
         'ics.updatedAt',
         'subject.id',

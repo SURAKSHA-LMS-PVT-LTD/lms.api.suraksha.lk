@@ -38,7 +38,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     // For protected routes, throw error if no user
     if (err || !user) {
-      throw err || new UnauthorizedException();
+      // Provide detailed error message from passport info
+      const errorMessage = info?.message || info?.name || 'Authentication failed';
+      throw err || new UnauthorizedException(errorMessage);
     }
 
     return user;
