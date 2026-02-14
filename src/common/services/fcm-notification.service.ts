@@ -165,12 +165,13 @@ export class FcmNotificationService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`❌ Failed to send notification: ${error.message}`);
       
-      // Handle specific Firebase errors
+      // Handle specific Firebase errors for invalid/mismatched tokens
       if (error.code === 'messaging/invalid-registration-token' ||
-          error.code === 'messaging/registration-token-not-registered') {
+          error.code === 'messaging/registration-token-not-registered' ||
+          error.code === 'messaging/mismatched-credential') {
         return {
           success: false,
-          error: 'Invalid or expired token',
+          error: 'Invalid, expired, or mismatched token',
         };
       }
 
@@ -289,8 +290,10 @@ export class FcmNotificationService implements OnModuleInit {
           if (error?.stack) {
             this.logger.debug(`   Stack: ${error.stack}`);
           }
+          // Mark tokens as invalid if they're unregistered, invalid, or from wrong Firebase project
           if (error?.code === 'messaging/invalid-registration-token' ||
-              error?.code === 'messaging/registration-token-not-registered') {
+              error?.code === 'messaging/registration-token-not-registered' ||
+              error?.code === 'messaging/mismatched-credential') {
             invalidTokens.push(fcmTokens[index]);
           }
           return {
