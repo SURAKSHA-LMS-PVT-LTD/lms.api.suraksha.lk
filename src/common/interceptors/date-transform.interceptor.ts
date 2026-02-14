@@ -4,6 +4,7 @@ import { map } from 'rxjs/operators';
 
 /**
  * Global interceptor to ensure dates are properly serialized to ISO strings
+ * with Sri Lanka timezone (+05:30) instead of UTC (Z)
  * Fixes issues with TypeORM bigNumberStrings causing dates to be empty objects
  */
 @Injectable()
@@ -15,14 +16,25 @@ export class DateTransformInterceptor implements NestInterceptor {
   }
 
   /**
-   * Recursively transform all Date objects to ISO strings
+   * Convert Date to ISO string with Sri Lanka timezone offset (+05:30)
+   * Simply converts to ISO format and replaces Z with +05:30
+   * Database already stores in correct timezone via connection config
+   */
+  private dateToSriLankaISO(date: Date): string {
+    // Use standard ISO string and just replace Z with +05:30
+    // This preserves the exact time from the database without any conversion
+    return date.toISOString().replace('Z', '+05:30');
+  }
+
+  /**
+   * Recursively transform all Date objects to ISO strings with Sri Lanka timezone
    */
   private transformDates(data: any): any {
     if (!data) return data;
 
     // Handle Date objects
     if (data instanceof Date) {
-      return data.toISOString();
+      return this.dateToSriLankaISO(data);
     }
 
     // Handle arrays
@@ -37,19 +49,19 @@ export class DateTransformInterceptor implements NestInterceptor {
       for (const [key, value] of Object.entries(data)) {
         // Check if this is a date field
         if (this.isDateField(key) && value) {
-          // Convert to Date if string, then to ISO string
+          // Convert to Date if string, then to ISO string with Sri Lanka timezone
           if (typeof value === 'string') {
             // Check if it's a date-only string (YYYY-MM-DD format) - preserve as-is
             if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
               transformed[key] = value; // Keep date-only format
             } else {
-              // It's a datetime string, convert to ISO
+              // It's a datetime string, convert to ISO with Sri Lanka timezone
               const date = new Date(value);
-              transformed[key] = isNaN(date.getTime()) ? value : date.toISOString();
+              transformed[key] = isNaN(date.getTime()) ? value : this.dateToSriLankaISO(date);
             }
           } else if (value instanceof Date) {
             // FIXED: Check instanceof Date FIRST before checking for empty object
-            transformed[key] = value.toISOString();
+            transformed[key] = this.dateToSriLankaISO(value);
           } else if (typeof value === 'object' && !(value instanceof Date) && Object.keys(value).length === 0) {
             // Handle malformed date objects (like empty {}) - but NOT Date instances
             transformed[key] = null;
@@ -58,7 +70,7 @@ export class DateTransformInterceptor implements NestInterceptor {
           }
         } else if (value instanceof Date) {
           // Transform any Date object regardless of field name
-          transformed[key] = value.toISOString();
+          transformed[key] = this.dateToSriLankaISO(value);
         } else {
           // Recursively transform nested objects/arrays
           transformed[key] = this.transformDates(value);
