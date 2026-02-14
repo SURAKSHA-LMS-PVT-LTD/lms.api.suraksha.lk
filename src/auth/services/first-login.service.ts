@@ -41,6 +41,7 @@ import {
 } from '../dto/first-login.dto';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { ProfileCompletionStatus, calculateProfileCompletion, determineProfileStatus } from '../../modules/user/enums/profile-completion-status.enum';
+import { ImageVerificationStatus } from '../../modules/institute_mudules/institue_user/enums/image-verification-status.enum';
 
 @Injectable()
 export class FirstLoginService {
@@ -726,9 +727,13 @@ export class FirstLoginService {
       updateData.password = await this.authService.hashPassword(dto.password);
     }
 
-    // Handle image URL
+    // Handle image URL - set to PENDING for admin verification
     if (imageUrl) {
       updateData.imageUrl = imageUrl;
+      updateData.imageVerificationStatus = ImageVerificationStatus.PENDING;
+      updateData.imageVerifiedBy = null;
+      updateData.imageVerifiedAt = null;
+      updateData.imageRejectionReason = null;
     }
 
     updateData.updatedAt = now();
@@ -1808,6 +1813,11 @@ export class FirstLoginService {
 
     if (dto.imageUrl && !user.imageUrl) {
       updateData.imageUrl = dto.imageUrl;
+      // Set image verification status to PENDING when image is uploaded during first login
+      updateData.imageVerificationStatus = ImageVerificationStatus.PENDING;
+      updateData.imageVerifiedBy = null;
+      updateData.imageVerifiedAt = null;
+      updateData.imageRejectionReason = null;
     }
 
     // Profile completion
