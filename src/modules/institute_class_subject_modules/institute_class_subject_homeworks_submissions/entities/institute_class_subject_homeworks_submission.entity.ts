@@ -61,7 +61,23 @@ export class InstituteClassSubjectHomeworksSubmission {
   @Column({ name: 'teacher_correction_file_url', type: 'varchar', length: 255, nullable: true })
   teacherCorrectionFileUrl?: string;
 
-  // Google Drive Integration Fields
+  // Google Drive Integration Fields for Teacher Corrections
+  @Column({ name: 'correction_drive_file_id', type: 'varchar', length: 255, nullable: true })
+  correctionDriveFileId?: string;
+
+  @Column({ name: 'correction_drive_file_name', type: 'varchar', length: 500, nullable: true })
+  correctionDriveFileName?: string;
+
+  @Column({ name: 'correction_drive_mime_type', type: 'varchar', length: 100, nullable: true })
+  correctionDriveMimeType?: string;
+
+  @Column({ name: 'correction_drive_file_size', type: 'bigint', nullable: true })
+  correctionDriveFileSize?: number;
+
+  @Column({ name: 'correction_type', type: 'enum', enum: ['UPLOAD', 'GOOGLE_DRIVE'], nullable: true })
+  correctionType?: 'UPLOAD' | 'GOOGLE_DRIVE';
+
+  // Google Drive Integration Fields for Student Submissions
   @Column({ name: 'drive_file_id', type: 'varchar', length: 255, nullable: true })
   driveFileId?: string;
 
@@ -96,6 +112,7 @@ export class InstituteClassSubjectHomeworksSubmission {
       createdAt: this.createdAt instanceof Date ? this.createdAt.toISOString() : this.createdAt,
       updatedAt: this.updatedAt instanceof Date ? this.updatedAt.toISOString() : this.updatedAt,
       driveViewUrl: this.driveFileId ? `https://drive.google.com/file/d/${this.driveFileId}/view` : null,
+      correctionDriveViewUrl: this.correctionDriveFileId ? `https://drive.google.com/file/d/${this.correctionDriveFileId}/view` : null,
     };
   }
 }

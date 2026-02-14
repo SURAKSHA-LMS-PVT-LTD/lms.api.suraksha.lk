@@ -370,6 +370,129 @@ export class HomeworkSubmissionController {
     }
   }
 
+  @Post(':submissionId/correction-file-drive')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Upload teacher correction file from Google Drive', 
+    description: 'Teachers can attach a correction file directly from their Google Drive. The file must be accessible with the provided access token. Use /user-drive-access/token to get an access token if using stored OAuth credentials.' 
+  })
+  @ApiConsumes('application/json')
+  @ApiParam({ name: 'submissionId', description: 'Homework submission ID' })
+  @ApiBody({
+    description: 'Google Drive file details for correction',
+    schema: {
+      type: 'object',
+      properties: {
+        driveFileId: {
+          type: 'string',
+          description: 'Google Drive file ID',
+          example: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms'
+        },
+        accessToken: {
+          type: 'string',
+          description: 'Google OAuth2 access token for Drive API. Get from /user-drive-access/token or Google Sign-In',
+          example: 'ya29.a0AfH6SM...'
+        },
+        fileName: {
+          type: 'string',
+          description: 'Optional custom file name (auto-detected from Drive if omitted)',
+          example: 'Correction_Essay_JohnDoe.pdf'
+        },
+        mimeType: {
+          type: 'string',
+          description: 'Optional MIME type (auto-detected from Drive if omitted)',
+          example: 'application/pdf'
+        },
+        remarks: {
+          type: 'string',
+          description: 'Optional teacher remarks/feedback',
+          example: 'Good work overall. Please review the highlighted corrections.'
+        }
+      },
+      required: ['driveFileId', 'accessToken']
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Correction file from Google Drive attached successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Correction file from Google Drive attached successfully',
+        data: {
+          submissionId: "123",
+          correctionType: "GOOGLE_DRIVE",
+          correctionDriveFileId: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+          correctionDriveFileName: "Correction_Essay.pdf",
+          correctionDriveMimeType: "application/pdf",
+          correctionDriveViewUrl: "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms/view",
+          uploadDate: "2024-01-15T14:30:00Z"
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: HttpStatus.BAD_REQUEST, 
+    description: 'Invalid Drive file or access token' 
+  })
+  @HttpCode(HttpStatus.OK)
+  async uploadCorrectionFileFromDrive(
+    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Body() body: { 
+      driveFileId: string; 
+      accessToken: string; 
+      fileName?: string; 
+      mimeType?: string;
+      remarks?: string;
+    },
+    @Request() req: JwtRequest
+  ) {
+    if (!body.driveFileId) {
+      throw new BadRequestException('driveFileId is required');
+    }
+    if (!body.accessToken) {
+      throw new BadRequestException('accessToken is required');
+    }
+
+    const teacherId = req.user.s;
+
+    try {
+      const result = await this.homeworkSubmissionsService.submitCorrectionViaGoogleDrive(
+        submissionId,
+        teacherId,
+        body.driveFileId,
+        body.accessToken,
+        body.remarks,
+        body.fileName,
+        body.mimeType
+      );
+
+      return {
+        success: true,
+        message: 'Correction file from Google Drive attached successfully',
+        data: {
+          submissionId: result.id,
+          correctionType: 'GOOGLE_DRIVE',
+          correctionDriveFileId: body.driveFileId,
+          correctionDriveFileName: result.correctionDriveFileName || body.fileName,
+          correctionDriveMimeType: result.correctionDriveMimeType || body.mimeType,
+          correctionDriveViewUrl: `https://drive.google.com/file/d/${body.driveFileId}/view`,
+          uploadDate: getCurrentSriLankaTime()
+        }
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new BadRequestException('Failed to attach correction file from Google Drive');
+    }
+  }
+
   @Get(':submissionId/details')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({

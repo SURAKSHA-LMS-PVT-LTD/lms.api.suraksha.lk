@@ -36,6 +36,44 @@ export class InstituteClassSubjectHomeworksSubmissionResponseDto {
   @ApiProperty({ description: 'Teacher remarks', example: 'Good work, but needs improvement in question 3' })
   remarks?: string;
 
+  // Google Drive submission fields (student)
+  @ApiProperty({ description: 'Submission type', example: 'UPLOAD', enum: ['UPLOAD', 'GOOGLE_DRIVE'], required: false })
+  submissionType?: string;
+
+  @ApiProperty({ description: 'Drive file ID (student submission)', required: false })
+  driveFileId?: string;
+
+  @ApiProperty({ description: 'Drive file name (student submission)', required: false })
+  driveFileName?: string;
+
+  @ApiProperty({ description: 'Drive MIME type (student submission)', required: false })
+  driveMimeType?: string;
+
+  @ApiProperty({ description: 'Drive file size in bytes (student submission)', required: false })
+  driveFileSize?: number;
+
+  @ApiProperty({ description: 'Drive view URL (student submission)', required: false })
+  driveViewUrl?: string;
+
+  // Google Drive correction fields (teacher)
+  @ApiProperty({ description: 'Correction type', example: 'UPLOAD', enum: ['UPLOAD', 'GOOGLE_DRIVE'], required: false })
+  correctionType?: string;
+
+  @ApiProperty({ description: 'Drive file ID (teacher correction)', required: false })
+  correctionDriveFileId?: string;
+
+  @ApiProperty({ description: 'Drive file name (teacher correction)', required: false })
+  correctionDriveFileName?: string;
+
+  @ApiProperty({ description: 'Drive MIME type (teacher correction)', required: false })
+  correctionDriveMimeType?: string;
+
+  @ApiProperty({ description: 'Drive file size in bytes (teacher correction)', required: false })
+  correctionDriveFileSize?: number;
+
+  @ApiProperty({ description: 'Drive view URL (teacher correction)', required: false })
+  correctionDriveViewUrl?: string;
+
   @ApiProperty({ description: 'Active status', example: true })
   isActive: boolean;
 
@@ -65,6 +103,26 @@ export class InstituteClassSubjectHomeworksSubmissionResponseDto {
     dto.isActive = entity.isActive;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;
+
+    // Student Drive submission fields
+    dto.submissionType = entity.submissionType || null;
+    dto.driveFileId = entity.driveFileId || null;
+    dto.driveFileName = entity.driveFileName || null;
+    dto.driveMimeType = entity.driveMimeType || null;
+    dto.driveFileSize = entity.driveFileSize || null;
+    if (entity.driveFileId) {
+      dto.driveViewUrl = `https://drive.google.com/file/d/${entity.driveFileId}/view`;
+    }
+
+    // Teacher Drive correction fields
+    dto.correctionType = entity.correctionType || null;
+    dto.correctionDriveFileId = entity.correctionDriveFileId || null;
+    dto.correctionDriveFileName = entity.correctionDriveFileName || null;
+    dto.correctionDriveMimeType = entity.correctionDriveMimeType || null;
+    dto.correctionDriveFileSize = entity.correctionDriveFileSize || null;
+    if (entity.correctionDriveFileId) {
+      dto.correctionDriveViewUrl = `https://drive.google.com/file/d/${entity.correctionDriveFileId}/view`;
+    }
     
     // Include full homework details but other relations as IDs only
     if (entity.homework) {

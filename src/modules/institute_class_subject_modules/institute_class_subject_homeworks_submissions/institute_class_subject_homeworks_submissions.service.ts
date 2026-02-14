@@ -670,4 +670,143 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       this.cloudStorageService
     );
   }
+
+  /**
+   * Submit teacher correction via Google Drive
+   * Teachers/Admins can attach correction files from their Google Drive
+   * IMPORTANT: Access token is used only for validation, NOT stored
+   */
+  async submitCorrectionViaGoogleDrive(
+    submissionId: string,
+    teacherId: string,
+    driveFileId: string,
+    accessToken: string,
+    remarks?: string,
+    fileName?: string,
+    mimeType?: string
+  ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+    // Get submission
+    const submission = await this.submissionRepository.findOne({
+      where: { id: submissionId },
+      relations: ['homework']
+    });
+
+    if (!submission) {
+      throw new NotFoundException(`Homework submission with ID ${submissionId} not found`);
+    }
+
+    // Verify the Drive file exists using teacher's access token
+    const fileExists = await this.googleAuthService.verifyFileExists(
+      driveFileId,
+      accessToken
+    );
+
+    if (!fileExists) {
+      throw new BadRequestException(
+        'Unable to verify file in Google Drive. Please ensure the file exists and you have granted access.'
+      );
+    }
+
+    // Get file metadata from Drive if not provided
+    let fileMetadata = null;
+    if (!fileName || !mimeType) {
+      fileMetadata = await this.googleAuthService.getFileMetadata(
+        driveFileId,
+        accessToken
+      );
+    }
+
+    const timestamp = getCurrentSriLankaTime();
+    const correctionDriveViewUrl = `https://drive.google.com/file/d/${driveFileId}/view`;
+
+    // Update submission with Drive correction fields
+    await this.submissionRepository.update(submissionId, {
+      correctionDriveFileId: driveFileId,
+      correctionDriveFileName: fileName || fileMetadata?.name || 'Unknown',
+      correctionDriveMimeType: mimeType || fileMetadata?.mimeType || 'application/octet-stream',
+      correctionDriveFileSize: fileMetadata?.size ? parseInt(fileMetadata.size) : null,
+      correctionType: 'GOOGLE_DRIVE',
+      teacherCorrectionFileUrl: correctionDriveViewUrl,
+      remarks: remarks !== undefined ? (remarks?.trim() || null) : submission.remarks,
+      updatedAt: timestamp,
+    });
+
+    this.logger.log(`Teacher ${teacherId} added Drive correction for submission ${submissionId}: ${driveFileId}`);
+
+    // Return updated submission
+    const updatedSubmission = await this.submissionRepository.findOne({
+      where: { id: submissionId },
+      relations: ['homework']
+    });
+
+    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
+      updatedSubmission!,
+      this.cloudStorageService
+    );
+  }
+
+  /**
+   * Submit teacher correction via Google Drive using UserDriveAccess (stored OAuth tokens)
+   * Uses the teacher's connected Google Drive account
+   */
+  async submitCorrectionViaDriveAccess(
+    submissionId: string,
+    teacherId: string,
+    driveFileId: string,
+    driveAccessService: any,
+    remarks?: string,
+    shareWithStudentEmail?: string
+  ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+    const submission = await this.submissionRepository.findOne({
+      where: { id: submissionId },
+      relations: ['homework']
+    });
+
+    if (!submission) {
+      throw new NotFoundException(`Homework submission with ID ${submissionId} not found`);
+    }
+
+    // Use teacher's stored Drive connection to verify + register file
+    const fileMetadata = await driveAccessService.getFileMetadata(teacherId, driveFileId);
+
+    if (!fileMetadata) {
+      throw new BadRequestException(
+        'Unable to find file in your Google Drive. Please ensure the file exists.'
+      );
+    }
+
+    // Register the file in our system
+    const registeredFile = await driveAccessService.registerUploadedFile(teacherId, driveFileId, {
+      purpose: 'HOMEWORK_CORRECTION',
+      referenceType: 'homework_submission',
+      referenceId: submissionId,
+      shareWithEmails: shareWithStudentEmail ? [shareWithStudentEmail] : undefined,
+    });
+
+    const timestamp = getCurrentSriLankaTime();
+    const correctionDriveViewUrl = registeredFile.driveWebViewLink || `https://drive.google.com/file/d/${driveFileId}/view`;
+
+    await this.submissionRepository.update(submissionId, {
+      correctionDriveFileId: driveFileId,
+      correctionDriveFileName: registeredFile.fileName,
+      correctionDriveMimeType: registeredFile.mimeType,
+      correctionDriveFileSize: registeredFile.fileSize,
+      correctionType: 'GOOGLE_DRIVE',
+      teacherCorrectionFileUrl: correctionDriveViewUrl,
+      remarks: remarks !== undefined ? (remarks?.trim() || null) : submission.remarks,
+      updatedAt: timestamp,
+    });
+
+    this.logger.log(`Teacher ${teacherId} added Drive correction (via stored OAuth) for submission ${submissionId}`);
+
+    const updatedSubmission = await this.submissionRepository.findOne({
+      where: { id: submissionId },
+      relations: ['homework']
+    });
+
+    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
+      updatedSubmission!,
+      this.cloudStorageService
+    );
+  }
 }
