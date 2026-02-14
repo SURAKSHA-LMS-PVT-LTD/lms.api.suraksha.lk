@@ -56,14 +56,32 @@ export class PushNotificationService {
     senderId: string, 
     senderRole: string
   ): Promise<PushNotificationResponseDto> {
+    this.logger.log(`🆕 Creating notification from ${senderRole} (senderId: ${senderId})`);
+    this.logger.log(`📝 Request: ${JSON.stringify({
+      title: createDto.title,
+      body: createDto.body?.substring(0, 100),
+      scope: createDto.scope,
+      targetUserTypes: createDto.targetUserTypes,
+      priority: createDto.priority,
+      sendImmediately: createDto.sendImmediately,
+      hasDataPayload: !!createDto.dataPayload,
+      dataPayload: createDto.dataPayload,
+      hasImageUrl: !!createDto.imageUrl,
+      hasActionUrl: !!createDto.actionUrl
+    }, null, 2)}`);
+
     // Validate scope requirements
     this.validateScopeRequirements(createDto);
 
     const notification = await this.notificationRepository.create(createDto, senderId, senderRole);
+    this.logger.log(`💾 Notification created with ID: ${notification.id}`);
 
     // If send immediately flag is set, send right away
     if (createDto.sendImmediately !== false && !createDto.scheduledAt) {
+      this.logger.log(`📤 Sending notification immediately...`);
       await this.sendNotification(notification.id);
+    } else {
+      this.logger.log(`⏰ Notification scheduled or saved as draft`);
     }
 
     const result = await this.notificationRepository.findOne(notification.id);
@@ -130,10 +148,23 @@ export class PushNotificationService {
    * Send notification to targeted users
    */
   async sendNotification(notificationId: string): Promise<SendNotificationResultDto> {
+    this.logger.log(`🚀 ===== SENDING NOTIFICATION ${notificationId} =====`);
     const notification = await this.notificationRepository.findOne(notificationId);
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }
+
+    this.logger.log(`📋 Notification details: ${JSON.stringify({
+      id: notification.id,
+      title: notification.title,
+      body: notification.body?.substring(0, 50),
+      scope: notification.scope,
+      targetUserTypes: notification.targetUserTypes,
+      priority: notification.priority,
+      hasDataPayload: !!notification.dataPayload,
+      dataPayloadKeys: notification.dataPayload ? Object.keys(notification.dataPayload) : [],
+      dataPayloadTypes: notification.dataPayload ? Object.entries(notification.dataPayload).map(([k,v]) => `${k}:${typeof v}`) : []
+    }, null, 2)}`);
 
     // Update status to sending
     await this.notificationRepository.updateStatus(notificationId, NotificationStatus.SENDING);
@@ -141,6 +172,7 @@ export class PushNotificationService {
     try {
       // Get target user IDs based on scope and target types
       const targetUserIds = await this.getTargetUserIds(notification);
+      this.logger.log(`🎯 Found ${targetUserIds.length} target users`);
 
       if (targetUserIds.length === 0) {
         await this.notificationRepository.updateStatus(notificationId, NotificationStatus.SENT);
@@ -173,6 +205,8 @@ export class PushNotificationService {
         icon: notification.icon,
       };
 
+      this.logger.log(`📦 FCM Notification Payload: ${JSON.stringify(fcmPayload, null, 2)}`);
+
       const dataPayload = {
         notificationId: notification.id,
         scope: notification.scope,
@@ -183,7 +217,13 @@ export class PushNotificationService {
         ...(notification.subjectId ? { subjectId: notification.subjectId } : {}),
       };
 
+      this.logger.log(`📦 FCM Data Payload (before sanitization): ${JSON.stringify(dataPayload, null, 2)}`);
+      this.logger.log(`📦 Data Payload Types: ${JSON.stringify(
+        Object.entries(dataPayload).map(([k, v]) => ({ key: k, type: typeof v, value: v }))
+      , null, 2)}`);
+
       // Send to all target users
+      this.logger.log(`🚀 Calling FCM service to send to ${targetUserIds.length} users...`);
       const result = await this.fcmService.sendToUsers(
         targetUserIds,
         fcmPayload,
@@ -195,9 +235,18 @@ export class PushNotificationService {
         }
       );
 
+      this.logger.log(`✅ FCM service returned: ${JSON.stringify({
+        totalSuccess: result.totalSuccess,
+        totalFailure: result.totalFailure,
+        userResultsCount: result.userResults.length
+      })}`);
+
       // Count users with and without tokens
       const usersWithTokens = result.userResults.filter(r => r.result.successCount > 0 || r.result.failureCount > 0).length;
       const usersWithoutTokens = targetUserIds.length - usersWithTokens;
+
+      this.logger.log(`📊 Stats: ${usersWithTokens} users with tokens, ${usersWithoutTokens} without tokens`);
+      this.logger.log(`📊 Delivery: ${result.totalSuccess} success, ${result.totalFailure} failed`);
 
       // Update notification stats
       await this.notificationRepository.updateStats(notificationId, {
@@ -209,6 +258,7 @@ export class PushNotificationService {
       await this.notificationRepository.updateStatus(notificationId, NotificationStatus.SENT);
 
       const deliveryRate = usersWithTokens > 0 ? ((result.totalSuccess / usersWithTokens) * 100).toFixed(1) : '0.0';
+      this.logger.log(`📈 Delivery rate: ${deliveryRate}%`);
 
       let message = `Notification sent to ${result.totalSuccess} out of ${targetUserIds.length} targeted users`;
       if (usersWithoutTokens > 0) {
@@ -234,7 +284,9 @@ export class PushNotificationService {
         },
       };
     } catch (error) {
-      this.logger.error(`Failed to send notification ${notificationId}: ${error.message}`);
+      this.logger.error(`❌ ===== NOTIFICATION ${notificationId} FAILED =====`);
+      this.logger.error(`❌ Error: ${error.message}`);
+      this.logger.error(`❌ Stack: ${error.stack}`);
       await this.notificationRepository.updateStatus(notificationId, NotificationStatus.FAILED);
       throw error;
     }
