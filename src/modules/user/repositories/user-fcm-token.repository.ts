@@ -139,6 +139,27 @@ export class UserFcmTokenRepository {
     return tokens;
   }
 
+  /**
+   * Bulk fetch active tokens for multiple users (PERFORMANCE OPTIMIZED)
+   * Returns all active tokens for the given user IDs in a single query
+   */
+  async findActiveTokensByUserIds(userIds: string[]): Promise<UserFcmTokenEntity[]> {
+    if (userIds.length === 0) {
+      return [];
+    }
+
+    // Ensure all userIds are strings
+    const userIdStrs = userIds.map(id => String(id));
+    
+    const tokens = await this.repository
+      .createQueryBuilder('token')
+      .where('token.userId IN (:...userIds)', { userIds: userIdStrs })
+      .andWhere('token.isActive = :isActive', { isActive: true })
+      .getMany();
+    
+    return tokens;
+  }
+
   async update(id: string, updateDto: UpdateUserFcmTokenDto): Promise<UserFcmTokenEntity | null> {
     await this.repository.update(id, updateDto);
     return await this.findOne(id);

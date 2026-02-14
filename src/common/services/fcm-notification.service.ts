@@ -376,7 +376,8 @@ export class FcmNotificationService implements OnModuleInit {
   }
 
   /**
-   * Send notification to multiple users
+   * Send notification to multiple users (OPTIMIZED FOR PERFORMANCE)
+   * Fetches all tokens in one query and sends in batches
    */
   async sendToUsers(
     userIds: string[],
@@ -392,22 +393,128 @@ export class FcmNotificationService implements OnModuleInit {
     totalFailure: number;
     userResults: { userId: string; result: BatchNotificationResult }[];
   }> {
-    const userResults: { userId: string; result: BatchNotificationResult }[] = [];
-    let totalSuccess = 0;
-    let totalFailure = 0;
-
-    for (const userId of userIds) {
-      const result = await this.sendToUser(userId, notification, data, options);
-      userResults.push({ userId, result });
-      totalSuccess += result.successCount;
-      totalFailure += result.failureCount;
+    if (userIds.length === 0) {
+      return { totalSuccess: 0, totalFailure: 0, userResults: [] };
     }
 
-    return {
-      totalSuccess,
-      totalFailure,
-      userResults,
-    };
+    try {
+      // ✅ OPTIMIZATION 1: Fetch ALL tokens in ONE database query
+      const allTokens = await this.fcmTokenRepository.findActiveTokensByUserIds(userIds);
+      
+      // ✅ OPTIMIZATION 2: Group tokens by user
+      const tokensByUser = new Map<string, string[]>();
+      for (const token of allTokens) {
+        if (!tokensByUser.has(token.userId)) {
+          tokensByUser.set(token.userId, []);
+        }
+        tokensByUser.get(token.userId)!.push(token.fcmToken);
+      }
+
+      // ✅ OPTIMIZATION 3: Batch all tokens together for parallel sending
+      const allFcmTokens = allTokens.map(t => t.fcmToken);
+      
+      if (allFcmTokens.length === 0) {
+        // No tokens found for any user
+        const userResults = userIds.map(userId => ({
+          userId,
+          result: {
+            successCount: 0,
+            failureCount: 0,
+            results: [],
+            invalidTokens: [],
+          }
+        }));
+        
+        this.logger.warn(`⚠️ No active FCM tokens found for ${userIds.length} users`);
+        return { totalSuccess: 0, totalFailure: 0, userResults };
+      }
+
+      // ✅ OPTIMIZATION 4: Send all notifications in one multicast call
+      this.logger.log(`📤 Bulk sending to ${allFcmTokens.length} tokens across ${tokensByUser.size} users`);
+      const batchResult = await this.sendToMultipleDevices(allFcmTokens, notification, data, options);
+
+      // ✅ OPTIMIZATION 5: Map results back to users
+      const tokenIndexMap = new Map<string, number>();
+      allTokens.forEach((token, index) => {
+        tokenIndexMap.set(token.fcmToken, index);
+      });
+
+      const userResults: { userId: string; result: BatchNotificationResult }[] = [];
+      let totalSuccess = 0;
+      let totalFailure = 0;
+
+      for (const userId of userIds) {
+        const userTokens = tokensByUser.get(userId) || [];
+        
+        if (userTokens.length === 0) {
+          userResults.push({
+            userId,
+            result: {
+              successCount: 0,
+              failureCount: 0,
+              results: [],
+              invalidTokens: [],
+            }
+          });
+          continue;
+        }
+
+        // Extract results for this user's tokens
+        const userSuccessCount = userTokens.filter(token => {
+          const idx = tokenIndexMap.get(token);
+          return idx !== undefined && batchResult.results[idx]?.success;
+        }).length;
+
+        const userFailureCount = userTokens.length - userSuccessCount;
+        const userInvalidTokens = userTokens.filter(token => batchResult.invalidTokens.includes(token));
+
+        const userTokenResults = userTokens.map(token => {
+          const idx = tokenIndexMap.get(token);
+          return idx !== undefined ? batchResult.results[idx] : { success: false, error: 'Token not found' };
+        });
+
+        userResults.push({
+          userId,
+          result: {
+            successCount: userSuccessCount,
+            failureCount: userFailureCount,
+            results: userTokenResults,
+            invalidTokens: userInvalidTokens,
+          }
+        });
+
+        totalSuccess += userSuccessCount;
+        totalFailure += userFailureCount;
+      }
+
+      // Handle invalid tokens
+      if (batchResult.invalidTokens.length > 0) {
+        await this.handleInvalidTokens(batchResult.invalidTokens);
+      }
+
+      this.logger.log(`✅ Bulk send complete: ${totalSuccess} success, ${totalFailure} failure`);
+
+      return {
+        totalSuccess,
+        totalFailure,
+        userResults,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to send bulk notifications: ${error.message}`);
+      
+      // Return error result for all users
+      const userResults = userIds.map(userId => ({
+        userId,
+        result: {
+          successCount: 0,
+          failureCount: 0,
+          results: [],
+          invalidTokens: [],
+        }
+      }));
+      
+      return { totalSuccess: 0, totalFailure: 0, userResults };
+    }
   }
 
   /**
