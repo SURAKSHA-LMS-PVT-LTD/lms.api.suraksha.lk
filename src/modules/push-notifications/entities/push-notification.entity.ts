@@ -14,6 +14,7 @@ export enum NotificationTargetUserType {
   PARENTS = 'PARENTS',
   ATTENDANCE_MARKERS = 'ATTENDANCE_MARKERS',
   INSTITUTE_ADMINS = 'INSTITUTE_ADMINS',
+  SYSTEM_ADMINS = 'SYSTEM_ADMINS',                         // Users with SUPERADMIN user type
   
   // Advanced filters for global notifications (based on user.user_type)
   USERS_WITHOUT_INSTITUTE = 'USERS_WITHOUT_INSTITUTE',     // Users not enrolled in any institute

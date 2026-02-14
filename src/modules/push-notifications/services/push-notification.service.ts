@@ -357,6 +357,15 @@ export class PushNotificationService {
       admins.forEach(a => userIds.add(a.userId));
     }
 
+    if (targetTypes.includes(NotificationTargetUserType.SYSTEM_ADMINS)) {
+      // Get users with SUPERADMIN user type
+      const systemAdmins = await this.userRepository.find({
+        where: { isActive: true, userType: UserType.SUPERADMIN },
+        select: ['id']
+      });
+      systemAdmins.forEach(a => userIds.add(a.id));
+    }
+
     // Advanced filters for global notifications - optimized with single queries
     if (targetTypes.includes(NotificationTargetUserType.USERS_WITHOUT_INSTITUTE)) {
       // Single query: Get users NOT in institute_user table
