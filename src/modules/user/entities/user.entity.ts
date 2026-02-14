@@ -34,16 +34,16 @@ export class UserEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'first_name', type: 'varchar', length: 50 })
+  @Column({ name: 'first_name', type: 'varchar', length: 50, nullable: true })
   firstName: string;
 
-  @Column({ name: 'last_name', type: 'varchar', length: 50 })
+  @Column({ name: 'last_name', type: 'varchar', length: 50, nullable: true })
   lastName: string;
 
-  @Column({ name: 'name_with_initials', type: 'varchar', length: 100 })
+  @Column({ name: 'name_with_initials', type: 'varchar', length: 100, nullable: true })
   nameWithInitials: string;
 
-  @Column({ type: 'varchar', length: 60, nullable: false, unique: true, transformer: {
+  @Column({ type: 'varchar', length: 60, nullable: true, unique: true, transformer: {
     to: (value: string) => value?.toLowerCase(),
     from: (value: string) => value?.toLowerCase()
   }})

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from '../auth.service';
@@ -156,6 +156,58 @@ export class AuthV2Controller {
     // 🌐 SSO SUPPORT: Return complete response including refresh_token
     // Available for all clients: web browsers, mobile apps, and SSO integrations
     return result;
+  }
+
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Logout and revoke refresh token',
+    description: 'Revokes the refresh token (from cookie or body) and clears the cookie, logging the user out. Supports all clients: web browsers, mobile apps, and SSO.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Logged out successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Logged out successfully'
+      }
+    }
+  })
+  async logout(
+    @Body() body: { refresh_token?: string },
+    @Req() req: ExpressRequest,
+    @Res({ passthrough: true }) res: ExpressResponse
+  ) {
+    try {
+      // Get refresh token from cookie first, then from body
+      const refreshToken = req.cookies?.refresh_token || body?.refresh_token;
+
+      if (refreshToken) {
+        await this.authService.revokeRefreshToken(refreshToken);
+      }
+
+      // Clear the refresh token cookie
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.clearCookie('refresh_token', {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'strict' : 'lax',
+        path: '/'
+      });
+      
+      return {
+        success: true,
+        message: 'Logged out successfully'
+      };
+    } catch (error) {
+      // Always return success for logout (don't leak information)
+      return {
+        success: true,
+        message: 'Logged out successfully'
+      };
+    }
   }
 
 }
