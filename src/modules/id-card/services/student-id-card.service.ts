@@ -1,9 +1,9 @@
 /**
- * Student ID Card Generator Service for NestJS
- * Generates professional student ID cards with barcode
+ * User ID Card Generator Service for NestJS
+ * Generates professional user ID cards with QR code
  * 
  * Install dependencies:
- * npm install pdfkit @napi-rs/canvas axios
+ * npm install pdfkit @napi-rs/canvas axios qrcode
  * npm install --save-dev @types/pdfkit
  */
 
@@ -34,7 +34,7 @@ const COLORS = {
 };
 
 export interface StudentIDConfig {
-  // Student Information
+  // User Information
   userId: string;
   studentId: string;
   studentName: string;
@@ -44,19 +44,17 @@ export interface StudentIDConfig {
   // Image URLs or paths
   logoUrl?: string;
   photoUrl?: string;
-  backsideUrl?: string;
   
   // Optional: Local file paths
   logoPath?: string;
   photoPath?: string;
-  backsidePath?: string;
 }
 
 @Injectable()
 export class StudentIdCardService {
   
   /**
-   * Generate Student ID Card PDF
+   * Generate User ID Card PDF
    */
   async generateIdCard(
     config: StudentIDConfig,
@@ -281,8 +279,8 @@ export class StudentIdCardService {
         doc.end();
 
         stream.on('finish', () => {
-          console.log(`✓ Student ID card PDF created: ${outputPath}`);
-          console.log(`✓ Student: ${config.studentName} (${config.studentId})`);
+          console.log(`✓ User ID card PDF created: ${outputPath}`);
+          console.log(`✓ User: ${config.studentName} (${config.studentId})`);
           resolve(outputPath);
         });
 
@@ -316,7 +314,8 @@ export class StudentIdCardService {
       .restore();
   }
 
-  /**   * Draw front side of ID card
+  /**
+   * Draw front side of ID card
    */
   private async drawFrontSide(
     doc: PDFKit.PDFDocument,
@@ -358,7 +357,7 @@ export class StudentIdCardService {
     // Photo section
     await this.drawPhoto(doc, x, y, CARD_HEIGHT, headerHeight, config);
 
-    // Student information
+    // User information
     this.drawStudentInfo(doc, x, y, CARD_HEIGHT, headerHeight, config);
 
     // Signature section
@@ -455,34 +454,6 @@ export class StudentIdCardService {
         }
       }
       
-      // If all else fails, create a simple logo using canvas
-      if (!logoBuffer) {
-        console.log('Creating simple logo using canvas...');
-        try {
-          const size = 128;
-          const canvas = createCanvas(size, size);
-          const ctx = canvas.getContext('2d');
-          
-          // Blue circle background
-          ctx.fillStyle = COLORS.headerColor;
-          ctx.beginPath();
-          ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-          ctx.fill();
-          
-          // White "S" letter
-          ctx.fillStyle = '#FFFFFF';
-          ctx.font = 'bold 80px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('S', size / 2, size / 2);
-          
-          logoBuffer = canvas.toBuffer('image/png');
-          console.log(`✓ Created canvas logo (${logoBuffer.length} bytes)`);
-        } catch (canvasErr) {
-          console.log(`⚠️  Canvas creation failed: ${canvasErr.message}`);
-        }
-      }
-
       if (logoBuffer && logoBuffer.length > 0) {
         try {
           const logoInnerSize = logoSize * 0.65;  // 65% for more white space
@@ -499,32 +470,11 @@ export class StudentIdCardService {
           );
         } catch (imgErr) {
           console.log(`⚠️  Image render failed: ${imgErr.message}`);
-          this.drawLogoPlaceholder(doc, logoX, logoY, logoSize);
         }
-      } else {
-        this.drawLogoPlaceholder(doc, logoX, logoY, logoSize);
       }
     } catch (error) {
       console.log(`⚠️  Logo not loaded: ${error.message}`);
-      this.drawLogoPlaceholder(doc, logoX, logoY, logoSize);
     }
-  }
-
-  /**
-   * Draw logo placeholder
-   */
-  private drawLogoPlaceholder(
-    doc: PDFKit.PDFDocument,
-    x: number,
-    y: number,
-    size: number,
-  ): void {
-    // Modern "S" logo design
-    doc
-      .fontSize(18)
-      .fillColor(COLORS.headerColor)
-      .font('Helvetica-Bold')
-      .text('S', x + size / 2 - 6, y + size / 2 - 8);
   }
 
   /**
@@ -574,60 +524,14 @@ export class StudentIdCardService {
           align: 'center',
           valign: 'center',
         });
-      } else {
-        this.drawPhotoPlaceholder(doc, photoX, photoY, photoWidth, photoHeight);
       }
     } catch (error) {
       console.log(`⚠️  Photo not loaded: ${error.message}`);
-      this.drawPhotoPlaceholder(doc, photoX, photoY, photoWidth, photoHeight);
     }
   }
 
   /**
-   * Draw photo placeholder
-   */
-  private drawPhotoPlaceholder(
-    doc: PDFKit.PDFDocument,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ): void {
-    // Blue background
-    doc
-      .rect(x + 2, y + 2, width - 4, height - 4)
-      .fill(COLORS.headerColor);
-    
-    // Icon-like design in white
-    const centerX = x + width / 2;
-    const centerY = y + height / 2;
-    
-    // Head circle
-    doc
-      .circle(centerX, centerY - 0.15 * INCH, 0.15 * INCH)
-      .fill(COLORS.white);
-    
-    // Body shape
-    doc
-      .moveTo(centerX - 0.25 * INCH, y + height - 2)
-      .lineTo(centerX - 0.15 * INCH, centerY + 0.05 * INCH)
-      .lineTo(centerX + 0.15 * INCH, centerY + 0.05 * INCH)
-      .lineTo(centerX + 0.25 * INCH, y + height - 2)
-      .fill(COLORS.white);
-    
-    // Text
-    doc
-      .fontSize(7)
-      .fillColor(COLORS.white)
-      .font('Helvetica')
-      .text('NO PHOTO', x, y + height - 0.2 * INCH, {
-        width: width,
-        align: 'center',
-      });
-  }
-
-  /**
-   * Draw student information
+   * Draw user information
    */
   private drawStudentInfo(
     doc: PDFKit.PDFDocument,
@@ -833,7 +737,7 @@ export class StudentIdCardService {
     const qrY = y + (CARD_HEIGHT - qrSize) / 2 - 0.15 * INCH;
 
     try {
-      // Generate QR code data with student information
+      // Generate QR code data with user information
       const qrData = JSON.stringify({
         userId: config.userId,
         studentId: config.studentId,
@@ -859,22 +763,7 @@ export class StudentIdCardService {
       });
     } catch (error) {
       console.warn('⚠️  Failed to generate QR code:', error.message);
-      
-      // Fallback: draw placeholder box
-      doc
-        .roundedRect(qrX, qrY, qrSize, qrSize, 4)
-        .fill(COLORS.lightGray);
-      
-      doc
-        .fontSize(8)
-        .fillColor(COLORS.textSecondary)
-        .font('Helvetica')
-        .text('QR Code\nUnavailable', qrX, qrY + qrSize / 2 - 0.1 * INCH, {
-          width: qrSize,
-          align: 'center',
-        });
     }
-
   }
 
   /**
