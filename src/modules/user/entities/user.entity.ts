@@ -8,6 +8,8 @@ import { Country } from '../enums/country.enum';
 import { Language } from '../enums/language.enum';
 import { Occupation } from '../enums/occupation.enum';
 import { ProfileCompletionStatus } from '../enums/profile-completion-status.enum';
+import { ImageVerificationStatus } from '../../institute_mudules/institue_user/enums/image-verification-status.enum';
+import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 
 @Entity('users')
 // 🎯 REAL QUERY-BASED INDEXES - Based on actual codebase queries (Nov 2024)
@@ -101,6 +103,39 @@ export class UserEntity {
   @Column({ name: 'image_url', type: 'varchar', length: 255, nullable: true })
   imageUrl?: string;
 
+  @Column({ 
+    name: 'image_verification_status', 
+    type: 'enum', 
+    enum: ImageVerificationStatus,
+    nullable: true,
+    comment: 'Profile image verification status: PENDING/VERIFIED/REJECTED'
+  })
+  imageVerificationStatus?: ImageVerificationStatus;
+
+  @Column({ 
+    name: 'image_verified_by', 
+    type: 'bigint', 
+    nullable: true,
+    comment: 'Admin user ID who verified/rejected the image'
+  })
+  imageVerifiedBy?: string;
+
+  @Column({ 
+    name: 'image_verified_at', 
+    type: 'timestamp', 
+    nullable: true,
+    comment: 'Timestamp when image was verified/rejected'
+  })
+  imageVerifiedAt?: Date;
+
+  @Column({ 
+    name: 'image_rejection_reason', 
+    type: 'text', 
+    nullable: true,
+    comment: 'Reason provided when image was rejected'
+  })
+  imageRejectionReason?: string;
+
   @Column({ name: 'id_url', type: 'varchar', length: 255, nullable: true })
   idUrl?: string;
 
@@ -113,8 +148,60 @@ export class UserEntity {
   @Column({ name: 'telegram_id', type: 'varchar', length: 20, nullable: true })
   telegramId?: string;
 
+  // ============================================
+  // RFID / NFC CARD FIELDS
+  // ============================================
+
   @Column({ name: 'rfid', type: 'varchar', length: 20, unique: true, nullable: true })
   rfid?: string;
+
+  @Column({ 
+    name: 'rfid_expiry_date', 
+    type: 'timestamp', 
+    nullable: true,
+    comment: 'RFID/NFC card expiration date'
+  })
+  rfidExpiryDate?: Date;
+
+  @Column({ 
+    name: 'rfid_card_status', 
+    type: 'enum', 
+    enum: CardStatus,
+    nullable: true,
+    comment: 'RFID/NFC card status: ACTIVE/INACTIVE/DEACTIVATED/EXPIRED/LOST/DAMAGED/REPLACED'
+  })
+  rfidCardStatus?: CardStatus;
+
+  // ============================================
+  // NORMAL (QR/BARCODE) CARD FIELDS
+  // ============================================
+
+  @Column({ 
+    name: 'card_id', 
+    type: 'varchar', 
+    length: 50, 
+    unique: true, 
+    nullable: true,
+    comment: 'Normal (QR/Barcode) card identifier - used for attendance scanning'
+  })
+  cardId?: string;
+
+  @Column({ 
+    name: 'card_expiry_date', 
+    type: 'timestamp', 
+    nullable: true,
+    comment: 'Normal card expiration date'
+  })
+  cardExpiryDate?: Date;
+
+  @Column({ 
+    name: 'card_status', 
+    type: 'enum', 
+    enum: CardStatus,
+    nullable: true,
+    comment: 'Normal card status: ACTIVE/INACTIVE/DEACTIVATED/EXPIRED/LOST/DAMAGED/REPLACED'
+  })
+  cardStatus?: CardStatus;
 
   @Column({ 
     type: 'enum', 

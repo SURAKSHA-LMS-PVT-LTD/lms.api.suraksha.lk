@@ -18,6 +18,8 @@ import { ImageVerificationStatus } from '../institute_mudules/institue_user/enum
 import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
 import { AdvertisementMatchingService } from '../advertisement/advertisement-matching.service';
+import { CardStatus } from '../user-card-management/enums/card-status.enum';
+import { MarkingMethod } from './dto/attendance.dto';
 import { getCurrentSriLankaDate, getCurrentSriLankaISO, nowTimestamp, formatSriLankaTime, now } from '../../common/utils/timezone.util';
 
 @Injectable()
@@ -326,27 +328,104 @@ export class AttendanceService {
     };
   }
 
+  /**
+   * ✅ CARD VALIDATION HELPER
+   * Validates card status and expiry for both RFID and normal cards
+   */
+  private validateCardForAttendance(
+    user: UserEntity,
+    cardType: 'rfid' | 'normal',
+    cardIdValue: string
+  ): { valid: boolean; cardStatus?: CardStatus; cardExpiryDate?: Date; error?: string } {
+    const status = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
+    const expiryDate = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
+
+    // Check card status
+    if (status && status !== CardStatus.ACTIVE) {
+      return {
+        valid: false,
+        cardStatus: status,
+        cardExpiryDate: expiryDate,
+        error: `Card ${cardIdValue} is ${status}. Only ACTIVE cards can mark attendance.`
+      };
+    }
+
+    // Check expiry date
+    if (expiryDate && new Date(expiryDate) < new Date()) {
+      return {
+        valid: false,
+        cardStatus: CardStatus.EXPIRED,
+        cardExpiryDate: expiryDate,
+        error: `Card ${cardIdValue} has expired on ${new Date(expiryDate).toISOString().split('T')[0]}. Please renew your card.`
+      };
+    }
+
+    return { valid: true, cardStatus: status, cardExpiryDate: expiryDate };
+  }
+
   async markAttendanceByCard(markAttendanceByCardDto: MarkAttendanceByCardDto, markedBy: string): Promise<any> {
-    // Look up student by RFID card ID
-    const user = await this.userRepository.findOne({
-      where: { rfid: markAttendanceByCardDto.studentCardId },
-      select: ['id', 'firstName', 'lastName', 'imageUrl']
-    });
+    const { studentCardId, markingMethod } = markAttendanceByCardDto;
+    const isNfc = markingMethod === MarkingMethod.RFID_NFC;
+
+    // ✅ DUAL LOOKUP: NFC → rfid column, QR/Barcode → cardId column
+    let user: UserEntity | null = null;
+    let cardType: 'rfid' | 'normal';
+
+    if (isNfc) {
+      // NFC/RFID scan → look up by rfid column
+      user = await this.userRepository.findOne({
+        where: { rfid: studentCardId },
+        select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+      });
+      cardType = 'rfid';
+    } else {
+      // QR/Barcode scan → look up by cardId column first, fallback to rfid
+      user = await this.userRepository.findOne({
+        where: { cardId: studentCardId },
+        select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+      });
+      cardType = 'normal';
+
+      // Fallback: try rfid if not found by cardId (backward compatibility)
+      if (!user) {
+        user = await this.userRepository.findOne({
+          where: { rfid: studentCardId },
+          select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+        });
+        if (user) cardType = 'rfid';
+      }
+    }
 
     if (!user) {
-      // Enhanced error with debugging info
       const errorDetails = {
-        message: `Student not found with RFID card ID: ${markAttendanceByCardDto.studentCardId}`,
-        cardId: markAttendanceByCardDto.studentCardId,
-        hint: 'Please ensure the RFID card is registered in the users table',
-        suggestion: 'Check: SELECT * FROM users WHERE rfid = ?',
+        message: `Student not found with card ID: ${studentCardId}`,
+        cardId: studentCardId,
+        scanType: isNfc ? 'NFC/RFID' : 'QR/Barcode',
+        hint: isNfc 
+          ? 'Ensure RFID is registered in users.rfid column'
+          : 'Ensure card ID is registered in users.card_id column',
         timestamp: getCurrentSriLankaISO()
       };
-      this.logger.error(`RFID Card Not Found: ${JSON.stringify(errorDetails)}`);
+      this.logger.error(`Card Not Found: ${JSON.stringify(errorDetails)}`);
       throw new Error(errorDetails.message);
     }
 
-    // For card-based attendance, we need to convert to regular attendance format
+    // ✅ VALIDATE CARD STATUS & EXPIRY
+    const validation = this.validateCardForAttendance(user, cardType, studentCardId);
+    if (!validation.valid) {
+      return {
+        success: false,
+        message: validation.error,
+        cardInfo: {
+          cardId: studentCardId,
+          cardType,
+          cardStatus: validation.cardStatus,
+          cardExpiryDate: validation.cardExpiryDate,
+          isExpired: validation.cardStatus === CardStatus.EXPIRED
+        }
+      };
+    }
+
     const markAttendanceDto: MarkAttendanceDto = {
       studentId: user.id.toString(),
       studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
@@ -362,21 +441,74 @@ export class AttendanceService {
       markingMethod: markAttendanceByCardDto.markingMethod
     };
 
-    return this.markAttendance(markAttendanceDto, markedBy);
+    const result = await this.markAttendance(markAttendanceDto, markedBy);
+
+    // ✅ Enrich response with card info
+    return {
+      ...result,
+      cardInfo: {
+        cardId: studentCardId,
+        cardType,
+        cardStatus: validation.cardStatus || CardStatus.ACTIVE,
+        cardExpiryDate: validation.cardExpiryDate,
+        isExpired: false
+      }
+    };
   }
 
   async markBulkAttendanceByCard(bulkCardAttendanceDto: BulkCardAttendanceDto, markedBy: string): Promise<any> {
-    // Get all card IDs
     const cardIds = bulkCardAttendanceDto.students.map(s => s.studentCardId);
-    
-    // Look up all users by RFID in one query
-    const users = await this.userRepository.find({
-      where: cardIds.map(cardId => ({ rfid: cardId })),
-      select: ['id', 'firstName', 'lastName', 'rfid', 'imageUrl']
-    });
+    const isNfc = bulkCardAttendanceDto.markingMethod === MarkingMethod.RFID_NFC;
 
-    // Create a map of cardId to user
-    const userMap = new Map(users.map(u => [u.rfid, u]));
+    // ✅ DUAL LOOKUP: NFC → rfid, QR/Barcode → cardId
+    let users: UserEntity[];
+    let cardType: 'rfid' | 'normal';
+
+    if (isNfc) {
+      users = await this.userRepository.find({
+        where: cardIds.map(cardId => ({ rfid: cardId })),
+        select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
+      });
+      cardType = 'rfid';
+    } else {
+      users = await this.userRepository.find({
+        where: cardIds.map(cardId => ({ cardId: cardId })),
+        select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
+      });
+      cardType = 'normal';
+
+      // Fallback: if nothing found by cardId, try rfid (backward compat)
+      if (users.length === 0) {
+        users = await this.userRepository.find({
+          where: cardIds.map(cardId => ({ rfid: cardId })),
+          select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
+        });
+        if (users.length > 0) cardType = 'rfid';
+      }
+    }
+
+    // Create map: scan value → user
+    const userMap = isNfc || cardType === 'rfid'
+      ? new Map(users.map(u => [u.rfid, u]))
+      : new Map(users.map(u => [u.cardId, u]));
+
+    // ✅ VALIDATE CARD STATUS for each student
+    const invalidCards: any[] = [];
+    for (const student of bulkCardAttendanceDto.students) {
+      const user = userMap.get(student.studentCardId);
+      if (user) {
+        const validation = this.validateCardForAttendance(user, cardType, student.studentCardId);
+        if (!validation.valid) {
+          invalidCards.push({
+            cardId: student.studentCardId,
+            userName: `${user.firstName} ${user.lastName || ''}`.trim(),
+            reason: validation.error,
+            cardStatus: validation.cardStatus,
+            cardExpiryDate: validation.cardExpiryDate
+          });
+        }
+      }
+    }
 
     // Check institute_user for verified images for all users
     const userIds = users.map(u => u.id.toString());
@@ -395,33 +527,45 @@ export class AttendanceService {
         .map(iu => [iu.userId, iu.instituteUserImageUrl])
     );
 
-    // Map students with their actual user IDs and names
-    const students = bulkCardAttendanceDto.students.map(student => {
-      const user = userMap.get(student.studentCardId);
-      if (!user) {
-        throw new Error(`Student not found with card ID: ${student.studentCardId}`);
-      }
-      return {
-        studentId: user.id.toString(),
-        studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
-        status: student.status,
-        remarks: undefined
+    // Map students, skip invalid cards & not-found
+    const invalidCardIds = new Set(invalidCards.map(ic => ic.cardId));
+    const notFound: string[] = [];
+    const students = bulkCardAttendanceDto.students
+      .filter(student => {
+        if (invalidCardIds.has(student.studentCardId)) return false;
+        const user = userMap.get(student.studentCardId);
+        if (!user) {
+          notFound.push(student.studentCardId);
+          return false;
+        }
+        return true;
+      })
+      .map(student => {
+        const user = userMap.get(student.studentCardId)!;
+        return {
+          studentId: user.id.toString(),
+          studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          status: student.status,
+          remarks: undefined
+        };
+      });
+
+    let result: any = { results: [] };
+    if (students.length > 0) {
+      const bulkAttendanceDto: BulkAttendanceDto = {
+        instituteId: bulkCardAttendanceDto.instituteId,
+        instituteName: bulkCardAttendanceDto.instituteName,
+        classId: bulkCardAttendanceDto.classId || 'default',
+        className: bulkCardAttendanceDto.className || 'Default Class',
+        subjectId: bulkCardAttendanceDto.subjectId || 'default',
+        subjectName: bulkCardAttendanceDto.subjectName || 'General',
+        location: bulkCardAttendanceDto.address,
+        markingMethod: bulkCardAttendanceDto.markingMethod,
+        students
       };
-    });
 
-    const bulkAttendanceDto: BulkAttendanceDto = {
-      instituteId: bulkCardAttendanceDto.instituteId,
-      instituteName: bulkCardAttendanceDto.instituteName,
-      classId: bulkCardAttendanceDto.classId || 'default',
-      className: bulkCardAttendanceDto.className || 'Default Class',
-      subjectId: bulkCardAttendanceDto.subjectId || 'default',
-      subjectName: bulkCardAttendanceDto.subjectName || 'General',
-      location: bulkCardAttendanceDto.address,
-      markingMethod: bulkCardAttendanceDto.markingMethod,
-      students
-    };
-
-    const result = await this.markBulkAttendance(bulkAttendanceDto, markedBy);
+      result = await this.markBulkAttendance(bulkAttendanceDto, markedBy);
+    }
     
     // Override imageUrls in the response for institute card-based attendance
     if (result && result.results && Array.isArray(result.results)) {
@@ -443,18 +587,36 @@ export class AttendanceService {
       });
     }
     
-    return result;
+    // ✅ Include card validation info in response
+    return {
+      ...result,
+      cardValidation: {
+        totalScanned: bulkCardAttendanceDto.students.length,
+        validCards: students.length,
+        invalidCards: invalidCards.length > 0 ? invalidCards : undefined,
+        notFoundCards: notFound.length > 0 ? notFound : undefined
+      }
+    };
   }
 
   async getAttendanceByCard(getAttendanceByCardDto: GetAttendanceByCardDto): Promise<any> {
     const { studentCardId, startDate, endDate, page = 1, limit = 10 } = getAttendanceByCardDto;
 
     if (studentCardId) {
-      // Look up student by RFID card ID
-      const user = await this.userRepository.findOne({
-        where: { rfid: studentCardId },
-        select: ['id', 'firstName', 'lastName', 'imageUrl']
+      // ✅ DUAL LOOKUP: try cardId first, then rfid (backward compat)
+      let user = await this.userRepository.findOne({
+        where: { cardId: studentCardId },
+        select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
+      let cardType: 'rfid' | 'normal' = 'normal';
+
+      if (!user) {
+        user = await this.userRepository.findOne({
+          where: { rfid: studentCardId },
+          select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+        });
+        cardType = 'rfid';
+      }
 
       if (!user) {
         throw new Error(`Student not found with card ID: ${studentCardId}`);
@@ -473,6 +635,9 @@ export class AttendanceService {
       const startIndex = (page - 1) * limit;
       const paginatedRecords = records.slice(startIndex, startIndex + limit);
 
+      const currentCardStatus = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
+      const currentCardExpiry = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
+
       return {
         success: true,
         message: 'Card attendance retrieved successfully',
@@ -480,6 +645,14 @@ export class AttendanceService {
           studentId: user.id.toString(),
           studentCardId: studentCardId,
           studentName: `${user.firstName} ${user.lastName || ''}`.trim()
+        },
+        cardInfo: {
+          cardType,
+          cardStatus: currentCardStatus || CardStatus.ACTIVE,
+          cardExpiryDate: currentCardExpiry,
+          rfid: user.rfid,
+          cardId: user.cardId,
+          isExpired: currentCardExpiry ? new Date(currentCardExpiry) < new Date() : false
         },
         pagination: {
           currentPage: page,

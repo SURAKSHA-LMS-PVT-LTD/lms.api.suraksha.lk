@@ -48,6 +48,7 @@ import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums
 import { ImageVerificationStatus } from '../../institute_mudules/institue_user/enums/image-verification-status.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 import { now } from '../../../common/utils/timezone.util';
 import * as bcrypt from 'bcrypt';
 
@@ -661,6 +662,16 @@ export class SystemAdminUserService {
 
     const savedUser = await queryRunner.manager.save(userEntity);
 
+    // ✅ Auto-generate normal card ID + set status ACTIVE + 2-year expiry
+    const generatedCardId = this.generateCardId();
+    const cardExpiryDate = new Date();
+    cardExpiryDate.setFullYear(cardExpiryDate.getFullYear() + 2);
+
+    savedUser.cardId = generatedCardId;
+    savedUser.cardStatus = CardStatus.ACTIVE;
+    savedUser.cardExpiryDate = cardExpiryDate;
+    await queryRunner.manager.save(savedUser);
+
     // Create student record
     const studentEntity = queryRunner.manager.create(StudentEntity, {
       userId: savedUser.id,
@@ -1024,6 +1035,49 @@ export class SystemAdminUserService {
       const firstLoginUrl = `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`;
       
       if (user.email) {
+        // ✅ Student with imageUrl AND cardId → send ID card email only (no welcome)
+        if (role === 'student' && user.imageUrl && user.cardId) {
+          let photoUrl = user.imageUrl;
+          try {
+            photoUrl = this.cloudStorageService.getFullUrl(user.imageUrl);
+          } catch (e) {
+            // Use raw imageUrl if getFullUrl fails
+          }
+
+          // Get studentId if available
+          let studentId: string | undefined;
+          try {
+            const student = await this.studentRepository.findOne({
+              where: { userId: user.id }
+            });
+            studentId = student?.studentId;
+          } catch (e) {
+            // Ignore if student lookup fails
+          }
+
+          this.asyncEmailService.sendTemplateEmailAsync({
+            templateType: 'id_card',
+            toEmails: [user.email],
+            templateData: {
+              nameWithInitials: user.nameWithInitials || undefined,
+              firstName: user.firstName || undefined,
+              lastName: user.lastName || undefined,
+              studentId: studentId || undefined,
+              userId: user.id?.toString(),
+              fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+              photoUrl: photoUrl,
+              cardId: user.cardId,
+              issueDate: new Date().toISOString().split('T')[0],
+              barcodeNumber: user.cardId,
+            },
+            customSubject: 'Welcome to Suraksha LMS - Your ID Card!'
+          });
+
+          this.logger.log(`ID card email sent for user ${user.id}, cardId: ${user.cardId}`);
+          return true;
+        }
+
+        // For users without image/card or non-students → send incomplete profile email
         this.asyncEmailService.sendTemplateEmailAsync({
           templateType: 'welcome-incomplete-profile',
           toEmails: [user.email],
@@ -1080,6 +1134,16 @@ export class SystemAdminUserService {
     const year = getCurrentSriLankaTime().getFullYear();
     const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
     return `STU-${year}-${random}`;
+  }
+
+  /**
+   * Generate unique normal card ID (QR/Barcode)
+   * Format: CARD-YYYY-XXXXX (e.g. CARD-2026-00042)
+   */
+  private generateCardId(): string {
+    const year = getCurrentSriLankaTime().getFullYear();
+    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    return `CARD-${year}-${random}`;
   }
 
   /**
@@ -1435,6 +1499,486 @@ export class SystemAdminUserService {
       message: previousImageUrl 
         ? 'Profile image updated successfully'
         : 'Profile image assigned successfully'
+    };
+  }
+
+  /**
+   * ✅ Get Users with Pending/Unverified Images
+   * System Admin can review images that need verification
+   */
+  async getUnverifiedUsers(query: any): Promise<any> {
+    const { page = 1, limit = 20, status = ImageVerificationStatus.PENDING } = query;
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.userRepository
+      .createQueryBuilder('user')
+      .select([
+        'user.id',
+        'user.nameWithInitials',
+        'user.email',
+        'user.phoneNumber',
+        'user.imageUrl',
+        'user.imageVerificationStatus',
+        'user.userType',
+        'user.updatedAt',
+      ])
+      .where('user.imageUrl IS NOT NULL')
+      .orderBy('user.updatedAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    // Filter by verification status
+    if (status) {
+      queryBuilder.andWhere('user.imageVerificationStatus = :status', { status });
+    }
+
+    const [users, total] = await queryBuilder.getManyAndCount();
+
+    return {
+      users: users.map(user => ({
+        userId: user.id,
+        nameWithInitials: user.nameWithInitials,
+        email: this.maskEmail(user.email),
+        phoneNumber: this.maskPhone(user.phoneNumber),
+        imageUrl: user.imageUrl,
+        imageVerificationStatus: user.imageVerificationStatus || ImageVerificationStatus.PENDING,
+        imageUploadedAt: user.updatedAt,
+        userType: user.userType,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * ✅ Approve User Image
+   * Marks image as verified and sends confirmation email
+   */
+  async approveUserImage(dto: any, adminId: string): Promise<any> {
+    const user = await this.userRepository.findOne({
+      where: { id: dto.userId.toString() },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${dto.userId} not found`);
+    }
+
+    if (!user.imageUrl) {
+      throw new BadRequestException('User has no image to approve');
+    }
+
+    const approvedAt = getCurrentSriLankaTime();
+
+    // ✅ Generate card ID if not exists + set ACTIVE status + 2-year expiry
+    let cardGenerated = false;
+    if (!user.cardId) {
+      const generatedCardId = this.generateCardId();
+      const cardExpiryDate = new Date();
+      cardExpiryDate.setFullYear(cardExpiryDate.getFullYear() + 2);
+
+      await this.userRepository.update(dto.userId.toString(), {
+        cardId: generatedCardId,
+        cardStatus: CardStatus.ACTIVE,
+        cardExpiryDate: cardExpiryDate,
+      });
+
+      user.cardId = generatedCardId;
+      user.cardStatus = CardStatus.ACTIVE;
+      user.cardExpiryDate = cardExpiryDate;
+      cardGenerated = true;
+
+      this.logger.log(`Generated card ID ${generatedCardId} for user ${dto.userId}`);
+    }
+
+    // Update user with approval metadata
+    await this.userRepository.update(dto.userId.toString(), {
+      imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+      imageVerifiedBy: adminId,
+      imageVerifiedAt: approvedAt,
+      imageRejectionReason: null, // Clear any previous rejection reason
+      updatedAt: now()
+    });
+
+    // ✅ Check if user is a student to determine email type
+    const student = await this.studentRepository.findOne({
+      where: { userId: dto.userId.toString() }
+    });
+
+    // Send approval email with ID card for students
+    if (user.email) {
+      try {
+        // ✅ Student with image + cardId → send ID card email only (no welcome message)
+        if (student && user.imageUrl && user.cardId) {
+          let photoUrl = user.imageUrl;
+          try {
+            photoUrl = this.cloudStorageService.getFullUrl(user.imageUrl);
+          } catch (e) {
+            // Use raw imageUrl if getFullUrl fails
+          }
+
+          this.asyncEmailService.sendTemplateEmailAsync({
+            templateType: 'id_card',
+            toEmails: [user.email],
+            templateData: {
+              nameWithInitials: user.nameWithInitials || undefined,
+              firstName: user.firstName || undefined,
+              lastName: user.lastName || undefined,
+              studentId: student.studentId || undefined,
+              userId: user.id?.toString(),
+              fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+              photoUrl: photoUrl,
+              cardId: user.cardId,
+              issueDate: new Date().toISOString().split('T')[0],
+              barcodeNumber: user.cardId,
+            },
+            customSubject: '✅ Your ID Card is Ready!'
+          });
+
+          this.logger.log(`ID card email sent to user ${dto.userId}`);
+        } else {
+          // Generic approval email for non-students or users without cards
+          this.asyncEmailService.sendTemplateEmailAsync({
+            templateType: 'generic',
+            toEmails: [user.email],
+            customSubject: '✅ Profile Image Approved',
+            templateData: {
+              USER_NAME: user.nameWithInitials || user.firstName || 'User',
+              MESSAGE_TITLE: '✅ Your Profile Image Has Been Approved!',
+              MESSAGE_BODY: `Great news! Your profile image has been reviewed and approved by our team.\n\nYour profile is now complete and visible to others on the platform.\n\nThank you for being part of Suraksha LMS!`,
+              ACTION_URL: 'https://lms.suraksha.lk/dashboard',
+              ACTION_TEXT: 'Go to Dashboard',
+              FOOTER_TEXT: 'Keep up the great work!'
+            }
+          });
+        }
+      } catch (emailError) {
+        this.logger.warn(`Failed to send approval email to user ${dto.userId}: ${emailError.message}`);
+      }
+    }
+
+    this.logger.log(`Image approved for user ${dto.userId} by admin ${adminId}`);
+
+    return {
+      success: true,
+      message: 'User image approved successfully',
+      userId: user.id,
+      status: ImageVerificationStatus.VERIFIED,
+      approvedBy: adminId,
+      approvedAt,
+      cardGenerated,
+      cardId: user.cardId || null,
+    };
+  }
+
+  /**
+   * ✅ Reject User Image with Email & Signed Upload URL
+   * Deletes rejected image, generates new upload URL (7-day validity), sends email
+   */
+  async rejectUserImage(dto: any, adminId: string): Promise<any> {
+    const { userId, rejectionReason, userEmail, urlValidityDays = 7 } = dto;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId.toString() },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    // Delete the rejected image from cloud storage
+    if (user.imageUrl) {
+      try {
+        const imagePath = this.extractPathFromUrl(user.imageUrl);
+        if (imagePath) {
+          await this.cloudStorageService.deleteFile(imagePath);
+          this.logger.log(`Deleted rejected image: ${imagePath}`);
+        }
+      } catch (deleteError) {
+        this.logger.warn(`Failed to delete rejected image: ${deleteError.message}`);
+      }
+    }
+
+    // Clear image URL from user record and set rejection status
+    await this.userRepository.update(userId.toString(), {
+      imageUrl: null,
+      imageVerificationStatus: ImageVerificationStatus.REJECTED,
+      imageVerifiedBy: adminId,
+      imageVerifiedAt: getCurrentSriLankaTime(),
+      imageRejectionReason: rejectionReason,
+      updatedAt: now()
+    });
+
+    // Generate upload token (JWT with user info and expiry)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + urlValidityDays);
+    
+    const uploadToken = Buffer.from(
+      JSON.stringify({
+        userId,
+        purpose: 'profile-image-reupload',
+        exp: expiresAt.getTime(),
+      })
+    ).toString('base64url');
+
+    // Generate signed upload URL (7-day TTL)
+    const timestamp = Date.now();
+    const fileName = `profile-reupload-${userId}-${timestamp}.jpg`;
+    const relativePath = `profile-images/${userId}/${fileName}`;
+    
+    // Note: generateSignedUploadUrl expects string path parameter
+    // For now, we'll use a placeholder URL since the user will upload via frontend signed URL
+    const uploadUrl = `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/${relativePath}`;
+
+    // Construct frontend upload URL
+    const frontendBaseUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
+    const frontendUploadUrl = `${frontendBaseUrl}/profile/image/upload?token=${uploadToken}`;
+
+    // Send rejection email with upload link
+    const emailDest = userEmail || user.email;
+    let emailSent = false;
+
+    if (emailDest) {
+      try {
+        this.asyncEmailService.sendTemplateEmailAsync({
+          templateType: 'generic',
+          toEmails: [emailDest],
+          customSubject: 'Action Required: Profile Image Rejected',
+          templateData: {
+            USER_NAME: user.nameWithInitials || user.firstName || 'User',
+            MESSAGE_TITLE: '🔔 Profile Image Update Required',
+            MESSAGE_BODY: `We've reviewed your profile image submission and unfortunately it doesn't meet our guidelines at this time.\n\nRejection Reason:\n${rejectionReason}\n\n📋 Image Guidelines:\n✓ Clear, well-lit photo showing your face\n✓ Professional or neutral background\n✓ No filters, sunglasses, or face coverings\n✓ Minimum resolution: 400x400px\n\nThis link expires on: ${expiresAt.toLocaleString()}`,
+            ACTION_URL: frontendUploadUrl,
+            ACTION_TEXT: 'Upload New Image',
+            FOOTER_TEXT: 'Need help? Contact us: support@suraksha.lk'
+          }
+        });
+
+        emailSent = true;
+        this.logger.log(`Rejection email sent to ${emailDest}`);
+      } catch (emailError) {
+        this.logger.error(`Failed to send rejection email: ${emailError.message}`);
+      }
+    }
+
+    this.logger.log(`Image rejected for user ${userId} by admin ${adminId}. Reason: ${rejectionReason}`);
+
+    return {
+      success: true,
+      message: 'User image rejected successfully. User notified via email.',
+      userId: user.id,
+      rejectionReason,
+      uploadUrl: frontendUploadUrl,
+      expiresAt: expiresAt.toISOString(),
+      emailSent,
+      uploadToken,
+    };
+  }
+
+  /**
+   * Helper: Extract path from full cloud storage URL
+   */
+  private extractPathFromUrl(url: string): string | null {
+    try {
+      const bucketName = process.env.GCS_BUCKET_NAME;
+      if (url.includes(bucketName)) {
+        const parts = url.split(`${bucketName}/`);
+        return parts[1] || null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Helper: Mask email for privacy
+   */
+  private maskEmail(email?: string): string | undefined {
+    if (!email) return undefined;
+    const [local, domain] = email.split('@');
+    if (local.length <= 2) return `${local[0]}***@${domain}`;
+    return `${local[0]}***${local[local.length - 1]}@${domain}`;
+  }
+
+  /**
+   * Helper: Mask phone number
+   */
+  private maskPhone(phone?: string): string | undefined {
+    if (!phone) return undefined;
+    if (phone.length <= 6) return phone;
+    return `${phone.slice(0, 3)}****${phone.slice(-3)}`;
+  }
+
+  // ==========================================
+  // 🎴 CARD MANAGEMENT (Global User Cards)
+  // ==========================================
+
+  /**
+   * Get card info for a user (both normal card & RFID)
+   */
+  async getUserCardInfo(userId: number): Promise<any> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId.toString() },
+      select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User not found with ID: ${userId}`);
+    }
+
+    return {
+      success: true,
+      userId: user.id,
+      userName: `${user.firstName} ${user.lastName || ''}`.trim(),
+      normalCard: {
+        cardId: user.cardId || null,
+        cardStatus: user.cardStatus || null,
+        cardExpiryDate: user.cardExpiryDate || null,
+        isExpired: user.cardExpiryDate ? new Date(user.cardExpiryDate) < new Date() : false
+      },
+      rfidCard: {
+        rfid: user.rfid || null,
+        rfidCardStatus: user.rfidCardStatus || null,
+        rfidExpiryDate: user.rfidExpiryDate || null,
+        isExpired: user.rfidExpiryDate ? new Date(user.rfidExpiryDate) < new Date() : false
+      }
+    };
+  }
+
+  /**
+   * Assign or update a normal card (QR/barcode) for a user
+   */
+  async assignNormalCard(userId: number, dto: { cardId: string; cardExpiryDate?: string }, adminId: string): Promise<any> {
+    const user = await this.userRepository.findOne({ where: { id: userId.toString() } });
+    if (!user) throw new NotFoundException(`User not found with ID: ${userId}`);
+
+    // Check if cardId is already used by another user
+    if (dto.cardId) {
+      const existingUser = await this.userRepository.findOne({ where: { cardId: dto.cardId } });
+      if (existingUser && existingUser.id !== userId.toString()) {
+        throw new BadRequestException(`Card ID ${dto.cardId} is already assigned to another user (ID: ${existingUser.id})`);
+      }
+    }
+
+    // If user already has an active card, mark old one as REPLACED
+    const previousCardId = user.cardId;
+    const previousStatus = user.cardStatus;
+
+    user.cardId = dto.cardId;
+    user.cardStatus = CardStatus.ACTIVE;
+    user.cardExpiryDate = dto.cardExpiryDate ? new Date(dto.cardExpiryDate) : null;
+    await this.userRepository.save(user);
+
+    this.logger.log(`Admin ${adminId} assigned normal card ${dto.cardId} to user ${userId}. Previous: ${previousCardId} (${previousStatus})`);
+
+    return {
+      success: true,
+      message: `Normal card assigned to user ${userId}`,
+      userId: user.id,
+      cardId: user.cardId,
+      cardStatus: user.cardStatus,
+      cardExpiryDate: user.cardExpiryDate,
+      previousCardId,
+      previousStatus
+    };
+  }
+
+  /**
+   * Update card status for a user (normal card or RFID independently)
+   */
+  async updateUserCardStatus(
+    userId: number,
+    dto: { cardType: 'normal' | 'rfid'; status: CardStatus },
+    adminId: string
+  ): Promise<any> {
+    const user = await this.userRepository.findOne({ where: { id: userId.toString() } });
+    if (!user) throw new NotFoundException(`User not found with ID: ${userId}`);
+
+    if (dto.cardType === 'normal') {
+      if (!user.cardId) throw new BadRequestException('User does not have a normal card assigned');
+      const prevStatus = user.cardStatus;
+      user.cardStatus = dto.status;
+      // Clear cardId if deactivated
+      if (dto.status !== CardStatus.ACTIVE) {
+        user.cardId = null;
+      }
+      await this.userRepository.save(user);
+      this.logger.log(`Admin ${adminId} changed normal card status for user ${userId}: ${prevStatus} → ${dto.status}`);
+    } else {
+      if (!user.rfid) throw new BadRequestException('User does not have an RFID card assigned');
+      const prevStatus = user.rfidCardStatus;
+      user.rfidCardStatus = dto.status;
+      // Clear rfid if deactivated
+      if (dto.status !== CardStatus.ACTIVE) {
+        user.rfid = null;
+      }
+      await this.userRepository.save(user);
+      this.logger.log(`Admin ${adminId} changed RFID card status for user ${userId}: ${prevStatus} → ${dto.status}`);
+    }
+
+    return {
+      success: true,
+      message: `${dto.cardType} card status updated to ${dto.status}`,
+      userId: user.id,
+      normalCard: {
+        cardId: user.cardId,
+        cardStatus: user.cardStatus,
+        cardExpiryDate: user.cardExpiryDate
+      },
+      rfidCard: {
+        rfid: user.rfid,
+        rfidCardStatus: user.rfidCardStatus,
+        rfidExpiryDate: user.rfidExpiryDate
+      }
+    };
+  }
+
+  /**
+   * Lookup a user by card ID (normal) or RFID
+   */
+  async lookupUserByCard(cardId: string): Promise<any> {
+    // Try normal card first
+    let user = await this.userRepository.findOne({
+      where: { cardId },
+      select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate', 'imageUrl', 'email', 'phoneNumber']
+    });
+    let lookupType = 'normalCard';
+
+    if (!user) {
+      // Try RFID
+      user = await this.userRepository.findOne({
+        where: { rfid: cardId },
+        select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate', 'imageUrl', 'email', 'phoneNumber']
+      });
+      lookupType = 'rfid';
+    }
+
+    if (!user) {
+      throw new NotFoundException(`No user found with card ID or RFID: ${cardId}`);
+    }
+
+    return {
+      success: true,
+      lookupType,
+      userId: user.id,
+      userName: `${user.firstName} ${user.lastName || ''}`.trim(),
+      email: this.maskEmail(user.email),
+      phoneNumber: this.maskPhone(user.phoneNumber),
+      imageUrl: user.imageUrl,
+      normalCard: {
+        cardId: user.cardId,
+        cardStatus: user.cardStatus,
+        cardExpiryDate: user.cardExpiryDate,
+        isExpired: user.cardExpiryDate ? new Date(user.cardExpiryDate) < new Date() : false
+      },
+      rfidCard: {
+        rfid: user.rfid,
+        rfidCardStatus: user.rfidCardStatus,
+        rfidExpiryDate: user.rfidExpiryDate,
+        isExpired: user.rfidExpiryDate ? new Date(user.rfidExpiryDate) < new Date() : false
+      }
     };
   }
 }

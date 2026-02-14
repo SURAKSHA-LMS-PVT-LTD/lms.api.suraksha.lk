@@ -15,6 +15,7 @@ import { PaginatedUserResponseDto } from './dto/paginated-user-response.dto';
 import { UserType } from './enums/user-type.enum';
 import { Gender } from './enums/gender.enum';
 import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
+import { ImageVerificationStatus } from '../institute_mudules/institue_user/enums/image-verification-status.enum';
 import { AuthService } from '../../auth/auth.service';
 import { InstitueUserService } from '../institute_mudules/institue_user/institue_user.service';
 import { InstituteUserResponseDto } from '../institute_mudules/institue_user/dto/institute-user-response.dto';
@@ -2424,13 +2425,20 @@ export class UsersService {
         throw new ResourceNotFoundException('User', userId);
       }
 
-      // Update the image URL
-      await this.userRepository.update(userId, { imageUrl });
+      // Update the image URL and set status to PENDING for verification
+      await this.userRepository.update(userId, { 
+        imageUrl,
+        imageVerificationStatus: ImageVerificationStatus.PENDING,
+        imageVerifiedBy: null,
+        imageVerifiedAt: null,
+        imageRejectionReason: null
+      });
       
       // 🚀 ULTRA-OPTIMIZED: Build updated user from existing data instead of SELECT query
       const updatedUser = {
         ...user,
         imageUrl,
+        imageVerificationStatus: ImageVerificationStatus.PENDING,
         updatedAt: now()
       } as unknown as UserResponseDto;
       

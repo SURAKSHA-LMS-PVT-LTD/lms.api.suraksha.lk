@@ -45,6 +45,14 @@ import {
   GenerateProfileImageUrlByUserIdDto,
   AssignProfileImageByUserIdDto,
 } from '../dto/create-family-unit.dto';
+import {
+  GetUnverifiedUsersQueryDto,
+  PaginatedUnverifiedUsersResponseDto,
+  ApproveUserImageDto,
+  ApproveUserImageResponseDto,
+  RejectUserImageDto,
+  RejectUserImageResponseDto,
+} from '../dto/image-verification.dto';
 
 @ApiTags('System Admin - User Management')
 @Controller('admin/users')
@@ -605,5 +613,179 @@ POST /admin/users/student/STU-20260123-001/profile-image
       contentType: body.contentType,
       fileSize: body.fileSize
     });
+  }
+
+  /**
+   * ✅ Get Unverified Users
+   * GET /admin/users/unverified
+   */
+  @Get('unverified')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @ApiOperation({
+    summary: 'Get users with pending/unverified profile images',
+    description: 'System Admin can review and moderate user profile images that need verification'
+  })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 20)', example: 20 })
+  @ApiQuery({ name: 'status', required: false, description: 'Filter by verification status', enum: ['PENDING', 'VERIFIED', 'REJECTED'] })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of unverified users retrieved successfully',
+    type: PaginatedUnverifiedUsersResponseDto
+  })
+  async getUnverifiedUsers(
+    @Query() query: GetUnverifiedUsersQueryDto
+  ): Promise<PaginatedUnverifiedUsersResponseDto> {
+    return this.systemAdminUserService.getUnverifiedUsers(query);
+  }
+
+  /**
+   * ✅ Approve User Profile Image
+   * POST /admin/users/:userId/approve-image
+   */
+  @Post(':userId/approve-image')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Approve user profile image',
+    description: 'Mark user profile image as verified and send confirmation email to user'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profile image approved successfully',
+    type: ApproveUserImageResponseDto
+  })
+  async approveUserImage(
+    @Param('userId') userId: number,
+    @Body() dto: ApproveUserImageDto,
+    @Request() req
+  ): Promise<ApproveUserImageResponseDto> {
+    return this.systemAdminUserService.approveUserImage(
+      { ...dto, userId },
+      req.user.id
+    );
+  }
+
+  /**
+   * ✅ Reject User Profile Image
+   * POST /admin/users/:userId/reject-image
+   * 
+   * Deletes rejected image, generates 7-day signed upload URL, sends email with re-upload link
+   */
+  @Post(':userId/reject-image')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reject user profile image with reason',
+    description: 'Reject user profile image, delete from cloud storage, and send email with 7-day upload link'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profile image rejected successfully',
+    type: RejectUserImageResponseDto
+  })
+  async rejectUserImage(
+    @Param('userId') userId: number,
+    @Body() dto: RejectUserImageDto,
+    @Request() req
+  ): Promise<RejectUserImageResponseDto> {
+    return this.systemAdminUserService.rejectUserImage(
+      { ...dto, userId },
+      req.user.id
+    );
+  }
+
+  // ==========================================
+  // 🎴 CARD MANAGEMENT ENDPOINTS
+  // ==========================================
+
+  /**
+   * Get card info for a user (normal + RFID)
+   * GET /admin/users/:userId/card-info
+   */
+  @Get(':userId/card-info')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get user card information (normal + RFID)',
+    description: 'Returns both normal card (QR/barcode) and RFID card status, IDs, and expiry dates'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
+  async getUserCardInfo(@Param('userId') userId: number) {
+    return this.systemAdminUserService.getUserCardInfo(userId);
+  }
+
+  /**
+   * Assign a normal card (QR/barcode) to a user
+   * POST /admin/users/:userId/assign-card
+   */
+  @Post(':userId/assign-card')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Assign normal card (QR/barcode) to user',
+    description: 'Assigns a card ID to the user. If user already has a card, old one is replaced.'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string', example: 'CARD-2025-0001' },
+        cardExpiryDate: { type: 'string', example: '2026-12-31', description: 'Optional expiry date (ISO format)' }
+      },
+      required: ['cardId']
+    }
+  })
+  async assignNormalCard(
+    @Param('userId') userId: number,
+    @Body() dto: { cardId: string; cardExpiryDate?: string },
+    @Request() req
+  ) {
+    return this.systemAdminUserService.assignNormalCard(userId, dto, req.user.id);
+  }
+
+  /**
+   * Update card status (normal or RFID, independently)
+   * PATCH /admin/users/:userId/card-status
+   */
+  @Patch(':userId/card-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update card status (normal or RFID independently)',
+    description: 'Update card status for a user. Normal card and RFID card are independent - deactivating one does not affect the other.'
+  })
+  @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        cardType: { type: 'string', enum: ['normal', 'rfid'], example: 'normal' },
+        status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'DEACTIVATED', 'EXPIRED', 'LOST', 'DAMAGED', 'REPLACED'], example: 'DEACTIVATED' }
+      },
+      required: ['cardType', 'status']
+    }
+  })
+  async updateUserCardStatus(
+    @Param('userId') userId: number,
+    @Body() dto: { cardType: 'normal' | 'rfid'; status: any },
+    @Request() req
+  ) {
+    return this.systemAdminUserService.updateUserCardStatus(userId, dto, req.user.id);
+  }
+
+  /**
+   * Lookup user by card ID or RFID
+   * GET /admin/users/card-lookup/:cardId
+   */
+  @Get('card-lookup/:cardId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Lookup user by card ID or RFID',
+    description: 'Finds user by normal card ID first, then fallback to RFID. Returns full card info for both card types.'
+  })
+  @ApiParam({ name: 'cardId', description: 'Card ID or RFID to look up', example: 'CARD-2025-0001' })
+  async lookupUserByCard(@Param('cardId') cardId: string) {
+    return this.systemAdminUserService.lookupUserByCard(cardId);
   }
 }

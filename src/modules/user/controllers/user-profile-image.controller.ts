@@ -47,7 +47,7 @@ export class UserProfileImageController {
   })
   @ApiOperation({ 
     summary: 'Update user profile image', 
-    description: 'Update user profile image URL. First upload the image using /upload/generate-signed-url endpoint, then send the public URL here.' 
+    description: 'Update user profile image URL. Image will be set to PENDING status for System Admin verification. First upload the image using /upload/generate-signed-url endpoint, then send the public URL here.' 
   })
   @ApiConsumes('application/json')
   @ApiResponse({ 
@@ -201,6 +201,103 @@ export class UserProfileImageController {
       data: {
         userId,
         idUrl: fullPublicUrl
+      }
+    };
+  }
+
+  /**
+   * ✅ PUBLIC ENDPOINT: Re-upload Profile Image After Rejection
+   * POST /users/profile/image/reupload?token=xxx
+   * 
+   * Allows users to re-upload profile image using token from rejection email
+   * No authentication required - validates upload token instead
+   */
+  @Post('profile/image/reupload')
+  @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 🔒 SECURITY: 10 re-uploads per hour
+  @ApiOperation({
+    summary: '🔓 Public: Re-upload profile image after rejection',
+    description: 'Allows users to re-upload their profile image using the token received in rejection email. No authentication required.'
+  })
+  @ApiConsumes('application/json')
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Profile image re-uploaded successfully. Status set to PENDING for review.',
+    schema: {
+      example: {
+        success: true,
+        message: 'Profile image uploaded successfully. It will be reviewed by our team.',
+        data: {
+          userId: '123',
+          imageUrl: 'https://storage.googleapis.com/suraksha-lms/profile-images/user-123-profile.png',
+          status: 'PENDING'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid or expired token'
+  })
+  @HttpCode(HttpStatus.OK)
+  async reuploadProfileImage(
+    @Body() body: { token: string; imageUrl: string }
+  ) {
+    const { token, imageUrl } = body;
+
+    // Validate and decode upload token
+    let tokenData: any;
+    try {
+      const decoded = Buffer.from(token, 'base64url').toString('utf-8');
+      tokenData = JSON.parse(decoded);
+
+      // Check expiration
+      if (tokenData.exp < Date.now()) {
+        throw new BadRequestException('Upload token has expired. Please request a new link from support.');
+      }
+
+      // Verify purpose
+      if (tokenData.purpose !== 'profile-image-reupload') {
+        throw new BadRequestException('Invalid upload token');
+      }
+    } catch (error) {
+      throw new BadRequestException('Invalid or malformed upload token');
+    }
+
+    const userId = tokenData.userId?.toString();
+    if (!userId) {
+      throw new BadRequestException('Invalid token: missing user ID');
+    }
+
+    // Verify user exists
+    const user = await this.userService.findOne(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Strip base URL to store only relative path
+    const relativePath = this.stripBaseUrl(imageUrl);
+    
+    // ✅ SECURITY: Verify file exists in cloud storage before accepting URL
+    const fileExists = await this.cloudStorageService.fileExists(relativePath);
+    if (!fileExists) {
+      throw new BadRequestException(
+        'Image file not found in storage. Please upload the file first using the provided signed URL.'
+      );
+    }
+    
+    // Store relative path in database with PENDING status
+    await this.userService.updateImageUrl(userId, relativePath);
+
+    // Generate full URL for API response
+    const fullPublicUrl = this.cloudStorageService.getPublicUrl(relativePath);
+
+    return {
+      success: true,
+      message: 'Profile image uploaded successfully. It will be reviewed by our team.',
+      data: {
+        userId,
+        imageUrl: fullPublicUrl,
+        status: 'PENDING'
       }
     };
   }

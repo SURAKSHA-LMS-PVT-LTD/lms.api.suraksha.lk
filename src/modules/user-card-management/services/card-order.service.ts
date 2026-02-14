@@ -11,6 +11,7 @@ import { AssignRfidDto } from '../dto/assign-rfid.dto';
 import { OrderResponseDto, PaginatedOrdersResponseDto } from '../dto/response/order-response.dto';
 import { OrderStatus } from '../enums/order-status.enum';
 import { CardStatus } from '../enums/card-status.enum';
+import { CardType } from '../enums/card-type.enum';
 import { now, getExpiryDate } from '../../../common/utils/timezone.util';
 
 @Injectable()
@@ -347,6 +348,9 @@ export class CardOrderService {
 
       if (user) {
         user.rfid = assignRfidDto.rfidNumber;
+        // ✅ Sync RFID card status & expiry to user entity
+        user.rfidCardStatus = CardStatus.ACTIVE;
+        user.rfidExpiryDate = order.cardExpiryDate;
         await queryRunner.manager.save(user);
       }
 
@@ -399,7 +403,17 @@ export class CardOrderService {
           });
 
           if (user) {
-            user.rfid = order.rfidNumber;
+            // ✅ Sync based on card type: NFC → rfid fields, PVC/TEMPORARY → normal card fields
+            if (order.cardType === CardType.NFC) {
+              user.rfid = order.rfidNumber;
+              user.rfidCardStatus = CardStatus.ACTIVE;
+              user.rfidExpiryDate = order.cardExpiryDate;
+            } else {
+              // PVC or TEMPORARY → normal card
+              user.cardId = order.rfidNumber;
+              user.cardStatus = CardStatus.ACTIVE;
+              user.cardExpiryDate = order.cardExpiryDate;
+            }
             await queryRunner.manager.save(user);
           }
         }
@@ -407,15 +421,23 @@ export class CardOrderService {
         // Deactivating card (LOST, DAMAGED, DEACTIVATED, REPLACED, etc.)
         order.deactivatedAt = now();
         
-        // Remove user.rfid if this card's RFID is currently in user table
+        // Remove user card fields if this card's RFID is currently in user table
         if (order.rfidNumber) {
           const user = await queryRunner.manager.findOne(UserEntity, {
-            where: { id: order.userId, rfid: order.rfidNumber },
+            where: { id: order.userId },
           });
 
           if (user) {
-            user.rfid = null;
-            await queryRunner.manager.save(user);
+            // ✅ Clear based on card type - independent deactivation
+            if (order.cardType === CardType.NFC && user.rfid === order.rfidNumber) {
+              user.rfid = null;
+              user.rfidCardStatus = updateCardStatusDto.status;
+              await queryRunner.manager.save(user);
+            } else if (order.cardType !== CardType.NFC && user.cardId === order.rfidNumber) {
+              user.cardId = null;
+              user.cardStatus = updateCardStatusDto.status;
+              await queryRunner.manager.save(user);
+            }
           }
         }
       }
@@ -497,13 +519,34 @@ export class CardOrderService {
         }
       }
 
+      // ✅ Also handle old normal card replacement if new card is PVC/TEMPORARY
+      if (order.cardType !== CardType.NFC && user.cardId) {
+        const oldNormalCardOrder = await queryRunner.manager.findOne(UserIdCardOrder, {
+          where: { userId, rfidNumber: user.cardId, status: CardStatus.ACTIVE },
+        });
+        if (oldNormalCardOrder && oldNormalCardOrder.id !== orderId) {
+          oldNormalCardOrder.status = CardStatus.REPLACED;
+          oldNormalCardOrder.deactivatedAt = now();
+          await queryRunner.manager.save(oldNormalCardOrder);
+        }
+      }
+
       // Activate the new card
       order.status = CardStatus.ACTIVE;
       order.activatedAt = now();
       await queryRunner.manager.save(order);
 
-      // Update user.rfid to new card's RFID
-      user.rfid = order.rfidNumber;
+      // ✅ Update user fields based on card type (NFC → rfid fields, PVC/TEMPORARY → normal card fields)
+      if (order.cardType === CardType.NFC) {
+        user.rfid = order.rfidNumber;
+        user.rfidCardStatus = CardStatus.ACTIVE;
+        user.rfidExpiryDate = order.cardExpiryDate;
+      } else {
+        // PVC or TEMPORARY → normal card fields
+        user.cardId = order.rfidNumber;
+        user.cardStatus = CardStatus.ACTIVE;
+        user.cardExpiryDate = order.cardExpiryDate;
+      }
       await queryRunner.manager.save(user);
 
       await queryRunner.commitTransaction();
