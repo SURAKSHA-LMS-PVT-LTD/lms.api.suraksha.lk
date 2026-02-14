@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { UserType } from '../../user/enums/user-type.enum';
 import { PushNotificationService } from '../services/push-notification.service';
 import { QueryUserNotificationsDto } from '../dto/query-push-notification.dto';
 import { 
@@ -80,11 +81,11 @@ export class PushNotificationUserController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     anyInstituteRole: true,
-    global: []
+    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER, UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT]
   })
   @ApiOperation({ 
     summary: 'Get system notifications',
-    description: 'Get global/system-wide notifications only (not institute-specific)'
+    description: 'Get global/system-wide notifications only (not institute-specific). Available to all authenticated users.'
   })
   @ApiResponse({ status: 200, description: 'System notifications retrieved successfully', type: PaginatedUserNotificationResponseDto })
   async getSystemNotifications(
@@ -130,11 +131,11 @@ export class PushNotificationUserController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     anyInstituteRole: true,
-    global: []
+    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER, UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT]
   })
   @ApiOperation({ 
     summary: 'Get unread system notification count',
-    description: 'Get the count of unread global/system notifications'
+    description: 'Get the count of unread global/system notifications. Available to all authenticated users.'
   })
   @ApiResponse({ status: 200, description: 'Unread count retrieved successfully', type: UnreadCountResponseDto })
   async getSystemUnreadCount(@Req() request: Request): Promise<UnreadCountResponseDto> {

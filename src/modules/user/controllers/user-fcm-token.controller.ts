@@ -25,11 +25,11 @@ export class UserFcmTokenController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     anyInstituteRole: true,
-    global: []
+    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER, UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT]
   })
   @ApiOperation({ 
     summary: 'Register or update FCM token for push notifications',
-    description: 'Register a new FCM token or update existing one for a user device. If token already exists for the user-device combination, it will be updated.'
+    description: 'Register a new FCM token or update existing one for a user device. Available to all authenticated users regardless of role.'
   })
   @ApiResponse({ status: 201, description: 'FCM token registered successfully', type: UserFcmTokenResponseDto })
   @ApiResponse({ status: 400, description: 'Bad request' })
