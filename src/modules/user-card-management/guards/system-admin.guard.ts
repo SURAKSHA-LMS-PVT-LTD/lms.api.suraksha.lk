@@ -14,12 +14,25 @@ export class SystemAdminGuard implements CanActivate {
     }
 
     // Check if user is SUPER_ADMIN or ORGANIZATION_MANAGER
-    const allowedTypes = ['SA', 'OM']; // Compact user types
+    // Support multiple JWT formats:
+    // 1. Enhanced numeric: u = 0 (SUPERADMIN) or 1 (ORG_MANAGER)
+    // 2. Database string: userType = 'SUPERADMIN' or 'ORGANIZATION_MANAGER'
+    // 3. Legacy string: ut = 'SA' or 'OM' (if exists)
     
-    if (!allowedTypes.includes(user.ut)) {
-      throw new ForbiddenException('Access denied. System admin privileges required.');
+    if (user.u === 0 || user.u === 1) {
+      return true;
+    }
+    
+    const userType = (user.userType || '').toString().toUpperCase();
+    if (userType === 'SUPERADMIN' || userType === 'ORGANIZATION_MANAGER') {
+      return true;
+    }
+    
+    const legacyType = (user.ut || '').toUpperCase();
+    if (legacyType === 'SA' || legacyType === 'OM') {
+      return true;
     }
 
-    return true;
+    throw new ForbiddenException('Access denied. System admin privileges required.');
   }
 }

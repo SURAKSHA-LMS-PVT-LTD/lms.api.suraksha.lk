@@ -51,11 +51,6 @@ export class PushNotificationUserController {
    * Returns all notifications (institute-wide, class-level, subject-level) for the given institute
    */
   @Get('institute/:instituteId')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: []
-  })
   @ApiOperation({ 
     summary: 'Get notifications for an institute',
     description: 'Get all notifications for a specific institute including institute-wide, class-level, and subject-level notifications'
@@ -78,11 +73,6 @@ export class PushNotificationUserController {
    * Returns only GLOBAL scope notifications (not institute-specific)
    */
   @Get('system')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER, UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT]
-  })
   @ApiOperation({ 
     summary: 'Get system notifications',
     description: 'Get global/system-wide notifications only (not institute-specific). Available to all authenticated users.'
@@ -102,11 +92,6 @@ export class PushNotificationUserController {
    * Get unread count for institute notifications
    */
   @Get('institute/:instituteId/unread-count')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: []
-  })
   @ApiOperation({ 
     summary: 'Get unread notification count for an institute',
     description: 'Get the count of unread notifications for a specific institute'
@@ -128,11 +113,6 @@ export class PushNotificationUserController {
    * Get unread count for system notifications
    */
   @Get('system/unread-count')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER, UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT]
-  })
   @ApiOperation({ 
     summary: 'Get unread system notification count',
     description: 'Get the count of unread global/system notifications. Available to all authenticated users.'
@@ -150,11 +130,6 @@ export class PushNotificationUserController {
    * Mark a notification as read
    */
   @Post(':id/read')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: []
-  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Mark notification as read',
@@ -177,11 +152,6 @@ export class PushNotificationUserController {
    * Mark multiple notifications as read
    */
   @Post('mark-read')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: []
-  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Mark multiple notifications as read',
@@ -206,11 +176,6 @@ export class PushNotificationUserController {
    * Mark all institute notifications as read
    */
   @Post('institute/:instituteId/mark-all-read')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: []
-  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Mark all institute notifications as read',
@@ -244,11 +209,6 @@ export class PushNotificationUserController {
    * Get a single notification details
    */
   @Get(':id')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true,
-    global: []
-  })
   @ApiOperation({ 
     summary: 'Get notification details',
     description: 'Get details of a specific notification'
