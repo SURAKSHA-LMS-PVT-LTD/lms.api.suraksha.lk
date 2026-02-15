@@ -5,7 +5,7 @@ import { Repository, In } from 'typeorm';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { NOTIFICATION_PACKAGES_CONFIG } from '../advertisement/services/notification-packages.config';
-import { MarkAttendanceDto, BulkAttendanceDto, GetStudentAttendanceDto, StudentAttendanceResponseDto, AttendanceStatus } from './dto/attendance.dto';
+import { MarkAttendanceDto, BulkAttendanceDto, GetStudentAttendanceDto, StudentAttendanceResponseDto, AttendanceStatus, AttendanceUserType } from './dto/attendance.dto';
 import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto } from './dto/card-attendance.dto';
 import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteCardUserResponseDto } from './dto/institute-card-attendance.dto';
 import { StudentEntity } from '../student/entities/student.entity';
@@ -16,6 +16,7 @@ import { StudentBookhireEnrollmentEntity } from '../private-transportation/entit
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { ImageVerificationStatus } from '../institute_mudules/institue_user/enums/image-verification-status.enum';
 import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/institute-user-status.enum';
+import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
 import { AdvertisementMatchingService } from '../advertisement/advertisement-matching.service';
 import { CardStatus } from '../user-card-management/enums/card-status.enum';
@@ -53,24 +54,127 @@ export class AttendanceService {
     this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
   }
 
+  /**
+   * 🔍 AUTO-DETECT USER TYPE: Look up institute_user to determine the user's role in this institute
+   * Returns the InstituteUserType or NOT_ENROLLED if not found
+   */
+  private async detectInstituteUserType(
+    userId: string,
+    instituteId: string
+  ): Promise<{ 
+    userType: AttendanceUserType; 
+    instituteUser: InstituteUserEntity | null;
+  }> {
+    try {
+      const instituteUser = await this.instituteUserRepository.findOne({
+        where: {
+          userId: userId,
+          instituteId: instituteId,
+        },
+        select: ['userId', 'instituteId', 'instituteUserType', 'status', 'instituteUserImageUrl', 'imageVerificationStatus'],
+      });
+
+      if (!instituteUser) {
+        return { userType: AttendanceUserType.NOT_ENROLLED, instituteUser: null };
+      }
+
+      // Map InstituteUserType enum to AttendanceUserType enum
+      const typeMap: Record<string, AttendanceUserType> = {
+        [InstituteUserType.STUDENT]: AttendanceUserType.STUDENT,
+        [InstituteUserType.TEACHER]: AttendanceUserType.TEACHER,
+        [InstituteUserType.INSTITUTE_ADMIN]: AttendanceUserType.INSTITUTE_ADMIN,
+        [InstituteUserType.ATTENDANCE_MARKER]: AttendanceUserType.ATTENDANCE_MARKER,
+        [InstituteUserType.PARENT]: AttendanceUserType.PARENT,
+      };
+
+      return { 
+        userType: typeMap[instituteUser.instituteUserType] || AttendanceUserType.STUDENT, 
+        instituteUser 
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to detect user type for ${userId} in institute ${instituteId}: ${error.message}`);
+      return { userType: AttendanceUserType.NOT_ENROLLED, instituteUser: null };
+    }
+  }
+
+  /**
+   * 🖼️ RESOLVE IMAGE URL: Get the correct image for any user type
+   * Uses institute-specific image if verified, falls back to global user image
+   */
+  private resolveImageUrl(
+    instituteUser: InstituteUserEntity | null,
+    globalImageUrl: string | null,
+    instituteId: string
+  ): string | null {
+    try {
+      const requiresInstituteImage = this.instituteIdsRequiringCustomImages.has(instituteId);
+
+      if (requiresInstituteImage && instituteUser) {
+        const isVerified = instituteUser.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
+        const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl
+          ? instituteUser.instituteUserImageUrl
+          : globalImageUrl;
+
+        return finalImageUrl ? this.CloudStorageService.getFullUrl(finalImageUrl) : null;
+      }
+
+      return globalImageUrl ? this.CloudStorageService.getFullUrl(globalImageUrl) : null;
+    } catch (error) {
+      return globalImageUrl || null;
+    }
+  }
+
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
     
     try {
-      // Validate student enrollment if configured
-      await this.validateStudentEnrollment(
+      // ✅ STEP 1: Auto-detect user type from institute_user table
+      const { userType, instituteUser } = await this.detectInstituteUserType(
         markAttendanceDto.studentId,
         markAttendanceDto.instituteId
       );
-      
-      const studentData = await this.fetchStudentWithParentData(markAttendanceDto.studentId);
-      
-      if (!studentData.student?.user) {
-        throw new Error(`Student not found: ${markAttendanceDto.studentId}`);
+
+      // ✅ STEP 2: Validate enrollment if configured (applies to all user types)
+      await this.validateUserEnrollment(
+        markAttendanceDto.studentId,
+        markAttendanceDto.instituteId,
+        userType
+      );
+
+      // ✅ STEP 3: Fetch user data based on user type
+      let userName: string;
+      let globalImageUrl: string | null = null;
+      let studentData: any = null;
+
+      if (userType === AttendanceUserType.STUDENT) {
+        // STUDENT path: Use existing student + parent data fetch (for notifications)
+        studentData = await this.fetchStudentWithParentData(markAttendanceDto.studentId);
+        
+        if (!studentData.student?.user) {
+          throw new Error(`Student not found: ${markAttendanceDto.studentId}`);
+        }
+
+        userName = `${studentData.student.user.firstName} ${studentData.student.user.lastName}`.trim();
+        globalImageUrl = studentData.student.user.imageUrl || null;
+      } else {
+        // NON-STUDENT path: Query UserEntity directly (TEACHER, INSTITUTE_ADMIN, etc.)
+        const user = await this.userRepository.findOne({
+          where: { id: markAttendanceDto.studentId },
+          select: ['id', 'firstName', 'lastName', 'imageUrl', 'email', 'phoneNumber', 'subscriptionPlan'],
+        });
+
+        if (!user) {
+          throw new Error(`User not found: ${markAttendanceDto.studentId}`);
+        }
+
+        userName = `${user.firstName} ${user.lastName || ''}`.trim();
+        globalImageUrl = user.imageUrl || null;
       }
 
-      markAttendanceDto.studentName = `${studentData.student.user.firstName} ${studentData.student.user.lastName}`.trim();
+      markAttendanceDto.studentName = userName;
+      // Attach auto-detected userType to the DTO for DynamoDB storage
+      markAttendanceDto.userType = userType;
 
       if (!markAttendanceDto.date) {
         markAttendanceDto.date = getCurrentSriLankaDate();
@@ -84,49 +188,23 @@ export class AttendanceService {
         );
       }
 
+      // ✅ STEP 4: Mark attendance in DynamoDB (same for all user types)
       const result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
 
-      this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
-
-      // ⚡ OPTIMIZATION: Use cached Set for O(1) lookup
-      const requiresInstituteImage = this.instituteIdsRequiringCustomImages.has(markAttendanceDto.instituteId);
-
-      let imageUrl = null;
-      
-      if (requiresInstituteImage) {
-        // Only query institute_user table if institute is in the configured list
-        try {
-          const instituteUser = await this.instituteUserRepository.findOne({
-            where: {
-              userId: markAttendanceDto.studentId,
-              instituteId: markAttendanceDto.instituteId,
-            },
-            select: ['instituteUserImageUrl', 'imageVerificationStatus'],
-          });
-
-          const isVerified = instituteUser?.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
-          const finalImageUrl = isVerified && instituteUser?.instituteUserImageUrl
-            ? instituteUser.instituteUserImageUrl
-            : studentData.student.user.imageUrl;
-
-          if (finalImageUrl) {
-            imageUrl = this.CloudStorageService.getFullUrl(finalImageUrl);
-          }
-        } catch (storageError) {
-          imageUrl = studentData.student.user.imageUrl || null;
-        }
-      } else {
-        // Use global user image directly (no database query)
-        imageUrl = studentData.student.user.imageUrl 
-          ? this.CloudStorageService.getFullUrl(studentData.student.user.imageUrl)
-          : null;
+      // ✅ STEP 5: Send notifications ONLY for students (teachers/admins don't need parent notifications)
+      if (userType === AttendanceUserType.STUDENT && studentData) {
+        this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
       }
+
+      // ✅ STEP 6: Resolve image URL (works for ALL user types)
+      const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
       
       return {
         success: true,
         imageUrl: imageUrl,
         status: markAttendanceDto.status,
-        name: markAttendanceDto.studentName
+        name: userName,
+        userType: userType,  // ✅ NEW: Return the auto-detected user type
       };
     } catch (error) {
       this.logger.error(`[${requestId}] ❌ ERROR: Failed to mark attendance - ${error.message}`, error.stack);
@@ -139,100 +217,161 @@ export class AttendanceService {
     const startTime = nowTimestamp();
     
     try {
-      const studentIds = bulkAttendanceDto.students.map(s => s.studentId);
+      const userIds = bulkAttendanceDto.students.map(s => s.studentId);
       
-      // ✅ STEP 1: Validate all students' enrollment (if configured) - batch operation
-      await Promise.all(
-        studentIds.map(studentId =>
-          this.validateStudentEnrollment(studentId, bulkAttendanceDto.instituteId)
-        )
-      );
-      
-      // ✅ STEP 2: Fetch all students from database at once - optimized batch query
-      const students = await this.studentRepository.find({
-        where: { userId: In(studentIds) },
-        relations: ['user'],
-        select: {
-          userId: true,
-          user: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phoneNumber: true,
-            subscriptionPlan: true,
-            telegramId: true,
-            imageUrl: true
-          }
-        }
+      // ✅ STEP 1: Batch detect user types from institute_user table
+      const instituteUsers = await this.instituteUserRepository.find({
+        where: {
+          userId: In(userIds),
+          instituteId: bulkAttendanceDto.instituteId,
+        },
+        select: ['userId', 'instituteUserType', 'status'],
       });
-      
-      // ✅ STEP 3: Create student lookup map for quick access
-      const studentMap = new Map(
-        students.map(s => [s.userId, s])
+      const instituteUserMap = new Map(
+        instituteUsers.map(iu => [iu.userId, iu])
+      );
+
+      // ✅ STEP 2: Validate enrollment (if configured) - batch operation
+      await Promise.all(
+        userIds.map(userId => {
+          const iu = instituteUserMap.get(userId);
+          const detectedType = iu 
+            ? (AttendanceUserType[iu.instituteUserType as keyof typeof AttendanceUserType] || AttendanceUserType.STUDENT) 
+            : AttendanceUserType.NOT_ENROLLED;
+          return this.validateUserEnrollment(userId, bulkAttendanceDto.instituteId, detectedType);
+        })
       );
       
-      // ✅ STEP 4: Validate all students exist and update names from database
+      // ✅ STEP 3: Separate students from non-students for different data fetch strategies
+      const studentUserIds = userIds.filter(id => {
+        const iu = instituteUserMap.get(id);
+        return !iu || iu.instituteUserType === InstituteUserType.STUDENT;
+      });
+      const nonStudentUserIds = userIds.filter(id => {
+        const iu = instituteUserMap.get(id);
+        return iu && iu.instituteUserType !== InstituteUserType.STUDENT;
+      });
+
+      // ✅ STEP 4A: Fetch students from students table (with parent data for notifications)
+      const studentEntities = studentUserIds.length > 0 
+        ? await this.studentRepository.find({
+            where: { userId: In(studentUserIds) },
+            relations: ['user'],
+            select: {
+              userId: true,
+              user: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phoneNumber: true,
+                subscriptionPlan: true,
+                telegramId: true,
+                imageUrl: true
+              }
+            }
+          })
+        : [];
+
+      // ✅ STEP 4B: Fetch non-student users directly from users table
+      const nonStudentEntities = nonStudentUserIds.length > 0
+        ? await this.userRepository.find({
+            where: { id: In(nonStudentUserIds) },
+            select: ['id', 'firstName', 'lastName', 'imageUrl'],
+          })
+        : [];
+
+      // ✅ STEP 5: Build unified user map (userId -> { name, userType })
+      const userDataMap = new Map<string, { name: string; userType: AttendanceUserType }>();
+      
+      for (const student of studentEntities) {
+        if (student.user) {
+          userDataMap.set(student.userId, {
+            name: `${student.user.firstName} ${student.user.lastName}`.trim(),
+            userType: AttendanceUserType.STUDENT,
+          });
+        }
+      }
+      
+      for (const user of nonStudentEntities) {
+        const iu = instituteUserMap.get(user.id.toString());
+        const typeMap: Record<string, AttendanceUserType> = {
+          [InstituteUserType.TEACHER]: AttendanceUserType.TEACHER,
+          [InstituteUserType.INSTITUTE_ADMIN]: AttendanceUserType.INSTITUTE_ADMIN,
+          [InstituteUserType.ATTENDANCE_MARKER]: AttendanceUserType.ATTENDANCE_MARKER,
+          [InstituteUserType.PARENT]: AttendanceUserType.PARENT,
+        };
+        userDataMap.set(user.id.toString(), {
+          name: `${user.firstName} ${user.lastName || ''}`.trim(),
+          userType: iu ? (typeMap[iu.instituteUserType] || AttendanceUserType.STUDENT) : AttendanceUserType.NOT_ENROLLED,
+        });
+      }
+
+      // ✅ STEP 6: Validate all users exist and update names
       const validatedStudents = [];
-      const invalidStudents = [];
+      const invalidUsers = [];
       
       for (const studentItem of bulkAttendanceDto.students) {
-        const dbStudent = studentMap.get(studentItem.studentId);
+        const userData = userDataMap.get(studentItem.studentId);
         
-        if (!dbStudent?.user) {
-          invalidStudents.push({
+        if (!userData) {
+          invalidUsers.push({
             studentId: studentItem.studentId,
-            error: `Student not found: ${studentItem.studentId}`
+            error: `User not found: ${studentItem.studentId}`
           });
-          this.logger.warn(`[${requestId}] ⚠️  Student not found: ${studentItem.studentId}`);
+          this.logger.warn(`[${requestId}] ⚠️  User not found: ${studentItem.studentId}`);
           continue;
         }
         
         // Override with database name
-        studentItem.studentName = `${dbStudent.user.firstName} ${dbStudent.user.lastName}`.trim();
+        studentItem.studentName = userData.name;
         validatedStudents.push(studentItem);
       }
       
-      // ✅ STEP 5: Check if any students were invalid
-      if (invalidStudents.length > 0) {
-        this.logger.error(`[${requestId}] ❌ ${invalidStudents.length} invalid students found`);
+      // ✅ STEP 7: Check if any users were invalid
+      if (invalidUsers.length > 0) {
+        this.logger.error(`[${requestId}] ❌ ${invalidUsers.length} invalid users found`);
         throw new NotFoundException(
-          `${invalidStudents.length} student(s) not found: ${invalidStudents.map(s => s.studentId).join(', ')}`
+          `${invalidUsers.length} user(s) not found: ${invalidUsers.map(s => s.studentId).join(', ')}`
         );
       }
       
-      // ✅ STEP 6: Update the DTO with only validated students
+      // ✅ STEP 8: Update the DTO with only validated users
       bulkAttendanceDto.students = validatedStudents;
       
-      // ✅ STEP 7: Mark attendance in DynamoDB
+      // ✅ STEP 9: Mark attendance in DynamoDB
       const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
       
-      // ✅ STEP 8: Send notifications (same as before)
-      // ⚡ OPTIMIZATION: Use cached value
+      // ✅ STEP 10: Send notifications ONLY for students (teachers/admins skip parent notifications)
       if (this.notificationsEnabled) {
         results.forEach(result => {
-          const markAttendanceDto: MarkAttendanceDto = {
-            studentId: result.studentId,
-            studentName: result.studentName,
-            instituteId: bulkAttendanceDto.instituteId,
-            instituteName: bulkAttendanceDto.instituteName,
-            classId: bulkAttendanceDto.classId,
-            className: bulkAttendanceDto.className,
-            subjectId: bulkAttendanceDto.subjectId,
-            subjectName: bulkAttendanceDto.subjectName,
-            date: result.date,
-            location: bulkAttendanceDto.location,
-            status: result.status,
-            markingMethod: bulkAttendanceDto.markingMethod
-          };
+          const userData = userDataMap.get(result.studentId);
+          // Only send parent notifications for STUDENT type
+          if (userData?.userType === AttendanceUserType.STUDENT) {
+            const markAttendanceDto: MarkAttendanceDto = {
+              studentId: result.studentId,
+              studentName: result.studentName,
+              instituteId: bulkAttendanceDto.instituteId,
+              instituteName: bulkAttendanceDto.instituteName,
+              classId: bulkAttendanceDto.classId,
+              className: bulkAttendanceDto.className,
+              subjectId: bulkAttendanceDto.subjectId,
+              subjectName: bulkAttendanceDto.subjectName,
+              date: result.date,
+              location: bulkAttendanceDto.location,
+              status: result.status,
+              markingMethod: bulkAttendanceDto.markingMethod,
+              userType: AttendanceUserType.STUDENT,
+            };
 
-          this.scheduleAttendanceNotification(markAttendanceDto, result);
+            this.scheduleAttendanceNotification(markAttendanceDto, result);
+          }
         });
       }
 
       return {
         success: true,
-        message: `Bulk attendance marked successfully for ${results.length} students`,
+        message: `Bulk attendance marked successfully for ${results.length} users`,
         totalProcessed: results.length,
         action: 'bulk_created',
         records: results
@@ -301,7 +440,8 @@ export class AttendanceService {
       markedBy: 'system',
       markedAt: record.date,
       markingMethod: record.markingMethod,
-      status: record.status
+      status: record.status,
+      userType: (record as any).userType || AttendanceUserType.STUDENT
     }));
 
     return {
@@ -673,7 +813,8 @@ export class AttendanceService {
           address: record.location,
           markedAt: record.date,
           markingMethod: record.markingMethod,
-          status: record.status
+          status: record.status,
+          userType: (record as any).userType || AttendanceUserType.STUDENT
         }))
       };
     } else {
@@ -1606,7 +1747,8 @@ export class AttendanceService {
    * - Looks up user via institute_user table by instituteCardId
    * - Gets user name from users table JOIN
    * - Applies image URL logic (institute verified vs global)
-   * - Uses EXACT same logic as markAttendance (notifications, DynamoDB, etc.)
+   * - ✅ ENHANCED: Works for ALL user types (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.)
+   * - Only fetches parent data & sends notifications for STUDENT type
    */
   async markAttendanceByInstituteCard(
     markAttendanceDto: MarkAttendanceByInstituteCardDto, 
@@ -1614,14 +1756,7 @@ export class AttendanceService {
   ): Promise<any> {
     const { instituteCardId, instituteId } = markAttendanceDto;
 
-    // � ULTIMATE OPTIMIZATION: ONE SINGLE QUERY WITH ALL DATA!
-    // Query chain: institute_user → user → student → father/mother/guardian → parent.user
-    // This replaces 2-3 separate queries with ONE mega-query (10+ JOINs in single SQL!)
-    // 
-    // 🚀 ULTIMATE OPTIMIZATION: Single query with ALL data needed for notifications!
-    // Get institute user + student + ALL parent contact data in ONE query
-    // No redundant fetching - everything loaded once, used immediately for fast notifications
-    
+    // ✅ STEP 1: Query institute_user with user data (works for ALL user types)
     const instituteUser = await this.instituteUserRepository
       .createQueryBuilder('institute_user')
       .leftJoinAndSelect('institute_user.user', 'user')
@@ -1635,6 +1770,7 @@ export class AttendanceService {
         'institute_user.instituteCardId',
         'institute_user.instituteUserImageUrl',
         'institute_user.imageVerificationStatus',
+        'institute_user.instituteUserType',
         'user.id',
         'user.firstName',
         'user.lastName',
@@ -1650,102 +1786,99 @@ export class AttendanceService {
       );
     }
 
-    // 🔥 MEGA-QUERY: Get student with ALL parent contact data in ONE shot (8 JOINs!)
-    // This is CORRECT because we NEED parent data for immediate notification sending
-    // Parent contacts fetched ONCE here, used immediately in fire-and-forget notifications
-    const studentData = await this.studentRepository
-      .createQueryBuilder('student')
-      .leftJoinAndSelect('student.user', 'user')
-      .leftJoinAndSelect('student.father', 'father')
-      .leftJoinAndSelect('father.user', 'fatherUser')
-      .leftJoinAndSelect('student.mother', 'mother')
-      .leftJoinAndSelect('mother.user', 'motherUser')
-      .leftJoinAndSelect('student.guardian', 'guardian')
-      .leftJoinAndSelect('guardian.user', 'guardianUser')
-      .where('student.userId = :userId', { userId: instituteUser.userId })
-      .select([
-        // Student fields
-        'student.userId',
-        'student.fatherId',
-        'student.motherId',
-        'student.guardianId',
-        'student.studentId',
-        'student.isActive',
-        // Student user data
-        'user.id',
-        'user.firstName',
-        'user.lastName',
-        'user.email',
-        'user.phoneNumber',
-        'user.subscriptionPlan',
-        'user.telegramId',
-        'user.imageUrl',
-        // Father data (for notifications)
-        'father.userId',
-        'fatherUser.firstName',
-        'fatherUser.lastName',
-        'fatherUser.email',
-        'fatherUser.phoneNumber',
-        'fatherUser.telegramId',
-        // Mother data (for notifications)
-        'mother.userId',
-        'motherUser.firstName',
-        'motherUser.lastName',
-        'motherUser.email',
-        'motherUser.phoneNumber',
-        'motherUser.telegramId',
-        // Guardian data (for notifications)
-        'guardian.userId',
-        'guardianUser.firstName',
-        'guardianUser.lastName',
-        'guardianUser.email',
-        'guardianUser.phoneNumber',
-        'guardianUser.telegramId'
-      ])
-      .getOne();
+    // ✅ STEP 2: Determine institute user type
+    const typeMap: Record<string, AttendanceUserType> = {
+      [InstituteUserType.STUDENT]: AttendanceUserType.STUDENT,
+      [InstituteUserType.TEACHER]: AttendanceUserType.TEACHER,
+      [InstituteUserType.INSTITUTE_ADMIN]: AttendanceUserType.INSTITUTE_ADMIN,
+      [InstituteUserType.ATTENDANCE_MARKER]: AttendanceUserType.ATTENDANCE_MARKER,
+      [InstituteUserType.PARENT]: AttendanceUserType.PARENT,
+    };
+    const detectedUserType = typeMap[instituteUser.instituteUserType] || AttendanceUserType.STUDENT;
+    const isStudent = detectedUserType === AttendanceUserType.STUDENT;
 
-    if (!studentData?.user) {
-      throw new Error(`Student not found with ID: ${instituteUser.userId}`);
-    }
-
-    // Step 3: Extract data from loaded entities
-    const studentName = `${studentData.user.firstName} ${studentData.user.lastName}`.trim();
-    const studentId = instituteUser.userId;
-    const subscriptionPlan = studentData.user.subscriptionPlan || 'FREE';
-
-    // Step 4: Image URL logic
-    const isVerified = instituteUser.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
-    const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl 
-      ? instituteUser.instituteUserImageUrl 
-      : (studentData.user.imageUrl || null);
-
-    // Step 5: Extract parent contact info (Priority: Father → Mother → Guardian)
+    // ✅ STEP 3: Fetch data based on user type
+    let userName: string;
+    let globalImageUrl: string | null = null;
+    let subscriptionPlan = 'FREE';
     let parentContact: string | null = null;
     let parentEmail: string | null = null;
     let parentTelegramId: string | null = null;
     let parentUserId: string | null = null;
+    let studentData: any = null;
 
-    if (studentData.father?.user) {
-      parentContact = studentData.father.user.phoneNumber || null;
-      parentEmail = studentData.father.user.email || null;
-      parentTelegramId = studentData.father.user.telegramId || null;
-      parentUserId = studentData.father.userId || null;
-    } else if (studentData.mother?.user) {
-      parentContact = studentData.mother.user.phoneNumber || null;
-      parentEmail = studentData.mother.user.email || null;
-      parentTelegramId = studentData.mother.user.telegramId || null;
-      parentUserId = studentData.mother.userId || null;
-    } else if (studentData.guardian?.user) {
-      parentContact = studentData.guardian.user.phoneNumber || null;
-      parentEmail = studentData.guardian.user.email || null;
-      parentTelegramId = studentData.guardian.user.telegramId || null;
-      parentUserId = studentData.guardian.userId || null;
+    if (isStudent) {
+      // STUDENT path: Mega-query for parent contact data (for notifications)
+      studentData = await this.studentRepository
+        .createQueryBuilder('student')
+        .leftJoinAndSelect('student.user', 'user')
+        .leftJoinAndSelect('student.father', 'father')
+        .leftJoinAndSelect('father.user', 'fatherUser')
+        .leftJoinAndSelect('student.mother', 'mother')
+        .leftJoinAndSelect('mother.user', 'motherUser')
+        .leftJoinAndSelect('student.guardian', 'guardian')
+        .leftJoinAndSelect('guardian.user', 'guardianUser')
+        .where('student.userId = :userId', { userId: instituteUser.userId })
+        .select([
+          'student.userId', 'student.fatherId', 'student.motherId', 'student.guardianId',
+          'student.studentId', 'student.isActive',
+          'user.id', 'user.firstName', 'user.lastName', 'user.email', 'user.phoneNumber',
+          'user.subscriptionPlan', 'user.telegramId', 'user.imageUrl',
+          'father.userId', 'fatherUser.firstName', 'fatherUser.lastName',
+          'fatherUser.email', 'fatherUser.phoneNumber', 'fatherUser.telegramId',
+          'mother.userId', 'motherUser.firstName', 'motherUser.lastName',
+          'motherUser.email', 'motherUser.phoneNumber', 'motherUser.telegramId',
+          'guardian.userId', 'guardianUser.firstName', 'guardianUser.lastName',
+          'guardianUser.email', 'guardianUser.phoneNumber', 'guardianUser.telegramId'
+        ])
+        .getOne();
+
+      if (!studentData?.user) {
+        throw new Error(`Student not found with ID: ${instituteUser.userId}`);
+      }
+
+      userName = `${studentData.user.firstName} ${studentData.user.lastName}`.trim();
+      globalImageUrl = studentData.user.imageUrl || null;
+      subscriptionPlan = studentData.user.subscriptionPlan || 'FREE';
+
+      // Extract parent info (Priority: Father → Mother → Guardian)
+      if (studentData.father?.user) {
+        parentContact = studentData.father.user.phoneNumber || null;
+        parentEmail = studentData.father.user.email || null;
+        parentTelegramId = studentData.father.user.telegramId || null;
+        parentUserId = studentData.father.userId || null;
+      } else if (studentData.mother?.user) {
+        parentContact = studentData.mother.user.phoneNumber || null;
+        parentEmail = studentData.mother.user.email || null;
+        parentTelegramId = studentData.mother.user.telegramId || null;
+        parentUserId = studentData.mother.userId || null;
+      } else if (studentData.guardian?.user) {
+        parentContact = studentData.guardian.user.phoneNumber || null;
+        parentEmail = studentData.guardian.user.email || null;
+        parentTelegramId = studentData.guardian.user.telegramId || null;
+        parentUserId = studentData.guardian.userId || null;
+      }
+    } else {
+      // NON-STUDENT path: Use user data already loaded from institute_user query
+      if (!instituteUser.user) {
+        throw new Error(`User not found with ID: ${instituteUser.userId}`);
+      }
+      userName = `${instituteUser.user.firstName} ${instituteUser.user.lastName || ''}`.trim();
+      globalImageUrl = instituteUser.user.imageUrl || null;
     }
 
-    // Step 6: Convert to standard attendance DTO format
+    const studentId = instituteUser.userId;
+
+    // ✅ STEP 4: Image URL logic (works for all user types)
+    const isVerified = instituteUser.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
+    const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl 
+      ? instituteUser.instituteUserImageUrl 
+      : globalImageUrl;
+
+    // ✅ STEP 5: Build attendance DTO with auto-detected userType
     const attendanceDto: MarkAttendanceDto = {
       studentId: studentId,
-      studentName: studentName,
+      studentName: userName,
       instituteId: markAttendanceDto.instituteId,
       instituteName: markAttendanceDto.instituteName,
       classId: markAttendanceDto.classId || 'default',
@@ -1754,6 +1887,7 @@ export class AttendanceService {
       subjectName: markAttendanceDto.subjectName || '',
       status: markAttendanceDto.status,
       markingMethod: markAttendanceDto.markingMethod,
+      userType: detectedUserType,  // ✅ Auto-detected user type
       date: markAttendanceDto.date || getCurrentSriLankaDate(),
       location: markAttendanceDto.location || this.generateAddress(
         markAttendanceDto.instituteName,
@@ -1762,19 +1896,16 @@ export class AttendanceService {
       )
     };
 
-    // Step 7: Mark attendance in DynamoDB
+    // ✅ STEP 6: Mark attendance in DynamoDB
     const result = await this.dynamoAttendanceService.markAttendance(attendanceDto);
 
-    // Step 8: 🔥 FIRE-AND-FORGET NOTIFICATIONS (non-blocking, immediate send)
-    // Send notifications WITHOUT waiting - response returns immediately
-    if (parentContact || parentEmail || parentTelegramId) {
-      // Check if notifications enabled
+    // ✅ STEP 7: Send notifications ONLY for students (non-blocking)
+    if (isStudent && (parentContact || parentEmail || parentTelegramId)) {
       const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
       
-      // Fire-and-forget: Start notification process but don't wait
       this.sendImmediateNotification({
         studentId,
-        studentName,
+        studentName: userName,
         parentContact,
         parentEmail,
         parentTelegramId,
@@ -1782,15 +1913,14 @@ export class AttendanceService {
         subscriptionPlan,
         attendanceDto,
         isAdsFromDB,
-        studentData,  // ✅ Pass complete student data for ad matching
-        instituteId: markAttendanceDto.instituteId  // ✅ Pass institute ID for ad targeting
+        studentData,
+        instituteId: markAttendanceDto.instituteId
       }).catch(error => {
-        // Log error but don't throw - notifications shouldn't block attendance marking
-        this.logger.error(`Notification failed for student ${studentId}: ${error.message}`);
+        this.logger.error(`Notification failed for user ${studentId}: ${error.message}`);
       });
     }
 
-    // Step 8: Return response with image URL and verification info
+    // ✅ STEP 8: Return response with user type info
     return {
       success: true,
       message: 'Attendance marked successfully using institute card',
@@ -1798,12 +1928,13 @@ export class AttendanceService {
       isInstituteImage: isVerified && !!instituteUser.instituteUserImageUrl,
       imageVerificationStatus: instituteUser.imageVerificationStatus,
       status: markAttendanceDto.status,
-      name: studentName,
+      name: userName,
+      userType: detectedUserType,  // ✅ NEW: Return user type
       instituteCardId: instituteCardId,
       userIdByInstitute: instituteUser.userIdByInstitute,
       data: {
         studentId: studentId,
-        studentName: studentName,
+        studentName: userName,
         instituteId: markAttendanceDto.instituteId,
         instituteName: markAttendanceDto.instituteName,
         className: markAttendanceDto.className,
@@ -1812,18 +1943,20 @@ export class AttendanceService {
         date: attendanceDto.date,
         location: attendanceDto.location,
         markingMethod: markAttendanceDto.markingMethod,
+        userType: detectedUserType,  // ✅ NEW: Include in data too
         markedAt: getCurrentSriLankaISO()
       }
     };
   }
 
   /**
-   * Validates that a student is enrolled in the given institute
-   * @throws BadRequestException if validation is enabled and student is not enrolled or inactive
+   * Validates that a user is enrolled in the given institute (works for ALL user types)
+   * @throws BadRequestException if validation is enabled and user is not enrolled or inactive
    */
-  private async validateStudentEnrollment(
-    studentId: string,
-    instituteId: string
+  private async validateUserEnrollment(
+    userId: string,
+    instituteId: string,
+    detectedUserType: AttendanceUserType
   ): Promise<void> {
     // Check if enrollment validation is enabled via environment variable
     const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
@@ -1833,27 +1966,36 @@ export class AttendanceService {
       return;
     }
 
+    // If user type is NOT_ENROLLED, we already know they aren't enrolled
+    if (detectedUserType === AttendanceUserType.NOT_ENROLLED) {
+      this.logger.warn(`User ${userId} is not enrolled in institute ${instituteId}`);
+      throw new BadRequestException(
+        `User is currently not enrolled in this institute. Please contact the institute administrator.`
+      );
+    }
+
     try {
-      // Check if student is enrolled in the institute
+      // Check if user is enrolled in the institute
       const enrollment = await this.instituteUserRepository.findOne({
         where: {
-          userId: studentId,
+          userId: userId,
           instituteId: instituteId
-        }
+        },
+        select: ['userId', 'status'],
       });
 
       if (!enrollment) {
-        this.logger.warn(`Student ${studentId} is not enrolled in institute ${instituteId}`);
+        this.logger.warn(`User ${userId} is not enrolled in institute ${instituteId}`);
         throw new BadRequestException(
-          `Student is currently not enrolled in this institute. Please contact the institute administrator.`
+          `User is currently not enrolled in this institute. Please contact the institute administrator.`
         );
       }
 
       // Check if enrollment is active
       if (enrollment.status !== InstituteUserStatus.ACTIVE) {
-        this.logger.warn(`Student ${studentId} enrollment status is ${enrollment.status} (not ACTIVE)`);
+        this.logger.warn(`User ${userId} enrollment status is ${enrollment.status} (not ACTIVE)`);
         throw new BadRequestException(
-          `Student enrollment is not active. Please contact the institute administrator.`
+          `User enrollment is not active (status: ${enrollment.status}). Please contact the institute administrator.`
         );
       }
     } catch (error) {
@@ -1862,13 +2004,20 @@ export class AttendanceService {
         throw error;
       }
       // For any other database/system errors, log but don't expose internal details
-      this.logger.error(`Error validating enrollment for student ${studentId}: ${error.message}`);
+      this.logger.error(`Error validating enrollment for user ${userId}: ${error.message}`);
       throw new BadRequestException(
-        `Unable to verify student enrollment. Please try again.`
+        `Unable to verify user enrollment. Please try again.`
       );
     }
   }
+
+  /**
+   * @deprecated Use validateUserEnrollment instead. Kept for backward compatibility.
+   */
+  private async validateStudentEnrollment(
+    studentId: string,
+    instituteId: string
+  ): Promise<void> {
+    return this.validateUserEnrollment(studentId, instituteId, AttendanceUserType.STUDENT);
+  }
 }
-
-
-

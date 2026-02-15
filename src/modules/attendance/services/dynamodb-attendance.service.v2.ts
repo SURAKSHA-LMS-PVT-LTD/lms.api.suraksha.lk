@@ -38,6 +38,7 @@ export interface AttendanceRecordV2 {
   loc?: string;                  // location (optional, shortened)
   rmk?: string;                  // remarks (optional, shortened)
   meth?: string;                 // marking method (optional, shortened)
+  ut?: string;                   // userType: STUDENT | TEACHER | INSTITUTE_ADMIN | ATTENDANCE_MARKER | PARENT | NOT_ENROLLED (shortened)
   
   // ✅ GSI ATTRIBUTES - Student-centric queries
   GSI_PK: string;                // S#{studentId}
@@ -67,6 +68,7 @@ export interface MarkAttendanceDto {
   location?: string;
   remarks?: string;
   markingMethod?: string;
+  userType?: string;             // Optional: STUDENT | TEACHER | INSTITUTE_ADMIN | etc.
 }
 
 @Injectable()
@@ -152,6 +154,7 @@ export class DynamoDBAttendanceServiceV2 {
     if (dto.location) record.loc = dto.location;
     if (dto.remarks) record.rmk = dto.remarks;
     if (dto.markingMethod) record.meth = dto.markingMethod;
+    if (dto.userType) record.ut = dto.userType;
 
     // ✅ NO CONDITION - Allow multiple marks (same as V1)
     const command = new PutCommand({
@@ -215,6 +218,7 @@ export class DynamoDBAttendanceServiceV2 {
         if (dto.location) record.loc = dto.location;
         if (dto.remarks) record.rmk = dto.remarks;
         if (dto.markingMethod) record.meth = dto.markingMethod;
+        if (dto.userType) record.ut = dto.userType;
 
         return record;
       });

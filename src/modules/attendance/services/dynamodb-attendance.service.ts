@@ -25,6 +25,7 @@ export interface AttendanceRecord {
   location?: string;
   remarks?: string;
   markingMethod?: string;
+  userType?: string; // Institute user type: STUDENT, TEACHER, INSTITUTE_ADMIN, ATTENDANCE_MARKER, PARENT, NOT_ENROLLED
   timestamp: number;
   ttl?: number;
 }
@@ -238,11 +239,16 @@ export class DynamoDBAttendanceService {
       record.markingMethod = attendance.markingMethod;
     }
 
+    // Add user type if provided (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.)
+    if ((attendance as any).userType) {
+      record.userType = (attendance as any).userType;
+    }
+
     return record;
   }
 
   // Convert DynamoDB record to DTO
-  private recordToAttendance(record: any): MarkAttendanceDto {
+  private recordToAttendance(record: any): MarkAttendanceDto & { userType?: string } {
     return {
       studentId: String(record.studentId), // Ensure string type for consistency
       studentName: record.studentName,
@@ -256,8 +262,9 @@ export class DynamoDBAttendanceService {
       status: this.numberToStatus(record.status),
       location: record.location,
       remarks: record.remarks,
-      markingMethod: record.markingMethod
-    };
+      markingMethod: record.markingMethod,
+      userType: record.userType || 'STUDENT'  // Default to STUDENT for backward compatibility
+    } as any;
   }
 
   // Mark single attendance

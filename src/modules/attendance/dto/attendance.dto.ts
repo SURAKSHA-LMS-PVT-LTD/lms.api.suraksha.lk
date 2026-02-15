@@ -11,6 +11,16 @@ export enum AttendanceStatus {
   LEFT_LATELY = 'left_lately'
 }
 
+// Institute user type for attendance tracking (auto-detected from institute_user table)
+export enum AttendanceUserType {
+  STUDENT = 'STUDENT',
+  TEACHER = 'TEACHER',
+  INSTITUTE_ADMIN = 'INSTITUTE_ADMIN',
+  ATTENDANCE_MARKER = 'ATTENDANCE_MARKER',
+  PARENT = 'PARENT',
+  NOT_ENROLLED = 'NOT_ENROLLED'    // User exists but not enrolled in this institute
+}
+
 export enum MarkingMethod {
   QR = 'qr',
   BARCODE = 'barcode',
@@ -89,6 +99,14 @@ export class MarkAttendanceDto {
   @IsEnum(MarkingMethod)
   @IsOptional()
   markingMethod?: MarkingMethod;
+
+  // Auto-detected by backend from institute_user table — frontend does NOT need to send this
+  @ApiPropertyOptional({ 
+    enum: AttendanceUserType, 
+    description: 'Auto-detected institute user type (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.). Do NOT send from frontend — backend resolves this automatically.' 
+  })
+  @IsOptional()
+  userType?: AttendanceUserType;
 }
 
 export class StudentAttendanceItem {
@@ -265,6 +283,7 @@ export class StudentAttendanceResponseDto {
     markedAt: string;
     markingMethod: MarkingMethod;
     status: AttendanceStatus;
+    userType?: AttendanceUserType;
   }[];
 
   @ApiProperty({ description: 'Summary statistics for the period' })
