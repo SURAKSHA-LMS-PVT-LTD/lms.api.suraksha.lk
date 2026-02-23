@@ -26,6 +26,8 @@ export interface AttendanceRecord {
   remarks?: string;
   markingMethod?: string;
   userType?: string; // Institute user type: STUDENT, TEACHER, INSTITUTE_ADMIN, ATTENDANCE_MARKER, PARENT, NOT_ENROLLED
+  calendarDayId?: string; // NEW - institute_calendar_days.id (FK to calendar)
+  eventId?: string; // NEW - institute_calendar_events.id (optional - specific event attendance)
   timestamp: number;
   ttl?: number;
 }
@@ -52,35 +54,45 @@ export class DynamoDBAttendanceService {
   }
 
   // Generate partition key (institute-based partitioning without sharding)
+  // SECURITY: Sanitize input to prevent key injection attacks
   private generatePartitionKey(instituteId: string): string {
-    return `I#${instituteId}`;
+    const sanitized = String(instituteId).replace(/[^a-zA-Z0-9_-]/g, '');
+    return `I#${sanitized}`;
   }
 
   // Generate sort key for attendance records
   // ✅ FIXED: Added timestamp to support multiple attendance marks per day
   // ✅ UPDATED: Class and subject are now optional (use "NONE" as placeholder)
   private generateSortKey(date: string, studentId: string, classId: string | undefined, subjectId: string | undefined, timestamp: number): string {
-    const classValue = classId || 'NONE';
-    const subjectValue = subjectId || 'NONE';
-    return `ATTENDANCE#${date}#TS#${timestamp}#S#${studentId}#C#${classValue}#SUB#${subjectValue}`;
+    // SECURITY: Sanitize all inputs to prevent DynamoDB key injection
+    const safeDate = String(date).replace(/[^0-9-]/g, '');
+    const safeStudentId = String(studentId).replace(/[^a-zA-Z0-9_-]/g, '');
+    const classValue = classId ? String(classId).replace(/[^a-zA-Z0-9_-]/g, '') : 'NONE';
+    const subjectValue = subjectId ? String(subjectId).replace(/[^a-zA-Z0-9_-]/g, '') : 'NONE';
+    return `ATTENDANCE#${safeDate}#TS#${timestamp}#S#${safeStudentId}#C#${classValue}#SUB#${subjectValue}`;
   }
 
   // Generate GSI partition key for student-based queries
   // Using STUDENT# prefix to match Bookhire attendance pattern
   private generateGSIPartitionKey(instituteId: string, studentId: string): string {
-    return `STUDENT#${studentId}`;
+    const sanitized = String(studentId).replace(/[^a-zA-Z0-9_-]/g, '');
+    return `STUDENT#${sanitized}`;
   }
 
   // Generate GSI sort key (includes institute for cross-institute student queries)
   // ✅ FIXED: Added timestamp to support multiple attendance marks per day
   // ✅ UPDATED: Class and subject are now optional (use "NONE" as placeholder)
   private generateGSISortKey(date: string, classId: string | undefined, subjectId: string | undefined, instituteId: string, timestamp: number): string {
-    const classValue = classId || 'NONE';
-    const subjectValue = subjectId || 'NONE';
-    return `I#${instituteId}#D#${date}#TS#${timestamp}#C#${classValue}#SUB#${subjectValue}`;
+    // SECURITY: Sanitize all inputs to prevent DynamoDB key injection
+    const safeInstituteId = String(instituteId).replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeDate = String(date).replace(/[^0-9-]/g, '');
+    const classValue = classId ? String(classId).replace(/[^a-zA-Z0-9_-]/g, '') : 'NONE';
+    const subjectValue = subjectId ? String(subjectId).replace(/[^a-zA-Z0-9_-]/g, '') : 'NONE';
+    return `I#${safeInstituteId}#D#${safeDate}#TS#${timestamp}#C#${classValue}#SUB#${subjectValue}`;
   }
 
   // Convert status string to number for DynamoDB
+  // ✅ FIXED: Added LEFT (3), LEFT_EARLY (4), LEFT_LATELY (5) mappings
   private statusToNumber(status: AttendanceStatus): number {
     switch (status) {
       case AttendanceStatus.PRESENT:
@@ -89,18 +101,31 @@ export class DynamoDBAttendanceService {
         return 0;
       case AttendanceStatus.LATE:
         return 2;
+      case AttendanceStatus.LEFT:
+        return 3;
+      case AttendanceStatus.LEFT_EARLY:
+        return 4;
+      case AttendanceStatus.LEFT_LATELY:
+        return 5;
       default:
         return 0; // Default to absent
     }
   }
 
   // Convert status number to string for DTOs
+  // ✅ FIXED: Added LEFT (3), LEFT_EARLY (4), LEFT_LATELY (5) mappings
   private numberToStatus(status: number): AttendanceStatus {
     switch (status) {
       case 1:
         return AttendanceStatus.PRESENT;
       case 2:
         return AttendanceStatus.LATE;
+      case 3:
+        return AttendanceStatus.LEFT;
+      case 4:
+        return AttendanceStatus.LEFT_EARLY;
+      case 5:
+        return AttendanceStatus.LEFT_LATELY;
       case 0:
       default:
         return AttendanceStatus.ABSENT;
@@ -244,6 +269,16 @@ export class DynamoDBAttendanceService {
       record.userType = (attendance as any).userType;
     }
 
+    // Add calendar day ID if provided (links to institute_calendar_days.id)
+    if ((attendance as any).calendarDayId) {
+      record.calendarDayId = (attendance as any).calendarDayId;
+    }
+
+    // Add event ID if provided (links to institute_calendar_events.id)
+    if ((attendance as any).eventId) {
+      record.eventId = (attendance as any).eventId;
+    }
+
     return record;
   }
 
@@ -263,7 +298,9 @@ export class DynamoDBAttendanceService {
       location: record.location,
       remarks: record.remarks,
       markingMethod: record.markingMethod,
-      userType: record.userType || 'STUDENT'  // Default to STUDENT for backward compatibility
+      userType: record.userType || 'STUDENT',  // Default to STUDENT for backward compatibility
+      calendarDayId: record.calendarDayId,
+      eventId: record.eventId
     } as any;
   }
 
@@ -398,6 +435,10 @@ export class DynamoDBAttendanceService {
 
   // Get attendance for specific date
   async getAttendanceByDate(instituteId: string, date: string): Promise<MarkAttendanceDto[]> {
+    // SECURITY: Validate date format to prevent key injection
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error('Invalid date format. Expected YYYY-MM-DD.');
+    }
     const sk = `ATTENDANCE#${date}`;
     
     const params: QueryCommandInput = {
@@ -514,14 +555,164 @@ export class DynamoDBAttendanceService {
     }
   }
 
+  /**
+   * Get attendance for a specific event
+   * Use case: See who attended Parents Meeting, Field Trip, etc.
+   */
+  async getAttendanceByEvent(
+    instituteId: string,
+    eventId: string,
+    date?: string
+  ): Promise<MarkAttendanceDto[]> {
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      KeyConditionExpression: date 
+        ? 'pk = :pk AND begins_with(sk, :sk)'
+        : 'pk = :pk',
+      FilterExpression: 'eventId = :eventId',
+      ExpressionAttributeValues: marshall({
+        ':pk': this.generatePartitionKey(instituteId),
+        ...(date && { ':sk': `ATTENDANCE#${date}` }),
+        ':eventId': eventId
+      }, { removeUndefinedValues: true }),
+      ScanIndexForward: false
+    };
+
+    const result = await this.retryWithBackoff(async () => {
+      return await this.dynamoClient.send(new QueryCommand(params));
+    });
+    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+  }
+
+  /**
+   * Get attendance for a specific calendar day
+   * Use case: See all attendance (students, teachers, parents) for a calendar day
+   */
+  async getAttendanceByCalendarDay(
+    instituteId: string,
+    calendarDayId: string,
+    userType?: string
+  ): Promise<MarkAttendanceDto[]> {
+    const filterConditions = ['calendarDayId = :calendarDayId'];
+    const attributeValues: any = {
+      ':pk': this.generatePartitionKey(instituteId),
+      ':calendarDayId': calendarDayId
+    };
+
+    if (userType) {
+      filterConditions.push('userType = :userType');
+      attributeValues[':userType'] = userType;
+    }
+
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      KeyConditionExpression: 'pk = :pk',
+      FilterExpression: filterConditions.join(' AND '),
+      ExpressionAttributeValues: marshall(attributeValues, { removeUndefinedValues: true }),
+      ScanIndexForward: false
+    };
+
+    const result = await this.retryWithBackoff(async () => {
+      return await this.dynamoClient.send(new QueryCommand(params));
+    });
+    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+  }
+
+  /**
+   * Get attendance by user type (STUDENT, TEACHER, PARENT, etc.)
+   * Use case: See all teacher attendance, all parent attendance at events
+   */
+  async getAttendanceByUserType(
+    instituteId: string,
+    userType: string,
+    date?: string,
+    eventId?: string
+  ): Promise<MarkAttendanceDto[]> {
+    const filterConditions = ['userType = :userType'];
+    const attributeValues: any = {
+      ':pk': this.generatePartitionKey(instituteId),
+      ':userType': userType
+    };
+
+    if (eventId) {
+      filterConditions.push('eventId = :eventId');
+      attributeValues[':eventId'] = eventId;
+    }
+
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      KeyConditionExpression: date
+        ? 'pk = :pk AND begins_with(sk, :sk)'
+        : 'pk = :pk',
+      FilterExpression: filterConditions.join(' AND '),
+      ExpressionAttributeValues: marshall({
+        ...attributeValues,
+        ...(date && { ':sk': `ATTENDANCE#${date}` })
+      }, { removeUndefinedValues: true }),
+      ScanIndexForward: false
+    };
+
+    const result = await this.retryWithBackoff(async () => {
+      return await this.dynamoClient.send(new QueryCommand(params));
+    });
+    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+  }
+
+  /**
+   * Get student attendance at a specific event type
+   * Use case: Get student's attendance at all PARENTS_MEETING events
+   */
+  async getStudentAttendanceByEvent(
+    studentId: string,
+    instituteId: string,
+    eventId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<MarkAttendanceDto[]> {
+    const filterConditions = ['eventId = :eventId'];
+    const attributeNames: Record<string, string> = {};
+    const attributeValues: any = {
+      ':gsi_pk': this.generateGSIPartitionKey(instituteId, studentId),
+      ':eventId': eventId
+    };
+
+    if (startDate && endDate) {
+      filterConditions.push('#date >= :startDate AND #date <= :endDate');
+      attributeNames['#date'] = 'date';
+      attributeValues[':startDate'] = startDate;
+      attributeValues[':endDate'] = endDate;
+    }
+
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      IndexName: this.gsiName,
+      KeyConditionExpression: 'gsi_pk = :gsi_pk',
+      FilterExpression: filterConditions.join(' AND '),
+      ExpressionAttributeValues: marshall(attributeValues, { removeUndefinedValues: true }),
+      ScanIndexForward: false
+    };
+
+    if (Object.keys(attributeNames).length > 0) {
+      params.ExpressionAttributeNames = attributeNames;
+    }
+
+    const result = await this.retryWithBackoff(async () => {
+      return await this.dynamoClient.send(new QueryCommand(params));
+    });
+    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+  }
+
   // Get attendance summary for date range
+  // ✅ PERFORMANCE: Added pagination support to prevent scanning millions of records
   async getAttendanceSummary(
     instituteId: string,
     classId?: string,
     subjectId?: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    limit?: number
   ): Promise<any> {
+    const maxItems = limit || 10000; // Default safety limit
     const params: QueryCommandInput = {
       TableName: this.tableName,
       KeyConditionExpression: 'pk = :pk',
@@ -573,10 +764,29 @@ export class DynamoDBAttendanceService {
       params.ExpressionAttributeValues = marshall(attributeValues, { removeUndefinedValues: true });
     }
 
-    const result = await this.retryWithBackoff(async () => {
-      return await this.dynamoClient.send(new QueryCommand(params));
-    });
-    const attendanceRecords = result.Items?.map(item => unmarshall(item)) || [];
+    // ✅ PERFORMANCE: Paginate through results to handle DynamoDB 1MB limit
+    // and cap total records to prevent memory issues
+    const attendanceRecords: any[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+
+      if (result.Items) {
+        for (const item of result.Items) {
+          attendanceRecords.push(unmarshall(item));
+          if (attendanceRecords.length >= maxItems) break;
+        }
+      }
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey && attendanceRecords.length < maxItems);
     
     // Calculate summary statistics
     const totalRecords = attendanceRecords.length;

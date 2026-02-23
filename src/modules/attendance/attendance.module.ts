@@ -19,12 +19,14 @@ import { AdvertisementEntity } from '../advertisement/entities/advertisement.ent
 import { UserFcmTokenRepository } from '../user/repositories/user-fcm-token.repository';
 import { UserFcmTokenEntity } from '../user/entities/user-fcm-token.entity';
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
+import { InstituteModule } from '../institute/institute.module';
 
 @Module({
   imports: [
     SmsModule,
     CacheModule,
     ConfigModule,
+    InstituteModule, // Import for calendar services
     forwardRef(() => require('../advertisement/advertisement.module').AdvertisementModule),
     TypeOrmModule.forFeature([
       StudentEntity,

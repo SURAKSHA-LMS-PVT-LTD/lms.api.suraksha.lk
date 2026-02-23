@@ -107,6 +107,15 @@ export class MarkAttendanceDto {
   })
   @IsOptional()
   userType?: AttendanceUserType;
+
+  // Optional event ID for marking attendance at specific events (e.g., PARENTS_MEETING, FIELD_TRIP)
+  // If not provided, backend will use the default event for the day
+  @ApiPropertyOptional({ 
+    description: 'Event ID (optional - links attendance to specific calendar event)' 
+  })
+  @IsString()
+  @IsOptional()
+  eventId?: string;
 }
 
 export class StudentAttendanceItem {

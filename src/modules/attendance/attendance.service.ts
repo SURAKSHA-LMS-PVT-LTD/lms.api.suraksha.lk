@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
+import { InstituteCalendarService } from '../institute/services/institute-calendar.service';
+import { CalendarDayCacheService } from '../institute/services/calendar-day-cache.service';
 import { NOTIFICATION_PACKAGES_CONFIG } from '../advertisement/services/notification-packages.config';
 import { MarkAttendanceDto, BulkAttendanceDto, GetStudentAttendanceDto, StudentAttendanceResponseDto, AttendanceStatus, AttendanceUserType } from './dto/attendance.dto';
 import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto } from './dto/card-attendance.dto';
@@ -34,6 +36,8 @@ export class AttendanceService {
     private readonly dynamoAttendanceService: DynamoDBAttendanceService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
+    private readonly instituteCalendarService: InstituteCalendarService,
+    private readonly calendarDayCacheService: CalendarDayCacheService,
     @InjectRepository(StudentEntity)
     private readonly studentRepository: Repository<StudentEntity>,
     @InjectRepository(ParentEntity)
@@ -185,6 +189,33 @@ export class AttendanceService {
           markAttendanceDto.instituteName,
           markAttendanceDto.className,
           markAttendanceDto.subjectName
+        );
+      }
+
+      // ✅ STEP 3.5: Lookup calendar day (with caching ~0.01ms hit, ~3ms miss)
+      try {
+        const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+          markAttendanceDto.instituteId
+        );
+
+        if (calendarDay) {
+          (markAttendanceDto as any).calendarDayId = calendarDay.id;
+
+          // ✅ PERFORMANCE: Use cached default event ID instead of querying MySQL every time
+          if (!markAttendanceDto.eventId && defaultEventId) {
+            (markAttendanceDto as any).eventId = defaultEventId;
+          }
+        } else {
+          this.logger.warn(
+            `[${requestId}] ⚠️  No calendar day found for institute ${markAttendanceDto.instituteId} on ${markAttendanceDto.date}. ` +
+            `Lazy creation will occur in calendar service if needed.`
+          );
+        }
+      } catch (calendarError) {
+        // Don't block attendance marking if calendar lookup fails
+        this.logger.warn(
+          `[${requestId}] ⚠️  Calendar day lookup failed: ${calendarError.message}. ` +
+          `Attendance will be marked without calendar linkage.`
         );
       }
 
