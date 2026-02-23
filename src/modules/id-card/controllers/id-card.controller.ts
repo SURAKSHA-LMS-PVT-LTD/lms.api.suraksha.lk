@@ -1,6 +1,7 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
-import { Controller, Post, Get, Param, HttpStatus, HttpCode, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, HttpStatus, HttpCode, UseGuards, Res, StreamableFile } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
@@ -21,17 +22,18 @@ export class IdCardController {
     instituteAdmin: true
   })
   @ApiOperation({ 
-    summary: 'Generate ID card for a specific user', 
-    description: 'Generates a PDF ID card with QR code and uploads to Google Drive' 
+    summary: 'Generate and download ID card for a specific user', 
+    description: 'Generates a PDF ID card with QR code on-demand and returns it for download' 
   })
   @ApiResponse({ 
-    status: HttpStatus.CREATED, 
-    description: 'ID card generated successfully',
-    schema: {
-      example: {
-        success: true,
-        message: 'ID card generated successfully',
-        url: 'https://drive.google.com/file/d/1ABC123.../view'
+    status: HttpStatus.OK, 
+    description: 'ID card generated and returned as downloadable PDF',
+    content: {
+      'application/pdf': {
+        schema: {
+          type: 'string',
+          format: 'binary'
+        }
       }
     }
   })
@@ -40,14 +42,18 @@ export class IdCardController {
     description: 'User not found' 
   })
   @ApiParam({ name: 'userId', description: 'User ID' })
-  @HttpCode(HttpStatus.CREATED)
-  async generateUserIdCard(@Param('userId', ParseBigIntPipe) userId: string) {
-    const url = await this.idCardGeneratorService.generateUserIdCard(userId);
-    return {
-      success: true,
-      message: 'ID card generated successfully',
-      url,
-    };
+  async generateUserIdCard(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    const { buffer, filename, mimeType } = await this.idCardGeneratorService.generateUserIdCard(userId);
+    
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    
+    return new StreamableFile(buffer);
   }
 
   @Post('regenerate/:userId')
@@ -57,22 +63,59 @@ export class IdCardController {
     instituteAdmin: true
   })
   @ApiOperation({ 
-    summary: 'Regenerate ID card for a specific user', 
-    description: 'Regenerates and overwrites existing ID card for a user' 
+    summary: 'Regenerate and download ID card for a specific user', 
+    description: 'Regenerates ID card with latest user data and returns it for download' 
   })
   @ApiResponse({ 
-    status: HttpStatus.CREATED, 
-    description: 'ID card regenerated successfully' 
+    status: HttpStatus.OK, 
+    description: 'ID card regenerated and returned as downloadable PDF',
+    content: {
+      'application/pdf': {
+        schema: {
+          type: 'string',
+          format: 'binary'
+        }
+      }
+    }
   })
   @ApiParam({ name: 'userId', description: 'User ID' })
-  @HttpCode(HttpStatus.CREATED)
-  async regenerateUserIdCard(@Param('userId', ParseBigIntPipe) userId: string) {
-    const url = await this.idCardGeneratorService.regenerateUserIdCard(userId);
-    return {
-      success: true,
-      message: 'ID card regenerated successfully',
-      url,
-    };
+  async regenerateUserIdCard(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    const { buffer, filename, mimeType } = await this.idCardGeneratorService.regenerateUserIdCard(userId);
+    
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    
+    return new StreamableFile(buffer);
+  }
+
+  @Post('email/:userId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true
+  })
+  @ApiOperation({ 
+    summary: 'Generate and email ID card to user', 
+    description: 'Generates ID card PDF and sends it via email (no storage, temp files auto-deleted)' 
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'ID card generated and emailed successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'ID card generated and emailed to user@example.com'
+      }
+    }
+  })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  async emailIdCard(@Param('userId', ParseBigIntPipe) userId: string) {
+    return await this.idCardGeneratorService.generateAndEmailIdCard(userId);
   }
 
   @Post('generate-all')

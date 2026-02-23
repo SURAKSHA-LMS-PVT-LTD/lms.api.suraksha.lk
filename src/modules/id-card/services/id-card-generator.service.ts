@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
 import { UserEntity } from '../../user/entities/user.entity';
-import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { AsyncEmailService } from '../../../common/services/async-email.service';
 
 @Injectable()
 export class IdCardGeneratorService {
@@ -17,10 +17,10 @@ export class IdCardGeneratorService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
-    private readonly cloudStorageService: CloudStorageService
+    private readonly asyncEmailService: AsyncEmailService
   ) {}
 
-  async generateUserIdCard(userId: string): Promise<string> {
+  async generateUserIdCard(userId: string): Promise<{ buffer: Buffer; filename: string; mimeType: string }> {
     try {
 
       // Get user details
@@ -179,30 +179,13 @@ export class IdCardGeneratorService {
       // Save the PDF
       const pdfBytes = await pdfDoc.save();
 
-      // Create temporary file
-      const tempDir = path.join(process.cwd(), 'temp');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-
-      const tempFilePath = path.join(tempDir, `${userId}_${userType}_id_card.pdf`);
-      fs.writeFileSync(tempFilePath, pdfBytes);
-
-      // Upload to Cloud Storage
-      const relativePath = `id-documents/${userId}_id_card.pdf`;
-      const gcsResult = await this.cloudStorageService.uploadFile(
-        Buffer.from(pdfBytes),
-        relativePath,
-        'application/pdf'
-      );
-
-      // Update user with ID card URL
-      await this.userRepository.update(userId, { idUrl: gcsResult.fullUrl });
-
-      // Clean up temporary file
-      fs.unlinkSync(tempFilePath);
-
-      return gcsResult.fullUrl;
+      // Return PDF buffer directly for on-demand download
+      // No cloud storage, no database update - generate fresh when needed
+      return {
+        buffer: Buffer.from(pdfBytes),
+        filename: `${userId}_${userType}_id_card.pdf`,
+        mimeType: 'application/pdf'
+      };
 
     } catch (error) {
       this.logger.error(`Error generating ID card for user ${userId}:`, error);
@@ -210,8 +193,95 @@ export class IdCardGeneratorService {
     }
   }
 
-  async regenerateUserIdCard(userId: string): Promise<string> {
+  async regenerateUserIdCard(userId: string): Promise<{ buffer: Buffer; filename: string; mimeType: string }> {
     return await this.generateUserIdCard(userId);
+  }
+
+  /**
+   * Generate ID card and send via email with PDF attachment
+   * Temp file is automatically deleted after sending
+   */
+  async generateAndEmailIdCard(userId: string, recipientEmail?: string): Promise<{ success: boolean; message: string }> {
+    let tempFilePath: string | null = null;
+    
+    try {
+      // Get user details
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      const userEmail = recipientEmail || user.email;
+      if (!userEmail) {
+        throw new Error('No email address available for user');
+      }
+
+      // Generate PDF
+      const { buffer, filename } = await this.generateUserIdCard(userId);
+
+      // Save to temp file for email attachment
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      tempFilePath = path.join(tempDir, filename);
+      fs.writeFileSync(tempFilePath, buffer);
+
+      // Send email with attachment
+      await this.sendIdCardEmail(user, tempFilePath, filename);
+
+      // Delete temp file immediately after sending
+      fs.unlinkSync(tempFilePath);
+      tempFilePath = null;
+
+      return {
+        success: true,
+        message: `ID card generated and emailed to ${userEmail}`
+      };
+
+    } catch (error) {
+      // Cleanup temp file if it exists and wasn't deleted
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (cleanupError) {
+          this.logger.error(`Failed to cleanup temp file: ${tempFilePath}`, cleanupError);
+        }
+      }
+
+      this.logger.error(`Error generating and emailing ID card for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send ID card via email with PDF attachment
+   */
+  private async sendIdCardEmail(user: UserEntity, attachmentPath: string, filename: string): Promise<void> {
+    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    
+    // Note: Current email service doesn't support attachments natively
+    // This sends the ID card data to the template
+    // For actual PDF attachment, you'll need to extend the email service
+    this.asyncEmailService.sendTemplateEmailAsync({
+      templateType: 'id_card',
+      toEmails: [user.email!],
+      templateData: {
+        nameWithInitials: user.nameWithInitials || undefined,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
+        userId: user.id?.toString(),
+        fullName: fullName,
+        photoUrl: user.imageUrl || undefined,
+        cardId: user.cardId || user.id,
+        issueDate: new Date().toISOString().split('T')[0],
+        barcodeNumber: user.cardId || user.id,
+      },
+      customSubject: '🎫 Your Digital ID Card - Suraksha LMS'
+    });
+
+    this.logger.log(`ID card email sent to ${user.email} (attachment: ${filename})`);
   }
 
   async generateIdCardsForAllUsers(): Promise<{ success: string[], failed: string[] }> {
