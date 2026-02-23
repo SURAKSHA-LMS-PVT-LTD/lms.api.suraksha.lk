@@ -23,7 +23,7 @@ export class EnhancedEmailService {
   private readonly isEnabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    this.emailServerUrl = this.configService.get<string>('EMAIL_SERVER_URL') || 'https://your-lambda-url.amazonaws.com/prod';
+    this.emailServerUrl = this.configService.get<string>('EMAIL_SERVER_URL') || '';
     this.authToken = this.configService.get<string>('EMAIL_SERVER_AUTH_TOKEN') || '';
     this.fromEmail = this.configService.get<string>('FROM_EMAIL') || 'surakshalms@gmail.com';
     this.fromName = this.configService.get<string>('FROM_NAME') || 'Suraksha LMS System';
@@ -31,6 +31,9 @@ export class EnhancedEmailService {
 
     if (!this.isEnabled) {
       this.logger.warn('⚠️ Email service is DISABLED in configuration');
+    } else if (!this.emailServerUrl) {
+      this.logger.error('❌ EMAIL_SERVER_URL not configured. Email sending will be disabled.');
+      this.isEnabled = false;
     } else if (!this.authToken) {
       this.logger.error('❌ EMAIL_SERVER_AUTH_TOKEN not configured. Email sending will fail.');
     } else {
@@ -306,6 +309,10 @@ export class EnhancedEmailService {
         firstName: firstName,
         lastName: lastName,
         userId: userId,
+        accountEmail: params.accountEmail,
+        registrationDate: params.registrationDate,
+        activationLink: params.activationLink || undefined,
+        courseName: params.courseName || undefined,
       },
     });
 
@@ -375,6 +382,7 @@ export class EnhancedEmailService {
 
   /**
    * Test email service connection
+   * Validates configuration without sending a real email
    */
   async testConnection(): Promise<{
     success: boolean;
@@ -395,32 +403,30 @@ export class EnhancedEmailService {
       };
     }
 
+    if (!this.emailServerUrl) {
+      return {
+        success: false,
+        message: 'EMAIL_SERVER_URL not configured',
+      };
+    }
+
     try {
-      const testEmail = this.fromEmail;
-      const result = await this.sendTemplateEmail({
-        templateType: 'otp',
-        toEmails: [testEmail],
-        templateData: {
-          otp: '123456',
-          user: 'Test User',
-          expiryMinutes: '10',
-          requestType: 'Connection Test',
-          ipAddress: '127.0.0.1',
+      // Validate connection by making a lightweight request
+      // Use a health check or send to a verified test address only in dev
+      const response = await axios.post(this.emailServerUrl, {
+        operation: 'health_check',
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`,
         },
+        timeout: 5000,
       });
 
-      if (result.success) {
-        return {
-          success: true,
-          message: `Email server connection successful. Test email sent to ${testEmail}`,
-        };
-      } else {
-        return {
-          success: false,
-          message: 'Email server connection failed',
-          error: result.error,
-        };
-      }
+      return {
+        success: true,
+        message: `Email server connection successful (status: ${response.status})`,
+      };
     } catch (error) {
       return {
         success: false,

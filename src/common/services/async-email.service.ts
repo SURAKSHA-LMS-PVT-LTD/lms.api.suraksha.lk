@@ -4,13 +4,12 @@ import { EnhancedEmailService } from './enhanced-email.service';
 /**
  * 🚀 ASYNC EMAIL SERVICE - FIRE-AND-FORGET PATTERN
  * 
- * PURPOSE: High-performance async email sending with single retry
+ * PURPOSE: High-performance async email sending
  * STRATEGY: Call API immediately, don't wait for response
  * PERFORMANCE: Zero blocking time - execution continues immediately
  * 
  * FEATURES:
  * ✅ Fire-and-forget - No blocking
- * ✅ Single automatic retry on failure
  * ✅ Error logging for monitoring
  * ✅ Zero performance impact
  * ✅ Graceful failure handling
@@ -34,7 +33,6 @@ export class AsyncEmailService {
 
   /**
    * Generic fire-and-forget email sender (NO RETRY - fails fast)
-   * Note: Retry logic removed because promises can't be reused
    */
   private fireAndForget<T>(
     emailPromise: Promise<T>,
@@ -53,10 +51,6 @@ export class AsyncEmailService {
           error.stack
         );
       });
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

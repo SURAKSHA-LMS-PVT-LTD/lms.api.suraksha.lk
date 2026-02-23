@@ -4,9 +4,6 @@ import { SESClient, SendEmailCommand, GetSendQuotaCommand, GetSendStatisticsComm
 import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 import { 
   EmailTemplate, 
-  OTPEmailData, 
-  PasswordChangeData,
-  SecurityAlertData,
   FirstLoginTemplate,
   PasswordResetTemplate,
   ChangePasswordTemplate,
@@ -21,16 +18,65 @@ export class AwsSesEmailService {
   private readonly sourceEmail: string;
 
   constructor(private readonly configService: ConfigService) {
-    // Initialize AWS SES Client
+    const region = this.configService.get<string>('AWS_REGION');
+    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+
+    if (!region || !accessKeyId || !secretAccessKey) {
+      this.logger.error(
+        'AWS SES credentials incomplete. Missing: ' +
+        [!region && 'AWS_REGION', !accessKeyId && 'AWS_ACCESS_KEY_ID', !secretAccessKey && 'AWS_SECRET_ACCESS_KEY']
+          .filter(Boolean).join(', ')
+      );
+    }
+
     this.sesClient = new SESClient({
-      region: this.configService.get<string>('AWS_REGION'),
-      credentials: {
-        accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID'),
-        secretAccessKey: this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
-      },
+      region,
+      credentials: { accessKeyId, secretAccessKey },
     });
 
     this.sourceEmail = this.configService.get<string>('SES_SOURCE_EMAIL') || 'noreply@laas.com';
+  }
+
+  /**
+   * Mask email for safe logging (e.g., "ab***@gmail.com")
+   */
+  private maskEmail(email: string): string {
+    if (!email || !email.includes('@')) return '***';
+    const [local, domain] = email.split('@');
+    const visibleChars = Math.min(2, local.length);
+    return `${local.slice(0, visibleChars)}***@${domain}`;
+  }
+
+  /**
+   * Send email via SES with standardized error handling
+   */
+  private async sendSesEmail(
+    toEmail: string,
+    template: { subject: string; htmlBody: string; textBody: string },
+    emailType: string,
+  ): Promise<boolean> {
+    try {
+      const command = new SendEmailCommand({
+        Source: this.sourceEmail,
+        Destination: { ToAddresses: [toEmail] },
+        Message: {
+          Subject: { Data: template.subject, Charset: 'UTF-8' },
+          Body: {
+            Html: { Data: template.htmlBody, Charset: 'UTF-8' },
+            Text: { Data: template.textBody, Charset: 'UTF-8' },
+          },
+        },
+      });
+
+      await this.sesClient.send(command);
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Failed to send ${emailType} email to ${this.maskEmail(toEmail)}: ${error.message}`,
+      );
+      return false;
+    }
   }
 
   /**
@@ -42,46 +88,13 @@ export class AwsSesEmailService {
     firstName: string, 
     instituteName?: string
   ): Promise<boolean> {
-    try {
-
-      const template = FirstLoginTemplate.generate({
-        firstName,
-        otp,
-        expiryMinutes: 15,
-        instituteName
-      });
-
-      const command = new SendEmailCommand({
-        Source: this.sourceEmail,
-        Destination: {
-          ToAddresses: [email]
-        },
-        Message: {
-          Subject: {
-            Data: template.subject,
-            Charset: 'UTF-8'
-          },
-          Body: {
-            Html: {
-              Data: template.htmlBody,
-              Charset: 'UTF-8'
-            },
-            Text: {
-              Data: template.textBody,
-              Charset: 'UTF-8'
-            }
-          }
-        }
-      });
-
-      const result = await this.sesClient.send(command);
-      
-      return true;
-
-    } catch (error) {
-      this.logger.error(`Failed to send first login OTP email to ${email}:`, error);
-      return false;
-    }
+    const template = FirstLoginTemplate.generate({
+      firstName,
+      otp,
+      expiryMinutes: 15,
+      instituteName
+    });
+    return this.sendSesEmail(email, template, 'first login OTP');
   }
 
   /**
@@ -92,45 +105,12 @@ export class AwsSesEmailService {
     otp: string, 
     firstName: string
   ): Promise<boolean> {
-    try {
-
-      const template = PasswordResetTemplate.generate({
-        firstName,
-        otp,
-        expiryMinutes: 15
-      });
-
-      const command = new SendEmailCommand({
-        Source: this.sourceEmail,
-        Destination: {
-          ToAddresses: [email]
-        },
-        Message: {
-          Subject: {
-            Data: template.subject,
-            Charset: 'UTF-8'
-          },
-          Body: {
-            Html: {
-              Data: template.htmlBody,
-              Charset: 'UTF-8'
-            },
-            Text: {
-              Data: template.textBody,
-              Charset: 'UTF-8'
-            }
-          }
-        }
-      });
-
-      const result = await this.sesClient.send(command);
-      
-      return true;
-
-    } catch (error) {
-      this.logger.error(`Failed to send password reset OTP email to ${email}:`, error);
-      return false;
-    }
+    const template = PasswordResetTemplate.generate({
+      firstName,
+      otp,
+      expiryMinutes: 15
+    });
+    return this.sendSesEmail(email, template, 'password reset OTP');
   }
 
   /**
@@ -141,45 +121,12 @@ export class AwsSesEmailService {
     otp: string, 
     firstName: string
   ): Promise<boolean> {
-    try {
-
-      const template = ChangePasswordTemplate.generate({
-        firstName,
-        otp,
-        expiryMinutes: 15
-      });
-
-      const command = new SendEmailCommand({
-        Source: this.sourceEmail,
-        Destination: {
-          ToAddresses: [email]
-        },
-        Message: {
-          Subject: {
-            Data: template.subject,
-            Charset: 'UTF-8'
-          },
-          Body: {
-            Html: {
-              Data: template.htmlBody,
-              Charset: 'UTF-8'
-            },
-            Text: {
-              Data: template.textBody,
-              Charset: 'UTF-8'
-            }
-          }
-        }
-      });
-
-      const result = await this.sesClient.send(command);
-      
-      return true;
-
-    } catch (error) {
-      this.logger.error(`Failed to send change password OTP email to ${email}:`, error);
-      return false;
-    }
+    const template = ChangePasswordTemplate.generate({
+      firstName,
+      otp,
+      expiryMinutes: 15
+    });
+    return this.sendSesEmail(email, template, 'change password OTP');
   }
 
   /**
@@ -191,47 +138,14 @@ export class AwsSesEmailService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<boolean> {
-    try {
-
-      const template = PasswordChangeSuccessTemplate.generate({
-        firstName,
-        email,
-        changeDate: getCurrentSriLankaTime(),
-        ipAddress,
-        userAgent
-      });
-
-      const command = new SendEmailCommand({
-        Source: this.sourceEmail,
-        Destination: {
-          ToAddresses: [email]
-        },
-        Message: {
-          Subject: {
-            Data: template.subject,
-            Charset: 'UTF-8'
-          },
-          Body: {
-            Html: {
-              Data: template.htmlBody,
-              Charset: 'UTF-8'
-            },
-            Text: {
-              Data: template.textBody,
-              Charset: 'UTF-8'
-            }
-          }
-        }
-      });
-
-      const result = await this.sesClient.send(command);
-      
-      return true;
-
-    } catch (error) {
-      this.logger.error(`Failed to send password change success notification to ${email}:`, error);
-      return false;
-    }
+    const template = PasswordChangeSuccessTemplate.generate({
+      firstName,
+      email,
+      changeDate: getCurrentSriLankaTime(),
+      ipAddress,
+      userAgent
+    });
+    return this.sendSesEmail(email, template, 'password change success');
   }
 
   /**
@@ -244,48 +158,15 @@ export class AwsSesEmailService {
     ipAddress?: string,
     location?: string
   ): Promise<boolean> {
-    try {
-
-      const template = SecurityAlertTemplate.generate({
-        firstName,
-        email,
-        alertType,
-        timestamp: getCurrentSriLankaTime(),
-        ipAddress,
-        location
-      });
-
-      const command = new SendEmailCommand({
-        Source: this.sourceEmail,
-        Destination: {
-          ToAddresses: [email]
-        },
-        Message: {
-          Subject: {
-            Data: template.subject,
-            Charset: 'UTF-8'
-          },
-          Body: {
-            Html: {
-              Data: template.htmlBody,
-              Charset: 'UTF-8'
-            },
-            Text: {
-              Data: template.textBody,
-              Charset: 'UTF-8'
-            }
-          }
-        }
-      });
-
-      const result = await this.sesClient.send(command);
-      
-      return true;
-
-    } catch (error) {
-      this.logger.error(`Failed to send security alert to ${email}:`, error);
-      return false;
-    }
+    const template = SecurityAlertTemplate.generate({
+      firstName,
+      email,
+      alertType,
+      timestamp: getCurrentSriLankaTime(),
+      ipAddress,
+      location
+    });
+    return this.sendSesEmail(email, template, 'security alert');
   }
 
   /**

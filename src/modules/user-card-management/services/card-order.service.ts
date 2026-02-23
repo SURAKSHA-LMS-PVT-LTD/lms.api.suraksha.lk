@@ -12,7 +12,7 @@ import { OrderResponseDto, PaginatedOrdersResponseDto } from '../dto/response/or
 import { OrderStatus } from '../enums/order-status.enum';
 import { CardStatus } from '../enums/card-status.enum';
 import { CardType } from '../enums/card-type.enum';
-import { now, getExpiryDate } from '../../../common/utils/timezone.util';
+import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class CardOrderService {
@@ -26,65 +26,91 @@ export class CardOrderService {
     private readonly dataSource: DataSource,
   ) {}
 
+  // Valid card status transitions that a USER can perform
+  private readonly ALLOWED_USER_STATUS_TRANSITIONS: Record<string, CardStatus[]> = {
+    [CardStatus.ACTIVE]: [CardStatus.DEACTIVATED, CardStatus.LOST, CardStatus.DAMAGED],
+    [CardStatus.DEACTIVATED]: [CardStatus.ACTIVE],
+  };
+
   async createOrder(userId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto> {
-    // Find the card
-    const card = await this.cardRepository.findOne({
-      where: { id: createOrderDto.cardId, isActive: true },
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!card) {
-      throw new NotFoundException('Card not found or not available');
-    }
+    try {
+      // Find the card (lock row for stock decrement)
+      const card = await queryRunner.manager
+        .createQueryBuilder(Card, 'card')
+        .setLock('pessimistic_write')
+        .where('card.id = :id AND card.isActive = true', { id: createOrderDto.cardId })
+        .getOne();
 
-    if (card.quantityAvailable <= 0) {
-      throw new BadRequestException('Card is out of stock');
-    }
+      if (!card) {
+        
+        throw new NotFoundException('Card not found or not available');
+      }
 
-    // Check if user already has a pending order for this card (prevent duplicates)
-    const existingPendingOrder = await this.orderRepository.findOne({
-      where: {
+      if (card.quantityAvailable <= 0) {
+        throw new BadRequestException('Card is out of stock');
+      }
+
+      // Check if user already has a pending order for this card (prevent duplicates)
+      const existingPendingOrder = await queryRunner.manager.findOne(UserIdCardOrder, {
+        where: {
+          userId,
+          cardId: card.id,
+          orderStatus: In([OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_RECEIVED]),
+        },
+      });
+
+      if (existingPendingOrder) {
+        throw new ConflictException(
+          'You already have a pending order for this card. Please complete or cancel the existing order first.',
+        );
+      }
+
+      // Decrement stock
+      card.quantityAvailable -= 1;
+      await queryRunner.manager.save(card);
+
+      // Calculate expiry date using Sri Lanka timezone
+      const expiryDate = now();
+      expiryDate.setDate(expiryDate.getDate() + card.validityDays);
+
+      // Create order
+      const timestamp = now();
+      const order = queryRunner.manager.create(UserIdCardOrder, {
         userId,
         cardId: card.id,
-        orderStatus: In([OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_RECEIVED]),
-      },
-    });
+        cardType: card.cardType,
+        cardExpiryDate: expiryDate,
+        deliveryAddress: createOrderDto.deliveryAddress,
+        contactPhone: createOrderDto.contactPhone,
+        notes: createOrderDto.notes,
+        status: CardStatus.INACTIVE,
+        orderDate: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        orderStatus: OrderStatus.PENDING_PAYMENT,
+      });
 
-    if (existingPendingOrder) {
-      throw new ConflictException(
-        'You already have a pending order for this card. Please complete or cancel the existing order first.',
-      );
+      const savedOrder = await queryRunner.manager.save(order);
+
+      await queryRunner.commitTransaction();
+
+      // Populate relations after commit
+      const populatedOrder = await this.orderRepository.findOne({
+        where: { id: savedOrder.id },
+        relations: ['card', 'user'],
+      });
+
+      return this.toResponseDto(populatedOrder);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    // Calculate expiry date using Sri Lanka timezone
-    const expiryDate = now();
-    expiryDate.setDate(expiryDate.getDate() + card.validityDays);
-
-    // Create order
-    const timestamp = now();
-    const order = this.orderRepository.create({
-      userId,
-      cardId: card.id,
-      cardType: card.cardType,
-      cardExpiryDate: expiryDate,
-      deliveryAddress: createOrderDto.deliveryAddress,
-      contactPhone: createOrderDto.contactPhone,
-      notes: createOrderDto.notes,
-      status: CardStatus.INACTIVE,
-      orderDate: timestamp,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      orderStatus: OrderStatus.PENDING_PAYMENT,
-    });
-
-    const savedOrder = await this.orderRepository.save(order);
-
-    // Populate relations
-    const populatedOrder = await this.orderRepository.findOne({
-      where: { id: savedOrder.id },
-      relations: ['card', 'user'],
-    });
-
-    return this.toResponseDto(populatedOrder);
   }
 
   async getMyOrders(
@@ -182,14 +208,24 @@ export class CardOrderService {
       throw new NotFoundException('Order not found');
     }
 
+    // Validate status transition for user-facing changes
+    const allowedTransitions = this.ALLOWED_USER_STATUS_TRANSITIONS[order.status];
+    if (!allowedTransitions || !allowedTransitions.includes(updateCardStatusDto.status)) {
+      throw new BadRequestException(
+        `Cannot change card status from ${order.status} to ${updateCardStatusDto.status}. ` +
+        `Allowed transitions: ${allowedTransitions?.join(', ') || 'none'}`,
+      );
+    }
+
     // Update status
     order.status = updateCardStatusDto.status;
+    order.updatedAt = now();
 
     if (updateCardStatusDto.status === CardStatus.ACTIVE && !order.activatedAt) {
       order.activatedAt = now();
     }
 
-    if (updateCardStatusDto.status === CardStatus.DEACTIVATED) {
+    if (updateCardStatusDto.status === CardStatus.DEACTIVATED && !order.deactivatedAt) {
       order.deactivatedAt = now();
     }
 
@@ -273,6 +309,7 @@ export class CardOrderService {
 
       // Update order status
       order.orderStatus = updateOrderStatusDto.orderStatus;
+      order.updatedAt = now();
 
       if (updateOrderStatusDto.trackingNumber) {
         order.trackingNumber = updateOrderStatusDto.trackingNumber;
@@ -332,6 +369,7 @@ export class CardOrderService {
 
       // Assign RFID to order
       order.rfidNumber = assignRfidDto.rfidNumber;
+      order.updatedAt = now();
       
       // Activate the card (change status from INACTIVE to ACTIVE)
       if (order.status === CardStatus.INACTIVE) {
@@ -391,6 +429,7 @@ export class CardOrderService {
 
       const previousStatus = order.status;
       order.status = updateCardStatusDto.status;
+      order.updatedAt = now();
 
       // Handle status changes
       if (updateCardStatusDto.status === CardStatus.ACTIVE) {
@@ -534,6 +573,7 @@ export class CardOrderService {
       // Activate the new card
       order.status = CardStatus.ACTIVE;
       order.activatedAt = now();
+      order.updatedAt = now();
       await queryRunner.manager.save(order);
 
       // ✅ Update user fields based on card type (NFC → rfid fields, PVC/TEMPORARY → normal card fields)
@@ -567,26 +607,43 @@ export class CardOrderService {
   }
 
   async getStatistics(dateFrom?: Date, dateTo?: Date): Promise<any> {
-    const query = this.orderRepository.createQueryBuilder('order');
+    // Use SQL aggregation instead of loading all orders into memory
+    const baseQuery = this.orderRepository.createQueryBuilder('order');
 
     if (dateFrom) {
-      query.andWhere('order.orderDate >= :dateFrom', { dateFrom });
+      baseQuery.andWhere('order.orderDate >= :dateFrom', { dateFrom });
     }
 
     if (dateTo) {
-      query.andWhere('order.orderDate <= :dateTo', { dateTo });
+      baseQuery.andWhere('order.orderDate <= :dateTo', { dateTo });
     }
 
-    const orders = await query.getMany();
+    // Total count
+    const totalOrders = await baseQuery.getCount();
 
-    const totalOrders = orders.length;
-    const statusBreakdown = orders.reduce((acc, order) => {
-      acc[order.orderStatus] = (acc[order.orderStatus] || 0) + 1;
+    // Status breakdown via SQL GROUP BY
+    const statusBreakdownRaw = await baseQuery
+      .clone()
+      .select('order.orderStatus', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('order.orderStatus')
+      .getRawMany();
+
+    const statusBreakdown = statusBreakdownRaw.reduce((acc, row) => {
+      acc[row.status] = parseInt(row.count, 10);
       return acc;
     }, {} as Record<string, number>);
 
-    const cardTypeBreakdown = orders.reduce((acc, order) => {
-      acc[order.cardType] = (acc[order.cardType] || 0) + 1;
+    // Card type breakdown via SQL GROUP BY
+    const cardTypeBreakdownRaw = await baseQuery
+      .clone()
+      .select('order.cardType', 'cardType')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('order.cardType')
+      .getRawMany();
+
+    const cardTypeBreakdown = cardTypeBreakdownRaw.reduce((acc, row) => {
+      acc[row.cardType] = parseInt(row.count, 10);
       return acc;
     }, {} as Record<string, number>);
 

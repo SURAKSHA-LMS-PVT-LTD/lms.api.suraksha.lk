@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Card } from '../entities/card.entity';
@@ -69,6 +69,7 @@ export class CardService {
     }
 
     Object.assign(card, updateCardDto);
+    card.updatedAt = now();
     const updatedCard = await this.cardRepository.save(card);
     
     return this.toResponseDto(updatedCard);
@@ -83,6 +84,7 @@ export class CardService {
 
     // Soft delete by setting isActive to false
     card.isActive = false;
+    card.updatedAt = now();
     await this.cardRepository.save(card);
 
     return { message: 'Card deactivated successfully' };

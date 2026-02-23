@@ -18,6 +18,7 @@ import { InstituteUserEntity } from '../institute_mudules/institue_user/entities
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
 import { UserFcmTokenRepository } from '../user/repositories/user-fcm-token.repository';
 import { UserFcmTokenEntity } from '../user/entities/user-fcm-token.entity';
+import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { UserFcmTokenEntity } from '../user/entities/user-fcm-token.entity';
     AttendanceNotificationService,
     CloudStorageService,
     FcmNotificationService,
+    EnhancedEmailService,
     UserFcmTokenRepository
   ],
   exports: [AttendanceService, DynamoDBAttendanceService, DynamoDBAttendanceServiceV2, AttendanceNotificationService]

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SmsProviderService } from '../../sms/services/sms-provider.service';
 import { FcmNotificationService } from '../../../common/services/fcm-notification.service';
+import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { NOTIFICATION_PACKAGES_CONFIG } from '../../advertisement/services/notification-packages.config';
 
 // Retry configuration interface
@@ -68,6 +69,7 @@ export class AttendanceNotificationService {
     private readonly smsProviderService: SmsProviderService,
     private readonly configService: ConfigService,
     private readonly fcmNotificationService: FcmNotificationService,
+    private readonly enhancedEmailService: EnhancedEmailService,
   ) {}
 
   /**
@@ -651,8 +653,7 @@ export class AttendanceNotificationService {
   }
 
   /**
-   * 🔥 TRUE FIRE-AND-FORGET: Send email in background with NO retries
-   * For performance - just send once and move on
+   * 🔥 TRUE FIRE-AND-FORGET: Send email in background using EnhancedEmailService
    */
   private async sendEmailInBackground(
     templateType: string,
@@ -660,42 +661,23 @@ export class AttendanceNotificationService {
     templateData: any,
     studentId: string
   ): Promise<void> {
-    const startTime = Date.now();
-    
     try {
-      const emailServerUrl = process.env.EMAIL_SERVER_URL || process.env.EMAIL_API_URL;
-      const authToken = process.env.EMAIL_SERVER_AUTH_TOKEN || process.env.AWS_LAMBDA_API_KEY;
-      
-      if (!emailServerUrl) {
-        return;
-      }
-      
-      const response = await fetch(emailServerUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken || ''}`
-        },
-        body: JSON.stringify({
-          operation: 'send_template_email',
-          template_type: templateType,
-          to_emails: toEmails,
-          template_data: templateData
-        })
+      const result = await this.enhancedEmailService.sendTemplateEmail({
+        templateType,
+        toEmails,
+        templateData,
       });
 
-      const result = await response.json();
-
-      // Check multiple success indicators from Lambda response
-      const isSuccess = response.ok && (
-        result.message?.includes('successfully') || 
-        result.status === 'success' ||
-        result.messageId
-      );
-
-      // Silent success/failure for performance
+      if (!result.success) {
+        this.logger.warn(
+          `Attendance email failed for student ${studentId}: ${result.error}`,
+        );
+      }
     } catch (error) {
       // Silent failure for performance
+      this.logger.warn(
+        `Background email send error for student ${studentId}: ${error.message}`,
+      );
     }
   }
 

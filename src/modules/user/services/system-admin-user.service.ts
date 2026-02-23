@@ -51,6 +51,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 import { now } from '../../../common/utils/timezone.util';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class SystemAdminUserService {
@@ -660,22 +661,21 @@ export class SystemAdminUserService {
       updatedAt: now()
     });
 
-    const savedUser = await queryRunner.manager.save(userEntity);
-
-    // ✅ Auto-generate normal card ID + set status ACTIVE + 2-year expiry
-    const generatedCardId = this.generateCardId();
-    const cardExpiryDate = new Date();
+    // ✅ Auto-generate normal card ID + set status ACTIVE + 2-year expiry (set before save to avoid double-save)
+    const generatedCardId = await this.generateUniqueCardId(queryRunner);
+    const cardExpiryDate = now();
     cardExpiryDate.setFullYear(cardExpiryDate.getFullYear() + 2);
 
-    savedUser.cardId = generatedCardId;
-    savedUser.cardStatus = CardStatus.ACTIVE;
-    savedUser.cardExpiryDate = cardExpiryDate;
-    await queryRunner.manager.save(savedUser);
+    userEntity.cardId = generatedCardId;
+    userEntity.cardStatus = CardStatus.ACTIVE;
+    userEntity.cardExpiryDate = cardExpiryDate;
+
+    const savedUser = await queryRunner.manager.save(userEntity);
 
     // Create student record
     const studentEntity = queryRunner.manager.create(StudentEntity, {
       userId: savedUser.id,
-      studentId: data.studentId || this.generateStudentId(),
+      studentId: data.studentId || await this.generateUniqueStudentId(queryRunner),
       fatherId: parents.fatherId,
       motherId: parents.motherId,
       guardianId: parents.guardianId,
@@ -1128,22 +1128,57 @@ export class SystemAdminUserService {
   }
 
   /**
-   * Generate unique student ID
+   * Generate unique student ID using cryptographically secure random
+   * Uses crypto.randomInt for collision-resistant IDs
    */
   private generateStudentId(): string {
     const year = getCurrentSriLankaTime().getFullYear();
-    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    const random = crypto.randomInt(0, 10000000).toString().padStart(7, '0');
     return `STU-${year}-${random}`;
   }
 
   /**
+   * Generate unique student ID with DB uniqueness check + retry
+   */
+  private async generateUniqueStudentId(queryRunner: QueryRunner): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidateId = this.generateStudentId();
+      const existing = await queryRunner.manager.findOne(StudentEntity, {
+        where: { studentId: candidateId },
+      });
+      if (!existing) return candidateId;
+      this.logger.warn(`Student ID collision on attempt ${attempt + 1}: ${candidateId}`);
+    }
+    // Fallback with timestamp for guaranteed uniqueness
+    const ts = Date.now().toString(36);
+    return `STU-${getCurrentSriLankaTime().getFullYear()}-${ts}`;
+  }
+
+  /**
    * Generate unique normal card ID (QR/Barcode)
-   * Format: CARD-YYYY-XXXXX (e.g. CARD-2026-00042)
+   * Format: CARD-YYYY-XXXXXXX (e.g. CARD-2026-0004231)
+   * Uses cryptographically secure random
    */
   private generateCardId(): string {
     const year = getCurrentSriLankaTime().getFullYear();
-    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    const random = crypto.randomInt(0, 10000000).toString().padStart(7, '0');
     return `CARD-${year}-${random}`;
+  }
+
+  /**
+   * Generate unique card ID with DB uniqueness check + retry
+   */
+  private async generateUniqueCardId(queryRunner?: QueryRunner): Promise<string> {
+    const repo = queryRunner ? queryRunner.manager.getRepository(UserEntity) : this.userRepository;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidateId = this.generateCardId();
+      const existing = await repo.findOne({ where: { cardId: candidateId } });
+      if (!existing) return candidateId;
+      this.logger.warn(`Card ID collision on attempt ${attempt + 1}: ${candidateId}`);
+    }
+    // Fallback with timestamp for guaranteed uniqueness
+    const ts = Date.now().toString(36);
+    return `CARD-${getCurrentSriLankaTime().getFullYear()}-${ts}`;
   }
 
   /**
@@ -1574,8 +1609,8 @@ export class SystemAdminUserService {
     // ✅ Generate card ID if not exists + set ACTIVE status + 2-year expiry
     let cardGenerated = false;
     if (!user.cardId) {
-      const generatedCardId = this.generateCardId();
-      const cardExpiryDate = new Date();
+      const generatedCardId = await this.generateUniqueCardId();
+      const cardExpiryDate = now();
       cardExpiryDate.setFullYear(cardExpiryDate.getFullYear() + 2);
 
       await this.userRepository.update(dto.userId.toString(), {
@@ -1710,27 +1745,24 @@ export class SystemAdminUserService {
       updatedAt: now()
     });
 
-    // Generate upload token (JWT with user info and expiry)
+    // Generate cryptographically signed upload token (HMAC-SHA256)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + urlValidityDays);
     
-    const uploadToken = Buffer.from(
-      JSON.stringify({
-        userId,
-        purpose: 'profile-image-reupload',
-        exp: expiresAt.getTime(),
-      })
-    ).toString('base64url');
+    const tokenPayload = JSON.stringify({
+      userId,
+      purpose: 'profile-image-reupload',
+      exp: expiresAt.getTime(),
+    });
+    const tokenSecret = process.env.JWT_SECRET || process.env.UPLOAD_TOKEN_SECRET || 'fallback-secret-change-me';
+    const signature = crypto.createHmac('sha256', tokenSecret).update(tokenPayload).digest('base64url');
+    const uploadToken = `${Buffer.from(tokenPayload).toString('base64url')}.${signature}`;
 
     // Generate signed upload URL (7-day TTL)
     const timestamp = Date.now();
     const fileName = `profile-reupload-${userId}-${timestamp}.jpg`;
     const relativePath = `profile-images/${userId}/${fileName}`;
     
-    // Note: generateSignedUploadUrl expects string path parameter
-    // For now, we'll use a placeholder URL since the user will upload via frontend signed URL
-    const uploadUrl = `https://storage.googleapis.com/${process.env.GCS_BUCKET_NAME}/${relativePath}`;
-
     // Construct frontend upload URL
     const frontendBaseUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
     const frontendUploadUrl = `${frontendBaseUrl}/profile/image/upload?token=${uploadToken}`;
