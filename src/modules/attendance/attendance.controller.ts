@@ -1019,6 +1019,248 @@ export class AttendanceController {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  CLASS-SCOPED STUDENT ATTENDANCE
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('institute/:instituteId/class/:classId/student/:studentId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+    student: { allowSelfOnly: true },
+    parent: { requireStudent: true }
+  })
+  @ApiOperation({
+    summary: 'Get student attendance for a specific class',
+    description: 'Retrieve attendance records for a student filtered by class. Supports date range and pagination.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'studentId', description: 'Student user ID' })
+  @ApiResponse({ status: 200, description: 'Class-scoped student attendance retrieved successfully' })
+  async getClassStudentAttendance(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('studentId') studentId: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 50,
+    @Query('status') status?: string
+  ) {
+    try {
+      if (!startDate || !endDate) {
+        throw new HttpException(
+          { success: false, message: 'startDate and endDate are required parameters' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 365) {
+        throw new HttpException(
+          { success: false, message: 'Date range cannot exceed 365 days' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const result = await this.attendanceService.getClassAttendance({
+        instituteId,
+        classId,
+        startDate,
+        endDate,
+        page,
+        limit,
+        status,
+        studentId
+      });
+
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve class student attendance' },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  SUBJECT-SCOPED STUDENT ATTENDANCE
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/student/:studentId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+    student: { allowSelfOnly: true },
+    parent: { requireStudent: true }
+  })
+  @ApiOperation({
+    summary: 'Get student attendance for a specific subject',
+    description: 'Retrieve attendance records for a student filtered by class and subject. Supports date range and pagination.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiParam({ name: 'studentId', description: 'Student user ID' })
+  @ApiResponse({ status: 200, description: 'Subject-scoped student attendance retrieved successfully' })
+  async getSubjectStudentAttendance(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Param('studentId') studentId: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 50,
+    @Query('status') status?: string
+  ) {
+    try {
+      if (!startDate || !endDate) {
+        throw new HttpException(
+          { success: false, message: 'startDate and endDate are required parameters' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 365) {
+        throw new HttpException(
+          { success: false, message: 'Date range cannot exceed 365 days' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const result = await this.attendanceService.getSubjectAttendance({
+        instituteId,
+        classId,
+        subjectId,
+        startDate,
+        endDate,
+        page,
+        limit,
+        status,
+        studentId
+      });
+
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve subject student attendance' },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  CLASS-SCOPED CARD USER LOOKUP
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('institute/:instituteId/class/:classId/card-user')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true
+  })
+  @ApiOperation({
+    summary: 'Get institute user by card ID (class context)',
+    description: 'Fetch institute user details by instituteCardId with class context. Returns the same data as the institute-level card-user lookup.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID (context)' })
+  @ApiResponse({ status: 200, description: 'Institute user retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Institute user not found' })
+  async getClassCardUser(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Query('instituteCardId') instituteCardId: string
+  ): Promise<any> {
+    try {
+      if (!instituteCardId) {
+        throw new HttpException(
+          { success: false, message: 'instituteCardId query parameter is required' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      const user = await this.attendanceService.getInstituteUserByCardId({ instituteCardId, instituteId });
+      return {
+        success: true,
+        message: 'Institute user retrieved successfully',
+        classId,
+        data: user
+      };
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve institute user' },
+        error.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  SUBJECT-SCOPED CARD USER LOOKUP
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/card-user')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true
+  })
+  @ApiOperation({
+    summary: 'Get institute user by card ID (subject context)',
+    description: 'Fetch institute user details by instituteCardId with class and subject context.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID (context)' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID (context)' })
+  @ApiResponse({ status: 200, description: 'Institute user retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Institute user not found' })
+  async getSubjectCardUser(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Query('instituteCardId') instituteCardId: string
+  ): Promise<any> {
+    try {
+      if (!instituteCardId) {
+        throw new HttpException(
+          { success: false, message: 'instituteCardId query parameter is required' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      const user = await this.attendanceService.getInstituteUserByCardId({ instituteCardId, instituteId });
+      return {
+        success: true,
+        message: 'Institute user retrieved successfully',
+        classId,
+        subjectId,
+        data: user
+      };
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve institute user' },
+        error.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
   @Get('institute-card-user')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({

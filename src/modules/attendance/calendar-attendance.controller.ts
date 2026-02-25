@@ -153,7 +153,7 @@ export class CalendarAttendanceController {
     attendanceMarker: true,
   })
   @ApiOperation({
-    summary: 'Get attendance records filtered by user type',
+    summary: 'Get attendance records filtered by user type (institute-wide)',
     description:
       'Returns attendance for a specific user type (STUDENT, TEACHER, PARENT, etc.) in an institute. ' +
       'Optionally filter by date and/or eventId.',
@@ -185,6 +185,102 @@ export class CalendarAttendanceController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         { success: false, message: error.message || 'Failed to get user type attendance' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3b. GET ATTENDANCE BY USER TYPE — CLASS-SCOPED
+  //     Same as 3 but filtered to a specific class
+  // ─────────────────────────────────────────────────────────────────────────
+  @Get('institute/:instituteId/class/:classId/user-type/:userType')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get attendance records filtered by user type (class-scoped)',
+    description:
+      'Returns attendance for a specific user type within a specific class. ' +
+      'Optionally filter by date and/or eventId.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID to scope results' })
+  @ApiParam({ name: 'userType', description: 'User type: STUDENT | TEACHER | PARENT | INSTITUTE_ADMIN | ATTENDANCE_MARKER' })
+  @ApiQuery({ name: 'date', required: false, description: 'Filter to a specific date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Filter to a specific calendar event ID' })
+  @ApiResponse({ status: 200, description: 'Class-scoped attendance records for the requested user type' })
+  async getAttendanceByUserTypeForClass(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('userType') userType: string,
+    @Query('date') date?: string,
+    @Query('eventId') eventId?: string,
+  ): Promise<any> {
+    try {
+      if (!VALID_USER_TYPES.includes(userType as AttendanceUserType)) {
+        throw new BadRequestException(
+          `Invalid userType: '${userType}'. Valid values: ${VALID_USER_TYPES.join(', ')}`,
+        );
+      }
+      return await this.attendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to get class user type attendance' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3c. GET ATTENDANCE BY USER TYPE — SUBJECT-SCOPED
+  //     Same as 3 but filtered to a specific class + subject
+  // ─────────────────────────────────────────────────────────────────────────
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/user-type/:userType')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get attendance records filtered by user type (subject-scoped)',
+    description:
+      'Returns attendance for a specific user type within a specific class and subject. ' +
+      'Optionally filter by date and/or eventId.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID to scope results' })
+  @ApiParam({ name: 'userType', description: 'User type: STUDENT | TEACHER | PARENT | INSTITUTE_ADMIN | ATTENDANCE_MARKER' })
+  @ApiQuery({ name: 'date', required: false, description: 'Filter to a specific date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Filter to a specific calendar event ID' })
+  @ApiResponse({ status: 200, description: 'Subject-scoped attendance records for the requested user type' })
+  async getAttendanceByUserTypeForSubject(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Param('userType') userType: string,
+    @Query('date') date?: string,
+    @Query('eventId') eventId?: string,
+  ): Promise<any> {
+    try {
+      if (!VALID_USER_TYPES.includes(userType as AttendanceUserType)) {
+        throw new BadRequestException(
+          `Invalid userType: '${userType}'. Valid values: ${VALID_USER_TYPES.join(', ')}`,
+        );
+      }
+      return await this.attendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId, subjectId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to get subject user type attendance' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

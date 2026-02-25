@@ -562,6 +562,65 @@ export class InstituteCalendarController {
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  //  CALENDAR EVENTS - LIST ALL
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get All Calendar Events - Query events with pagination
+   */
+  @Get('events')
+  @ApiOperation({
+    summary: 'List all calendar events for the institute',
+    description: 'Returns paginated calendar events. Filter by date range, event type, etc.',
+  })
+  @ApiQuery({ name: 'startDate', required: false, description: 'Start date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'eventType', required: false, description: 'Event type filter' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Results per page (default: 100)' })
+  @ApiResponse({ status: 200, description: 'Calendar events retrieved' })
+  async getCalendarEvents(
+    @Param('instituteId') instituteId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('eventType') eventType?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    try {
+      if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        throw new BadRequestException('Invalid startDate format. Use YYYY-MM-DD.');
+      }
+      if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        throw new BadRequestException('Invalid endDate format. Use YYYY-MM-DD.');
+      }
+
+      const start = startDate ? new Date(startDate + 'T00:00:00+05:30') : undefined;
+      const end = endDate ? new Date(endDate + 'T23:59:59+05:30') : undefined;
+
+      const { data: events, total } = await this.calendarService.getCalendarEvents(
+        instituteId,
+        {
+          startDate: start,
+          endDate: end,
+          eventType,
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 100,
+        },
+      );
+
+      return {
+        success: true,
+        count: events.length,
+        total,
+        data: events,
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to get calendar events');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   //  CACHE MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════
 

@@ -1,9 +1,10 @@
 import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { InstituteCalendarDayEntity } from '../entities/institute-calendar-day.entity';
 import { InstituteOperatingConfigEntity } from '../entities/institute-operating-config.entity';
 import { InstituteCalendarEventEntity } from '../entities/institute-calendar-event.entity';
+import { InstituteClassCalendarEntity } from '../entities/institute-class-calendar.entity';
 import { GenerateCalendarDto } from '../dto/calendar/generate-calendar.dto';
 import { CreateOperatingConfigDto } from '../dto/calendar/create-operating-config.dto';
 import { getCurrentSriLankaDate, getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
@@ -11,6 +12,7 @@ import {
   CalendarDayType,
   CalendarDaySource,
   CalendarEventType,
+  CalendarEventScope,
 } from '../enums/calendar-day-type.enum';
 
 @Injectable()
@@ -24,6 +26,8 @@ export class InstituteCalendarService {
     private readonly operatingConfigRepo: Repository<InstituteOperatingConfigEntity>,
     @InjectRepository(InstituteCalendarEventEntity)
     private readonly calendarEventRepo: Repository<InstituteCalendarEventEntity>,
+    @InjectRepository(InstituteClassCalendarEntity)
+    private readonly classCalendarRepo: Repository<InstituteClassCalendarEntity>,
   ) {}
 
   /**
@@ -531,6 +535,289 @@ export class InstituteCalendarService {
       daysDeleted: daysResult.affected || 0,
       eventsDeleted,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  CALENDAR EVENTS - LIST / QUERY
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get all calendar events for an institute with optional filters and pagination
+   */
+  async getCalendarEvents(
+    instituteId: string,
+    filters?: {
+      startDate?: Date;
+      endDate?: Date;
+      eventType?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{ data: InstituteCalendarEventEntity[]; total: number }> {
+    const where: any = { instituteId };
+
+    if (filters?.startDate && filters?.endDate) {
+      where.eventDate = Between(filters.startDate, filters.endDate);
+    }
+    if (filters?.eventType) {
+      where.eventType = filters.eventType;
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 100;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await this.calendarEventRepo.findAndCount({
+      where,
+      order: { eventDate: 'DESC', startTime: 'ASC' },
+      skip,
+      take: limit,
+    });
+
+    return { data, total };
+  }
+
+  /**
+   * Get calendar events for a specific class within an institute
+   * Filters events where targetScope is CLASS and targetClassIds contains the classId,
+   * or targetScope is INSTITUTE (applies to all classes)
+   */
+  async getCalendarEventsForClass(
+    instituteId: string,
+    classId: string,
+    filters?: {
+      startDate?: Date;
+      endDate?: Date;
+      eventType?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{ data: InstituteCalendarEventEntity[]; total: number }> {
+    const qb = this.calendarEventRepo.createQueryBuilder('event')
+      .where('event.instituteId = :instituteId', { instituteId })
+      .andWhere(
+        '(event.targetScope = :scopeInstitute OR (event.targetScope = :scopeClass AND JSON_CONTAINS(event.targetClassIds, :classIdJson)))',
+        {
+          scopeInstitute: 'INSTITUTE',
+          scopeClass: 'CLASS',
+          classIdJson: JSON.stringify(classId),
+        },
+      );
+
+    if (filters?.startDate && filters?.endDate) {
+      qb.andWhere('event.eventDate BETWEEN :startDate AND :endDate', {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+      });
+    }
+    if (filters?.eventType) {
+      qb.andWhere('event.eventType = :eventType', { eventType: filters.eventType });
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 100;
+    const skip = (page - 1) * limit;
+
+    qb.orderBy('event.eventDate', 'DESC').addOrderBy('event.startTime', 'ASC');
+    qb.skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total };
+  }
+
+  /**
+   * Get calendar events for a specific subject within a class and institute
+   * Filters events where targetSubjectIds contains the subjectId
+   */
+  async getCalendarEventsForSubject(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    filters?: {
+      startDate?: Date;
+      endDate?: Date;
+      eventType?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{ data: InstituteCalendarEventEntity[]; total: number }> {
+    const qb = this.calendarEventRepo.createQueryBuilder('event')
+      .where('event.instituteId = :instituteId', { instituteId })
+      .andWhere(
+        '(event.targetScope = :scopeInstitute OR ' +
+        '(event.targetScope = :scopeClass AND JSON_CONTAINS(event.targetClassIds, :classIdJson)) OR ' +
+        '(event.targetScope = :scopeSubject AND JSON_CONTAINS(event.targetSubjectIds, :subjectIdJson)))',
+        {
+          scopeInstitute: 'INSTITUTE',
+          scopeClass: 'CLASS',
+          scopeSubject: 'SUBJECT',
+          classIdJson: JSON.stringify(classId),
+          subjectIdJson: JSON.stringify(subjectId),
+        },
+      );
+
+    if (filters?.startDate && filters?.endDate) {
+      qb.andWhere('event.eventDate BETWEEN :startDate AND :endDate', {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+      });
+    }
+    if (filters?.eventType) {
+      qb.andWhere('event.eventType = :eventType', { eventType: filters.eventType });
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 100;
+    const skip = (page - 1) * limit;
+
+    qb.orderBy('event.eventDate', 'DESC').addOrderBy('event.startTime', 'ASC');
+    qb.skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total };
+  }
+
+  /**
+   * Get today's calendar for a specific class (with class-level overrides)
+   */
+  async getClassCalendarToday(
+    instituteId: string,
+    classId: string,
+  ): Promise<{ day: InstituteCalendarDayEntity | null; classOverride: InstituteClassCalendarEntity | null; defaultEventId: string | null }> {
+    const today = getCurrentSriLankaDate();
+
+    // Get the institute-level calendar day
+    const day = await this.calendarDayRepo.findOne({
+      where: { instituteId, calendarDate: new Date(today) },
+      relations: ['events'],
+    });
+
+    // Check for class-level override
+    let classOverride: InstituteClassCalendarEntity | null = null;
+    if (day) {
+      classOverride = await this.classCalendarRepo.findOne({
+        where: { instituteId, classId, calendarDayId: day.id },
+      });
+    }
+
+    // Get default event (class-scoped if available, otherwise institute default)
+    let defaultEventId: string | null = null;
+    if (day) {
+      // First try class-specific events
+      const classEvent = await this.calendarEventRepo.findOne({
+        where: {
+          calendarDayId: day.id,
+          isDefault: true,
+          targetScope: CalendarEventScope.CLASS,
+        },
+      });
+      if (classEvent) {
+        defaultEventId = classEvent.id;
+      } else {
+        // Fall back to institute default event
+        const defaultEvent = await this.calendarEventRepo.findOne({
+          where: { calendarDayId: day.id, isDefault: true },
+        });
+        defaultEventId = defaultEvent?.id || null;
+      }
+    }
+
+    return { day, classOverride, defaultEventId };
+  }
+
+  /**
+   * Get today's calendar for a specific subject (events scoped to subject)
+   */
+  async getSubjectCalendarToday(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+  ): Promise<{ day: InstituteCalendarDayEntity | null; defaultEventId: string | null; subjectEvents: InstituteCalendarEventEntity[] }> {
+    const today = getCurrentSriLankaDate();
+
+    const day = await this.calendarDayRepo.findOne({
+      where: { instituteId, calendarDate: new Date(today) },
+      relations: ['events'],
+    });
+
+    let defaultEventId: string | null = null;
+    let subjectEvents: InstituteCalendarEventEntity[] = [];
+
+    if (day) {
+      // Get events that target this subject
+      const allEvents = await this.calendarEventRepo.find({
+        where: { calendarDayId: day.id },
+      });
+
+      subjectEvents = allEvents.filter(event => {
+        if (event.targetScope === CalendarEventScope.SUBJECT && event.targetSubjectIds) {
+          return event.targetSubjectIds.includes(subjectId);
+        }
+        if (event.targetScope === CalendarEventScope.CLASS && event.targetClassIds) {
+          return event.targetClassIds.includes(classId);
+        }
+        // Institute-level events apply to all
+        return event.targetScope === CalendarEventScope.INSTITUTE || !event.targetScope;
+      });
+
+      const defaultEvent = subjectEvents.find(e => e.isDefault) || allEvents.find(e => e.isDefault);
+      defaultEventId = defaultEvent?.id || null;
+    }
+
+    return { day, defaultEventId, subjectEvents };
+  }
+
+  /**
+   * Get class calendar days (with class-level overrides merged)
+   */
+  async getClassCalendarDays(
+    instituteId: string,
+    classId: string,
+    startDate?: Date,
+    endDate?: Date,
+    filters?: {
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{ data: any[]; total: number }> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 400;
+
+    // Get institute-level calendar days
+    const { data: instituteDays, total } = await this.getCalendarDays(
+      instituteId,
+      startDate,
+      endDate,
+      { page, limit },
+    );
+
+    // Get class-level overrides for these days
+    const dayIds = instituteDays.map(d => d.id);
+    let classOverrides: InstituteClassCalendarEntity[] = [];
+    if (dayIds.length > 0) {
+      classOverrides = await this.classCalendarRepo.find({
+        where: {
+          instituteId,
+          classId,
+          calendarDayId: In(dayIds),
+        },
+      });
+    }
+
+    const overrideMap = new Map(classOverrides.map(o => [o.calendarDayId, o]));
+
+    // Merge institute days with class overrides
+    const mergedDays = instituteDays.map(day => {
+      const override = overrideMap.get(day.id);
+      return {
+        ...day,
+        classOverride: override || null,
+        effectiveDayType: override?.classDayType || day.dayType,
+        effectiveIsAttendanceExpected: override?.isAttendanceExpected ?? day.isAttendanceExpected,
+      };
+    });
+
+    return { data: mergedDays, total };
   }
 
   // Helper methods

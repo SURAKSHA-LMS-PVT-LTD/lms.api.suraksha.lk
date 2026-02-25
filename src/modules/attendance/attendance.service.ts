@@ -952,20 +952,25 @@ export class AttendanceService {
   /**
    * Get attendance filtered by user type (STUDENT, TEACHER, PARENT, etc.)
    * Use case: All teacher attendance for a date, all parent attendance at an event
+   * Supports optional classId and subjectId for scoped queries
    */
   async getAttendanceByUserType(
     instituteId: string,
     userType: string,
     date?: string,
-    eventId?: string
+    eventId?: string,
+    classId?: string,
+    subjectId?: string
   ): Promise<any> {
-    const records = await this.dynamoAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId);
+    const records = await this.dynamoAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId, subjectId);
     return {
       success: true,
       message: 'User type attendance retrieved successfully',
       userType,
       date: date || null,
       eventId: eventId || null,
+      classId: classId || null,
+      subjectId: subjectId || null,
       totalRecords: records.length,
       data: records,
     };

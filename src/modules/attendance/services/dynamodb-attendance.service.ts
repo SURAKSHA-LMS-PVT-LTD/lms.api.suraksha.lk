@@ -688,9 +688,12 @@ export class DynamoDBAttendanceService {
     instituteId: string,
     userType: string,
     date?: string,
-    eventId?: string
+    eventId?: string,
+    classId?: string,
+    subjectId?: string
   ): Promise<MarkAttendanceDto[]> {
     const filterConditions = ['userType = :userType'];
+    const attributeNames: Record<string, string> = {};
     const attributeValues: any = {
       ':pk': this.generatePartitionKey(instituteId),
       ':userType': userType
@@ -699,6 +702,18 @@ export class DynamoDBAttendanceService {
     if (eventId) {
       filterConditions.push('eventId = :eventId');
       attributeValues[':eventId'] = eventId;
+    }
+
+    if (classId) {
+      filterConditions.push('#classId = :classId');
+      attributeNames['#classId'] = 'classId';
+      attributeValues[':classId'] = classId;
+    }
+
+    if (subjectId) {
+      filterConditions.push('#subjectId = :subjectId');
+      attributeNames['#subjectId'] = 'subjectId';
+      attributeValues[':subjectId'] = subjectId;
     }
 
     const params: QueryCommandInput = {
@@ -713,6 +728,10 @@ export class DynamoDBAttendanceService {
       }, { removeUndefinedValues: true }),
       ScanIndexForward: false
     };
+
+    if (Object.keys(attributeNames).length > 0) {
+      params.ExpressionAttributeNames = attributeNames;
+    }
 
     const allRecords: MarkAttendanceDto[] = [];
     let lastEvaluatedKey: Record<string, any> | undefined;

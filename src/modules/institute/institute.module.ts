@@ -5,6 +5,8 @@ import { InstitutesService } from './institute.service';
 import { InstitutesController } from './institute.controller';
 import { PublicInstitutesController } from './public-institute.controller';
 import { InstituteCalendarController } from './institute-calendar.controller';
+import { InstituteClassCalendarController } from './institute-class-calendar.controller';
+import { InstituteClassSubjectCalendarController } from './institute-class-subject-calendar.controller';
 import { InstituteEntity } from './entities/institute.entity';
 import { InstituteOperatingConfigEntity } from './entities/institute-operating-config.entity';
 import { InstituteCalendarDayEntity } from './entities/institute-calendar-day.entity';
@@ -29,7 +31,13 @@ import { CacheModule } from '../../common/modules/cache.module';
     ]),
     CacheModule,
   ],
-  controllers: [InstitutesController, PublicInstitutesController, InstituteCalendarController],
+  controllers: [
+    InstitutesController,
+    PublicInstitutesController,
+    InstituteCalendarController,
+    InstituteClassCalendarController,
+    InstituteClassSubjectCalendarController,
+  ],
   providers: [
     InstitutesService,
     InstitueClassService,
