@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { InstituteCalendarDayEntity } from '../entities/institute-calendar-day.entity';
@@ -90,6 +90,17 @@ export class InstituteCalendarService {
       );
     }
 
+    // ✅ FIXED DATA-001: Check for existing calendar to prevent duplicate conflicts
+    const existingDays = await this.calendarDayRepo.count({
+      where: { instituteId, academicYear: dto.academicYear },
+    });
+    if (existingDays > 0) {
+      throw new ConflictException(
+        `Calendar already exists for academic year ${dto.academicYear} with ${existingDays} days. ` +
+        `Delete the existing calendar first or use a different academic year.`,
+      );
+    }
+
     // Build lookup map: dayOfWeek -> config
     const configMap = new Map(
       operatingConfig.map((c) => [c.dayOfWeek, c]),
@@ -116,7 +127,7 @@ export class InstituteCalendarService {
       date <= endDate;
       date.setDate(date.getDate() + 1)
     ) {
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // ISO: Mon=1, Sun=7
 
       const config = configMap.get(dayOfWeek);
@@ -181,15 +192,18 @@ export class InstituteCalendarService {
     const savedDays = await this.calendarDayRepo.save(daysToCreate);
 
     // Link events to calendar days
+    // ✅ FIXED BUG-002: Use manual date formatting instead of toISOString() to avoid UTC date shift
     const dayIdMap = new Map(
-      savedDays.map((d) => [
-        d.calendarDate.toISOString().split('T')[0],
-        d.id,
-      ]),
+      savedDays.map((d) => {
+        const cd = d.calendarDate instanceof Date ? d.calendarDate : new Date(d.calendarDate);
+        const key = `${cd.getFullYear()}-${String(cd.getMonth() + 1).padStart(2, '0')}-${String(cd.getDate()).padStart(2, '0')}`;
+        return [key, d.id];
+      }),
     );
 
     eventsToCreate.forEach((event) => {
-      const dateStr = (event.eventDate as Date).toISOString().split('T')[0];
+      const ed = event.eventDate instanceof Date ? event.eventDate : new Date(event.eventDate);
+      const dateStr = `${ed.getFullYear()}-${String(ed.getMonth() + 1).padStart(2, '0')}-${String(ed.getDate()).padStart(2, '0')}`;
       event.calendarDayId = dayIdMap.get(dateStr) || null;
     });
 
@@ -257,19 +271,48 @@ export class InstituteCalendarService {
 
   /**
    * Get calendar days in date range
+   * ✅ FIXED BUG-004: Now accepts optional filters for academicYear, dayType, isAttendanceExpected
+   * ✅ FIXED PERF-004: Added pagination with skip/take
    */
   async getCalendarDays(
     instituteId: string,
-    startDate: Date,
-    endDate: Date,
-  ): Promise<InstituteCalendarDayEntity[]> {
-    return this.calendarDayRepo.find({
-      where: {
-        instituteId,
-        calendarDate: Between(startDate, endDate),
-      },
+    startDate?: Date,
+    endDate?: Date,
+    filters?: {
+      academicYear?: string;
+      dayType?: string;
+      isAttendanceExpected?: boolean;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{ data: InstituteCalendarDayEntity[]; total: number }> {
+    const where: any = { instituteId };
+
+    if (startDate && endDate) {
+      where.calendarDate = Between(startDate, endDate);
+    }
+    if (filters?.academicYear) {
+      where.academicYear = filters.academicYear;
+    }
+    if (filters?.dayType) {
+      where.dayType = filters.dayType;
+    }
+    if (filters?.isAttendanceExpected !== undefined) {
+      where.isAttendanceExpected = filters.isAttendanceExpected;
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 400; // Default to 400 (slightly > 365 days)
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await this.calendarDayRepo.findAndCount({
+      where,
       order: { calendarDate: 'ASC' },
+      skip,
+      take: limit,
     });
+
+    return { data, total };
   }
 
   /**
@@ -321,6 +364,23 @@ export class InstituteCalendarService {
       throw new Error('Either calendarDayId or calendarDate must be provided');
     }
 
+    // ✅ FIXED ERR-002: Validate event date matches the calendar day
+    if (dto.eventDate) {
+      const calendarDay = await this.calendarDayRepo.findOne({ where: { id: calendarDayId } });
+      if (calendarDay) {
+        const cdStr = calendarDay.calendarDate instanceof Date
+          ? `${calendarDay.calendarDate.getFullYear()}-${String(calendarDay.calendarDate.getMonth() + 1).padStart(2, '0')}-${String(calendarDay.calendarDate.getDate()).padStart(2, '0')}`
+          : String(calendarDay.calendarDate).split('T')[0];
+        const eventDateStr = String(dto.eventDate).split('T')[0];
+        if (cdStr !== eventDateStr) {
+          throw new Error(
+            `Event date (${eventDateStr}) doesn't match calendar day date (${cdStr}). ` +
+            `The event date should match the calendar day it belongs to.`,
+          );
+        }
+      }
+    }
+
     // If isDefault is true, unset any existing default events for this calendar day
     if (dto.isDefault) {
       await this.calendarEventRepo.update(
@@ -352,6 +412,125 @@ export class InstituteCalendarService {
     });
 
     return this.calendarEventRepo.save(event);
+  }
+
+  /**
+   * ✅ FEAT-001: Update a calendar event
+   */
+  async updateCalendarEvent(
+    instituteId: string,
+    eventId: string,
+    dto: Partial<InstituteCalendarEventEntity>,
+  ): Promise<InstituteCalendarEventEntity> {
+    const event = await this.calendarEventRepo.findOne({
+      where: { id: eventId, instituteId },
+    });
+
+    if (!event) {
+      throw new NotFoundException(`Calendar event ${eventId} not found for institute ${instituteId}`);
+    }
+
+    // If setting as default, unset any existing default for the same calendar day
+    if (dto.isDefault === true && event.calendarDayId) {
+      await this.calendarEventRepo.update(
+        { calendarDayId: event.calendarDayId, isDefault: true },
+        { isDefault: false },
+      );
+    }
+
+    Object.assign(event, dto);
+    return this.calendarEventRepo.save(event);
+  }
+
+  /**
+   * ✅ FEAT-001: Delete a calendar event
+   */
+  async deleteCalendarEvent(
+    instituteId: string,
+    eventId: string,
+  ): Promise<void> {
+    const event = await this.calendarEventRepo.findOne({
+      where: { id: eventId, instituteId },
+    });
+
+    if (!event) {
+      throw new NotFoundException(`Calendar event ${eventId} not found for institute ${instituteId}`);
+    }
+
+    await this.calendarEventRepo.remove(event);
+  }
+
+  /**
+   * ✅ FEAT-002: Update a calendar day (e.g., mark as holiday after generation)
+   */
+  async updateCalendarDay(
+    instituteId: string,
+    calendarDayId: string,
+    dto: Partial<InstituteCalendarDayEntity>,
+  ): Promise<InstituteCalendarDayEntity> {
+    const day = await this.calendarDayRepo.findOne({
+      where: { id: calendarDayId, instituteId },
+    });
+
+    if (!day) {
+      throw new NotFoundException(`Calendar day ${calendarDayId} not found for institute ${instituteId}`);
+    }
+
+    Object.assign(day, dto);
+    return this.calendarDayRepo.save(day);
+  }
+
+  /**
+   * ✅ FEAT-002: Delete a calendar day (and its events)
+   */
+  async deleteCalendarDay(
+    instituteId: string,
+    calendarDayId: string,
+  ): Promise<void> {
+    const day = await this.calendarDayRepo.findOne({
+      where: { id: calendarDayId, instituteId },
+    });
+
+    if (!day) {
+      throw new NotFoundException(`Calendar day ${calendarDayId} not found for institute ${instituteId}`);
+    }
+
+    // Delete associated events first
+    await this.calendarEventRepo.delete({ calendarDayId });
+    await this.calendarDayRepo.remove(day);
+  }
+
+  /**
+   * ✅ DATA-001: Delete entire calendar for an academic year (for regeneration)
+   */
+  async deleteCalendar(
+    instituteId: string,
+    academicYear: string,
+  ): Promise<{ daysDeleted: number; eventsDeleted: number }> {
+    const days = await this.calendarDayRepo.find({
+      where: { instituteId, academicYear },
+    });
+
+    if (days.length === 0) {
+      throw new NotFoundException(`No calendar found for academic year ${academicYear}`);
+    }
+
+    const dayIds = days.map(d => d.id);
+
+    // Delete events for these calendar days
+    let eventsDeleted = 0;
+    for (const dayId of dayIds) {
+      const result = await this.calendarEventRepo.delete({ calendarDayId: dayId });
+      eventsDeleted += result.affected || 0;
+    }
+
+    // Delete the calendar days
+    const daysResult = await this.calendarDayRepo.delete({ instituteId, academicYear });
+
+    return {
+      daysDeleted: daysResult.affected || 0,
+      eventsDeleted,
+    };
   }
 
   // Helper methods

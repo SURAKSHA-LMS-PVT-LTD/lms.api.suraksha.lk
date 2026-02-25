@@ -194,6 +194,11 @@ export class GetStudentAttendanceDto {
   @IsNotEmpty()
   studentId: string;
 
+  @ApiProperty({ description: 'Institute ID (required for DynamoDB GSI query)' })
+  @IsString()
+  @IsNotEmpty()
+  instituteId: string;
+
   @ApiProperty({ description: 'Start date for filtering (YYYY-MM-DD)' })
   @IsDateString()
   @IsNotEmpty()
@@ -223,6 +228,11 @@ export class GetStudentAttendanceDto {
 }
 
 export class GetStudentAttendanceQueryDto {
+  @ApiProperty({ description: 'Institute ID (required for DynamoDB query)' })
+  @IsString()
+  @IsNotEmpty()
+  instituteId: string;
+
   @ApiProperty({ description: 'Start date for filtering (YYYY-MM-DD)' })
   @IsDateString()
   @IsNotEmpty()

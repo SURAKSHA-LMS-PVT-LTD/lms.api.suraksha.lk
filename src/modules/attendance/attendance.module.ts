@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AttendanceController } from './attendance.controller';
+import { CalendarAttendanceController } from './calendar-attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
@@ -38,7 +39,7 @@ import { InstituteModule } from '../institute/institute.module';
       UserFcmTokenEntity
     ])
   ],
-  controllers: [AttendanceController],
+  controllers: [AttendanceController, CalendarAttendanceController],
   providers: [
     AttendanceService,
     DynamoDBAttendanceService,

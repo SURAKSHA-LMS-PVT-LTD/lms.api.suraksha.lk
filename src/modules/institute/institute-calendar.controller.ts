@@ -2,7 +2,7 @@ import {
   Controller,
   Get,
   Post,
-  Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -11,14 +11,19 @@ import {
   Logger,
   HttpStatus,
   HttpException,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { InstituteCalendarService } from './services/institute-calendar.service';
 import { CalendarDayCacheService } from './services/calendar-day-cache.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../user/enums/user-type.enum';
 import { CreateOperatingConfigDto } from './dto/calendar/create-operating-config.dto';
 import { GenerateCalendarDto } from './dto/calendar/generate-calendar.dto';
 import { CreateCalendarEventDto } from './dto/calendar/create-calendar-event.dto';
+import { CalendarDayType } from './enums/calendar-day-type.enum';
 
 /**
  * Institute Calendar Controller
@@ -31,16 +36,17 @@ import { CreateCalendarEventDto } from './dto/calendar/create-calendar-event.dto
  * - Events = attendance tracking points (REGULAR_CLASS, EXAM, PARENTS_MEETING, etc.)
  * - Lazy creation: If day not found, auto-creates as REGULAR
  * 
- * Key Endpoints:
- * 1. Set operating config (Mon-Fri 8am-3pm)
- * 2. Generate full year calendar with holidays
- * 3. Create special events (field trips, exams, meetings)
- * 4. Query calendar days and events
- * 
  * Caching Strategy:
  * - getTodayCalendarDay uses in-memory cache (expires at midnight)
  * - Performance: ~0.01ms cache hit, ~3ms cache miss
- * - Invalidate cache after calendar modifications
+ * - ✅ ARCH-003: Auto-invalidation on all write operations
+ *
+ * Security:
+ * - ✅ SEC-003: All write endpoints require SUPERADMIN or INSTITUTE_ADMIN role
+ * - ✅ SEC-002: Cache stats restricted to admins
+ * 
+ * Error Handling:
+ * - ✅ ERR-001: Propagates NestJS HttpExceptions with correct status codes
  */
 @ApiTags('Institute Calendar')
 @Controller('institutes/:instituteId/calendar')
@@ -54,14 +60,30 @@ export class InstituteCalendarController {
     private readonly cacheService: CalendarDayCacheService,
   ) {}
 
+  // ── ERR-001 FIX: Rethrow HttpException with correct status, wrap unknowns ──
+  private handleError(error: any, fallbackMsg: string): never {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    this.logger.error(`${fallbackMsg}: ${error.message}`, error.stack);
+    throw new HttpException(
+      { success: false, message: error.message || fallbackMsg },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  OPERATING CONFIG
+  // ═══════════════════════════════════════════════════════════════════
+
   /**
-   * Set Operating Config - Define weekly schedule template
-   * 
-   * Example: Institute runs Mon-Fri, 8am-3pm
-   * Creates 5 rows in institute_operating_config table (one per day)
-   * Used by generateCalendar() to auto-create calendar_days
+   * Set Operating Config - Define weekly schedule template (single day)
+   * ✅ SEC-003: Requires SUPERADMIN or INSTITUTE_ADMIN
+   * ✅ ARCH-003: Auto-invalidates cache
    */
   @Post('operating-config')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Set operating config (weekly schedule template)',
     description: 'Define which days institute operates and timings. Deletes old config and creates new.'
@@ -73,13 +95,52 @@ export class InstituteCalendarController {
   ) {
     try {
       await this.calendarService.setOperatingConfig(instituteId, [dto]);
+
+      // ✅ ARCH-003: Auto-invalidate cache after config change
+      this.cacheService.invalidate(instituteId);
+
       return {
         success: true,
         message: `Operating config set for institute ${instituteId}`,
       };
     } catch (error) {
-      this.logger.error(`Failed to set operating config: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to set operating config');
+    }
+  }
+
+  /**
+   * ✅ FEAT-006: Bulk Set Operating Config - Configure multiple days at once
+   */
+  @Post('operating-config/bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Set operating config for multiple days at once',
+    description: 'Configure weekly schedule in a single request. Send an array of day configs (Mon-Sun).'
+  })
+  @ApiResponse({ status: 201, description: 'Bulk operating config set successfully' })
+  async setOperatingConfigBulk(
+    @Param('instituteId') instituteId: string,
+    @Body() configs: CreateOperatingConfigDto[],
+  ) {
+    try {
+      if (!Array.isArray(configs) || configs.length === 0) {
+        throw new BadRequestException('Body must be a non-empty array of operating config entries.');
+      }
+      if (configs.length > 7) {
+        throw new BadRequestException('Maximum 7 config entries (one per day of week).');
+      }
+      await this.calendarService.setOperatingConfig(instituteId, configs);
+
+      // ✅ ARCH-003: Auto-invalidate cache
+      this.cacheService.invalidate(instituteId);
+
+      return {
+        success: true,
+        message: `Operating config set for ${configs.length} day(s) at institute ${instituteId}`,
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to set bulk operating config');
     }
   }
 
@@ -103,31 +164,29 @@ export class InstituteCalendarController {
         data: config,
       };
     } catch (error) {
-      this.logger.error(`Failed to get operating config: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to get operating config');
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  CALENDAR GENERATION
+  // ═══════════════════════════════════════════════════════════════════
+
   /**
    * Generate Calendar - Auto-create 365 days + events from template
-   * 
-   * Process:
-   * 1. Reads operating_config
-   * 2. Iterates startDate → endDate
-   * 3. Auto-detects weekends from operating_config
-   * 4. Marks publicHolidays as HOLIDAY
-   * 5. Marks termBreaks as TERM_BREAK
-   * 6. Creates REGULAR_CLASS events for operating days
-   * 7. Bulk inserts all days + events
-   * 
-   * Example: Generate 2025 calendar with Sri Lanka public holidays
+   * ✅ SEC-003: Requires SUPERADMIN or INSTITUTE_ADMIN
+   * ✅ DATA-001: Rejects duplicate calendar (throws 409 Conflict)
    */
   @Post('generate')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Generate full year calendar',
-    description: 'Auto-creates 365 calendar days + default REGULAR_CLASS events based on operating config'
+    description: 'Auto-creates 365 calendar days + default REGULAR_CLASS events based on operating config. ' +
+      'Fails if calendar already exists — delete first with DELETE /calendar/:academicYear.'
   })
   @ApiResponse({ status: 201, description: 'Calendar generated successfully' })
+  @ApiResponse({ status: 409, description: 'Calendar already exists for this academic year' })
   async generateCalendar(
     @Param('instituteId') instituteId: string,
     @Body() dto: GenerateCalendarDto,
@@ -135,7 +194,7 @@ export class InstituteCalendarController {
     try {
       const result = await this.calendarService.generateCalendar(instituteId, dto);
       
-      // Invalidate cache after generation
+      // ✅ ARCH-003: Auto-invalidate cache after generation
       this.cacheService.invalidate(instituteId);
 
       return {
@@ -144,27 +203,62 @@ export class InstituteCalendarController {
         data: result,
       };
     } catch (error) {
-      this.logger.error(`Failed to generate calendar: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to generate calendar');
     }
   }
 
   /**
-   * Get Calendar Days - Query calendar days with filters
-   * 
-   * Use Cases:
-   * - List all working days in March 2025
-   * - Find all holidays in a year
-   * - Get days where attendance is expected
-   * 
-   * Query Params:
-   * - startDate, endDate: Date range
-   * - dayType: REGULAR, WEEKEND, HOLIDAY, etc.
-   * - isAttendanceExpected: true/false
-   * - academicYear: Filter by year
+   * ✅ DATA-001: Delete Calendar - Remove all days + events for an academic year (allows regeneration)
+   */
+  @Delete(':academicYear')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Delete calendar for an academic year',
+    description: 'Deletes all calendar days and events for the specified academic year. Required before regenerating.'
+  })
+  @ApiParam({ name: 'academicYear', description: 'Academic year to delete (e.g. 2025)' })
+  @ApiResponse({ status: 200, description: 'Calendar deleted successfully' })
+  @ApiResponse({ status: 404, description: 'No calendar found for the academic year' })
+  async deleteCalendar(
+    @Param('instituteId') instituteId: string,
+    @Param('academicYear') academicYear: string,
+  ) {
+    try {
+      const result = await this.calendarService.deleteCalendar(instituteId, academicYear);
+
+      // ✅ ARCH-003: Auto-invalidate cache
+      this.cacheService.invalidate(instituteId);
+
+      return {
+        success: true,
+        message: `Deleted calendar for academic year ${academicYear}`,
+        data: result,
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to delete calendar');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  CALENDAR DAYS
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get Calendar Days - Query with filters + pagination
+   * ✅ BUG-004 FIX: All filter params now passed to service
+   * ✅ BUG-006 FIX: Date strings created with +05:30 offset (avoids UTC shift)
+   * ✅ PERF-004 FIX: Paginated results with total count
    */
   @Get('days')
-  @ApiOperation({ summary: 'List calendar days with filters' })
+  @ApiOperation({ summary: 'List calendar days with filters (paginated)' })
+  @ApiQuery({ name: 'startDate', required: false, description: 'Start date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'academicYear', required: false, description: 'Academic year' })
+  @ApiQuery({ name: 'dayType', required: false, description: 'Day type: REGULAR, WEEKEND, PUBLIC_HOLIDAY, etc.' })
+  @ApiQuery({ name: 'isAttendanceExpected', required: false, description: 'true/false' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Results per page (default: 400)' })
   @ApiResponse({ status: 200, description: 'Calendar days retrieved' })
   async getCalendarDays(
     @Param('instituteId') instituteId: string,
@@ -173,47 +267,52 @@ export class InstituteCalendarController {
     @Query('academicYear') academicYear?: string,
     @Query('dayType') dayType?: string,
     @Query('isAttendanceExpected') isAttendanceExpected?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     try {
       // SECURITY: Validate date inputs to prevent injection
       if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-        throw new HttpException('Invalid startDate format. Use YYYY-MM-DD.', HttpStatus.BAD_REQUEST);
+        throw new BadRequestException('Invalid startDate format. Use YYYY-MM-DD.');
       }
       if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-        throw new HttpException('Invalid endDate format. Use YYYY-MM-DD.', HttpStatus.BAD_REQUEST);
+        throw new BadRequestException('Invalid endDate format. Use YYYY-MM-DD.');
       }
 
-      // Convert query params
-      const start = startDate ? new Date(startDate) : undefined;
-      const end = endDate ? new Date(endDate) : undefined;
+      // ✅ BUG-006 FIX: Append Sri Lanka offset to avoid UTC date shift
+      const start = startDate ? new Date(startDate + 'T00:00:00+05:30') : undefined;
+      const end = endDate ? new Date(endDate + 'T23:59:59+05:30') : undefined;
       const attendanceExpected = isAttendanceExpected === 'true' ? true 
                                  : isAttendanceExpected === 'false' ? false 
                                  : undefined;
 
-      const days = await this.calendarService.getCalendarDays(
+      // ✅ BUG-004 FIX: Pass all filter params + ✅ PERF-004: Pagination
+      const { data: days, total } = await this.calendarService.getCalendarDays(
         instituteId,
         start,
         end,
+        {
+          academicYear,
+          dayType,
+          isAttendanceExpected: attendanceExpected,
+          page: page ? parseInt(page, 10) : 1,
+          limit: limit ? parseInt(limit, 10) : 400,
+        },
       );
 
       return {
         success: true,
         count: days.length,
+        total,
         data: days,
       };
     } catch (error) {
-      this.logger.error(`Failed to get calendar days: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to get calendar days');
     }
   }
 
   /**
    * Get Today's Calendar Day - Cached for performance
-   * 
-   * Performance:
-   * - Cache hit: ~0.01ms
-   * - Cache miss: ~3ms (MySQL SELECT with index)
-   * - Cache expires at midnight (Sri Lanka timezone)
    */
   @Get('today')
   @ApiOperation({ 
@@ -241,29 +340,87 @@ export class InstituteCalendarController {
         },
       };
     } catch (error) {
-      this.logger.error(`Failed to get today's calendar day: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, "Failed to get today's calendar day");
     }
   }
 
   /**
-   * Create Calendar Event - Add special events to calendar days
-   * 
-   * Event Types:
-   * - EXAM, MAKEUP_EXAM, TERM_TEST, FINAL_EXAM, PRACTICAL_EXAM
-   * - PARENTS_MEETING, FIELD_TRIP, SPORTS_DAY, CULTURAL_EVENT
-   * - WORKSHOP, SEMINAR, ASSEMBLY, PRIZE_GIVING, ORIENTATION
-   * 
-   * Features:
-   * - isDefault flag: Only ONE per day, attendance without event_id goes here
-   * - targetUserTypes: Soft filter for reporting (doesn't block attendance)
-   * - attendanceOpenTo: ALL, INVITED_ONLY, ON_PREMISES_ONLY
-   * - targetScope: INSTITUTE_WIDE, CLASS_SPECIFIC, SUBJECT_SPECIFIC
+   * ✅ FEAT-002: Update Calendar Day (e.g., mark a regular day as holiday)
+   */
+  @Patch('days/:calendarDayId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Update a calendar day',
+    description: 'Change day type (e.g., mark as holiday), update attendance expectation, title, etc.'
+  })
+  @ApiParam({ name: 'calendarDayId', description: 'Calendar day ID to update' })
+  @ApiResponse({ status: 200, description: 'Calendar day updated' })
+  @ApiResponse({ status: 404, description: 'Calendar day not found' })
+  async updateCalendarDay(
+    @Param('instituteId') instituteId: string,
+    @Param('calendarDayId') calendarDayId: string,
+    @Body() dto: { dayType?: CalendarDayType; title?: string; isAttendanceExpected?: boolean; startTime?: string; endTime?: string },
+  ) {
+    try {
+      const day = await this.calendarService.updateCalendarDay(instituteId, calendarDayId, dto);
+
+      // ✅ ARCH-003: Auto-invalidate cache
+      this.cacheService.invalidate(instituteId);
+
+      return {
+        success: true,
+        message: 'Calendar day updated successfully',
+        data: day,
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to update calendar day');
+    }
+  }
+
+  /**
+   * ✅ FEAT-002: Delete Calendar Day (and its events)
+   */
+  @Delete('days/:calendarDayId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Delete a calendar day and its events' })
+  @ApiParam({ name: 'calendarDayId', description: 'Calendar day ID to delete' })
+  @ApiResponse({ status: 200, description: 'Calendar day deleted' })
+  @ApiResponse({ status: 404, description: 'Calendar day not found' })
+  async deleteCalendarDay(
+    @Param('instituteId') instituteId: string,
+    @Param('calendarDayId') calendarDayId: string,
+  ) {
+    try {
+      await this.calendarService.deleteCalendarDay(instituteId, calendarDayId);
+
+      // ✅ ARCH-003: Auto-invalidate cache
+      this.cacheService.invalidate(instituteId);
+
+      return {
+        success: true,
+        message: 'Calendar day deleted successfully',
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to delete calendar day');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  CALENDAR EVENTS
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Create Calendar Event
+   * ✅ SEC-003 FIX: Now requires SUPERADMIN or INSTITUTE_ADMIN
    */
   @Post('events')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Create calendar event',
-    description: 'Add event to a calendar day. Can have multiple events per day (e.g., regular class + parents meeting)'
+    description: 'Add event to a calendar day. Can have multiple events per day.'
   })
   @ApiResponse({ status: 201, description: 'Event created successfully' })
   async createCalendarEvent(
@@ -273,7 +430,7 @@ export class InstituteCalendarController {
     try {
       const event = await this.calendarService.createCalendarEvent(instituteId, dto);
       
-      // Invalidate cache if event created for today
+      // ✅ ARCH-003: Auto-invalidate cache
       this.cacheService.invalidate(instituteId);
 
       return {
@@ -282,17 +439,75 @@ export class InstituteCalendarController {
         data: event,
       };
     } catch (error) {
-      this.logger.error(`Failed to create calendar event: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to create calendar event');
+    }
+  }
+
+  /**
+   * ✅ FEAT-001: Update Calendar Event
+   */
+  @Patch('events/:eventId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Update a calendar event',
+    description: 'Modify event title, time, status, isDefault flag, etc.'
+  })
+  @ApiParam({ name: 'eventId', description: 'Calendar event ID to update' })
+  @ApiResponse({ status: 200, description: 'Event updated successfully' })
+  @ApiResponse({ status: 404, description: 'Event not found' })
+  async updateCalendarEvent(
+    @Param('instituteId') instituteId: string,
+    @Param('eventId') eventId: string,
+    @Body() dto: Partial<CreateCalendarEventDto>,
+  ) {
+    try {
+      const event = await this.calendarService.updateCalendarEvent(instituteId, eventId, dto as any);
+
+      // ✅ ARCH-003: Auto-invalidate cache
+      this.cacheService.invalidate(instituteId);
+
+      return {
+        success: true,
+        message: 'Event updated successfully',
+        data: event,
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to update calendar event');
+    }
+  }
+
+  /**
+   * ✅ FEAT-001: Delete Calendar Event
+   */
+  @Delete('events/:eventId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Delete a calendar event' })
+  @ApiParam({ name: 'eventId', description: 'Calendar event ID to delete' })
+  @ApiResponse({ status: 200, description: 'Event deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Event not found' })
+  async deleteCalendarEvent(
+    @Param('instituteId') instituteId: string,
+    @Param('eventId') eventId: string,
+  ) {
+    try {
+      await this.calendarService.deleteCalendarEvent(instituteId, eventId);
+
+      // ✅ ARCH-003: Auto-invalidate cache
+      this.cacheService.invalidate(instituteId);
+
+      return {
+        success: true,
+        message: 'Event deleted successfully',
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to delete calendar event');
     }
   }
 
   /**
    * Get Events for Day - Retrieve all events for a specific calendar day
-   * 
-   * Returns events ordered by:
-   * 1. isDefault DESC (default event first)
-   * 2. startTime ASC (earliest to latest)
    */
   @Get('days/:calendarDayId/events')
   @ApiOperation({ summary: 'Get events for a specific calendar day' })
@@ -309,16 +524,12 @@ export class InstituteCalendarController {
         data: events,
       };
     } catch (error) {
-      this.logger.error(`Failed to get events: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to get events');
     }
   }
 
   /**
    * Get Default Event - Find the default event for a calendar day
-   * 
-   * Used when attendance is marked without explicit event_id
-   * Only ONE event per day should have isDefault = true
    */
   @Get('days/:calendarDayId/default-event')
   @ApiOperation({ 
@@ -346,23 +557,23 @@ export class InstituteCalendarController {
         data: event,
       };
     } catch (error) {
-      this.logger.error(`Failed to get default event: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to get default event');
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  CACHE MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════
+
   /**
    * Invalidate Cache - Force cache refresh for an institute
-   * 
-   * Use Cases:
-   * - After bulk calendar updates
-   * - After generating new calendar
-   * - Manual cache clear
    */
   @Post('cache/invalidate')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Invalidate calendar cache',
-    description: 'Clears cached calendar day for this institute. Next getTodayCalendarDay call will fetch from DB.'
+    description: 'Clears cached calendar day for this institute.'
   })
   @ApiResponse({ status: 200, description: 'Cache invalidated' })
   async invalidateCache(@Param('instituteId') instituteId: string) {
@@ -373,16 +584,18 @@ export class InstituteCalendarController {
         message: `Cache invalidated for institute ${instituteId}`,
       };
     } catch (error) {
-      this.logger.error(`Failed to invalidate cache: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to invalidate cache');
     }
   }
 
   /**
    * Get Cache Stats - Diagnostics for cache performance
+   * ✅ SEC-002 FIX: Restricted to SUPERADMIN / INSTITUTE_ADMIN
    */
   @Get('cache/stats')
-  @ApiOperation({ summary: 'Get cache statistics' })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Get cache statistics (admin only)' })
   @ApiResponse({ status: 200, description: 'Cache stats retrieved' })
   getCacheStats() {
     try {
@@ -392,8 +605,7 @@ export class InstituteCalendarController {
         data: stats,
       };
     } catch (error) {
-      this.logger.error(`Failed to get cache stats: ${error.message}`, error.stack);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      this.handleError(error, 'Failed to get cache stats');
     }
   }
 }

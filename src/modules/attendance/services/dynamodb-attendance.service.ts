@@ -283,7 +283,8 @@ export class DynamoDBAttendanceService {
   }
 
   // Convert DynamoDB record to DTO
-  private recordToAttendance(record: any): MarkAttendanceDto & { userType?: string } {
+  // ✅ FIXED: Returns timestamp, calendarDayId, eventId for frontend update/delete operations
+  private recordToAttendance(record: any): MarkAttendanceDto & { userType?: string; timestamp?: number; calendarDayId?: string; eventId?: string } {
     return {
       studentId: String(record.studentId), // Ensure string type for consistency
       studentName: record.studentName,
@@ -300,7 +301,8 @@ export class DynamoDBAttendanceService {
       markingMethod: record.markingMethod,
       userType: record.userType || 'STUDENT',  // Default to STUDENT for backward compatibility
       calendarDayId: record.calendarDayId,
-      eventId: record.eventId
+      eventId: record.eventId,
+      timestamp: record.timestamp,  // ✅ FIXED DATA-004: Return timestamp so frontend can update/delete
     } as any;
   }
 
@@ -359,20 +361,27 @@ export class DynamoDBAttendanceService {
           }));
         });
         
-        // Handle unprocessed items
-        if (response.UnprocessedItems && response.UnprocessedItems[this.tableName]) {
-          const unprocessedCount = response.UnprocessedItems[this.tableName].length;
-          this.logger.warn(`${unprocessedCount} items were not processed in batch`);
-          
-          // Mark unprocessed items as failed for retry
-          const processedCount = batch.length - unprocessedCount;
-          successful.push(...batch.slice(0, processedCount));
-          
-          for (let j = processedCount; j < batch.length; j++) {
-            failed.push({
-              attendance: batch[j],
-              error: 'Item not processed in batch - capacity exceeded'
-            });
+        // ✅ FIXED BUG-005: Handle unprocessed items correctly
+        // DynamoDB doesn't guarantee WHICH items fail, so we identify them by key comparison
+        if (response.UnprocessedItems && response.UnprocessedItems[this.tableName]?.length > 0) {
+          const unprocessedKeys = new Set(
+            response.UnprocessedItems[this.tableName].map(item => {
+              const record = unmarshall(item.PutRequest.Item);
+              return `${record.studentId}#${record.date}`;
+            })
+          );
+          this.logger.warn(`${unprocessedKeys.size} items were not processed in batch`);
+
+          for (const attendance of batch) {
+            const key = `${attendance.studentId}#${attendance.date}`;
+            if (unprocessedKeys.has(key)) {
+              failed.push({
+                attendance,
+                error: 'Item not processed in batch - capacity exceeded'
+              });
+            } else {
+              successful.push(attendance);
+            }
           }
         } else {
           // All items processed successfully
@@ -396,6 +405,7 @@ export class DynamoDBAttendanceService {
   }
 
   // Mark bulk attendance
+  // ✅ FIXED BUG-001: Now accepts and propagates calendarDayId + eventId from the bulk DTO
   async markBulkAttendance(bulkData: BulkAttendanceDto): Promise<MarkAttendanceDto[]> {
     const today = getCurrentSriLankaDate();
     const attendances = bulkData.students.map(studentData => ({
@@ -411,7 +421,10 @@ export class DynamoDBAttendanceService {
       status: studentData.status,
       location: bulkData.location,
       remarks: studentData.remarks,
-      markingMethod: bulkData.markingMethod
+      markingMethod: bulkData.markingMethod,
+      calendarDayId: (bulkData as any).calendarDayId,  // ✅ BUG-001 FIX: calendar linkage
+      eventId: (bulkData as any).defaultEventId || (bulkData as any).eventId,  // ✅ BUG-001 FIX: event linkage
+      userType: (bulkData as any).userTypeMap?.get(studentData.studentId) || undefined, // user type from service
     }));
 
     // Use true batch operations for maximum performance
@@ -458,32 +471,52 @@ export class DynamoDBAttendanceService {
   }
 
   // Get student attendance history
+  // ✅ FIXED PERF-002: Use KeyConditionExpression for date range on GSI sort key instead of FilterExpression
   async getStudentAttendance(studentId: string, instituteId: string, startDate?: string, endDate?: string): Promise<MarkAttendanceDto[]> {
+    const gsiPk = this.generateGSIPartitionKey(instituteId, studentId);
+    const safeInstituteId = String(instituteId).replace(/[^a-zA-Z0-9_-]/g, '');
+
     const params: QueryCommandInput = {
       TableName: this.tableName,
       IndexName: this.gsiName,
-      KeyConditionExpression: 'gsi_pk = :gsi_pk',
-      ExpressionAttributeValues: marshall({
-        ':gsi_pk': this.generateGSIPartitionKey(instituteId, studentId)
-      }, { removeUndefinedValues: true }),
       ScanIndexForward: false // Latest first
     };
 
-    // Add date range filter if provided (optimized with comparison operators)
+    // ✅ PERF-002: Use GSI sort key for date range (gsi_sk starts with I#<instituteId>#D#<date>)
     if (startDate && endDate) {
-      params.FilterExpression = '#date >= :startDate AND #date <= :endDate';
-      params.ExpressionAttributeNames = { '#date': 'date' };
+      params.KeyConditionExpression = 'gsi_pk = :gsi_pk AND gsi_sk BETWEEN :start AND :end';
       params.ExpressionAttributeValues = marshall({
-        ...unmarshall(params.ExpressionAttributeValues),
-        ':startDate': startDate,
-        ':endDate': endDate
+        ':gsi_pk': gsiPk,
+        ':start': `I#${safeInstituteId}#D#${startDate}`,
+        ':end': `I#${safeInstituteId}#D#${endDate}~` // ~ sorts after all date-suffixed values
+      }, { removeUndefinedValues: true });
+    } else {
+      params.KeyConditionExpression = 'gsi_pk = :gsi_pk';
+      params.ExpressionAttributeValues = marshall({
+        ':gsi_pk': gsiPk
       }, { removeUndefinedValues: true });
     }
 
-    const result = await this.retryWithBackoff(async () => {
-      return await this.dynamoClient.send(new QueryCommand(params));
-    });
-    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+    // ✅ PERF-003: Paginate through all results
+    const allRecords: MarkAttendanceDto[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+
+      if (result.Items) {
+        allRecords.push(...result.Items.map(item => this.recordToAttendance(unmarshall(item))));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return allRecords;
   }
 
   // Update attendance status
@@ -558,6 +591,7 @@ export class DynamoDBAttendanceService {
   /**
    * Get attendance for a specific event
    * Use case: See who attended Parents Meeting, Field Trip, etc.
+   * ✅ FIXED PERF-003: Added pagination loop for DynamoDB 1MB limit
    */
   async getAttendanceByEvent(
     instituteId: string,
@@ -578,15 +612,29 @@ export class DynamoDBAttendanceService {
       ScanIndexForward: false
     };
 
-    const result = await this.retryWithBackoff(async () => {
-      return await this.dynamoClient.send(new QueryCommand(params));
-    });
-    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+    const allRecords: MarkAttendanceDto[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+      if (result.Items) {
+        allRecords.push(...result.Items.map(item => this.recordToAttendance(unmarshall(item))));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return allRecords;
   }
 
   /**
    * Get attendance for a specific calendar day
    * Use case: See all attendance (students, teachers, parents) for a calendar day
+   * ✅ FIXED PERF-003: Added pagination loop for DynamoDB 1MB limit
    */
   async getAttendanceByCalendarDay(
     instituteId: string,
@@ -612,15 +660,29 @@ export class DynamoDBAttendanceService {
       ScanIndexForward: false
     };
 
-    const result = await this.retryWithBackoff(async () => {
-      return await this.dynamoClient.send(new QueryCommand(params));
-    });
-    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+    const allRecords: MarkAttendanceDto[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+      if (result.Items) {
+        allRecords.push(...result.Items.map(item => this.recordToAttendance(unmarshall(item))));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return allRecords;
   }
 
   /**
    * Get attendance by user type (STUDENT, TEACHER, PARENT, etc.)
    * Use case: See all teacher attendance, all parent attendance at events
+   * ✅ FIXED PERF-003: Added pagination loop for DynamoDB 1MB limit
    */
   async getAttendanceByUserType(
     instituteId: string,
@@ -652,15 +714,29 @@ export class DynamoDBAttendanceService {
       ScanIndexForward: false
     };
 
-    const result = await this.retryWithBackoff(async () => {
-      return await this.dynamoClient.send(new QueryCommand(params));
-    });
-    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+    const allRecords: MarkAttendanceDto[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+      if (result.Items) {
+        allRecords.push(...result.Items.map(item => this.recordToAttendance(unmarshall(item))));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return allRecords;
   }
 
   /**
    * Get student attendance at a specific event type
    * Use case: Get student's attendance at all PARENTS_MEETING events
+   * ✅ FIXED PERF-003: Added pagination loop for DynamoDB 1MB limit
    */
   async getStudentAttendanceByEvent(
     studentId: string,
@@ -696,21 +772,37 @@ export class DynamoDBAttendanceService {
       params.ExpressionAttributeNames = attributeNames;
     }
 
-    const result = await this.retryWithBackoff(async () => {
-      return await this.dynamoClient.send(new QueryCommand(params));
-    });
-    return result.Items?.map(item => this.recordToAttendance(unmarshall(item))) || [];
+    const allRecords: MarkAttendanceDto[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+      if (result.Items) {
+        allRecords.push(...result.Items.map(item => this.recordToAttendance(unmarshall(item))));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return allRecords;
   }
 
   // Get attendance summary for date range
   // ✅ PERFORMANCE: Added pagination support to prevent scanning millions of records
+  // ✅ FIXED PERF-006: Records are now opt-in via includeRecords parameter to reduce memory usage
+  // ✅ FIXED DATA-003: Added per-userType breakdown in summary
   async getAttendanceSummary(
     instituteId: string,
     classId?: string,
     subjectId?: string,
     startDate?: string,
     endDate?: string,
-    limit?: number
+    limit?: number,
+    includeRecords: boolean = false
   ): Promise<any> {
     const maxItems = limit || 10000; // Default safety limit
     const params: QueryCommandInput = {
@@ -729,7 +821,6 @@ export class DynamoDBAttendanceService {
 
     // ✅ FIXED: Proper filtering based on hierarchy level
     if (classId && subjectId) {
-      // Subject-level: Must have BOTH classId AND subjectId
       filterConditions.push('#classId = :classId');
       filterConditions.push('#subjectId = :subjectId');
       attributeNames['#classId'] = 'classId';
@@ -737,7 +828,6 @@ export class DynamoDBAttendanceService {
       attributeValues[':classId'] = classId;
       attributeValues[':subjectId'] = subjectId;
     } else if (classId && !subjectId) {
-      // Class-level: Must have classId but NO subjectId (or default/undefined)
       filterConditions.push('#classId = :classId');
       filterConditions.push('(attribute_not_exists(#subjectId) OR #subjectId = :defaultSubject)');
       attributeNames['#classId'] = 'classId';
@@ -745,7 +835,6 @@ export class DynamoDBAttendanceService {
       attributeValues[':classId'] = classId;
       attributeValues[':defaultSubject'] = 'default';
     } else if (!classId && !subjectId) {
-      // Institute-level: Must have NO classId (or default/undefined)
       filterConditions.push('(attribute_not_exists(#classId) OR #classId = :defaultClass)');
       attributeNames['#classId'] = 'classId';
       attributeValues[':defaultClass'] = 'default';
@@ -765,7 +854,6 @@ export class DynamoDBAttendanceService {
     }
 
     // ✅ PERFORMANCE: Paginate through results to handle DynamoDB 1MB limit
-    // and cap total records to prevent memory issues
     const attendanceRecords: any[] = [];
     let lastEvaluatedKey: Record<string, any> | undefined;
 
@@ -798,7 +886,23 @@ export class DynamoDBAttendanceService {
     const leftLatelyCount = attendanceRecords.filter(record => record.status === 5).length;
     const attendanceRate = totalRecords > 0 ? (presentCount / totalRecords) * 100 : 0;
 
-    return {
+    // ✅ FIXED DATA-003: Per-userType breakdown
+    const byUserType: Record<string, { total: number; present: number; absent: number; late: number; left: number; leftEarly: number; leftLately: number }> = {};
+    for (const record of attendanceRecords) {
+      const uType = record.userType || 'STUDENT';
+      if (!byUserType[uType]) {
+        byUserType[uType] = { total: 0, present: 0, absent: 0, late: 0, left: 0, leftEarly: 0, leftLately: 0 };
+      }
+      byUserType[uType].total++;
+      if (record.status === 1) byUserType[uType].present++;
+      else if (record.status === 0) byUserType[uType].absent++;
+      else if (record.status === 2) byUserType[uType].late++;
+      else if (record.status === 3) byUserType[uType].left++;
+      else if (record.status === 4) byUserType[uType].leftEarly++;
+      else if (record.status === 5) byUserType[uType].leftLately++;
+    }
+
+    const response: any = {
       totalRecords,
       presentCount,
       absentCount,
@@ -807,8 +911,15 @@ export class DynamoDBAttendanceService {
       leftEarlyCount,
       leftLatelyCount,
       attendanceRate: parseFloat(attendanceRate.toFixed(2)),
-      records: attendanceRecords.map(record => this.recordToAttendance(record))
+      byUserType,  // ✅ DATA-003: Per-userType breakdown
     };
+
+    // ✅ PERF-006: Only include raw records if explicitly requested
+    if (includeRecords) {
+      response.records = attendanceRecords.map(record => this.recordToAttendance(record));
+    }
+
+    return response;
   }
 }
 

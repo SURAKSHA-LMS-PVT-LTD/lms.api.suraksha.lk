@@ -370,6 +370,22 @@ export class AttendanceService {
       // ✅ STEP 8: Update the DTO with only validated users
       bulkAttendanceDto.students = validatedStudents;
       
+      // ✅ STEP 8.5: Lookup calendar day for calendar linkage (BUG-001 FIX)
+      try {
+        const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+          bulkAttendanceDto.instituteId
+        );
+        if (calendarDay) {
+          (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
+          (bulkAttendanceDto as any).defaultEventId = defaultEventId;
+        }
+      } catch (calendarError) {
+        this.logger.warn(
+          `[${requestId}] ⚠️  Calendar day lookup failed for bulk: ${calendarError.message}. ` +
+          `Bulk attendance will be marked without calendar linkage.`
+        );
+      }
+
       // ✅ STEP 9: Mark attendance in DynamoDB
       const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
       
@@ -430,10 +446,11 @@ export class AttendanceService {
       this.logger.debug(`✅ Attendance access granted: ${isOwnData ? 'Own data' : 'Parent accessing child data'}`);
     }
     
-    // Get all attendance records for the student in the date range
+    // ✅ Get all attendance records for the student in the date range
+    // ✅ FIXED BUG-003: Now passes instituteId from DTO instead of empty string
     const allRecords = await this.dynamoAttendanceService.getStudentAttendance(
       studentId,
-      '', // We'll need to get instituteId from somewhere or modify the method
+      getStudentAttendanceDto.instituteId,
       startDate,
       endDate
     );
@@ -889,6 +906,92 @@ export class AttendanceService {
       date,
       totalRecords: records.length,
       data: records
+    };
+  }
+
+  /**
+   * Get all attendance records for a specific calendar event
+   * Use case: Who attended a Parents Meeting, Field Trip, Sports Day, etc.
+   */
+  async getAttendanceByEvent(
+    instituteId: string,
+    eventId: string,
+    date?: string
+  ): Promise<any> {
+    const records = await this.dynamoAttendanceService.getAttendanceByEvent(instituteId, eventId, date);
+    return {
+      success: true,
+      message: 'Event attendance retrieved successfully',
+      eventId,
+      date: date || null,
+      totalRecords: records.length,
+      data: records,
+    };
+  }
+
+  /**
+   * Get all attendance for a calendar day (all user types: students, teachers, parents)
+   * Optionally filter by userType
+   */
+  async getAttendanceByCalendarDay(
+    instituteId: string,
+    calendarDayId: string,
+    userType?: string
+  ): Promise<any> {
+    const records = await this.dynamoAttendanceService.getAttendanceByCalendarDay(instituteId, calendarDayId, userType);
+    return {
+      success: true,
+      message: 'Calendar day attendance retrieved successfully',
+      calendarDayId,
+      userType: userType || 'ALL',
+      totalRecords: records.length,
+      data: records,
+    };
+  }
+
+  /**
+   * Get attendance filtered by user type (STUDENT, TEACHER, PARENT, etc.)
+   * Use case: All teacher attendance for a date, all parent attendance at an event
+   */
+  async getAttendanceByUserType(
+    instituteId: string,
+    userType: string,
+    date?: string,
+    eventId?: string
+  ): Promise<any> {
+    const records = await this.dynamoAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId);
+    return {
+      success: true,
+      message: 'User type attendance retrieved successfully',
+      userType,
+      date: date || null,
+      eventId: eventId || null,
+      totalRecords: records.length,
+      data: records,
+    };
+  }
+
+  /**
+   * Get a specific student's attendance at a specific event (or across all events of same ID)
+   * Use case: Did this student attend the exam / parents meeting?
+   */
+  async getStudentAttendanceByEvent(
+    studentId: string,
+    instituteId: string,
+    eventId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<any> {
+    const records = await this.dynamoAttendanceService.getStudentAttendanceByEvent(
+      studentId, instituteId, eventId, startDate, endDate
+    );
+    return {
+      success: true,
+      message: 'Student event attendance retrieved successfully',
+      studentId,
+      eventId,
+      totalRecords: records.length,
+      data: records,
     };
   }
 
