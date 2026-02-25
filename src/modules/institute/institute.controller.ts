@@ -258,6 +258,28 @@ export class InstitutesController {
     return new InstituteResponseDto(institute);
   }
 
+  @Get(':instituteId/classes')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, student: { allowSelfOnly: true } })
+  @ApiOperation({
+    summary: 'Get all classes for an institute',
+    description: 'Returns all classes belonging to the specified institute. Accessible by SUPERADMIN, Institute Admin, Teacher, or Student.'
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID', type: 'string' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Classes retrieved successfully',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Institute not found',
+  })
+  async getInstituteClasses(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+  ) {
+    return this.institueClassService.findByInstitute(instituteId);
+  }
+
   @Put(':instituteId/classes/:classId/teacher/:teacherId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
