@@ -21,6 +21,7 @@ import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../user/enums/user-type.enum';
 import { CreateOperatingConfigDto } from './dto/calendar/create-operating-config.dto';
+import { BulkOperatingConfigDto } from './dto/calendar/bulk-operating-config.dto';
 import { GenerateCalendarDto } from './dto/calendar/generate-calendar.dto';
 import { CreateCalendarEventDto } from './dto/calendar/create-calendar-event.dto';
 import { CalendarDayType } from './enums/calendar-day-type.enum';
@@ -110,26 +111,28 @@ export class InstituteCalendarController {
 
   /**
    * ✅ FEAT-006: Bulk Set Operating Config - Configure multiple days at once
+   * 
+   * Expected body: { "academicYear": "2026", "configs": [ { dayOfWeek, isOperating, startTime?, endTime? }, ... ] }
    */
   @Post('operating-config/bulk')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Set operating config for multiple days at once',
-    description: 'Configure weekly schedule in a single request. Send an array of day configs (Mon-Sun).'
+    description: 'Configure weekly schedule in a single request. Send { academicYear, configs: [...] } with up to 7 day configs (Mon-Sun).'
   })
   @ApiResponse({ status: 201, description: 'Bulk operating config set successfully' })
   async setOperatingConfigBulk(
     @Param('instituteId') instituteId: string,
-    @Body() configs: CreateOperatingConfigDto[],
+    @Body() dto: BulkOperatingConfigDto,
   ) {
     try {
-      if (!Array.isArray(configs) || configs.length === 0) {
-        throw new BadRequestException('Body must be a non-empty array of operating config entries.');
-      }
-      if (configs.length > 7) {
-        throw new BadRequestException('Maximum 7 config entries (one per day of week).');
-      }
+      // Merge academicYear from wrapper into each config item
+      const configs: CreateOperatingConfigDto[] = dto.configs.map((c) => ({
+        ...c,
+        academicYear: dto.academicYear,
+      }));
+
       await this.calendarService.setOperatingConfig(instituteId, configs);
 
       // ✅ ARCH-003: Auto-invalidate cache
