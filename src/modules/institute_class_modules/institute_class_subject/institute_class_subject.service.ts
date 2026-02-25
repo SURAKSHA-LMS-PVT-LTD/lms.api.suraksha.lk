@@ -64,13 +64,20 @@ export class InstituteClassSubjectService {
 
         if (!exists) {
           // Use optimized create method - no unnecessary SELECT queries
-          await this.instituteClassSubjectRepository.createOptimized({
-            instituteId: bulkCreateDto.instituteId,
-            classId: bulkCreateDto.classId,
-            subjectId,
-            teacherId: bulkCreateDto.defaultTeacherId || null,
-            isActive: true,
-          });
+            // Handle enrollment settings for each subject assignment
+            const enrollmentData = this.handleEnrollmentSettings(
+              bulkCreateDto.enrollmentEnabled,
+              bulkCreateDto.enrollmentKey
+            );
+            await this.instituteClassSubjectRepository.createOptimized({
+              instituteId: bulkCreateDto.instituteId,
+              classId: bulkCreateDto.classId,
+              subjectId,
+              teacherId: bulkCreateDto.defaultTeacherId || null,
+              isActive: true,
+              enrollmentEnabled: enrollmentData.enrollmentEnabled,
+              enrollmentKey: enrollmentData.enrollmentKey,
+            });
           assignedCount++;
         } else {
           skippedCount++;

@@ -77,4 +77,14 @@ export class BulkCreateInstituteClassSubjectDto {
   @IsOptional()
   @IsOptionalBigIntId()
   defaultTeacherId?: string;
+
+  @ApiPropertyOptional({ description: 'Enable self-enrollment for all subjects', default: false, example: true })
+  @IsOptional()
+  @IsBoolean()
+  enrollmentEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enrollment key for all subjects (leave empty for open enrollment)', example: 'MATH-2026' })
+  @IsOptional()
+  @IsString()
+  enrollmentKey?: string;
 }
