@@ -654,4 +654,247 @@ Error responses use free-text messages without structured error codes. Frontend 
 
 ---
 
-> **Note:** This audit covers only the Calendar + Attendance subsystem. The pre-existing auth module build error (dev server exits with code 1) is separate and not covered here. TypeScript compilation (`tsc --noEmit`) passes successfully — all issues above are runtime/logic concerns, not type errors.
+## 9. Class-Level (Institute Class) Support Analysis
+
+> **Scope:** Full-system analysis of whether calendar, attendance, and other systems properly support class-level operations  
+> **Date:** 2026-02-26
+
+### Overview — Current Architecture
+
+The system follows a **hierarchical model**: `Institute → Class → Subject`. Most entity tables include `classId` as a column, but the **depth of class-level integration varies significantly** across subsystems.
+
+### Status Per System
+
+| System | Data Model | Service Layer | Controller Endpoints | Status |
+|--------|-----------|---------------|---------------------|--------|
+| **Calendar (Days)** | `institute_class_calendar` override table exists | `getClassCalendarToday`, `getClassCalendarDays` implemented | 4 endpoints at `/institutes/:id/class/:classId/calendar` | ✅ **Read-only functional** |
+| **Calendar (Events)** | `targetScope` enum (INSTITUTE/CLASS/SUBJECT) + `targetClassIds` JSON | `getCalendarEventsForClass`, `getCalendarEventsForSubject` with `JSON_CONTAINS` | Events endpoint with class filtering | ✅ **Read functional** |
+| **Attendance (DynamoDB)** | `classId` optional field in sort key (`C#{classId}`) | Class-level `getClassAttendance`, `getSubjectAttendance` via FilterExpression | Full class/subject REST endpoints | ✅ **Functional** (query-by-filter, not key-optimized) |
+| **Homework** | `classId` required column | Full class+subject queries | Filter by class/subject | ✅ **Fully functional** |
+| **Exams (class-level)** | `classId` required | CRUD functional, **marks entry stubbed** | Class endpoint | ⚠️ **Partial** |
+| **Exams (class+subject)** | `classId` + `subjectId` required | Full CRUD + filtering | Full endpoints | ✅ **Fully functional** |
+| **Payments** | `classId` + `subjectId` required | Full CRUD + pagination | Full routes | ✅ **Fully functional** |
+| **Structured Lectures** | `classId` nullable | Class filtering in queries | Via query params | ✅ **Functional** |
+| **Lectures** | `classId` nullable, `subjectId` required | Full CRUD | Full endpoints | ✅ **Functional** |
+| **Results** | `classId` + `subjectId` + `studentId` required | Full CRUD | Full endpoints | ✅ **Fully functional** |
+
+---
+
+### 🔴 CLASS-001: Calendar Cache Is Institute-Only — Class Overrides Never Reach Attendance
+
+**File:** `calendar-day-cache.service.ts`
+
+**Description:**  
+The `CalendarDayCacheService` cache key is `${instituteId}_${today}` — **there is no class dimension**. The method `getTodayCalendarDay(instituteId)` accepts only `instituteId`, never `classId`. It calls `calendarService.getOrCreateCalendarDay(instituteId, today)` for the institute-level day only. The cached `defaultEventId` is also institute-level.
+
+**Impact:**  
+Any consumer using the cache (i.e., `markAttendance()`, `markBulkAttendance()`) will **never see class overrides**. If a class has a holiday override (`isAttendanceExpected: false`) but the institute day is REGULAR, the attendance system treats it as a normal day for that class.
+
+**Fix Required:**  
+Add a `getTodayClassCalendarDay(instituteId, classId)` method to the cache service. This should wrap `calendarService.getClassCalendarToday(instituteId, classId)` with a cache key like `${instituteId}_${classId}_${today}`.
+
+```typescript
+async getTodayClassCalendarDay(instituteId: string, classId: string): Promise<ClassCalendarCacheEntry> {
+  const key = `${instituteId}_${classId}_${today}`;
+  // ... cache logic wrapping getClassCalendarToday(instituteId, classId)
+}
+```
+
+---
+
+### 🔴 CLASS-002: `markAttendance()` Ignores Class Calendar — Never Checks `isAttendanceExpected`
+
+**File:** `attendance.service.ts` → `markAttendance()` (line ~197)
+
+**Description:**  
+When marking attendance, the service does:
+```typescript
+const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+  markAttendanceDto.instituteId
+);
+```
+Even though the DTO contains `classId`, it is **never passed** to any calendar lookup. Furthermore, `isAttendanceExpected` is **never checked anywhere** in the attendance service (zero references across all files). Attendance can be freely marked on:
+- Institute holidays
+- Class-specific off days
+- Any day where `isAttendanceExpected: false`
+
+**Impact:**  
+The calendar system's class override for `isAttendanceExpected` is **completely ignored**. A teacher could mark attendance on a class holiday and the system would accept it without any warning.
+
+**Fix Required:**  
+1. When `classId` is present in the DTO, call `calendarService.getClassCalendarToday(instituteId, classId)` instead of the institute-only cache
+2. Check `effectiveIsAttendanceExpected` before allowing attendance marking
+3. Optionally allow override with a flag (`force: true`) for admin usage
+
+---
+
+### 🔴 CLASS-003: `markBulkAttendance()` Has Same Institute-Only Calendar Lookup
+
+**File:** `attendance.service.ts` → `markBulkAttendance()` (line ~375)
+
+**Description:**  
+Same problem as CLASS-002 but for the bulk flow. The calendar lookup is institute-only and class overrides are never consulted. Combined with BUG-001 (bulk attendance missing calendar linkage entirely), bulk attendance has two compounding issues.
+
+---
+
+### 🔴 CLASS-004: No CRUD Endpoints for Class Calendar Overrides
+
+**File:** `institute-class-calendar.controller.ts`
+
+**Description:**  
+The class calendar controller has **only GET (read) endpoints**:
+- `GET /today` — read today's class day
+- `POST /generate` — delegates to institute-level generation
+- `GET /events` — read class events
+- `GET /days` — read class days with overrides
+
+**Completely missing endpoints:**
+| Missing Endpoint | Purpose |
+|-----|---------|
+| `POST /override` | Create a class calendar override (e.g., mark a specific date as CLASS_HOLIDAY for a class) |
+| `PATCH /override/:overrideId` | Update an existing override |
+| `DELETE /override/:overrideId` | Remove an override |
+
+**Service layer also missing:** The `InstituteCalendarService` has **no** `.save()`, `.create()`, `.update()`, `.delete()` calls for `classCalendarRepo`. The only usage is `.findOne()` and `.find()` — **read-only**.
+
+**Impact:**  
+Class overrides can only be created via **direct database manipulation**. Admins have no API to:
+- Set a class holiday on a specific date
+- Mark a class as merged with another class
+- Assign a substitute teacher for a day
+- Cancel classes for a specific class
+
+The `InstituteClassCalendarEntity` supports `classDayType` (REGULAR, CLASS_HOLIDAY, FIELD_TRIP, EXAM_DAY, EXTRA_CLASS, CANCELLED, MERGED, CUSTOM), `mergedWithClassId`, `substituteTeacherId` — all designed for class-level scheduling — but **none of it is accessible via API**.
+
+---
+
+### 🟠 CLASS-005: Attendance DynamoDB Key Design — Class Queries Use FilterExpression (Inefficient)
+
+**File:** `dynamodb-attendance.service.ts`
+
+**Description:**  
+The DynamoDB primary key structure is:
+```
+PK: INST#<instituteId>
+SK: ATTENDANCE#<date>#<studentId>#C#<classId>#S#<subjectId>#<timestamp>
+```
+Class-level queries work by scanning the full institute partition and applying `FilterExpression` (post-read filter) on `classId`. This means DynamoDB reads **all institute records** first, then discards non-matching ones.
+
+For the GSI:
+```
+GSI PK: STUDENT#<instituteId>#<studentId>
+GSI SK: ATTENDANCE#<date>#C#<classId>#S#<subjectId>#<timestamp>
+```
+The GSI sort key **includes** classId after the date, so `begins_with` or `BETWEEN` cannot efficiently filter by class only.
+
+**Impact:**  
+For a large institute (300+ students × 365 days), class-level attendance queries read the **entire institute's data** and filter in-memory. This gets progressively slower as data grows. A dedicated GSI for class queries would be much more efficient.
+
+**Recommended Fix:**  
+Add a new GSI:
+```
+GSI: gsi-class-attendance
+  PK: CLASS#<instituteId>#<classId>
+  SK: ATTENDANCE#<date>#<studentId>#<timestamp>
+```
+
+---
+
+### 🟠 CLASS-006: Calendar-Attendance Responses Don't Include Class Override Context
+
+**File:** `calendar-attendance.controller.ts`
+
+**Description:**  
+When querying `getAttendanceByCalendarDay(instituteId, calendarDayId, ...)` or the class-scoped variant with `classId`, the response contains raw attendance records from DynamoDB but **no calendar context**:
+- No `effectiveDayType` (was it a regular day or class holiday for this class?)
+- No `effectiveIsAttendanceExpected` (should this class have had attendance?)
+- No `classOverride` data
+
+**Impact:**  
+Frontend cannot determine whether attendance was expected for a class on a given day without making a separate calendar API call. Reporting dashboards cannot accurately show "days with unexpected attendance" or "missing attendance on expected days."
+
+**Fix Required:**  
+Enrich calendar-attendance responses with class override data when `classId` is provided:
+```typescript
+if (classId) {
+  const override = await this.calendarService.getClassOverrideForDay(instituteId, classId, calendarDayId);
+  response.classOverride = override;
+  response.effectiveIsAttendanceExpected = override?.isAttendanceExpected ?? day.isAttendanceExpected;
+}
+```
+
+---
+
+### 🟡 CLASS-007: `getCalendarDays` Filter Parameters Not Passed (Affects Class Views Too)
+
+**File:** `institute-calendar.controller.ts` → `getCalendarDays()`
+
+**Description:**  
+The institute-level controller accepts `academicYear`, `dayType`, and `isAttendanceExpected` query parameters but never passes them to the service (see BUG-004). The class-level controller (`institute-class-calendar.controller.ts`) also does **not** accept `dayType` or `academicYear` filter params at all — only `startDate`, `endDate`, `page`, `limit`.
+
+**Impact:**  
+Neither institute-level nor class-level calendar day queries can be filtered by `dayType`, `academicYear`, or `isAttendanceExpected`. This forces the frontend to load all days and filter client-side.
+
+---
+
+### 🟡 CLASS-008: Exam Mark Entry is Stubbed
+
+**File:** `institute-class-exam.service.ts` → `enterMarks()`
+
+**Description:**  
+The class-level exam system (`institute_class_exams`) has full CRUD for exams, but the `enterMarks()` method contains a comment: *"In a real implementation, you would store marks in a separate entity"*. The mark storage is not implemented.
+
+**Impact:**  
+While exams can be created and scheduled at the class level, actual student marks cannot be recorded through the class exam system. The separate `institute_class_subject_results` module handles results at the subject level, but there's no bridging between the class exam and subject results systems.
+
+---
+
+### Priorities — Class-Level Issues
+
+#### Priority 1 — Must Fix (Core Functionality Broken)
+
+| # | Issue | Effort |
+|---|-------|--------|
+| CLASS-004 | Create CRUD endpoints for class calendar overrides | 3-4 hours |
+| CLASS-001 | Add class-level cache to CalendarDayCacheService | 2-3 hours |
+| CLASS-002 | Use class calendar in `markAttendance()` + check `isAttendanceExpected` | 2-3 hours |
+| CLASS-003 | Use class calendar in `markBulkAttendance()` | 1-2 hours |
+
+#### Priority 2 — Should Fix (Gap in Functionality)
+
+| # | Issue | Effort |
+|---|-------|--------|
+| CLASS-006 | Enrich calendar-attendance responses with class override context | 2-3 hours |
+| CLASS-007 | Pass filter params in both institute and class calendar day queries | 1-2 hours |
+
+#### Priority 3 — Performance
+
+| # | Issue | Effort |
+|---|-------|--------|
+| CLASS-005 | Add class-scoped GSI for DynamoDB attendance queries | 3-4 hours |
+
+#### Priority 4 — Enhancement
+
+| # | Issue | Effort |
+|---|-------|--------|
+| CLASS-008 | Implement exam mark entry or bridge to subject-results | 4-6 hours |
+
+---
+
+## Updated Summary Statistics
+
+| Category | 🔴 Critical | 🟠 High | 🟡 Medium | 🔵 Low | Total |
+|----------|-------------|---------|-----------|--------|-------|
+| Bugs | 1 | 1 | 3 | 1 | **6** |
+| Performance | 1 | 2 | 2 | 1 | **6** |
+| Security | — | — | 3 | 1 | **4** |
+| Missing Features | — | 3 | 3 | 2 | **8** |
+| Architecture | — | 1 | 3 | 1 | **5** |
+| Data Integrity | — | 1 | 2 | 1 | **4** |
+| Error Handling | — | — | 2 | 1 | **3** |
+| **Class-Level Gaps** | **4** | **2** | **2** | — | **8** |
+| **Grand Total** | **6** | **10** | **20** | **8** | **44** |
+
+---
+
+> **Note:** This audit covers the Calendar + Attendance subsystem plus a full class-level analysis across all systems. The pre-existing auth module build error (dev server exits with code 1) is separate and not covered here. TypeScript compilation (`tsc --noEmit`) passes successfully — all issues above are runtime/logic concerns, not type errors.

@@ -1031,11 +1031,13 @@ export class AttendanceService {
       undefined, // classId
       undefined, // subjectId
       startDate,
-      endDate
+      endDate,
+      undefined, // limit
+      true // includeRecords — needed for pagination/filtering
     );
 
     // Filter by status and studentId if provided
-    let filteredRecords = summary.records;
+    let filteredRecords = summary.records || [];
     if (status) {
       filteredRecords = filteredRecords.filter(record => 
         record.status.toLowerCase() === status.toLowerCase()
@@ -1094,11 +1096,13 @@ export class AttendanceService {
       classId,
       undefined, // subjectId
       startDate,
-      endDate
+      endDate,
+      undefined, // limit
+      true // includeRecords — needed for pagination/filtering
     );
 
     // Filter by status and studentId if provided
-    let filteredRecords = summary.records;
+    let filteredRecords = summary.records || [];
     if (status) {
       filteredRecords = filteredRecords.filter(record => 
         record.status.toLowerCase() === status.toLowerCase()
@@ -1158,11 +1162,13 @@ export class AttendanceService {
       classId, // Pass the actual classId instead of undefined
       subjectId,
       startDate,
-      endDate
+      endDate,
+      undefined, // limit
+      true // includeRecords — needed for pagination/filtering
     );
     
     // Filter by status and studentId if provided
-    let filteredRecords = summary.records;
+    let filteredRecords = summary.records || [];
     if (status) {
       filteredRecords = filteredRecords.filter(record => 
         record.status.toLowerCase() === status.toLowerCase()
