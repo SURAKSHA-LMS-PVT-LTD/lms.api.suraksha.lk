@@ -1031,7 +1031,9 @@ export class AttendanceService {
       undefined, // classId
       undefined, // subjectId
       startDate,
-      endDate
+      endDate,
+      undefined, // limit
+      true, // includeRecords - needed for filtering/pagination
     );
 
     // Filter by status and studentId if provided
@@ -1094,7 +1096,9 @@ export class AttendanceService {
       classId,
       undefined, // subjectId
       startDate,
-      endDate
+      endDate,
+      undefined, // limit
+      true, // includeRecords - needed for filtering/pagination
     );
 
     // Filter by status and studentId if provided
@@ -1158,7 +1162,9 @@ export class AttendanceService {
       classId, // Pass the actual classId instead of undefined
       subjectId,
       startDate,
-      endDate
+      endDate,
+      undefined, // limit
+      true, // includeRecords - needed for filtering/pagination
     );
     
     // Filter by status and studentId if provided
