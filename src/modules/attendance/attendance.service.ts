@@ -24,6 +24,7 @@ import { AdvertisementMatchingService } from '../advertisement/advertisement-mat
 import { CardStatus } from '../user-card-management/enums/card-status.enum';
 import { MarkingMethod } from './dto/attendance.dto';
 import { getCurrentSriLankaDate, getCurrentSriLankaISO, nowTimestamp, formatSriLankaTime, now } from '../../common/utils/timezone.util';
+import { AttendanceDeviceService } from '../attendance-device/services/attendance-device.service';
 
 @Injectable()
 export class AttendanceService {
@@ -51,6 +52,7 @@ export class AttendanceService {
     @InjectRepository(AdvertisementEntity)
     private readonly advertisementRepository: Repository<AdvertisementEntity>,
     private readonly CloudStorageService: CloudStorageService,
+    private readonly attendanceDeviceService: AttendanceDeviceService,
   ) {
     // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
@@ -217,6 +219,29 @@ export class AttendanceService {
           `[${requestId}] ⚠️  Calendar day lookup failed: ${calendarError.message}. ` +
           `Attendance will be marked without calendar linkage.`
         );
+      }
+
+      // ✅ STEP 3.6: Device validation (if marking from a registered device)
+      if (markAttendanceDto.deviceUid) {
+        const deviceValidation = await this.attendanceDeviceService.validateDeviceForMarking(markAttendanceDto.deviceUid);
+        if (!deviceValidation.allowed) {
+          throw new ForbiddenException(`Device rejected: ${deviceValidation.error}`);
+        }
+        // Apply event override from device binding (if device is bound to an event)
+        if (deviceValidation.eventId && !markAttendanceDto.eventId) {
+          (markAttendanceDto as any).eventId = deviceValidation.eventId;
+        }
+        // Apply status override from device config/binding
+        if (deviceValidation.statusOverride && !markAttendanceDto.status) {
+          markAttendanceDto.status = deviceValidation.statusOverride as AttendanceStatus;
+        }
+        // Validate status is allowed by device config
+        const statusAllowed = await this.attendanceDeviceService.isStatusAllowed(
+          deviceValidation.deviceId, markAttendanceDto.status,
+        );
+        if (!statusAllowed) {
+          throw new ForbiddenException(`Status "${markAttendanceDto.status}" is not allowed on this device`);
+        }
       }
 
       // ✅ STEP 4: Mark attendance in DynamoDB (same for all user types)

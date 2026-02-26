@@ -1,9 +1,11 @@
 # Attendance & Calendar API — Complete Documentation
 
-> **Version:** 2.0 — January 2025  
+> **Version:** 3.0 — February 2026  
 > **Base URL:** `https://<host>`  
 > **Auth:** All endpoints require a JWT Bearer token unless noted.  
-> **Timezone:** Sri Lanka (UTC+05:30) — all dates are processed in this timezone.
+> **Timezone:** Sri Lanka (UTC+05:30) — all dates are processed in this timezone.  
+> **Related:** [Device Management API](ATTENDANCE_DEVICE_MANAGEMENT_API_DOCUMENTATION.md) for dedicated attendance devices.
+use env creditains and update db also crete tableetc
 
 ---
 
@@ -187,9 +189,10 @@ POST /api/attendance/mark
 | `address` | string | ❌ | Legacy location field |
 | `markingMethod` | MarkingMethod | ❌ | `qr`, `barcode`, `rfid/nfc`, `manual`, `system` |
 | `eventId` | string | ❌ | Calendar event ID (uses day's default event if omitted) |
+| `deviceUid` | string | ❌ | Registered device UID — triggers device validation, auto-populates `eventId` from device binding |
 | `userType` | AttendanceUserType | ❌ | **Do NOT send** — auto-detected by backend |
 
-#### Example Request
+#### Example Request (standard)
 ```json
 {
   "studentId": "123",
@@ -206,6 +209,20 @@ POST /api/attendance/mark
 }
 ```
 
+#### Example Request (from a registered device)
+```json
+{
+  "studentId": "123",
+  "instituteId": "109",
+  "instituteName": "Suraksha Learning Academy",
+  "date": "2026-02-27",
+  "status": "present",
+  "markingMethod": "rfid/nfc",
+  "deviceUid": "DEVICE-SN-00129"
+}
+```
+> When `deviceUid` is provided, the backend validates the device, checks operating hours, applies the active event binding (auto-populating `eventId`), and enforces `allowedStatusMode`. See [Device Management API → Attendance Integration](ATTENDANCE_DEVICE_MANAGEMENT_API_DOCUMENTATION.md#15-attendance-integration--deviceuid-flow) for full details.
+
 #### Response (201)
 ```json
 {
@@ -216,10 +233,20 @@ POST /api/attendance/mark
 ```
 
 **Backend Behavior:**
-- Auto-detects `userType` from `institute_user` table
-- Auto-links to today's calendar day and default event (if `eventId` not provided)
-- Sends push notification to student/parent via Firebase
-- Stores attendance in DynamoDB with composite key
+1. Auto-detects `userType` from `institute_user` table
+2. Validates user enrollment in the institute
+3. Fetches user name from DB (students vs non-students use different tables)
+4. Looks up today's calendar day (cached) → auto-links `calendarDayId` and default `eventId`
+5. **Device validation (if `deviceUid` provided):**
+   - Verifies device is enabled and not blocked
+   - Checks operating hours (if configured)
+   - Auto-populates `eventId` from active device-event binding
+   - Applies `statusOverride` from binding/config (if no status sent)
+   - Validates status against device `allowedStatusMode` (`ANY` / `BLOCKED` / `ONLY`)
+   - Returns `403 Forbidden` if any device check fails
+6. Marks attendance in DynamoDB with composite key
+7. Sends push notification to student/parent (students only)
+8. Returns image URL (institute-specific if verified, else global)
 
 ---
 
@@ -1621,11 +1648,35 @@ Returns institute calendar days with class-level override data merged.
 3. Attendance marking (POST /mark or /mark-bulk)
    → Backend auto-calls cacheService.getTodayCalendarDay(instituteId)
    → Links attendance to calendarDayId + eventId (default or provided)
+   → IF deviceUid provided: validates device → applies event binding override
    → Stores in DynamoDB with calendar linkage
 
 4. Calendar-linked queries (GET /calendar/institute/:id/event/:eventId)
    → Joins DynamoDB attendance with MySQL calendar data
 ```
+
+### Device → Event Binding Flow
+
+```
+1. System admin registers device (POST /api/admin/attendance-devices)
+   → Assigns to institute, auto-creates default config
+
+2. Institute admin binds device to event
+   (POST /api/institute/:id/devices/:deviceId/bind-event)
+   → Sets eventId, optional statusOverride
+   → Only ONE active binding per device
+
+3. Device marks attendance (POST /api/attendance/mark with deviceUid)
+   → Step 3.6: Backend resolves device → gets active binding
+   → eventId auto-populated from binding
+   → statusOverride applied if configured
+   → allowedStatusMode enforced (ANY/BLOCKED/ONLY)
+
+4. Result: Attendance stored with correct eventId without
+   operator needing to select the event manually
+```
+
+See [ATTENDANCE_DEVICE_MANAGEMENT_API_DOCUMENTATION.md](ATTENDANCE_DEVICE_MANAGEMENT_API_DOCUMENTATION.md) for full device management API reference.
 
 ### Caching Strategy
 
@@ -1643,14 +1694,14 @@ All dates are processed in Sri Lanka timezone (UTC+05:30):
 
 ### Security Model
 
-| Role | Mark | Query Own | Query Institute | Manage Calendar |
-|------|------|-----------|-----------------|-----------------|
-| SUPERADMIN | ✅ | ✅ | ✅ | ✅ |
-| INSTITUTE_ADMIN | ✅ | ✅ | ✅ | ✅ |
-| TEACHER | ✅ | ✅ | ✅ | ❌ |
-| ATTENDANCE_MARKER | ✅ | ✅ | ✅ | ❌ |
-| STUDENT | ❌ | ✅ (self) | ✅ (filtered) | ❌ |
-| PARENT | ❌ | ✅ (child) | ✅ (filtered) | ❌ |
+| Role | Mark | Query Own | Query Institute | Manage Calendar | Manage Devices |
+|------|------|-----------|-----------------|-----------------|----------------|
+| SUPERADMIN | ✅ | ✅ | ✅ | ✅ | ✅ (all) |
+| INSTITUTE_ADMIN | ✅ | ✅ | ✅ | ✅ | ✅ (own institute) |
+| TEACHER | ✅ | ✅ | ✅ | ❌ | ❌ |
+| ATTENDANCE_MARKER | ✅ | ✅ | ✅ | ❌ | ❌ |
+| STUDENT | ❌ | ✅ (self) | ✅ (filtered) | ❌ | ❌ |
+| PARENT | ❌ | ✅ (child) | ✅ (filtered) | ❌ | ❌ |
 
 ### Error Response Format
 
@@ -1665,8 +1716,8 @@ All errors follow a consistent structure:
 Common HTTP status codes:
 - `400` — Bad request (validation, date range exceeded)
 - `401` — Unauthorized (missing/invalid JWT)
-- `403` — Forbidden (insufficient permissions)
-- `404` — Not found (student, record, or calendar not found)
+- `403` — Forbidden (insufficient permissions, or device rejected: disabled/blocked/wrong status mode/outside operating hours)
+- `404` — Not found (student, record, calendar, or device not found)
 - `409` — Conflict (calendar already exists for academic year)
 - `429` — Rate limited (too many marking requests)
 - `500` — Internal server error

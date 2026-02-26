@@ -50,6 +50,7 @@ import { UserCardManagementModule } from './modules/user-card-management/user-ca
 import { PushNotificationModule } from './modules/push-notifications/push-notification.module';
 import { GoogleAuthModule } from './modules/google-auth/google-auth.module';
 import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-access.module';
+import { AttendanceDeviceModule } from './modules/attendance-device/attendance-device.module';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
@@ -161,6 +162,7 @@ import { AppService } from './app.service';
     StructuredLecturesModule, // Add structured lectures module for educational content
     UserCardManagementModule, // Add user card management for NFC/PVC/Temporary cards with RFID
     PushNotificationModule, // Add push notification module for FCM notifications
+    AttendanceDeviceModule, // Add device management for attendance marking devices
   ],
   controllers: [AppController],
   providers: [

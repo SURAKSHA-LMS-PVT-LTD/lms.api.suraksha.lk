@@ -116,6 +116,13 @@ export class MarkAttendanceDto {
   @IsString()
   @IsOptional()
   eventId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Device UID (optional - if marking from a registered device, triggers device validation)',
+  })
+  @IsString()
+  @IsOptional()
+  deviceUid?: string;
 }
 
 export class StudentAttendanceItem {

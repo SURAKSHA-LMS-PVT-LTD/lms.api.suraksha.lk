@@ -22,6 +22,7 @@ import { UserFcmTokenRepository } from '../user/repositories/user-fcm-token.repo
 import { UserFcmTokenEntity } from '../user/entities/user-fcm-token.entity';
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
 import { InstituteModule } from '../institute/institute.module';
+import { AttendanceDeviceModule } from '../attendance-device/attendance-device.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { InstituteModule } from '../institute/institute.module';
     CacheModule,
     ConfigModule,
     InstituteModule, // Import for calendar services
+    AttendanceDeviceModule, // Import for device validation during marking
     forwardRef(() => require('../advertisement/advertisement.module').AdvertisementModule),
     TypeOrmModule.forFeature([
       StudentEntity,
