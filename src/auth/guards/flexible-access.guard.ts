@@ -74,9 +74,9 @@ export class FlexibleAccessGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const config = this.reflector.get<FlexibleAccessConfig>(
+    const config = this.reflector.getAllAndOverride<FlexibleAccessConfig>(
       FLEXIBLE_ACCESS_KEY,
-      context.getHandler(),
+      [context.getHandler(), context.getClass()],
     );
 
     if (!config) {
