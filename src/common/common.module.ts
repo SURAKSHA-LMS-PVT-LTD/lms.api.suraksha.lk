@@ -19,6 +19,7 @@ import { EnhancedAccessGuard } from './guards/enhanced-access.guard';
 import { EnhancedValidationGuard } from './guards/enhanced-validation.guard';
 import { UploadController } from './controllers/upload.controller';
 import { PublicUploadController } from './controllers/public-upload.controller';
+import { SystemConfigAdminController } from './controllers/system-config-admin.controller';
 import { UrlTransformerHelper } from './helpers/url-transformer.helper';
 
 @Global()
@@ -49,7 +50,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
       useClass: GlobalExceptionFilter,
     },
   ],
-  controllers: [UploadController, PublicUploadController],
+  controllers: [UploadController, PublicUploadController, SystemConfigAdminController],
   exports: [
     AuditService,
     AuditLogInterceptor,

@@ -146,6 +146,72 @@ export class SystemConfigService implements OnModuleInit {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // ADMIN — Full entity access for CRUD admin panel
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Get all config entries (optionally filtered). Returns full entities for admin UI.
+   */
+  async getAll(filters?: { group?: string; isActive?: boolean }): Promise<SystemConfigEntity[]> {
+    const where: any = {};
+    if (filters?.group) where.configGroup = filters.group;
+    if (filters?.isActive !== undefined) where.isActive = filters.isActive;
+    return this.configRepo.find({ where, order: { configGroup: 'ASC', configKey: 'ASC' } });
+  }
+
+  /**
+   * Get a single config entity by group + key (including inactive).
+   */
+  async getEntity(group: string, key: string): Promise<SystemConfigEntity | null> {
+    return this.configRepo.findOne({ where: { configGroup: group, configKey: key } });
+  }
+
+  /**
+   * List all distinct group names with counts.
+   */
+  async getGroupSummaries(): Promise<{ group: string; count: number; activeCount: number }[]> {
+    const raw = await this.configRepo
+      .createQueryBuilder('c')
+      .select('c.config_group', 'group_name')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect('SUM(CASE WHEN c.is_active = 1 THEN 1 ELSE 0 END)', 'active')
+      .groupBy('c.config_group')
+      .orderBy('c.config_group', 'ASC')
+      .getRawMany();
+
+    return raw.map((r) => ({
+      group: r.group_name,
+      count: parseInt(r.total, 10),
+      activeCount: parseInt(r.active, 10),
+    }));
+  }
+
+  /**
+   * Hard-delete a config entry (permanent). Use deactivate() for soft-delete.
+   */
+  async remove(group: string, key: string): Promise<boolean> {
+    const result = await this.configRepo.delete({ configGroup: group, configKey: key });
+    this.cache.delete(`${group}:${key}`);
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Reactivate a previously deactivated config entry.
+   */
+  async reactivate(group: string, key: string, updatedBy?: string): Promise<void> {
+    const entity = await this.configRepo.findOne({ where: { configGroup: group, configKey: key } });
+    if (!entity) throw new Error(`Config [${group}:${key}] not found`);
+    entity.isActive = true;
+    if (updatedBy) entity.updatedBy = updatedBy;
+    await this.configRepo.save(entity);
+    this.cache.set(`${group}:${key}`, {
+      value: entity.configValue,
+      expiresAt: Date.now() + this.CACHE_TTL_MS,
+    });
+    this.logger.log(`⚙️ Config reactivated: [${group}:${key}]`);
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // WRITE
   // ═══════════════════════════════════════════════════════════
 
