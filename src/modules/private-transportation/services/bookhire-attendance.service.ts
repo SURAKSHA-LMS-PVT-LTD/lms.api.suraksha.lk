@@ -67,7 +67,7 @@ export class BookhireAttendanceService {
     // First get the user data
     user = await this.userRepository.findOne({
       where: { id: markAttendanceDto.studentId },
-      select: ['id', 'firstName', 'lastName', 'rfid', 'userType', 'imageUrl', 'phoneNumber', 'email', 'telegramId', 'subscriptionPlan']
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'rfid', 'userType', 'imageUrl', 'phoneNumber', 'email', 'telegramId', 'subscriptionPlan']
     });
 
     if (!user) {
@@ -109,8 +109,8 @@ export class BookhireAttendanceService {
     // 🔄 STEP 5.5: Transform studentData for DynamoDB (handle both students and non-students)
     const transformedStudentData = {
       studentName: studentData.student 
-        ? `${studentData.student.user.firstName} ${studentData.student.user.lastName || ''}`.trim()
-        : `${user.firstName} ${user.lastName || ''}`.trim(),
+        ? (studentData.student.user.nameWithInitials || `${studentData.student.user.firstName} ${studentData.student.user.lastName || ''}`.trim())
+        : (user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim()),
       studentEmail: studentData.student?.user?.email || user.email || null,
       parentContact: studentData.parentContact || null,
       parentEmail: studentData.parentEmail || null,
@@ -220,7 +220,7 @@ export class BookhireAttendanceService {
 
     const user = await this.userRepository.findOne({
       where: { rfid: markAttendanceDto.rfidCardId },
-      select: ['id', 'firstName', 'lastName', 'rfid', 'userType', 'imageUrl', 'phoneNumber', 'email', 'telegramId', 'subscriptionPlan']
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'rfid', 'userType', 'imageUrl', 'phoneNumber', 'email', 'telegramId', 'subscriptionPlan']
     });
 
     if (!user) {
@@ -274,8 +274,8 @@ export class BookhireAttendanceService {
     // 🔄 STEP 6.5: Transform studentData for DynamoDB (handle both students and non-students)
     const transformedStudentData = {
       studentName: studentData.student 
-        ? `${studentData.student.user.firstName} ${studentData.student.user.lastName || ''}`.trim()
-        : `${user.firstName} ${user.lastName || ''}`.trim(),
+        ? (studentData.student.user.nameWithInitials || `${studentData.student.user.firstName} ${studentData.student.user.lastName || ''}`.trim())
+        : (user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim()),
       studentEmail: studentData.student?.user?.email || user.email || null,
       parentContact: studentData.parentContact || null,
       parentEmail: studentData.parentEmail || null,
@@ -977,6 +977,7 @@ export class BookhireAttendanceService {
             id: true,
             firstName: true,
             lastName: true,
+            nameWithInitials: true,
             email: true,
             phoneNumber: true,
             subscriptionPlan: true,

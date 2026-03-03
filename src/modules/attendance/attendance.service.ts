@@ -1409,7 +1409,7 @@ export class AttendanceService {
 
       const notificationData = {
         studentId: markAttendanceDto.studentId,
-        studentName: `${data.student.user.firstName} ${data.student.user.lastName || ''}`.trim(),
+        studentName: data.student.user.nameWithInitials || `${data.student.user.firstName} ${data.student.user.lastName || ''}`.trim(),
         parentName: data.primaryParent ? 
           `${data.primaryParent.firstName} ${data.primaryParent.lastName || ''}`.trim() : 
           'Parent/Guardian',
@@ -1574,7 +1574,7 @@ export class AttendanceService {
     attendanceDto: MarkAttendanceDto
   ): Promise<void> {
     try {
-      const studentName = `${studentData.user?.firstName || ''} ${studentData.user?.lastName || ''}`.trim();
+      const studentName = studentData.user?.nameWithInitials || `${studentData.user?.firstName || ''} ${studentData.user?.lastName || ''}`.trim();
       const allParents: Array<{type: string, user: any}> = [];
 
       // Collect all available parents
@@ -1805,6 +1805,7 @@ export class AttendanceService {
             id: true,
             firstName: true,
             lastName: true,
+            nameWithInitials: true,
             email: true,
             phoneNumber: true,
             subscriptionPlan: true,
@@ -2087,6 +2088,7 @@ export class AttendanceService {
 
     // ✅ STEP 3: Fetch data based on user type
     let userName: string;
+    let notificationName: string = '';
     let globalImageUrl: string | null = null;
     let subscriptionPlan = 'FREE';
     let parentContact: string | null = null;
@@ -2110,7 +2112,7 @@ export class AttendanceService {
         .select([
           'student.userId', 'student.fatherId', 'student.motherId', 'student.guardianId',
           'student.studentId', 'student.isActive',
-          'user.id', 'user.firstName', 'user.lastName', 'user.email', 'user.phoneNumber',
+          'user.id', 'user.firstName', 'user.lastName', 'user.nameWithInitials', 'user.email', 'user.phoneNumber',
           'user.subscriptionPlan', 'user.telegramId', 'user.imageUrl',
           'father.userId', 'fatherUser.firstName', 'fatherUser.lastName',
           'fatherUser.email', 'fatherUser.phoneNumber', 'fatherUser.telegramId',
@@ -2126,6 +2128,8 @@ export class AttendanceService {
       }
 
       userName = `${studentData.user.firstName} ${studentData.user.lastName}`.trim();
+      // Use nameWithInitials for notification display name
+      notificationName = studentData.user.nameWithInitials || userName;
       globalImageUrl = studentData.user.imageUrl || null;
       subscriptionPlan = studentData.user.subscriptionPlan || 'FREE';
 
@@ -2205,7 +2209,7 @@ export class AttendanceService {
       
       this.sendImmediateNotification({
         studentId,
-        studentName: userName,
+        studentName: notificationName,
         parentContact,
         parentEmail,
         parentTelegramId,
