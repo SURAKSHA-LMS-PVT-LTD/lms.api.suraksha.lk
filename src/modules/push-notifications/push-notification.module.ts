@@ -19,6 +19,7 @@ import { PushNotificationUserController } from './controllers/push-notification-
 
 // Services
 import { PushNotificationService } from './services/push-notification.service';
+import { PushNotificationSchedulerService } from './services/push-notification-scheduler.service';
 
 // Repositories
 import { PushNotificationRepository } from './repositories/push-notification.repository';
@@ -45,6 +46,7 @@ import { UserFcmTokenRepository } from '../user/repositories/user-fcm-token.repo
   ],
   providers: [
     PushNotificationService,
+    PushNotificationSchedulerService,
     PushNotificationRepository,
     UserFcmTokenRepository,
   ],

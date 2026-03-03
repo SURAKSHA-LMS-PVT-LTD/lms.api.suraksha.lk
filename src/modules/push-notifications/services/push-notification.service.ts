@@ -682,6 +682,7 @@ export class PushNotificationService {
     // Transform using plainToInstance to preserve dates and work with ClassSerializerInterceptor
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
+      const readAt = readIds.get(notification.id) ?? undefined;
       const plainObj = {
         id: notification.id,
         title: notification.title,
@@ -698,6 +699,7 @@ export class PushNotificationService {
         sender: null,
         senderRole: notification.senderRole,
         isRead,
+        readAt,
         sentAt: notification.sentAt || notification.createdAt
       };
       return plainToInstance(UserNotificationResponseDto, plainObj, { excludeExtraneousValues: true });
@@ -733,6 +735,7 @@ export class PushNotificationService {
     // Transform using plainToInstance to preserve dates and work with ClassSerializerInterceptor
     const transformedData = data.map(notification => {
       const isRead = readIds.has(notification.id);
+      const readAt = readIds.get(notification.id) ?? undefined;
       const plainObj = {
         id: notification.id,
         title: notification.title,
@@ -749,6 +752,7 @@ export class PushNotificationService {
         sender: null,
         senderRole: notification.senderRole,
         isRead,
+        readAt,
         sentAt: notification.sentAt || notification.createdAt
       };
       return plainToInstance(UserNotificationResponseDto, plainObj, { excludeExtraneousValues: true });
@@ -805,6 +809,13 @@ export class PushNotificationService {
       createdAt: notification.createdAt,
       updatedAt: notification.updatedAt
     } as PushNotificationResponseDto;
+  }
+
+  /**
+   * Mark all institute notifications as read for user (single DB update)
+   */
+  async markAllAsReadForInstitute(userId: string, instituteId: string): Promise<number> {
+    return await this.notificationRepository.markAllAsReadForInstitute(userId, instituteId);
   }
 
   /**

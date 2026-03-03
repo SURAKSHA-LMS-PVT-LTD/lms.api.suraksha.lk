@@ -190,19 +190,8 @@ export class PushNotificationUserController {
     const user = request.user as any;
     const userId = user.s;
 
-    // Get all unread notifications for this institute and mark them as read
-    const result = await this.pushNotificationService.findByInstituteId(
-      instituteId, 
-      { page: 1, limit: 1000 }, // Get all notifications
-      userId
-    );
-    
-    const unreadIds = result.data.filter(n => !n.isRead).map(n => n.id);
-    if (unreadIds.length > 0) {
-      await this.pushNotificationService.markMultipleAsRead(unreadIds, userId);
-    }
-
-    return { message: `Marked ${unreadIds.length} notifications as read` };
+    const count = await this.pushNotificationService.markAllAsReadForInstitute(userId, instituteId);
+    return { message: `Marked ${count} notifications as read` };
   }
 
   /**

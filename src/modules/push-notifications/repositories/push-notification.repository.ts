@@ -321,10 +321,10 @@ export class PushNotificationRepository {
   }
 
   /**
-   * Get read notification IDs for a user (from recipient table)
+   * Get read notification info for a user — returns Map<notificationId, readAt>
    */
-  async getReadNotificationIds(userId: string, notificationIds: string[]): Promise<Set<string>> {
-    if (notificationIds.length === 0) return new Set();
+  async getReadNotificationIds(userId: string, notificationIds: string[]): Promise<Map<string, Date | null>> {
+    if (notificationIds.length === 0) return new Map();
 
     const reads = await this.recipientRepository.find({
       where: {
@@ -332,10 +332,29 @@ export class PushNotificationRepository {
         notificationId: In(notificationIds),
         status: NotificationDeliveryStatus.READ,
       },
-      select: ['notificationId']
+      select: ['notificationId', 'readAt']
     });
 
-    return new Set(reads.map(r => r.notificationId));
+    return new Map(reads.map(r => [r.notificationId, r.readAt ?? null]));
+  }
+
+  /**
+   * Mark ALL unread notifications as READ for a user in a given institute.
+   * Single UPDATE query — much more efficient than fetch-then-bulk-update.
+   */
+  async markAllAsReadForInstitute(userId: string, instituteId: string): Promise<number> {
+    const timestamp = now();
+    const result = await this.dataSource.query(
+      `UPDATE notification_recipients nr
+       INNER JOIN push_notifications n ON n.id = nr.notification_id
+       SET nr.status = 'READ', nr.read_at = ?, nr.updated_at = ?
+       WHERE nr.user_id = ?
+         AND nr.status != 'READ'
+         AND n.institute_id = ?
+         AND n.status = 'SENT'`,
+      [timestamp, timestamp, userId, instituteId],
+    );
+    return result?.affectedRows ?? 0;
   }
 
   /**
@@ -372,15 +391,17 @@ export class PushNotificationRepository {
   }
 
   /**
-   * Find scheduled notifications that are due
+   * Find scheduled notifications that are due (scheduledAt <= now)
    */
   async findDueScheduledNotifications(): Promise<PushNotificationEntity[]> {
-    return await this.repository.find({
-      where: {
-        status: NotificationStatus.SCHEDULED
-      },
-      relations: ['institute', 'class', 'subject']
-    });
+    return await this.repository
+      .createQueryBuilder('notification')
+      .leftJoinAndSelect('notification.institute', 'institute')
+      .leftJoinAndSelect('notification.class', 'class')
+      .leftJoinAndSelect('notification.subject', 'subject')
+      .where('notification.status = :status', { status: NotificationStatus.SCHEDULED })
+      .andWhere('notification.scheduledAt <= :now', { now: now() })
+      .getMany();
   }
 
   /**
