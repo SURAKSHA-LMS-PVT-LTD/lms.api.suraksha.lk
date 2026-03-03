@@ -51,6 +51,7 @@ import { PushNotificationModule } from './modules/push-notifications/push-notifi
 import { GoogleAuthModule } from './modules/google-auth/google-auth.module';
 import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-access.module';
 import { AttendanceDeviceModule } from './modules/attendance-device/attendance-device.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppController } from './app.controller';
@@ -97,12 +98,13 @@ import { AppService } from './app.service';
           __dirname + '/modules/**/entities/*.entity{.ts,.js}',
           __dirname + '/auth/entities/*.entity{.ts,.js}',
           __dirname + '/modules/institute_mudules/institue_class/entities/*.entity{.ts,.js}',
+          __dirname + '/common/entities/*.entity{.ts,.js}',
           InstituteEntity, ParentEntity, UserEntity, StudentEntity, SubjectEntity, InstituteClassSubjectEntity,
           UserOtpEntity, // OTP verification entity
           PasswordResetTokenEntity, UserFirstLoginLogEntity
         ],
         synchronize: false, // ⚠️ DISABLED - Prevents auto schema sync to avoid foreign key constraint issues
-        logging: false, // Disabled for faster startup
+        logging: false, // Disabled for performance
         // SSL configuration moved to extra section for MySQL 8.x compatibility
         // MySQL 8.x optimized connection pool configuration
         poolSize: 15, // Production-ready connection pool
@@ -163,6 +165,7 @@ import { AppService } from './app.service';
     UserCardManagementModule, // Add user card management for NFC/PVC/Temporary cards with RFID
     PushNotificationModule, // Add push notification module for FCM notifications
     AttendanceDeviceModule, // Add device management for attendance marking devices
+    ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
   ],
   controllers: [AppController],
   providers: [

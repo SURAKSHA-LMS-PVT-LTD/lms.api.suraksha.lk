@@ -108,10 +108,13 @@ export class MarkAttendanceDto {
   @IsOptional()
   userType?: AttendanceUserType;
 
-  // Optional event ID for marking attendance at specific events (e.g., PARENTS_MEETING, FIELD_TRIP)
-  // If not provided, backend will use the default event for the day
+  // Event ID for marking attendance at SPECIAL events (e.g., PARENTS_MEETING, FIELD_TRIP, EXAM)
+  // ✅ If NOT provided → backend auto-links to the default REGULAR_CLASS event for today
+  // ✅ If provided → attendance is linked to that specific special event
+  // ⚠️  calendarDayId is ALWAYS system-resolved (today → today's calendar day). Frontend CANNOT set it.
   @ApiPropertyOptional({ 
-    description: 'Event ID (optional - links attendance to specific calendar event)' 
+    description: 'Event ID (optional). Only send for SPECIAL events (Parents Meeting, Exam, etc.). '
+      + 'If omitted, attendance auto-links to the default Regular Classes event for today.' 
   })
   @IsString()
   @IsOptional()

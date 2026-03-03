@@ -162,7 +162,7 @@ export class InstituteCalendarService {
       // Create calendar day
       const calendarDay: Partial<InstituteCalendarDayEntity> = {
         instituteId,
-        calendarDate: new Date(dateStr),
+        calendarDate: dateStr as any, // Use string to avoid timezone conversion on DATE column
         academicYear: dto.academicYear,
         dayType,
         title,
@@ -181,7 +181,7 @@ export class InstituteCalendarService {
           eventType: CalendarEventType.REGULAR_CLASS,
           title: 'Regular Classes',
           description: 'Normal class schedule',
-          eventDate: new Date(dateStr),
+          eventDate: dateStr as any, // Use string to avoid timezone conversion on DATE column
           startTime: config?.startTime || null,
           endTime: config?.endTime || null,
           isAllDay: true,
@@ -238,9 +238,18 @@ export class InstituteCalendarService {
     // ✅ FIXED: Accept string dates to avoid UTC vs Sri Lanka timezone issues
     const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
 
-    let calendarDay = await this.calendarDayRepo.findOne({
-      where: { instituteId, calendarDate: new Date(dateStr) },
-    });
+    // ✅ FIX: Use raw SQL for DATE column comparison to avoid timezone mismatch.
+    // When mysql2 has timezone:'+05:30', `new Date('2026-03-03')` gets sent as
+    // DATETIME '2026-03-03 05:30:00' via binary protocol. MySQL then promotes
+    // the DATE column to '2026-03-03 00:00:00' for comparison → NOT EQUAL.
+    // Using a raw query with string parameter avoids this issue entirely.
+    let calendarDay = await this.calendarDayRepo
+      .createQueryBuilder('d')
+      .where('d.institute_id = :instituteId AND d.calendar_date = :dateStr', {
+        instituteId,
+        dateStr,
+      })
+      .getOne();
 
     if (!calendarDay) {
       // Lazy create: assume regular working day
@@ -248,26 +257,50 @@ export class InstituteCalendarService {
         `Lazy creating calendar day for ${dateStr} at institute ${instituteId}`,
       );
 
-      calendarDay = await this.calendarDayRepo.save({
-        instituteId,
-        calendarDate: new Date(dateStr),
-        academicYear: new Date(dateStr).getFullYear().toString(),
-        dayType: CalendarDayType.REGULAR,
-        isAttendanceExpected: true,
-        source: CalendarDaySource.AUTO_GENERATED,
-      });
+      try {
+        calendarDay = await this.calendarDayRepo.save({
+          instituteId,
+          calendarDate: dateStr as any, // Send as string to avoid timezone conversion
+          academicYear: dateStr.substring(0, 4),
+          dayType: CalendarDayType.REGULAR,
+          isAttendanceExpected: true,
+          source: CalendarDaySource.AUTO_GENERATED,
+        });
 
-      // Also create default REGULAR_CLASS event
-      await this.calendarEventRepo.save({
-        instituteId,
-        calendarDayId: calendarDay.id,
-        eventType: CalendarEventType.REGULAR_CLASS,
-        title: 'Regular Classes',
-        eventDate: new Date(dateStr),
-        isAllDay: true,
-        isAttendanceTracked: true,
-        isDefault: true,
-      });
+        // Also create default REGULAR_CLASS event
+        await this.calendarEventRepo.save({
+          instituteId,
+          calendarDayId: calendarDay.id,
+          eventType: CalendarEventType.REGULAR_CLASS,
+          title: 'Regular Classes',
+          eventDate: dateStr as any, // Send as string to avoid timezone conversion
+          isAllDay: true,
+          isAttendanceTracked: true,
+          isDefault: true,
+        });
+      } catch (error) {
+        // ✅ FIX RACE CONDITION: If a concurrent request already created this calendar day,
+        // we get a duplicate key error. Re-fetch the existing record instead of throwing.
+        if (error.message?.includes('Duplicate entry') || error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+          this.logger.warn(
+            `Race condition: calendar day for ${dateStr} at institute ${instituteId} was created by concurrent request. Re-fetching...`,
+          );
+          calendarDay = await this.calendarDayRepo
+            .createQueryBuilder('d')
+            .where('d.institute_id = :instituteId AND d.calendar_date = :dateStr', {
+              instituteId,
+              dateStr,
+            })
+            .getOne();
+          if (!calendarDay) {
+            throw new Error(
+              `Failed to find calendar day for ${dateStr} at institute ${instituteId} after duplicate key error`,
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
     }
 
     return calendarDay;

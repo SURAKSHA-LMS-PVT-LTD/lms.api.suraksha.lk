@@ -8,6 +8,8 @@ import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
 import { DynamoDBAttendanceServiceV2 } from './services/dynamodb-attendance.service.v2';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
+import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
+import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { FcmNotificationService } from '../../common/services/fcm-notification.service';
 import { CacheModule } from '../../common/modules/cache.module';
@@ -23,6 +25,8 @@ import { UserFcmTokenEntity } from '../user/entities/user-fcm-token.entity';
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
 import { InstituteModule } from '../institute/institute.module';
 import { AttendanceDeviceModule } from '../attendance-device/attendance-device.module';
+import { AttendanceRecordEntity } from './entities/attendance-record.entity';
+import { InstituteEntity } from '../institute/entities/institute.entity';
 
 @Module({
   imports: [
@@ -39,7 +43,9 @@ import { AttendanceDeviceModule } from '../attendance-device/attendance-device.m
       StudentBookhireEnrollmentEntity,
       InstituteUserEntity,
       AdvertisementEntity,
-      UserFcmTokenEntity
+      UserFcmTokenEntity,
+      AttendanceRecordEntity,
+      InstituteEntity,
     ])
   ],
   controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController],
@@ -48,6 +54,8 @@ import { AttendanceDeviceModule } from '../attendance-device/attendance-device.m
     DynamoDBAttendanceService,
     DynamoDBAttendanceServiceV2,
     AttendanceNotificationService,
+    AttendanceSyncConfigService,
+    AttendanceSyncSchedulerService,
     CloudStorageService,
     FcmNotificationService,
     EnhancedEmailService,

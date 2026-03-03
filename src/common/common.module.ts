@@ -9,8 +9,10 @@ import { InputValidationService } from './services/input-validation.service';
 import { InputSanitizationService } from './services/input-sanitization.service';
 import { PackageUpgradeService } from './services/package-upgrade.service';
 import { FcmNotificationService } from './services/fcm-notification.service';
+import { SystemConfigService } from './services/system-config.service';
 import { UserEntity } from '../modules/user/entities/user.entity';
 import { UserFcmTokenEntity } from '../modules/user/entities/user-fcm-token.entity';
+import { SystemConfigEntity } from './entities/system-config.entity';
 import { UserFcmTokenRepository } from '../modules/user/repositories/user-fcm-token.repository';
 import { CacheModule } from './modules/cache.module';
 import { EnhancedAccessGuard } from './guards/enhanced-access.guard';
@@ -24,7 +26,8 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
   imports: [
     TypeOrmModule.forFeature([
       UserEntity, 
-      UserFcmTokenEntity
+      UserFcmTokenEntity,
+      SystemConfigEntity,
     ]),
     CacheModule,
   ],
@@ -36,6 +39,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
     InputValidationService,
     InputSanitizationService,
     FcmNotificationService,
+    SystemConfigService,
     UserFcmTokenRepository,
     EnhancedAccessGuard,
     EnhancedValidationGuard,
@@ -54,6 +58,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
     InputValidationService,
     InputSanitizationService,
     FcmNotificationService,
+    SystemConfigService,
     UserFcmTokenRepository,
     EnhancedAccessGuard,
     EnhancedValidationGuard,

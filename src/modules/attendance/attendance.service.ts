@@ -25,6 +25,9 @@ import { CardStatus } from '../user-card-management/enums/card-status.enum';
 import { MarkingMethod } from './dto/attendance.dto';
 import { getCurrentSriLankaDate, getCurrentSriLankaISO, nowTimestamp, formatSriLankaTime, now } from '../../common/utils/timezone.util';
 import { AttendanceDeviceService } from '../attendance-device/services/attendance-device.service';
+import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
+import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
+import { AttendanceSyncMode } from './enums/attendance-sync-mode.enum';
 
 @Injectable()
 export class AttendanceService {
@@ -53,6 +56,8 @@ export class AttendanceService {
     private readonly advertisementRepository: Repository<AdvertisementEntity>,
     private readonly CloudStorageService: CloudStorageService,
     private readonly attendanceDeviceService: AttendanceDeviceService,
+    private readonly syncConfigService: AttendanceSyncConfigService,
+    private readonly syncSchedulerService: AttendanceSyncSchedulerService,
   ) {
     // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
@@ -194,31 +199,70 @@ export class AttendanceService {
         );
       }
 
-      // ✅ STEP 3.5: Lookup calendar day (with caching ~0.01ms hit, ~3ms miss)
-      try {
-        const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-          markAttendanceDto.instituteId
-        );
+      // ============================================
+      // STEP 3.5: MANDATORY Calendar Day + Event Linkage
+      // ============================================
+      // calendarDayId: ALWAYS system-resolved from today's date. Never from frontend.
+      // eventId: If frontend sends one (special event) → use it. Otherwise → auto-link to default REGULAR_CLASS event.
+      // This ensures ALL attendance records are visible in the institute calendar section.
+      const originalFrontendEventId = markAttendanceDto.eventId || null; // Save before any modification
+      {
+        let calendarResolved = false;
 
-        if (calendarDay) {
-          (markAttendanceDto as any).calendarDayId = calendarDay.id;
+        try {
+          const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+            markAttendanceDto.instituteId
+          );
 
-          // ✅ PERFORMANCE: Use cached default event ID instead of querying MySQL every time
-          if (!markAttendanceDto.eventId && defaultEventId) {
-            (markAttendanceDto as any).eventId = defaultEventId;
+          if (calendarDay) {
+            // ✅ calendarDayId is ALWAYS system-set (today → today's day record)
+            (markAttendanceDto as any).calendarDayId = calendarDay.id;
+
+            // ✅ eventId: frontend sent special event → keep it. Otherwise → default REGULAR_CLASS event.
+            if (originalFrontendEventId) {
+              (markAttendanceDto as any).eventId = originalFrontendEventId;
+              this.logger.log(`[${requestId}] 🎯 Special event attendance: eventId=${originalFrontendEventId}, dayId=${calendarDay.id}`);
+            } else if (defaultEventId) {
+              (markAttendanceDto as any).eventId = defaultEventId;
+              this.logger.debug(`[${requestId}] ✅ Auto-linked to default event: eventId=${defaultEventId}, dayId=${calendarDay.id}`);
+            } else {
+              this.logger.warn(`[${requestId}] ⚠️  Calendar day ${calendarDay.id} has no default event. Attendance will have dayId but no eventId.`);
+            }
+            calendarResolved = true;
           }
-        } else {
+        } catch (calendarError) {
+          // Retry once after invalidating cache — handles race conditions on lazy calendar day creation
           this.logger.warn(
-            `[${requestId}] ⚠️  No calendar day found for institute ${markAttendanceDto.instituteId} on ${markAttendanceDto.date}. ` +
-            `Lazy creation will occur in calendar service if needed.`
+            `[${requestId}] ⚠️  Calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
+          );
+          try {
+            this.calendarDayCacheService.invalidate(markAttendanceDto.instituteId);
+            const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+              markAttendanceDto.instituteId
+            );
+            if (calendarDay) {
+              (markAttendanceDto as any).calendarDayId = calendarDay.id;
+              if (originalFrontendEventId) {
+                (markAttendanceDto as any).eventId = originalFrontendEventId;
+              } else if (defaultEventId) {
+                (markAttendanceDto as any).eventId = defaultEventId;
+              }
+              calendarResolved = true;
+              this.logger.log(`[${requestId}] ✅ Calendar day recovered after retry: dayId=${calendarDay.id}`);
+            }
+          } catch (retryError) {
+            this.logger.error(
+              `[${requestId}] ❌ Calendar day resolution failed after retry: ${retryError.message}`
+            );
+          }
+        }
+
+        if (!calendarResolved) {
+          this.logger.error(
+            `[${requestId}] ❌ CRITICAL: Could not resolve calendar day for institute ${markAttendanceDto.instituteId} on ${markAttendanceDto.date}. ` +
+            `Attendance will still be saved but will NOT appear in calendar views.`
           );
         }
-      } catch (calendarError) {
-        // Don't block attendance marking if calendar lookup fails
-        this.logger.warn(
-          `[${requestId}] ⚠️  Calendar day lookup failed: ${calendarError.message}. ` +
-          `Attendance will be marked without calendar linkage.`
-        );
       }
 
       // ✅ STEP 3.6: Device validation (if marking from a registered device)
@@ -227,9 +271,16 @@ export class AttendanceService {
         if (!deviceValidation.allowed) {
           throw new ForbiddenException(`Device rejected: ${deviceValidation.error}`);
         }
-        // Apply event override from device binding (if device is bound to an event)
-        if (deviceValidation.eventId && !markAttendanceDto.eventId) {
-          (markAttendanceDto as any).eventId = deviceValidation.eventId;
+        // Apply event override from device binding (if device is bound to a special event)
+        // Priority: frontend special eventId > device binding eventId > system default (REGULAR_CLASS)
+        // Device binding overrides the auto-assigned default REGULAR_CLASS event, but NOT a
+        // frontend-supplied special event (the user explicitly chose that event).
+        if (deviceValidation.eventId) {
+          if (!originalFrontendEventId) {
+            // No explicit frontend event → device binding overrides the auto-linked default event
+            (markAttendanceDto as any).eventId = deviceValidation.eventId;
+            this.logger.log(`[${requestId}] 🔧 Device binding overrides default event: eventId=${deviceValidation.eventId}`);
+          }
         }
         // Apply status override from device config/binding
         if (deviceValidation.statusOverride && !markAttendanceDto.status) {
@@ -246,6 +297,19 @@ export class AttendanceService {
 
       // ✅ STEP 4: Mark attendance in DynamoDB (same for all user types)
       const result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
+
+      // ✅ STEP 4.5: Sync to MySQL based on system-wide sync mode
+      try {
+        const syncMode = this.syncConfigService.getSyncModeSync();
+        if (syncMode === AttendanceSyncMode.IMMEDIATE) {
+          await this.syncSchedulerService.syncFromDto(markAttendanceDto);
+        } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
+          this.syncSchedulerService.syncFromDtoAsync(markAttendanceDto);
+        }
+        // BACKEND_SCHEDULE: no-op here — cron handles it
+      } catch (syncErr) {
+        this.logger.warn(`[${requestId}] MySQL sync skipped: ${syncErr.message}`);
+      }
 
       // ✅ STEP 5: Send notifications ONLY for students (teachers/admins don't need parent notifications)
       if (userType === AttendanceUserType.STUDENT && studentData) {
@@ -395,24 +459,80 @@ export class AttendanceService {
       // ✅ STEP 8: Update the DTO with only validated users
       bulkAttendanceDto.students = validatedStudents;
       
-      // ✅ STEP 8.5: Lookup calendar day for calendar linkage (BUG-001 FIX)
-      try {
-        const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-          bulkAttendanceDto.instituteId
-        );
-        if (calendarDay) {
-          (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
-          (bulkAttendanceDto as any).defaultEventId = defaultEventId;
+      // ============================================
+      // STEP 8.5: MANDATORY Calendar Day + Event Linkage (Bulk)
+      // ============================================
+      // Same logic as single attendance: calendarDayId is ALWAYS system-resolved.
+      // eventId: if bulk DTO has a special eventId → use it. Otherwise → default REGULAR_CLASS event.
+      {
+        const frontendEventId = (bulkAttendanceDto as any).eventId; // Special event from frontend (if any)
+        let calendarResolved = false;
+
+        try {
+          const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+            bulkAttendanceDto.instituteId
+          );
+          if (calendarDay) {
+            (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
+            if (frontendEventId) {
+              (bulkAttendanceDto as any).defaultEventId = frontendEventId;
+              this.logger.log(`[${requestId}] 🎯 Bulk special event attendance: eventId=${frontendEventId}, dayId=${calendarDay.id}`);
+            } else if (defaultEventId) {
+              (bulkAttendanceDto as any).defaultEventId = defaultEventId;
+              this.logger.debug(`[${requestId}] ✅ Bulk auto-linked to default event: eventId=${defaultEventId}, dayId=${calendarDay.id}`);
+            } else {
+              this.logger.warn(`[${requestId}] ⚠️  Bulk: calendar day ${calendarDay.id} has no default event.`);
+            }
+            calendarResolved = true;
+          }
+        } catch (calendarError) {
+          this.logger.warn(
+            `[${requestId}] ⚠️  Bulk calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
+          );
+          try {
+            this.calendarDayCacheService.invalidate(bulkAttendanceDto.instituteId);
+            const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
+              bulkAttendanceDto.instituteId
+            );
+            if (calendarDay) {
+              (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
+              (bulkAttendanceDto as any).defaultEventId = frontendEventId || defaultEventId;
+              calendarResolved = true;
+              this.logger.log(`[${requestId}] ✅ Bulk calendar day recovered after retry: dayId=${calendarDay.id}`);
+            }
+          } catch (retryError) {
+            this.logger.error(
+              `[${requestId}] ❌ Bulk calendar day resolution failed after retry: ${retryError.message}`
+            );
+          }
         }
-      } catch (calendarError) {
-        this.logger.warn(
-          `[${requestId}] ⚠️  Calendar day lookup failed for bulk: ${calendarError.message}. ` +
-          `Bulk attendance will be marked without calendar linkage.`
-        );
+
+        if (!calendarResolved) {
+          this.logger.error(
+            `[${requestId}] ❌ CRITICAL: Could not resolve calendar day for bulk at institute ${bulkAttendanceDto.instituteId}. ` +
+            `Bulk attendance will still be saved but will NOT appear in calendar views.`
+          );
+        }
       }
 
       // ✅ STEP 9: Mark attendance in DynamoDB
       const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
+
+      // ✅ STEP 9.5: Sync bulk results to MySQL based on system-wide sync mode
+      try {
+        const syncMode = this.syncConfigService.getSyncModeSync();
+        if (syncMode === AttendanceSyncMode.IMMEDIATE || syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
+          for (const record of results) {
+            if (syncMode === AttendanceSyncMode.IMMEDIATE) {
+              await this.syncSchedulerService.syncFromDto(record);
+            } else {
+              this.syncSchedulerService.syncFromDtoAsync(record);
+            }
+          }
+        }
+      } catch (syncErr) {
+        this.logger.warn(`[${requestId}] Bulk MySQL sync error: ${syncErr.message}`);
+      }
       
       // ✅ STEP 10: Send notifications ONLY for students (teachers/admins skip parent notifications)
       if (this.notificationsEnabled) {
@@ -2062,6 +2182,18 @@ export class AttendanceService {
 
     // ✅ STEP 6: Mark attendance in DynamoDB
     const result = await this.dynamoAttendanceService.markAttendance(attendanceDto);
+
+    // ✅ STEP 6.5: Sync to MySQL based on system-wide sync mode
+    try {
+      const syncMode = this.syncConfigService.getSyncModeSync();
+      if (syncMode === AttendanceSyncMode.IMMEDIATE) {
+        await this.syncSchedulerService.syncFromDto(attendanceDto);
+      } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
+        this.syncSchedulerService.syncFromDtoAsync(attendanceDto);
+      }
+    } catch (syncErr) {
+      this.logger.warn(`Card attendance MySQL sync skipped: ${syncErr.message}`);
+    }
 
     // ✅ STEP 7: Send notifications ONLY for students (non-blocking)
     if (isStudent && (parentContact || parentEmail || parentTelegramId)) {
