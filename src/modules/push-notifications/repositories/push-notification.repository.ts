@@ -358,6 +358,114 @@ export class PushNotificationRepository {
   }
 
   /**
+   * Mark ALL unread notifications as READ for a user across all scopes.
+   */
+  async markAllAsReadForUser(userId: string): Promise<number> {
+    const timestamp = now();
+    const result = await this.dataSource.query(
+      `UPDATE notification_recipients nr
+       INNER JOIN push_notifications n ON n.id = nr.notification_id
+       SET nr.status = 'READ', nr.read_at = ?, nr.updated_at = ?
+       WHERE nr.user_id = ?
+         AND nr.status != 'READ'
+         AND n.status = 'SENT'`,
+      [timestamp, timestamp, userId],
+    );
+    return result?.affectedRows ?? 0;
+  }
+
+  /**
+   * Get ALL notifications for a user across every scope and every institute.
+   * Uses INNER JOIN on notification_recipients so only notifications actually
+   * sent to this user are returned (prevents showing old/unrelated notifications).
+   */
+  async findAllForUser(
+    userId: string,
+    queryDto: QueryUserNotificationsDto,
+  ): Promise<{ data: PushNotificationEntity[]; total: number; unreadCount: number }> {
+    const qb = this.repository
+      .createQueryBuilder('notification')
+      .select([
+        'notification.id',
+        'notification.title',
+        'notification.body',
+        'notification.imageUrl',
+        'notification.icon',
+        'notification.actionUrl',
+        'notification.dataPayload',
+        'notification.scope',
+        'notification.priority',
+        'notification.senderRole',
+        'notification.instituteId',
+        'notification.classId',
+        'notification.subjectId',
+        'notification.sentAt',
+        'notification.createdAt',
+        'notification.updatedAt',
+      ])
+      .innerJoin(
+        NotificationRecipientEntity,
+        'recipient',
+        'recipient.notificationId = notification.id AND recipient.userId = :userId',
+        { userId },
+      )
+      .leftJoinAndSelect('notification.institute', 'institute')
+      .leftJoinAndSelect('notification.class', 'class')
+      .leftJoinAndSelect('notification.subject', 'subject')
+      .where('notification.status = :status', { status: NotificationStatus.SENT });
+
+    // Optional scope filter (e.g. GLOBAL only, or INSTITUTE only)
+    if (queryDto.scope) {
+      qb.andWhere('notification.scope = :scope', { scope: queryDto.scope });
+    }
+
+    // Optional institute filter
+    if (queryDto.instituteId) {
+      qb.andWhere('notification.instituteId = :instituteId', { instituteId: queryDto.instituteId });
+    }
+
+    // Optional read/unread filter
+    if (queryDto.isRead === true) {
+      qb.andWhere('recipient.status = :readStatus', { readStatus: NotificationDeliveryStatus.READ });
+    } else if (queryDto.isRead === false) {
+      qb.andWhere('recipient.status != :readStatus', { readStatus: NotificationDeliveryStatus.READ });
+    }
+
+    // Optional search
+    if (queryDto.search) {
+      qb.andWhere(
+        '(notification.title LIKE :search OR notification.body LIKE :search)',
+        { search: `%${queryDto.search}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+    const unreadCount = await this.getUnreadCountAll(userId);
+
+    const { page = 1, limit = 20 } = queryDto;
+    qb.orderBy('notification.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const data = await qb.getMany();
+
+    return { data, total, unreadCount };
+  }
+
+  /**
+   * Total unread count across ALL scopes for a user (global badge count).
+   */
+  async getUnreadCountAll(userId: string): Promise<number> {
+    return await this.recipientRepository
+      .createQueryBuilder('r')
+      .innerJoin(PushNotificationEntity, 'n', 'n.id = r.notificationId')
+      .where('r.userId = :userId', { userId })
+      .andWhere('r.status != :readStatus', { readStatus: NotificationDeliveryStatus.READ })
+      .andWhere('n.status = :sentStatus', { sentStatus: NotificationStatus.SENT })
+      .getCount();
+  }
+
+  /**
    * Get unread count for institute notifications — from recipient table
    * Only counts notifications this user was actually sent (not old ones before they joined)
    */

@@ -1619,6 +1619,8 @@ export class AttendanceService {
             parentContact: parentUser.phoneNumber || null,
             parentEmail: parentUser.email || null,
             parentTelegramId: parentUser.telegramId || null,
+            parentUserId: parentUser.id || null,
+            instituteId: attendanceDto.instituteId,
             attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
             date: attendanceDto.date,
             time: formatSriLankaTime(now()),

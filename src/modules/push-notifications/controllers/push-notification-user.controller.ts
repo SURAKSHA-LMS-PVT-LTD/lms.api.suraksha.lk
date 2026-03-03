@@ -47,6 +47,60 @@ export class PushNotificationUserController {
   constructor(private readonly pushNotificationService: PushNotificationService) {}
 
   /**
+   * Get ALL notifications for the current user across every institute and global scope.
+   * This is the unified inbox — returns everything the user was sent, with read status.
+   * Supports optional filters: scope, instituteId, isRead, search.
+   */
+  @Get('my')
+  @ApiOperation({
+    summary: 'Get all my notifications',
+    description:
+      'Returns ALL notifications for the current user across all institutes and global scope in a single paginated response. ' +
+      'Supports filtering by scope, instituteId, isRead, and search. Includes total unread count.',
+  })
+  @ApiResponse({ status: 200, description: 'All notifications retrieved successfully', type: PaginatedUserNotificationResponseDto })
+  async getMyNotifications(
+    @Query() queryDto: QueryUserNotificationsDto,
+    @Req() request: Request,
+  ): Promise<PaginatedUserNotificationResponseDto> {
+    const user = request.user as any;
+    return await this.pushNotificationService.findAllForUser(user.s, queryDto);
+  }
+
+  /**
+   * Get total unread notification count across ALL scopes for the current user.
+   * Useful for global badge counts (e.g. a bell icon with a number across all institutes).
+   */
+  @Get('my/unread-count')
+  @ApiOperation({
+    summary: 'Get total unread count across all scopes',
+    description: 'Returns the total number of unread notifications for the current user across all institutes and global scope.',
+  })
+  @ApiResponse({ status: 200, description: 'Unread count retrieved', type: UnreadCountResponseDto })
+  async getMyUnreadCount(@Req() request: Request): Promise<UnreadCountResponseDto> {
+    const user = request.user as any;
+    return await this.pushNotificationService.getUnreadCountAll(user.s);
+  }
+
+  /**
+   * Mark ALL notifications as read for the current user across all scopes.
+   */
+  @Post('my/mark-all-read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark all notifications as read (all scopes)',
+    description: 'Marks every unread notification as read for the current user across all institutes and global scope.',
+  })
+  @ApiResponse({ status: 200, description: 'All notifications marked as read' })
+  async markAllMyNotificationsRead(
+    @Req() request: Request,
+  ): Promise<{ success: boolean; updatedCount: number }> {
+    const user = request.user as any;
+    const updatedCount = await this.pushNotificationService.markAllAsReadForUser(user.s);
+    return { success: true, updatedCount };
+  }
+
+  /**
    * Get notifications for a specific institute
    * Returns all notifications (institute-wide, class-level, subject-level) for the given institute
    */

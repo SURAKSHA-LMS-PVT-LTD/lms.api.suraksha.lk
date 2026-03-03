@@ -11,7 +11,8 @@ import {
   UserNotificationResponseDto,
   PaginatedPushNotificationResponseDto,
   PaginatedUserNotificationResponseDto,
-  SendNotificationResultDto 
+  SendNotificationResultDto,
+  UnreadCountResponseDto
 } from '../dto/push-notification-response.dto';
 import { FcmNotificationService, FcmNotificationPayload } from '../../../common/services/fcm-notification.service';
 import { UserFcmTokenRepository } from '../../user/repositories/user-fcm-token.repository';
@@ -819,7 +820,71 @@ export class PushNotificationService {
   }
 
   /**
-   * Mark notification as read for user
+   * Mark ALL notifications as read for user across all scopes
+   */
+  async markAllAsReadForUser(userId: string): Promise<number> {
+    return await this.notificationRepository.markAllAsReadForUser(userId);
+  }
+
+  /**
+   * Get ALL notifications for the current user across every institute and global scope.
+   * This is the unified inbox endpoint — single query returns everything the user
+   * was actually sent, with read status, from all institutes + global.
+   */
+  async findAllForUser(
+    userId: string,
+    queryDto: QueryUserNotificationsDto,
+  ): Promise<PaginatedUserNotificationResponseDto> {
+    const { data, total, unreadCount } = await this.notificationRepository.findAllForUser(userId, queryDto);
+    const { page = 1, limit = 20 } = queryDto;
+
+    const notificationIds = data.map(n => n.id);
+    const readIds = await this.notificationRepository.getReadNotificationIds(userId, notificationIds);
+
+    const transformedData = data.map(notification => {
+      const isRead = readIds.has(notification.id);
+      const readAt = readIds.get(notification.id) ?? undefined;
+      return plainToInstance(UserNotificationResponseDto, {
+        id: notification.id,
+        title: notification.title,
+        body: notification.body,
+        imageUrl: notification.imageUrl,
+        icon: notification.icon,
+        actionUrl: notification.actionUrl,
+        dataPayload: notification.dataPayload,
+        scope: notification.scope,
+        priority: notification.priority,
+        institute: notification.institute,
+        class: notification.class,
+        subject: notification.subject,
+        sender: null,
+        senderRole: notification.senderRole,
+        isRead,
+        readAt,
+        sentAt: notification.sentAt || notification.createdAt,
+      }, { excludeExtraneousValues: true });
+    });
+
+    return {
+      data: transformedData,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      unreadCount,
+    };
+  }
+
+  /**
+   * Total unread notification count across all scopes (global badge count)
+   */
+  async getUnreadCountAll(userId: string): Promise<UnreadCountResponseDto> {
+    const count = await this.notificationRepository.getUnreadCountAll(userId);
+    return { unreadCount: count, totalCount: 0 };
+  }
+
+  /**
+   * Mark all institute notifications as read for user (single DB update)
    */
   async markAsRead(notificationId: string, userId: string): Promise<void> {
     await this.notificationRepository.markAsRead(userId, notificationId);
