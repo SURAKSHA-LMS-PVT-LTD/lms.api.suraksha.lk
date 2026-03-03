@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 import { SmsProviderService } from '../../sms/services/sms-provider.service';
 import { FcmNotificationService } from '../../../common/services/fcm-notification.service';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
@@ -20,6 +21,7 @@ export interface AttendanceNotificationData {
   parentEmail?: string;
   parentTelegramId?: string;
   parentUserId?: string;       // ✅ Parent user ID for push notifications
+  instituteId?: string;        // ✅ Institute ID for push notification inbox
   attendanceStatus: 'PRESENT' | 'ABSENT';
   attendanceType?: 'INSTITUTE' | 'CLASS' | 'SUBJECT' | 'TRANSPORT';  // ✅ Type of attendance (with all levels)
   date: string;
@@ -70,6 +72,7 @@ export class AttendanceNotificationService {
     private readonly configService: ConfigService,
     private readonly fcmNotificationService: FcmNotificationService,
     private readonly enhancedEmailService: EnhancedEmailService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -1038,6 +1041,15 @@ export class AttendanceNotificationService {
 
       if (result.successCount > 0) {
         this.logger.debug(`✅ Push notification sent to user ${data.parentUserId} - ${result.successCount} devices`);
+
+        // Record in push_notifications + notification_recipients so the parent
+        // can see attendance notifications in their in-app notification inbox
+        try {
+          await this.recordAttendancePushNotification(data, pushContent);
+        } catch (recErr) {
+          this.logger.warn(`Failed to record attendance push notification: ${(recErr as Error).message}`);
+        }
+
         return {
           success: true,
           deliveryId: `push_${Date.now()}_${data.parentUserId}`
@@ -1378,7 +1390,54 @@ export class AttendanceNotificationService {
     return message;
   }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+  // NOTIFICATION INBOX RECORDING
+  // ─────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * After a successful attendance FCM push, persist a push_notifications row and
+   * a notification_recipients row so the parent sees this notification in the
+   * in-app notification inbox (same as institute announcements).
+   */
+  private async recordAttendancePushNotification(
+    data: AttendanceNotificationData,
+    pushContent: { title: string; body: string; imageUrl?: string; data: Record<string, string> },
+  ): Promise<void> {
+    const ts = new Date();
+    const scope = data.instituteId ? 'INSTITUTE' : 'GLOBAL';
+
+    // 1. Insert a push_notifications row
+    const insertResult = await this.dataSource.query(
+      `INSERT INTO push_notifications
+         (title, body, image_url, scope, target_user_types, institute_id,
+          priority, status, sender_role, total_recipients, sent_count, failed_count,
+          read_count, created_at, updated_at, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'HIGH', 'SENT', 'SYSTEM', 1, 1, 0, 0, ?, ?, ?)`,
+      [
+        pushContent.title,
+        pushContent.body,
+        pushContent.imageUrl ?? null,
+        scope,
+        JSON.stringify(['PARENTS']),
+        data.instituteId ?? null,
+        ts,
+        ts,
+        ts,
+      ],
+    );
+
+    const notificationId: string = String(insertResult.insertId);
+
+    // 2. Insert a recipient row for the parent
+    await this.dataSource.query(
+      `INSERT IGNORE INTO notification_recipients
+         (notification_id, user_id, status, created_at, updated_at)
+       VALUES (?, ?, 'SENT', ?, ?)`,
+      [notificationId, data.parentUserId, ts, ts],
+    );
+
+    this.logger.debug(`📬 Attendance push recorded: notification #${notificationId} → parent ${data.parentUserId}`);
+  }
 }
 
 
