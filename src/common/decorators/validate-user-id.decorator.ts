@@ -101,7 +101,7 @@ export const ValidateUserIdWithAdminOverride = createParamDecorator(
     const isOwnData = paramUserId === tokenUserId;
     
     // Check admin privileges
-    const isSuperAdmin = user.userType === 'SUPERADMIN';
+    const isSuperAdmin = user.userType === 'SUPER_ADMIN';
     const isInstituteAdmin = user.userType === 'INSTITUTE_ADMIN';
     const isRegularUser = ['STUDENT', 'TEACHER', 'PARENT', 'ATTENDANCE_MARKER'].includes(user.userType);
     

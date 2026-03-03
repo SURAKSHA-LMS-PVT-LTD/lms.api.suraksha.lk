@@ -615,11 +615,11 @@ export class SmsController {
     const instituteId = dto?.instituteId || queryInstituteId || req.user.i?.[0]?.i;
     const userId = req.user.s;
 
-    // If caller is SUPERADMIN, they must provide an instituteId (either in body or query)
-    const isSuperAdmin = req.user?.t === UserType.SUPERADMIN || req.user?.role === 'SUPERADMIN';
+    // If caller is SUPER_ADMIN, they must provide an instituteId (either in body or query)
+    const isSuperAdmin = req.user?.t === UserType.SUPERADMIN || req.user?.role === 'SUPER_ADMIN';
     if (!instituteId) {
       if (isSuperAdmin) {
-        throw new BadRequestException('Institute ID is required for SUPERADMIN callers. Provide instituteId in request body or as query parameter.');
+        throw new BadRequestException('Institute ID is required for SUPER_ADMIN callers. Provide instituteId in request body or as query parameter.');
       }
 
       throw new BadRequestException('Institute ID is required. Ensure JWT token contains institute access or provide instituteId in request body/query parameter.');
