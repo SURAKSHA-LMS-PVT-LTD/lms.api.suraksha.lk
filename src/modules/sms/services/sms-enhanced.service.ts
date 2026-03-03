@@ -706,9 +706,9 @@ export class SmsEnhancedService {
       case RecipientFilterType.TEACHERS:
         return ['TEACHER'];
       case RecipientFilterType.ADMIN:
-        return ['INSTITUTE_ADMIN', 'ADMIN'];
+        return ['INSTITUTE_ADMIN'];
       case RecipientFilterType.ALL:
-        return ['STUDENT', 'TEACHER', 'INSTITUTE_ADMIN', 'ADMIN'];
+        return ['STUDENT', 'TEACHER', 'INSTITUTE_ADMIN'];
       default:
         return [];
     }

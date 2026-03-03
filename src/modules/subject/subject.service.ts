@@ -276,7 +276,7 @@ export class SubjectService {
     }
 
     // SUPERADMIN has access to all institutes
-    if (user.u === UserType.SUPERADMIN) {
+    if (user.userType === UserType.SUPERADMIN || user.u === 0) {
       this.logger.debug(`SUPERADMIN user ${user.s} accessing subject ${subject.id} for ${operation}`);
       return;
     }

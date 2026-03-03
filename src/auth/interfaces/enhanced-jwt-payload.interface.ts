@@ -75,7 +75,7 @@ export const USER_TYPE_COMPACT = {
 } as const;
 
 export const COMPACT_TO_USER_TYPE = {
-  0: 'SUPERADMIN',
+  0: 'SUPER_ADMIN',
   1: 'ORGANIZATION_MANAGER',
   2: 'USER', 
   3: 'USER_WITHOUT_PARENT',

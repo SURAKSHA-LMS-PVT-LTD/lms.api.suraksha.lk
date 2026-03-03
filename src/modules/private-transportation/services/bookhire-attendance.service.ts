@@ -1105,29 +1105,16 @@ export class BookhireAttendanceService {
    * - Generic USER without contact: Skip ❌
    */
   private shouldSendBookhireNotificationOptimized(user: any, studentData: any): boolean {
-    const userType = user.userType;
+    const userType = (user.userType || '').toUpperCase();
 
-    // Fixed role types - always send notifications
-    const priorityUserTypes = [
-      'STUDENT', 'student',
-      'TEACHER', 'teacher',
-      'PARENT', 'parent',
-      'INSTITUTE_ADMIN', 'institute_admin',
-      'ATTENDANCE_MARKER', 'attendance_marker',
-      'SUPER_ADMIN', 'SUPERADMIN', 'superadmin',
-      'ORGANIZATION_MANAGER', 'organization_manager'
+    // All known user types should receive notifications
+    const knownUserTypes = [
+      'STUDENT', 'TEACHER', 'PARENT', 'INSTITUTE_ADMIN', 'ATTENDANCE_MARKER',
+      'SUPER_ADMIN', 'SUPERADMIN', 'ORGANIZATION_MANAGER',
+      'USER_WITHOUT_PARENT', 'USER_WITHOUT_STUDENT'
     ];
 
-    if (priorityUserTypes.includes(userType)) {
-      return true;
-    }
-
-    // Enhanced flexible user types
-    if (userType === 'user_without_Parent' || userType === 'USER_WITHOUT_PARENT') {
-      return true;
-    }
-
-    if (userType === 'user_without_student' || userType === 'USER_WITHOUT_STUDENT') {
+    if (knownUserTypes.includes(userType)) {
       return true;
     }
 

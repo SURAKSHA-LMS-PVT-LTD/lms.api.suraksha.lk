@@ -38,11 +38,11 @@ function extractUserIdFromToken(token: string, jwtService: JwtService): string |
   }
 }
 
-function extractUserRoleFromToken(token: string, jwtService: JwtService): UserType | null {
+function extractUserRoleFromToken(token: string, jwtService: JwtService): string | null {
   try {
     const payload = jwtService.decode(token) as JwtPayload;
-    if (!payload?.u) return null;
-    return payload.u; // 'u' is the user type in JWT v2
+    if (payload?.u === undefined) return null;
+    return payload.userType || String(payload.u); // Return DB string or compact number as string
   } catch (error) {
     return null;
   }
@@ -108,11 +108,11 @@ export class InstitutePaymentService {
 
   // Utility method to determine user access level for secure data filtering
   private getUserAccessLevel(user: JwtPayload, resourceUserId?: string): UserAccessLevel {
-    const role = user.u;
+    const role = user.userType;
     const userId = user.s;
     
     // System admin and organization manager have full admin access
-    if (role === UserType.SUPERADMIN || role === UserType.ORGANIZATION_MANAGER) {
+    if (role === UserType.SUPERADMIN || role === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1) {
       return UserAccessLevel.ADMIN;
     }
     

@@ -1898,7 +1898,7 @@ export class SmsService {
           .from('institute_user', 'iu')
           .innerJoin('users', 'u', 'u.id = iu.user_id')
           .where('iu.institute_id = :instituteId', { instituteId })
-          .andWhere("iu.institute_user_type IN ('ADMIN', 'SUPER_ADMIN', 'INSTITUTE_ADMIN')")
+          .andWhere("iu.institute_user_type = 'INSTITUTE_ADMIN'")
           .andWhere('u.is_active = 1')
           .andWhere('u.phone_number IS NOT NULL')
           .andWhere('LENGTH(u.phone_number) > 5')
@@ -2089,7 +2089,7 @@ export class SmsService {
           FROM institute_user iu
           INNER JOIN users u ON u.id = iu.user_id
           WHERE iu.institute_id = :instituteId
-            AND iu.institute_user_type IN ('ADMIN', 'SUPER_ADMIN', 'INSTITUTE_ADMIN')
+            AND iu.institute_user_type = 'INSTITUTE_ADMIN'
             AND iu.status = 'ACTIVE'
             AND u.is_active = 1
             AND u.phone_number IS NOT NULL
@@ -2288,7 +2288,7 @@ export class SmsService {
       .leftJoinAndSelect('instituteUser.user', 'user')
       .where('instituteUser.instituteId = :instituteId', { instituteId })
       .andWhere('instituteUser.instituteUserType IN (:...userTypes)', { 
-        userTypes: ['ADMIN', 'SUPER_ADMIN', 'INSTITUTE_ADMIN'] 
+        userTypes: ['INSTITUTE_ADMIN'] 
       })
       .andWhere('user.isActive = :isActive', { isActive: true })
       .getMany();

@@ -100,10 +100,10 @@ export const ValidateUserIdWithAdminOverride = createParamDecorator(
     // Check if user is accessing their own data
     const isOwnData = paramUserId === tokenUserId;
     
-    // Check admin privileges
+    // Check admin privileges (userType is DB value: 'SUPER_ADMIN', 'ORGANIZATION_MANAGER', 'USER', etc.)
     const isSuperAdmin = user.userType === 'SUPER_ADMIN';
-    const isInstituteAdmin = user.userType === 'INSTITUTE_ADMIN';
-    const isRegularUser = ['STUDENT', 'TEACHER', 'PARENT', 'ATTENDANCE_MARKER'].includes(user.userType);
+    const isOrgManager = user.userType === 'ORGANIZATION_MANAGER';
+    const isRegularUser = ['USER', 'USER_WITHOUT_PARENT', 'USER_WITHOUT_STUDENT'].includes(user.userType);
     
     // Allow access based on user type and ownership
     if (isOwnData) {
@@ -112,9 +112,9 @@ export const ValidateUserIdWithAdminOverride = createParamDecorator(
     } else if (isSuperAdmin) {
       // Superadmin can access any user's data
       return paramUserId;
-    } else if (isInstituteAdmin) {
-      // Institute admin access will be validated in the service layer
-      // for institute-specific permissions
+    } else if (isOrgManager) {
+      // Organization manager access will be validated in the service layer
+      // for organization-specific permissions
       return paramUserId;
     } else if (isRegularUser) {
       // Regular users can only access their own data
@@ -122,7 +122,7 @@ export const ValidateUserIdWithAdminOverride = createParamDecorator(
         `Access denied: Regular users can only access their own data. Requested ID: ${paramValue}, Your ID: ${jwtUserId}`
       );
     } else {
-      // Unknown user type
+      // Unknown user type - deny access
       throw new ForbiddenException('Insufficient permissions to access user data');
     }
   },

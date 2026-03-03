@@ -366,7 +366,7 @@ export class SmsController {
     @Query('status') status?: string
   ): Promise<any> {
     const userId = req.user.s;
-    const userType = req.user?.t || req.user?.role;
+    const userType = req.user?.userType;
 
     if (!instituteId) {
       throw new BadRequestException('Institute ID is required');
@@ -374,7 +374,7 @@ export class SmsController {
 
     // Institute Admin can only view their own institute's submissions
     const tokenInstituteId = req.user.i?.[0]?.i;
-    if (userType !== UserType.SUPERADMIN && userType !== 'SUPERADMIN') {
+    if (userType !== UserType.SUPERADMIN && userType !== 'SUPER_ADMIN') {
       if (!tokenInstituteId || tokenInstituteId !== instituteId) {
         throw new BadRequestException('You can only view payment submissions for your own institute');
       }
@@ -616,7 +616,7 @@ export class SmsController {
     const userId = req.user.s;
 
     // If caller is SUPER_ADMIN, they must provide an instituteId (either in body or query)
-    const isSuperAdmin = req.user?.t === UserType.SUPERADMIN || req.user?.role === 'SUPER_ADMIN';
+    const isSuperAdmin = req.user?.userType === UserType.SUPERADMIN || req.user?.u === 0;
     if (!instituteId) {
       if (isSuperAdmin) {
         throw new BadRequestException('Institute ID is required for SUPER_ADMIN callers. Provide instituteId in request body or as query parameter.');

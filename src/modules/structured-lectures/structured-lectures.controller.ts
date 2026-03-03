@@ -163,7 +163,7 @@ export class StructuredLecturesController {
     try {
       // For non-admin users, default to showing only active lectures
       let activeFilter = isActive;
-      if (request.user.u !== UserType.SUPERADMIN && activeFilter === undefined) {
+      if (request.user.u !== 0 && activeFilter === undefined) {
         activeFilter = true;
       }
 
@@ -225,7 +225,7 @@ export class StructuredLecturesController {
       
       // For non-admin users, default to showing only active lectures
       let activeFilter = isActive;
-      if (request.user.u !== UserType.SUPERADMIN && activeFilter === undefined) {
+      if (request.user.u !== 0 && activeFilter === undefined) {
         activeFilter = true;
       }
 

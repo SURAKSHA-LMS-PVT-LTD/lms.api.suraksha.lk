@@ -474,13 +474,15 @@ export class FirstLoginService {
 
   /**
    * Get additional user data based on user type (student/parent specific data)
+   * Note: DB user_type uses UserType enum ('USER', 'SUPER_ADMIN', etc.), not institute roles.
+   * A 'USER' can be enrolled as STUDENT or PARENT via institute_users, so we try loading both.
    */
   private async getAdditionalUserData(userId: string, userType: string): Promise<Partial<MinimalUserDataDto>> {
     const additionalData: Partial<MinimalUserDataDto> = {};
 
     try {
-      if (userType === 'STUDENT') {
-        // Get student-specific data
+      // Try loading student-specific data (user may be enrolled as student in an institute)
+      try {
         const { StudentEntity } = await import('../../modules/student/entities/student.entity');
         const studentRepository = this.userRepository.manager.getRepository(StudentEntity);
         
@@ -494,8 +496,10 @@ export class FirstLoginService {
           additionalData.emergencyContact = student.emergencyContact || undefined;
           additionalData.bloodGroup = student.bloodGroup || undefined;
         }
-      } else if (userType === 'PARENT') {
-        // Get parent-specific data
+      } catch { /* Student entity may not exist for this user */ }
+
+      // Try loading parent-specific data (user may be enrolled as parent in an institute)
+      try {
         const { ParentEntity } = await import('../../modules/parent/entities/parent.entity');
         const parentRepository = this.userRepository.manager.getRepository(ParentEntity);
         
@@ -509,10 +513,9 @@ export class FirstLoginService {
           additionalData.workplace = parent.workplace || undefined;
           additionalData.educationLevel = parent.educationLevel || undefined;
         }
-      }
+      } catch { /* Parent entity may not exist for this user */ }
     } catch (error) {
       this.logger.warn(`Could not fetch additional data for user ${userId}:`, error.message);
-      // Don't fail the request if additional data fetch fails
     }
 
     return additionalData;
@@ -835,11 +838,12 @@ export class FirstLoginService {
 
   /**
    * Update type-specific data for enhanced approach
+   * Note: DB user_type is 'USER', not 'STUDENT'/'PARENT'. Try updating both tables if data provided.
    */
   private async updateTypeSpecificDataEnhanced(userId: string, userType: string, dto: EnhancedVerifyOtpDto): Promise<void> {
     try {
-      if (userType === 'STUDENT') {
-        // Update student-specific data
+      // Try updating student-specific data if relevant fields are provided
+      if (dto.studentId || dto.emergencyContact || dto.bloodGroup) {
         const { StudentEntity } = await import('../../modules/student/entities/student.entity');
         const studentRepository = this.userRepository.manager.getRepository(StudentEntity);
         
@@ -851,8 +855,10 @@ export class FirstLoginService {
         if (Object.keys(studentUpdateData).length > 0) {
           await studentRepository.update({ userId }, studentUpdateData);
         }
-      } else if (userType === 'PARENT') {
-        // Update parent-specific data
+      }
+
+      // Try updating parent-specific data if relevant fields are provided
+      if (dto.occupation || dto.workplace || dto.educationLevel) {
         const { ParentEntity } = await import('../../modules/parent/entities/parent.entity');
         const parentRepository = this.userRepository.manager.getRepository(ParentEntity);
         
@@ -867,17 +873,17 @@ export class FirstLoginService {
       }
     } catch (error) {
       this.logger.warn(`Could not update enhanced type-specific data for user ${userId}:`, error.message);
-      // Don't fail the request if type-specific data update fails
     }
   }
 
   /**
    * Update type-specific data (student/parent)
+   * Note: DB user_type is 'USER', not 'STUDENT'/'PARENT'. Try updating both tables if data provided.
    */
   private async updateTypeSpecificData(userId: string, userType: string, dto: CompleteProfileDto): Promise<void> {
     try {
-      if (userType === 'STUDENT') {
-        // Update student-specific data
+      // Try updating student-specific data if relevant fields are provided
+      if (dto.emergencyContact || dto.bloodGroup) {
         const { StudentEntity } = await import('../../modules/student/entities/student.entity');
         const studentRepository = this.userRepository.manager.getRepository(StudentEntity);
         
@@ -888,8 +894,10 @@ export class FirstLoginService {
         if (Object.keys(studentUpdateData).length > 0) {
           await studentRepository.update({ userId }, studentUpdateData);
         }
-      } else if (userType === 'PARENT') {
-        // Update parent-specific data
+      }
+
+      // Try updating parent-specific data if relevant fields are provided
+      if (dto.occupation || dto.workplace || dto.educationLevel) {
         const { ParentEntity } = await import('../../modules/parent/entities/parent.entity');
         const parentRepository = this.userRepository.manager.getRepository(ParentEntity);
         
@@ -904,7 +912,6 @@ export class FirstLoginService {
       }
     } catch (error) {
       this.logger.warn(`Could not update type-specific data for user ${userId}:`, error.message);
-      // Don't fail the request if type-specific data update fails
     }
   }
 

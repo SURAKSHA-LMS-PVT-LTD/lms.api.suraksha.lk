@@ -228,7 +228,7 @@ export class InstituteClassSubjectPaymentService {
     const submission = this.submissionRepository.create({
       paymentId,
       userId: user.s,
-      userType: user.u, // Use global UserType from JWT (USER, SUPER_ADMIN, etc.)
+      userType: user.userType as any, // Use DB string UserType (e.g. 'USER', 'SUPER_ADMIN')
       username: `${submitter.firstName || ''} ${submitter.lastName || ''}`.trim(),
       paymentDate: new Date(createSubmissionDto.paymentDate),
       receiptUrl: uploadResult.url, // Relative path or full URL stored directly

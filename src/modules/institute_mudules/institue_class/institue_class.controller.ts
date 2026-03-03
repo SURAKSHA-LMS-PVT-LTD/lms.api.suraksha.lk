@@ -344,7 +344,7 @@ export class InstitueClassController {
       access.i === classEntity.instituteId && (access.r & 2) === 2
     );
 
-    if (userType !== UserType.SUPERADMIN && !isInstituteAdmin) {
+    if (userType !== 0 && !isInstituteAdmin) {
       throw new ForbiddenException('Access denied. You must be an institute admin or SUPERADMIN to enable enrollment.');
     }
 
@@ -380,7 +380,7 @@ export class InstitueClassController {
       access.i === classEntity.instituteId && (access.r & 2) === 2
     );
 
-    if (userType !== UserType.SUPERADMIN && !isInstituteAdmin) {
+    if (userType !== 0 && !isInstituteAdmin) {
       throw new ForbiddenException('Access denied. You must be an institute admin or SUPERADMIN to disable enrollment.');
     }
 
@@ -412,7 +412,7 @@ export class InstitueClassController {
       access.i === classEntity.instituteId && (access.r & 2) === 2
     );
 
-    if (userType !== UserType.SUPERADMIN && !isInstituteAdmin) {
+    if (userType !== 0 && !isInstituteAdmin) {
       throw new ForbiddenException('Access denied. You must be an institute admin or SUPERADMIN to view enrollment settings.');
     }
 
@@ -1081,9 +1081,9 @@ export class InstitueClassController {
       // Authorization logic - extract user info from JWT
       const currentUserId = req.user?.s;
       
-      // Extract institute IDs from JWT hierarchical access structure (after JWT strategy conversion)
-      const userInstituteIds = req.user?.i /* TODO: use new institute access structure */ ? Object.keys(req.user.i /* TODO: use new institute access structure */) : [];
-      const adminInstituteIds = req.user?.i /* TODO: check institute admin role bitmask */ ? Object.keys(req.user.i /* TODO: check institute admin role bitmask */).filter(id => req.user.i /* TODO: check institute admin role bitmask */[id] === 1) : [];
+      // Extract institute IDs from JWT hierarchical access structure (array of {i, r, c})
+      const userInstituteIds = Array.isArray(req.user?.i) ? req.user.i.map(entry => entry.i) : [];
+      const adminInstituteIds = Array.isArray(req.user?.i) ? req.user.i.filter(entry => (entry.r & 2) === 2).map(entry => entry.i) : [];
 
       // Access control will be handled by decorators
 
@@ -1266,9 +1266,9 @@ export class InstitueClassController {
       // Authorization logic - extract user info from JWT
       const currentUserId = req.user?.s;
       
-      // Extract institute IDs from JWT hierarchical access structure (after JWT strategy conversion)
-      const userInstituteIds = req.user?.i /* TODO: use new institute access structure */ ? Object.keys(req.user.i /* TODO: use new institute access structure */) : [];
-      const adminInstituteIds = req.user?.i /* TODO: check institute admin role bitmask */ ? Object.keys(req.user.i /* TODO: check institute admin role bitmask */).filter(id => req.user.i /* TODO: check institute admin role bitmask */[id] === 1) : [];
+      // Extract institute IDs from JWT hierarchical access structure (array of {i, r, c})
+      const userInstituteIds = Array.isArray(req.user?.i) ? req.user.i.map(entry => entry.i) : [];
+      const adminInstituteIds = Array.isArray(req.user?.i) ? req.user.i.filter(entry => (entry.r & 2) === 2).map(entry => entry.i) : [];
 
       // Access control will be handled by decorators
 

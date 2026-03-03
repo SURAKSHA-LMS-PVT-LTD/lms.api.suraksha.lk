@@ -56,8 +56,11 @@ export interface JwtPayload {
   /** User ID (compact format: 's') */
   s: string;
   
-  /** User Type (compact format: 'u') */
-  u: UserType;
+  /** User Type compact numeric (0=SUPERADMIN,1=ORG_MGR,2=USER,3=WO_PARENT,4=WO_STUDENT) */
+  u: number;
+  
+  /** User Type string from DB (e.g. 'SUPER_ADMIN', 'USER') — use this for comparisons */
+  userType?: string;
   
   /** Institute access array (compact format: 'i') */
   i?: InstituteAccess[];
@@ -101,7 +104,7 @@ export class JwtRequestHelper {
    * Check if user is SUPERADMIN
    */
   static isSuperAdmin(user: JwtPayload): boolean {
-    return user.u === UserType.SUPERADMIN;
+    return user.userType === UserType.SUPERADMIN || user.u === 0;
   }
 
   /**
@@ -160,10 +163,10 @@ export class JwtRequestHelper {
   }
 
   /**
-   * Get user type from JWT
+   * Get user type from JWT (returns the DB string value if available, otherwise maps from compact number)
    */
-  static getUserType(user: JwtPayload): UserType {
-    return user.u;
+  static getUserType(user: JwtPayload): string {
+    return user.userType || String(user.u);
   }
 
   /**

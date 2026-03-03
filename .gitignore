@@ -59,3 +59,8 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 cloudbuild.yaml
 setup-cloud-run-env.sh
 env-vars-cloud-run.txt
+
+# Security: tokens, migration scripts with credentials, debug scripts
+token.txt
+run-migration.js
+check-*.js

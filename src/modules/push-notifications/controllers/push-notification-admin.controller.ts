@@ -225,27 +225,18 @@ export class PushNotificationAdminController {
     }
 
     // Check institute roles
-    const instituteAccess = user.ia; // Institute access from JWT
+    const instituteAccess = user.i; // Institute access from JWT (array of {i, r, c})
 
-    if (instituteAccess && instituteAccess.length > 0) {
+    if (instituteAccess && Array.isArray(instituteAccess) && instituteAccess.length > 0) {
       const firstInstitute = instituteAccess[0];
-      const roleType = firstInstitute.r; // Role type
+      const roleBitmask = firstInstitute.r; // Role bitmask (IA=8, TE=4, ST=2, AM=1)
 
-      // Role types: 0 = ADMIN, 1 = TEACHER, etc.
-      switch (roleType) {
-        case 0:
-          return 'INSTITUTE_ADMIN';
-        case 1:
-          return 'TEACHER';
-        case 2:
-          return 'STUDENT';
-        case 3:
-          return 'PARENT';
-        case 4:
-          return 'ATTENDANCE_MARKER';
-        default:
-          return 'USER';
-      }
+      // Check role bitmask flags
+      if (roleBitmask & 8) return 'INSTITUTE_ADMIN';
+      if (roleBitmask & 4) return 'TEACHER';
+      if (roleBitmask & 2) return 'STUDENT';
+      if (roleBitmask & 1) return 'ATTENDANCE_MARKER';
+      return 'USER';
     }
 
     return 'USER';

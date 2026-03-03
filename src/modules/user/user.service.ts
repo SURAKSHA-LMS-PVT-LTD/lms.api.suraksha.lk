@@ -2162,9 +2162,9 @@ export class UsersService {
       
       // 🚨 ACCESS VALIDATION REMOVED: Allow all users to view any user's institutes
       const isOwnData = jwtUserIdBigInt && jwtUserIdBigInt === userIdBigInt;
-      const isSuperAdmin = currentUser?.u === UserType.SUPERADMIN;
-      const isOrgManager = currentUser?.u === UserType.ORGANIZATION_MANAGER;
-      const isRegularUser = currentUser?.u && [UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT].includes(currentUser.u);
+      const isSuperAdmin = currentUser?.userType === UserType.SUPERADMIN || currentUser?.u === 0;
+      const isOrgManager = currentUser?.userType === UserType.ORGANIZATION_MANAGER || currentUser?.u === 1;
+      const isRegularUser = currentUser?.userType && [UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT].includes(currentUser.userType as UserType);
       
       
       // Route based on user type and access level

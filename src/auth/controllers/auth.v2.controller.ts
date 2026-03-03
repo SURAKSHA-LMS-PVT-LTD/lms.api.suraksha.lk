@@ -31,7 +31,7 @@ export class AuthV2Controller {
         refresh_expires_in: 604800,
         payload: {
           s: '12345',
-          u: 'STUDENT',
+          u: 2,
           i: [],
           c: []
         },
@@ -39,7 +39,7 @@ export class AuthV2Controller {
           id: '12345',
           email: 'student@example.com',
           nameWithInitials: 'J. Doe',
-          userType: 'STUDENT',
+          userType: 'USER',
           imageUrl: 'https://storage.googleapis.com/...'
         }
       }

@@ -1,21 +1,21 @@
-/**
- * ⚙️ SYSTEM CONFIG ADMIN CONTROLLER
+﻿/**
+ * âš™ï¸ SYSTEM CONFIG ADMIN CONTROLLER
  *
  * Full CRUD endpoints for managing system_config entries via the admin panel.
  * Protected by JwtAuthGuard + SystemAdminGuard (SUPER_ADMIN / ORG_MANAGER only).
  *
  * Routes:
- *   GET    /api/admin/system-config              — List all configs (filterable)
- *   GET    /api/admin/system-config/groups        — List group summaries
- *   GET    /api/admin/system-config/cache/stats   — Cache statistics
- *   POST   /api/admin/system-config/cache/refresh — Force cache refresh
- *   GET    /api/admin/system-config/:group        — Get all configs in a group
- *   GET    /api/admin/system-config/:group/:key   — Get single config
- *   POST   /api/admin/system-config               — Create new config entry
- *   PUT    /api/admin/system-config/:group/:key   — Update config value
- *   PATCH  /api/admin/system-config/:group/:key/deactivate  — Soft-delete
- *   PATCH  /api/admin/system-config/:group/:key/reactivate  — Re-enable
- *   DELETE /api/admin/system-config/:group/:key   — Hard-delete (permanent)
+ *   GET    /api/admin/system-config              â€” List all configs (filterable)
+ *   GET    /api/admin/system-config/groups        â€” List group summaries
+ *   GET    /api/admin/system-config/cache/stats   â€” Cache statistics
+ *   POST   /api/admin/system-config/cache/refresh â€” Force cache refresh
+ *   GET    /api/admin/system-config/:group        â€” Get all configs in a group
+ *   GET    /api/admin/system-config/:group/:key   â€” Get single config
+ *   POST   /api/admin/system-config               â€” Create new config entry
+ *   PUT    /api/admin/system-config/:group/:key   â€” Update config value
+ *   PATCH  /api/admin/system-config/:group/:key/deactivate  â€” Soft-delete
+ *   PATCH  /api/admin/system-config/:group/:key/reactivate  â€” Re-enable
+ *   DELETE /api/admin/system-config/:group/:key   â€” Hard-delete (permanent)
  */
 import {
   Controller,
@@ -62,9 +62,9 @@ import {
 export class SystemConfigAdminController {
   constructor(private readonly configService: SystemConfigService) {}
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LIST / READ
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   /**
    * List all config entries. Optionally filter by group and/or active status.
@@ -104,11 +104,14 @@ export class SystemConfigAdminController {
   @Get('cache/stats')
   @ApiOperation({ summary: 'Get cache statistics' })
   async cacheStats() {
+    const entries = await this.configService.getAll({});
+    const activeEntries = entries.filter((e: any) => e.isActive !== false);
     return {
       success: true,
       data: {
-        message: 'Cache stats retrieved',
-        // refreshCache also returns count — use getAll to count
+        totalEntries: entries.length,
+        activeEntries: activeEntries.length,
+        inactiveEntries: entries.length - activeEntries.length,
         hint: 'Use POST /cache/refresh to reload',
       },
     };
@@ -174,9 +177,9 @@ export class SystemConfigAdminController {
     };
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // CREATE / UPDATE
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   /**
    * Create a new config entry.
@@ -195,7 +198,7 @@ export class SystemConfigAdminController {
       );
     }
 
-    const userId = req.user?.userId || req.user?.sub || 'ADMIN';
+    const userId = req.user?.s || req.user?.userId || req.user?.sub || 'ADMIN';
     await this.configService.set(dto.group, dto.key, dto.value, userId, {
       description: dto.description,
       valueType: dto.valueType || 'STRING',
@@ -234,7 +237,7 @@ export class SystemConfigAdminController {
     // Validate value matches type hint
     this.validateValueType(dto.value, dto.valueType || existing.valueType);
 
-    const userId = req.user?.userId || req.user?.sub || 'ADMIN';
+    const userId = req.user?.s || req.user?.userId || req.user?.sub || 'ADMIN';
     await this.configService.set(g, k, dto.value, userId, {
       description: dto.description,
       valueType: dto.valueType,
@@ -248,9 +251,9 @@ export class SystemConfigAdminController {
     };
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DEACTIVATE / REACTIVATE / DELETE
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   /**
    * Soft-delete (deactivate) a config entry. Row preserved for audit.
@@ -272,7 +275,7 @@ export class SystemConfigAdminController {
       throw new NotFoundException(`Config [${g}:${k}] not found`);
     }
 
-    const userId = req.user?.userId || req.user?.sub || 'ADMIN';
+    const userId = req.user?.s || req.user?.userId || req.user?.sub || 'ADMIN';
     await this.configService.deactivate(g, k, userId);
     return {
       success: true,
@@ -295,7 +298,7 @@ export class SystemConfigAdminController {
     const g = group.toUpperCase();
     const k = key.toUpperCase();
 
-    const userId = req.user?.userId || req.user?.sub || 'ADMIN';
+    const userId = req.user?.s || req.user?.userId || req.user?.sub || 'ADMIN';
     try {
       await this.configService.reactivate(g, k, userId);
     } catch {
@@ -332,9 +335,9 @@ export class SystemConfigAdminController {
     };
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // HELPERS
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   private validateValueType(value: string, valueType: string): void {
     switch (valueType) {
@@ -355,7 +358,7 @@ export class SystemConfigAdminController {
           throw new BadRequestException(`Value is not valid JSON`);
         }
         break;
-      // STRING and ENUM — no extra validation
+      // STRING and ENUM â€” no extra validation
     }
   }
 }
