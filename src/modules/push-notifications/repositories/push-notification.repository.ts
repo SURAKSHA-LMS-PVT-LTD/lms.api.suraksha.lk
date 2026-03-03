@@ -1,19 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder, In } from 'typeorm';
+import { Repository, SelectQueryBuilder, In, DataSource } from 'typeorm';
 import { PushNotificationEntity, NotificationScope, NotificationStatus } from '../entities/push-notification.entity';
 import { NotificationReadEntity } from '../entities/notification-read.entity';
+import { NotificationRecipientEntity, NotificationDeliveryStatus } from '../entities/notification-recipient.entity';
 import { CreatePushNotificationDto } from '../dto/create-push-notification.dto';
 import { QueryPushNotificationDto, QueryUserNotificationsDto } from '../dto/query-push-notification.dto';
 import { now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class PushNotificationRepository {
+  private readonly logger = new Logger(PushNotificationRepository.name);
+
   constructor(
     @InjectRepository(PushNotificationEntity)
     private readonly repository: Repository<PushNotificationEntity>,
     @InjectRepository(NotificationReadEntity)
     private readonly readRepository: Repository<NotificationReadEntity>,
+    @InjectRepository(NotificationRecipientEntity)
+    private readonly recipientRepository: Repository<NotificationRecipientEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -56,7 +62,8 @@ export class PushNotificationRepository {
 
   /**
    * Find notifications for a specific institute (user view)
-   * Includes all notifications for that institute (institute-wide, class, subject level)
+   * FIXED: Only returns notifications that were actually sent to this user
+   * via the notification_recipients table — prevents new members from seeing old announcements.
    */
   async findByInstituteId(
     instituteId: string,
@@ -80,6 +87,12 @@ export class PushNotificationRepository {
         'notification.createdAt',
         'notification.updatedAt'
       ])
+      .innerJoin(
+        NotificationRecipientEntity,
+        'recipient',
+        'recipient.notificationId = notification.id AND recipient.userId = :userId',
+        { userId }
+      )
       .leftJoinAndSelect('notification.institute', 'institute')
       .leftJoinAndSelect('notification.class', 'class')
       .leftJoinAndSelect('notification.subject', 'subject')
@@ -112,7 +125,7 @@ export class PushNotificationRepository {
   }
 
   /**
-   * Find global/system notifications only (no institute-specific)
+   * Find global/system notifications only — filtered by recipient table
    */
   async findSystemNotifications(
     queryDto: QueryUserNotificationsDto,
@@ -135,6 +148,12 @@ export class PushNotificationRepository {
         'notification.createdAt',
         'notification.updatedAt'
       ])
+      .innerJoin(
+        NotificationRecipientEntity,
+        'recipient',
+        'recipient.notificationId = notification.id AND recipient.userId = :userId',
+        { userId }
+      )
       .where('notification.scope = :scope', { scope: NotificationScope.GLOBAL })
       .andWhere('notification.status = :status', { status: NotificationStatus.SENT });
 
@@ -218,9 +237,38 @@ export class PushNotificationRepository {
   }
 
   /**
-   * Mark notification as read for a user
+   * Mark notification(s) as DELIVERED for a user (app received the push)
+   */
+  async markDelivered(userId: string, notificationIds: string[]): Promise<void> {
+    if (notificationIds.length === 0) return;
+
+    const timestamp = now();
+
+    await this.recipientRepository
+      .createQueryBuilder()
+      .update(NotificationRecipientEntity)
+      .set({ status: NotificationDeliveryStatus.DELIVERED, updatedAt: timestamp })
+      .where('userId = :userId', { userId })
+      .andWhere('notificationId IN (:...notificationIds)', { notificationIds })
+      .andWhere('status = :sentStatus', { sentStatus: NotificationDeliveryStatus.SENT })
+      .execute();
+  }
+
+  /**
+   * Mark notification as read for a user — updates recipient row + legacy reads table
    */
   async markAsRead(userId: string, notificationId: string): Promise<void> {
+    const timestamp = now();
+
+    // Update recipient row status to READ
+    await this.recipientRepository
+      .createQueryBuilder()
+      .update(NotificationRecipientEntity)
+      .set({ status: NotificationDeliveryStatus.READ, readAt: timestamp, updatedAt: timestamp })
+      .where('notificationId = :notificationId AND userId = :userId', { notificationId, userId })
+      .execute();
+
+    // Also keep legacy notification_reads in sync for backward compatibility
     const existing = await this.readRepository.findOne({
       where: { userId, notificationId }
     });
@@ -229,7 +277,7 @@ export class PushNotificationRepository {
       const read = this.readRepository.create({
         userId,
         notificationId,
-        readAt: now()
+        readAt: timestamp
       });
       await this.readRepository.save(read);
 
@@ -242,8 +290,19 @@ export class PushNotificationRepository {
    * Mark multiple notifications as read for a user
    */
   async markMultipleAsRead(userId: string, notificationIds: string[]): Promise<void> {
+    if (notificationIds.length === 0) return;
     const timestamp = now();
     
+    // Batch update recipient rows
+    await this.recipientRepository
+      .createQueryBuilder()
+      .update(NotificationRecipientEntity)
+      .set({ status: NotificationDeliveryStatus.READ, readAt: timestamp, updatedAt: timestamp })
+      .where('userId = :userId AND notificationId IN (:...notificationIds)', { userId, notificationIds })
+      .andWhere('status != :readStatus', { readStatus: NotificationDeliveryStatus.READ })
+      .execute();
+
+    // Legacy: sync notification_reads
     for (const notificationId of notificationIds) {
       const existing = await this.readRepository.findOne({
         where: { userId, notificationId }
@@ -262,15 +321,16 @@ export class PushNotificationRepository {
   }
 
   /**
-   * Get read notification IDs for a user
+   * Get read notification IDs for a user (from recipient table)
    */
   async getReadNotificationIds(userId: string, notificationIds: string[]): Promise<Set<string>> {
     if (notificationIds.length === 0) return new Set();
 
-    const reads = await this.readRepository.find({
+    const reads = await this.recipientRepository.find({
       where: {
         userId,
-        notificationId: In(notificationIds)
+        notificationId: In(notificationIds),
+        status: NotificationDeliveryStatus.READ,
       },
       select: ['notificationId']
     });
@@ -279,47 +339,36 @@ export class PushNotificationRepository {
   }
 
   /**
-   * Get unread count for institute notifications
+   * Get unread count for institute notifications — from recipient table
+   * Only counts notifications this user was actually sent (not old ones before they joined)
    */
   async getUnreadCount(userId: string, instituteId: string): Promise<number> {
-    const totalQuery = this.repository
-      .createQueryBuilder('notification')
-      .where('notification.instituteId = :instituteId', { instituteId })
-      .andWhere('notification.status = :status', { status: NotificationStatus.SENT });
-
-    const totalNotifications = await totalQuery.getCount();
-
-    const readCount = await this.readRepository
-      .createQueryBuilder('read')
-      .innerJoin(PushNotificationEntity, 'notification', 'notification.id = read.notificationId')
-      .where('read.userId = :userId', { userId })
-      .andWhere('notification.instituteId = :instituteId', { instituteId })
-      .andWhere('notification.status = :status', { status: NotificationStatus.SENT })
+    const count = await this.recipientRepository
+      .createQueryBuilder('r')
+      .innerJoin(PushNotificationEntity, 'n', 'n.id = r.notificationId')
+      .where('r.userId = :userId', { userId })
+      .andWhere('r.status != :readStatus', { readStatus: NotificationDeliveryStatus.READ })
+      .andWhere('n.instituteId = :instituteId', { instituteId })
+      .andWhere('n.status = :sentStatus', { sentStatus: NotificationStatus.SENT })
       .getCount();
 
-    return totalNotifications - readCount;
+    return count;
   }
 
   /**
-   * Get unread count for global notifications
+   * Get unread count for global notifications — from recipient table
    */
   async getUnreadCountGlobal(userId: string): Promise<number> {
-    const totalQuery = this.repository
-      .createQueryBuilder('notification')
-      .where('notification.scope = :scope', { scope: NotificationScope.GLOBAL })
-      .andWhere('notification.status = :status', { status: NotificationStatus.SENT });
-
-    const totalNotifications = await totalQuery.getCount();
-
-    const readCount = await this.readRepository
-      .createQueryBuilder('read')
-      .innerJoin(PushNotificationEntity, 'notification', 'notification.id = read.notificationId')
-      .where('read.userId = :userId', { userId })
-      .andWhere('notification.scope = :scope', { scope: NotificationScope.GLOBAL })
-      .andWhere('notification.status = :status', { status: NotificationStatus.SENT })
+    const count = await this.recipientRepository
+      .createQueryBuilder('r')
+      .innerJoin(PushNotificationEntity, 'n', 'n.id = r.notificationId')
+      .where('r.userId = :userId', { userId })
+      .andWhere('r.status != :readStatus', { readStatus: NotificationDeliveryStatus.READ })
+      .andWhere('n.scope = :scope', { scope: NotificationScope.GLOBAL })
+      .andWhere('n.status = :sentStatus', { sentStatus: NotificationStatus.SENT })
       .getCount();
 
-    return totalNotifications - readCount;
+    return count;
   }
 
   /**
@@ -389,5 +438,98 @@ export class PushNotificationRepository {
     }
 
     return queryBuilder;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // RECIPIENT MANAGEMENT
+  // ════════════════════════════════════════════════════════════
+
+  /**
+   * Batch-insert recipient rows for a notification.
+   * Uses INSERT IGNORE to be idempotent (safe to call twice).
+   * Processes in chunks of 500 to avoid query-size limits.
+   */
+  async recordRecipients(
+    notificationId: string,
+    userIds: string[],
+    status: NotificationDeliveryStatus = NotificationDeliveryStatus.SENT,
+  ): Promise<number> {
+    if (userIds.length === 0) return 0;
+
+    const timestamp = now();
+    const CHUNK_SIZE = 500;
+    let inserted = 0;
+
+    for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
+      const chunk = userIds.slice(i, i + CHUNK_SIZE);
+
+      // Build VALUES placeholders
+      const values = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+      const params: any[] = [];
+      for (const uid of chunk) {
+        params.push(notificationId, uid, status, timestamp, timestamp);
+      }
+
+      try {
+        const result = await this.dataSource.query(
+          `INSERT IGNORE INTO notification_recipients 
+            (notification_id, user_id, status, created_at, updated_at) 
+           VALUES ${values}`,
+          params,
+        );
+        inserted += result?.affectedRows ?? chunk.length;
+      } catch (error) {
+        this.logger.error(`Failed to record recipients chunk (offset ${i}): ${error.message}`);
+      }
+    }
+
+    return inserted;
+  }
+
+  /**
+   * Update recipient statuses for users whose FCM send failed.
+   */
+  async markRecipientsFailed(notificationId: string, failedUserIds: string[]): Promise<void> {
+    if (failedUserIds.length === 0) return;
+
+    await this.recipientRepository
+      .createQueryBuilder()
+      .update(NotificationRecipientEntity)
+      .set({ status: NotificationDeliveryStatus.FAILED, updatedAt: now() })
+      .where('notificationId = :notificationId', { notificationId })
+      .andWhere('userId IN (:...failedUserIds)', { failedUserIds })
+      .execute();
+  }
+
+  /**
+   * Get delivery statistics for a notification.
+   */
+  async getRecipientStats(notificationId: string): Promise<{
+    total: number;
+    sent: number;
+    delivered: number;
+    read: number;
+    failed: number;
+  }> {
+    const rows = await this.recipientRepository
+      .createQueryBuilder('r')
+      .select('r.status', 'status')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('r.notificationId = :notificationId', { notificationId })
+      .groupBy('r.status')
+      .getRawMany();
+
+    const map: Record<string, number> = {};
+    for (const row of rows) {
+      map[row.status] = parseInt(row.cnt, 10);
+    }
+
+    return {
+      total: Object.values(map).reduce((a, b) => a + b, 0),
+      sent: map[NotificationDeliveryStatus.SENT] || 0,
+      delivered: map[NotificationDeliveryStatus.DELIVERED] || 0,
+      read: map[NotificationDeliveryStatus.READ] || 0,
+      failed: map[NotificationDeliveryStatus.FAILED] || 0,
+    };
   }
 }

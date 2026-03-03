@@ -248,6 +248,18 @@ export class PushNotificationService {
       this.logger.log(`📊 Stats: ${usersWithTokens} users with tokens, ${usersWithoutTokens} without tokens`);
       this.logger.log(`📊 Delivery: ${result.totalSuccess} success, ${result.totalFailure} failed`);
 
+      // ── Record recipient rows (only current members get rows) ──
+      await this.notificationRepository.recordRecipients(notificationId, targetUserIds);
+
+      // Mark users whose FCM send failed
+      const failedUserIds = result.userResults
+        .filter(r => r.result.failureCount > 0 && r.result.successCount === 0)
+        .map(r => r.userId);
+      if (failedUserIds.length > 0) {
+        await this.notificationRepository.markRecipientsFailed(notificationId, failedUserIds);
+        this.logger.log(`⚠️ Marked ${failedUserIds.length} recipients as FAILED`);
+      }
+
       // Update notification stats
       await this.notificationRepository.updateStats(notificationId, {
         totalRecipients: targetUserIds.length,

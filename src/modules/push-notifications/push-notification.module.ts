@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 // Entities
 import { PushNotificationEntity } from './entities/push-notification.entity';
 import { NotificationReadEntity } from './entities/notification-read.entity';
+import { NotificationRecipientEntity } from './entities/notification-recipient.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
@@ -28,6 +29,7 @@ import { UserFcmTokenRepository } from '../user/repositories/user-fcm-token.repo
     TypeOrmModule.forFeature([
       PushNotificationEntity,
       NotificationReadEntity,
+      NotificationRecipientEntity,
       InstituteUserEntity,
       InstituteClassStudentEntity,
       InstituteClassSubjectStudent,
