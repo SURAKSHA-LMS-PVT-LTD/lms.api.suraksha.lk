@@ -68,7 +68,7 @@ export class InstituteClassRepository implements IInstituteClassRepository {
 
     if (filterDto.search) {
       queryBuilder.andWhere(
-        '(class.name ILIKE :search OR class.code ILIKE :search)',
+        '(class.name LIKE :search OR class.code LIKE :search)',
         { search: `%${filterDto.search}%` }
       );
     }

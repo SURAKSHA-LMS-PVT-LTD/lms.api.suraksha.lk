@@ -198,7 +198,7 @@ export class StructuredLecturesService {
 
     if (queryDto.search) {
       queryBuilder.andWhere(
-        '(lecture.title ILIKE :search OR lecture.description ILIKE :search)',
+        '(lecture.title LIKE :search OR lecture.description LIKE :search)',
         { search: `%${queryDto.search}%` }
       );
     }

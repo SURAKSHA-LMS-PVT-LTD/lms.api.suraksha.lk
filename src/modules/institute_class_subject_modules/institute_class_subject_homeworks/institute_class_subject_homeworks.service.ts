@@ -191,7 +191,7 @@ export class InstituteClassSubjectHomeworksService {
 
       // Full-text search in title and description
       if (query.search) {
-        whereConditions.push('(homework.title ILIKE :search OR homework.description ILIKE :search)');
+        whereConditions.push('(homework.title LIKE :search OR homework.description LIKE :search)');
         parameters.search = `%${query.search}%`;
       }
 

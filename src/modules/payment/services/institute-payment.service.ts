@@ -82,7 +82,16 @@ export class InstitutePaymentService {
         return { user: null, hasAccess: false, role: null };
       }
 
-      // FIXED: Actually validate institute membership from database
+      // Allow superadmins and org managers access without institute enrollment
+      if (userEntity.userType === UserType.SUPERADMIN || userEntity.userType === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1) {
+        return {
+          user: user,
+          hasAccess: true,
+          role: userEntity.userType
+        };
+      }
+
+      // Validate institute membership from database for other users
       const instituteMembership = await this.instituteUserRepository.findOne({
         where: {
           userId: user.s,
@@ -93,11 +102,11 @@ export class InstitutePaymentService {
 
       // User must be enrolled in this institute
       if (!instituteMembership) {
-        return { user: userEntity as any, hasAccess: false, role: userEntity.userType };
+        return { user: user, hasAccess: false, role: userEntity.userType };
       }
 
       return {
-        user: userEntity as any,
+        user: user,
         hasAccess: true, // User is enrolled and active in this institute
         role: userEntity.userType
       };
@@ -231,7 +240,8 @@ export class InstitutePaymentService {
     }
 
     // All enrolled members can view institute payments, but with different data levels
-    const userAccessLevel = this.getUserAccessLevel(userEntity);
+    // Use original JWT payload (user) for access level check, not DB entity
+    const userAccessLevel = this.getUserAccessLevel(user);
     
     try {
       // Build secure query with proper filtering and optimized column selection
@@ -272,7 +282,7 @@ export class InstitutePaymentService {
       }
 
       if (queryDto.search) {
-        queryBuilder.andWhere('(payment.paymentType ILIKE :search OR payment.description ILIKE :search)', { 
+        queryBuilder.andWhere('(payment.paymentType LIKE :search OR payment.description LIKE :search)', { 
           search: `%${queryDto.search}%` 
         });
       }
@@ -1108,7 +1118,7 @@ export class InstitutePaymentService {
 
     // Text search
     if (queryDto.search) {
-      queryBuilder.andWhere('(submission.transactionReference ILIKE :search OR submission.paymentRemarks ILIKE :search OR submission.notes ILIKE :search)', 
+      queryBuilder.andWhere('(submission.transactionReference LIKE :search OR submission.paymentRemarks LIKE :search OR submission.notes LIKE :search)', 
         { search: `%${queryDto.search}%` });
     }
 
@@ -1205,7 +1215,7 @@ export class InstitutePaymentService {
     }
 
     if (queryDto.search) {
-      countQueryBuilder.andWhere('(submission.transactionReference ILIKE :search OR submission.paymentRemarks ILIKE :search OR submission.notes ILIKE :search)', 
+      countQueryBuilder.andWhere('(submission.transactionReference LIKE :search OR submission.paymentRemarks LIKE :search OR submission.notes LIKE :search)', 
         { search: `%${queryDto.search}%` });
     }
 

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like, ILike, FindManyOptions, SelectQueryBuilder, Not, In } from 'typeorm';
+import { Repository, Like, FindManyOptions, SelectQueryBuilder, Not, In } from 'typeorm';
 import { LectureEntity } from './entities/lecture.entity';
 import { LectureDocumentEntity } from './entities/lecture.entity'; // Both entities are in same file
 import { CreateLectureDto, UpdateLectureDto } from './dto/lecture.dto';
@@ -291,7 +291,7 @@ export class StructuredLecturesServiceTypeorm {
     // Apply filters
     if (search) {
       queryBuilder = queryBuilder.andWhere(
-        '(lecture.title ILIKE :search OR lecture.description ILIKE :search)',
+        '(lecture.title LIKE :search OR lecture.description LIKE :search)',
         { search: `%${search}%` }
       );
     }
@@ -608,7 +608,7 @@ export class StructuredLecturesServiceTypeorm {
       .createQueryBuilder('lecture')
       .leftJoinAndSelect('lecture.documents', 'documents')
       .where(
-        '(lecture.title ILIKE :search OR lecture.description ILIKE :search)',
+        '(lecture.title LIKE :search OR lecture.description LIKE :search)',
         { search: `%${searchTerm}%` }
       )
       .andWhere('lecture.isActive = :isActive', { isActive: true });

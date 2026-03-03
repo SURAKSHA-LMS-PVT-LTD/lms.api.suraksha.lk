@@ -3496,7 +3496,7 @@ export class InstitueUserService {
       // Optional search by user name or email
       if (query.search) {
         queryBuilder.andWhere(
-          '(user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.email ILIKE :search)',
+          '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search)',
           { search: `%${query.search}%` }
         );
       }

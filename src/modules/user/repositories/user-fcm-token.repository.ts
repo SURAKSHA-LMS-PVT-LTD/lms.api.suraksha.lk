@@ -268,7 +268,7 @@ export class UserFcmTokenRepository {
 
     if (queryDto.search) {
       queryBuilder.andWhere(
-        '(fcmToken.deviceId ILIKE :search OR fcmToken.deviceName ILIKE :search)',
+        '(fcmToken.deviceId LIKE :search OR fcmToken.deviceName LIKE :search)',
         { search: `%${queryDto.search}%` }
       );
     }

@@ -297,7 +297,7 @@ export class InstituteClassSubjectExamsService {
       }
 
       if (query.search) {
-        whereConditions.push('(exam.title ILIKE :search OR exam.description ILIKE :search)');
+        whereConditions.push('(exam.title LIKE :search OR exam.description LIKE :search)');
         parameters.search = `%${query.search}%`;
       }
 
