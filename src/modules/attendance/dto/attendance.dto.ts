@@ -186,10 +186,23 @@ export class BulkAttendanceDto {
   @IsOptional()
   location?: string;
 
+  @ApiPropertyOptional({ description: 'Date in YYYY-MM-DD format. Defaults to today (Sri Lanka time) if not provided.' })
+  @IsDateString()
+  @IsOptional()
+  date?: string;
+
   @ApiPropertyOptional({ enum: MarkingMethod, description: 'Method used to mark attendance' })
   @IsEnum(MarkingMethod)
   @IsOptional()
   markingMethod?: MarkingMethod;
+
+  @ApiPropertyOptional({
+    description: 'Event ID (optional). Only send for SPECIAL events (Parents Meeting, Exam, etc.). '
+      + 'If omitted, attendance auto-links to the default Regular Classes event for the date.'
+  })
+  @IsString()
+  @IsOptional()
+  eventId?: string;
 
   @ApiProperty({ type: [StudentAttendanceItem], description: 'Array of student attendance records' })
   @IsArray()

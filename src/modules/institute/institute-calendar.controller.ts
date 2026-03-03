@@ -335,15 +335,69 @@ export class InstituteCalendarController {
         };
       }
 
+      // Fetch all events for this day
+      const events = await this.calendarService.getEventsForDay(String(day.id));
+
       return {
         success: true,
         data: {
           ...day,
           defaultEventId,
+          events,
         },
       };
     } catch (error) {
       this.handleError(error, "Failed to get today's calendar day");
+    }
+  }
+
+  /**
+   * Get Calendar Day by Date - Returns day + all events for any date
+   * Frontend uses this to show available events when marking attendance for a specific date.
+   */
+  @Get('date/:date')
+  @ApiOperation({
+    summary: 'Get calendar day and events for a specific date',
+    description: 'Returns the calendar day, default event ID, and all events for the given date (YYYY-MM-DD). '
+      + 'If no calendar day exists, one is lazy-created with a default REGULAR_CLASS event. '
+      + 'Frontend should call this before marking attendance to display available events.',
+  })
+  @ApiParam({ name: 'date', description: 'Date in YYYY-MM-DD format' })
+  @ApiResponse({ status: 200, description: 'Calendar day with events retrieved' })
+  @ApiResponse({ status: 400, description: 'Invalid date format' })
+  async getCalendarDayByDate(
+    @Param('instituteId') instituteId: string,
+    @Param('date') date: string,
+  ) {
+    try {
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new BadRequestException('Invalid date format. Use YYYY-MM-DD.');
+      }
+
+      const { day, defaultEventId } = await this.cacheService.getCalendarDayForDate(instituteId, date);
+
+      if (!day) {
+        return {
+          success: false,
+          message: `No calendar day found for ${date}.`,
+          data: null,
+        };
+      }
+
+      // Fetch all events for this day so frontend can display event picker
+      const events = await this.calendarService.getEventsForDay(String(day.id));
+
+      return {
+        success: true,
+        data: {
+          ...day,
+          defaultEventId,
+          events,
+        },
+      };
+    } catch (error) {
+      this.handleError(error, `Failed to get calendar day for ${date}`);
     }
   }
 

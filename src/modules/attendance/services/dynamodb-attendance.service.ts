@@ -407,7 +407,7 @@ export class DynamoDBAttendanceService {
   // Mark bulk attendance
   // ✅ FIXED BUG-001: Now accepts and propagates calendarDayId + eventId from the bulk DTO
   async markBulkAttendance(bulkData: BulkAttendanceDto): Promise<MarkAttendanceDto[]> {
-    const today = getCurrentSriLankaDate();
+    const dateForRecords = bulkData.date || getCurrentSriLankaDate();
     const attendances = bulkData.students.map(studentData => ({
       studentId: studentData.studentId,
       studentName: studentData.studentName,
@@ -417,7 +417,7 @@ export class DynamoDBAttendanceService {
       className: bulkData.className,
       subjectId: bulkData.subjectId,
       subjectName: bulkData.subjectName,
-      date: today,
+      date: dateForRecords,
       status: studentData.status,
       location: bulkData.location,
       remarks: studentData.remarks,

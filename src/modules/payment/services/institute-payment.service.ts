@@ -244,35 +244,10 @@ export class InstitutePaymentService {
     const userAccessLevel = this.getUserAccessLevel(user);
     
     try {
-      // Build secure query with proper filtering and optimized column selection
+      // Build query - use leftJoinAndSelect for reliable entity hydration
       const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
-        .select([
-          'payment.id',
-          'payment.instituteId',
-          'payment.paymentType',
-          'payment.description',
-          'payment.amount',
-          'payment.status',
-          'payment.dueDate',
-          'payment.createdBy',
-          'payment.isActive',
-          'payment.createdAt'
-        ])
-        .leftJoin('payment.creator', 'creator')
-        .addSelect([
-          'creator.id',
-          'creator.firstName',
-          'creator.lastName',
-          'creator.email'
-        ])
-        .leftJoin('payment.submissions', 'submissions')
-        .addSelect([
-          'submissions.id',
-          'submissions.paymentId',
-          'submissions.submittedBy',
-          'submissions.status',
-          'submissions.createdAt'
-        ])
+        .leftJoinAndSelect('payment.creator', 'creator')
+        .leftJoinAndSelect('payment.submissions', 'submissions')
         .where('payment.instituteId = :instituteId', { instituteId })
         .andWhere('payment.isActive = :isActive', { isActive: true }); // Only show active payments
 
@@ -338,9 +313,8 @@ export class InstitutePaymentService {
 
       queryBuilder.skip(offset).take(limit);
 
-      // Get total count for pagination
-      const totalCount = await queryBuilder.getCount();
-      const payments = await queryBuilder.getMany();
+      // Use getManyAndCount for reliable results (getCount ignores skip/take automatically)
+      const [payments, totalCount] = await queryBuilder.getManyAndCount();
 
       // Transform payments with role-based security filtering
       const securePayments = payments.map(payment => 
@@ -1034,32 +1008,10 @@ export class InstitutePaymentService {
 
     const userAccessLevel = UserAccessLevel.ADMIN;
 
-    // Build the query with selective fields only (avoid SELECT *)
+    // Build the query - use leftJoinAndSelect for reliable entity hydration
     const queryBuilder = this.submissionRepository.createQueryBuilder('submission')
-      .select([
-        'submission.id',
-        'submission.paymentId',
-        'submission.paymentAmount',
-        'submission.paymentMethod',
-        'submission.transactionReference',
-        'submission.paymentDate',
-        'submission.status',
-        'submission.rejectionReason',
-        'submission.paymentRemarks',
-        'submission.lateFeeApplied',
-        'submission.totalAmountPaid',
-        'submission.receiptFileUrl',
-        'submission.createdAt',
-        'submission.verifiedAt'
-      ])
-      .leftJoin('submission.submitter', 'submitter')
-      .addSelect([
-        'submitter.id',
-        'submitter.firstName',
-        'submitter.lastName'
-      ])
-      .leftJoin('submission.payment', 'payment')
-      .addSelect(['payment.id', 'payment.instituteId'])
+      .leftJoinAndSelect('submission.submitter', 'submitter')
+      .leftJoinAndSelect('submission.payment', 'payment')
       .where('submission.paymentId = :paymentId', { paymentId })
       .andWhere('payment.instituteId = :instituteId', { instituteId });
 
@@ -1404,22 +1356,11 @@ export class InstitutePaymentService {
 
     // Access control will be handled by decorators
 
-    // Find the submission with only necessary fields (avoid SELECT *)
+    // Find the submission with relations
     const submission = await this.submissionRepository
       .createQueryBuilder('submission')
-      .select([
-        'submission.id',
-        'submission.paymentId', 
-        'submission.status',
-        'submission.paymentAmount',
-        'submission.totalAmountPaid',
-        'submission.paymentMethod',
-        'submission.submittedBy'
-      ])
-      .leftJoin('submission.payment', 'payment')
-      .addSelect(['payment.instituteId'])
-      .leftJoin('submission.submitter', 'submitter')
-      .addSelect(['submitter.id', 'submitter.firstName', 'submitter.lastName', 'submitter.nameWithInitials', 'submitter.email', 'submitter.imageUrl'])
+      .leftJoinAndSelect('submission.payment', 'payment')
+      .leftJoinAndSelect('submission.submitter', 'submitter')
       .where('submission.id = :submissionId', { submissionId })
       .getOne();
 
@@ -1526,37 +1467,7 @@ export class InstitutePaymentService {
     try {
       // REAL DATABASE QUERY - Get user's submissions with payment details
       const queryBuilder = this.submissionRepository.createQueryBuilder('submission')
-        .select([
-          'submission.id',
-          'submission.paymentId', 
-          'submission.paymentAmount',
-          'submission.paymentMethod',
-          'submission.transactionReference',
-          'submission.paymentDate',
-          'submission.status',
-          'submission.verifiedAt',
-          'submission.rejectionReason',
-          'submission.lateFeeApplied',
-          'submission.totalAmountPaid',
-          'submission.receiptFileName',
-          'submission.receiptFileUrl',
-          'submission.receiptFileSize',
-          'submission.receiptFileType',
-          'submission.paymentRemarks',
-          'submission.createdAt'
-        ])
-        .leftJoin('submission.payment', 'payment')
-        .addSelect([
-          'payment.id',
-          'payment.paymentType',
-          'payment.description',
-          'payment.amount',
-          'payment.dueDate',
-          'payment.targetType',
-          'payment.priority',
-          'payment.status',
-          'payment.isActive'
-        ])
+        .leftJoinAndSelect('submission.payment', 'payment')
         .where('payment.instituteId = :instituteId', { instituteId })
         .andWhere('submission.submittedBy = :userId', { userId: user.s })
         .andWhere('payment.isActive = :isActive', { isActive: true });

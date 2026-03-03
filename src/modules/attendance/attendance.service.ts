@@ -202,7 +202,7 @@ export class AttendanceService {
       // ============================================
       // STEP 3.5: MANDATORY Calendar Day + Event Linkage
       // ============================================
-      // calendarDayId: ALWAYS system-resolved from today's date. Never from frontend.
+      // calendarDayId: Resolved from the DTO's date (which defaults to today if not provided).
       // eventId: If frontend sends one (special event) → use it. Otherwise → auto-link to default REGULAR_CLASS event.
       // This ensures ALL attendance records are visible in the institute calendar section.
       const originalFrontendEventId = markAttendanceDto.eventId || null; // Save before any modification
@@ -210,8 +210,9 @@ export class AttendanceService {
         let calendarResolved = false;
 
         try {
-          const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-            markAttendanceDto.instituteId
+          const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getCalendarDayForDate(
+            markAttendanceDto.instituteId,
+            markAttendanceDto.date,
           );
 
           if (calendarDay) {
@@ -236,9 +237,10 @@ export class AttendanceService {
             `[${requestId}] ⚠️  Calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
           );
           try {
-            this.calendarDayCacheService.invalidate(markAttendanceDto.instituteId);
-            const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-              markAttendanceDto.instituteId
+            this.calendarDayCacheService.invalidate(markAttendanceDto.instituteId, markAttendanceDto.date);
+            const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getCalendarDayForDate(
+              markAttendanceDto.instituteId,
+              markAttendanceDto.date,
             );
             if (calendarDay) {
               (markAttendanceDto as any).calendarDayId = calendarDay.id;
@@ -318,13 +320,37 @@ export class AttendanceService {
 
       // ✅ STEP 6: Resolve image URL (works for ALL user types)
       const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
-      
+
+      // ✅ STEP 6.5: Fetch available events for this date so frontend can show event picker
+      let availableEvents = [];
+      try {
+        const calendarDayId = (markAttendanceDto as any).calendarDayId;
+        if (calendarDayId) {
+          const events = await this.instituteCalendarService.getEventsForDay(String(calendarDayId));
+          availableEvents = events.map(e => ({
+            id: String(e.id),
+            eventType: e.eventType,
+            title: e.title,
+            isDefault: e.isDefault,
+            isAttendanceTracked: e.isAttendanceTracked,
+            startTime: e.startTime,
+            endTime: e.endTime,
+          }));
+        }
+      } catch (evErr) {
+        this.logger.warn(`[${requestId}] Could not fetch events for response: ${evErr.message}`);
+      }
+
       return {
         success: true,
         imageUrl: imageUrl,
         status: markAttendanceDto.status,
         name: userName,
-        userType: userType,  // ✅ NEW: Return the auto-detected user type
+        userType: userType,
+        date: markAttendanceDto.date,
+        eventId: (markAttendanceDto as any).eventId || null,
+        calendarDayId: (markAttendanceDto as any).calendarDayId || null,
+        availableEvents,  // ✅ All events for this date — frontend can use for event picker
       };
     } catch (error) {
       this.logger.error(`[${requestId}] ❌ ERROR: Failed to mark attendance - ${error.message}`, error.stack);
@@ -337,6 +363,11 @@ export class AttendanceService {
     const startTime = nowTimestamp();
     
     try {
+      // Default date to today (Sri Lanka time) if not provided
+      if (!bulkAttendanceDto.date) {
+        bulkAttendanceDto.date = getCurrentSriLankaDate();
+      }
+
       const userIds = bulkAttendanceDto.students.map(s => s.studentId);
       
       // ✅ STEP 1: Batch detect user types from institute_user table
@@ -462,15 +493,16 @@ export class AttendanceService {
       // ============================================
       // STEP 8.5: MANDATORY Calendar Day + Event Linkage (Bulk)
       // ============================================
-      // Same logic as single attendance: calendarDayId is ALWAYS system-resolved.
+      // calendarDayId: Resolved from the DTO's date (defaults to today if not provided).
       // eventId: if bulk DTO has a special eventId → use it. Otherwise → default REGULAR_CLASS event.
       {
-        const frontendEventId = (bulkAttendanceDto as any).eventId; // Special event from frontend (if any)
+        const frontendEventId = bulkAttendanceDto.eventId || null; // Special event from frontend (if any)
         let calendarResolved = false;
 
         try {
-          const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-            bulkAttendanceDto.instituteId
+          const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getCalendarDayForDate(
+            bulkAttendanceDto.instituteId,
+            bulkAttendanceDto.date,
           );
           if (calendarDay) {
             (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
@@ -490,9 +522,10 @@ export class AttendanceService {
             `[${requestId}] ⚠️  Bulk calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
           );
           try {
-            this.calendarDayCacheService.invalidate(bulkAttendanceDto.instituteId);
-            const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-              bulkAttendanceDto.instituteId
+            this.calendarDayCacheService.invalidate(bulkAttendanceDto.instituteId, bulkAttendanceDto.date);
+            const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getCalendarDayForDate(
+              bulkAttendanceDto.instituteId,
+              bulkAttendanceDto.date,
             );
             if (calendarDay) {
               (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
@@ -561,11 +594,35 @@ export class AttendanceService {
         });
       }
 
+      // ✅ Fetch available events for this date so frontend can show event picker
+      let availableEvents = [];
+      try {
+        const calendarDayId = (bulkAttendanceDto as any).calendarDayId;
+        if (calendarDayId) {
+          const events = await this.instituteCalendarService.getEventsForDay(String(calendarDayId));
+          availableEvents = events.map(e => ({
+            id: String(e.id),
+            eventType: e.eventType,
+            title: e.title,
+            isDefault: e.isDefault,
+            isAttendanceTracked: e.isAttendanceTracked,
+            startTime: e.startTime,
+            endTime: e.endTime,
+          }));
+        }
+      } catch (evErr) {
+        this.logger.warn(`[${requestId}] Could not fetch events for bulk response: ${evErr.message}`);
+      }
+
       return {
         success: true,
         message: `Bulk attendance marked successfully for ${results.length} users`,
         totalProcessed: results.length,
         action: 'bulk_created',
+        date: bulkAttendanceDto.date,
+        eventId: (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId || null,
+        calendarDayId: (bulkAttendanceDto as any).calendarDayId || null,
+        availableEvents,  // ✅ All events for this date — frontend can use for event picker
         records: results
       };
     } catch (error) {

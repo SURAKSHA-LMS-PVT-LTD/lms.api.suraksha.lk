@@ -26,8 +26,18 @@ export class CalendarDayCacheService {
   async getTodayCalendarDay(
     instituteId: string,
   ): Promise<{ day: InstituteCalendarDayEntity; defaultEventId: string | null }> {
-    const today = this.getTodayDateString();
-    const cacheKey = `${instituteId}_${today}`;
+    return this.getCalendarDayForDate(instituteId, this.getTodayDateString());
+  }
+
+  /**
+   * Get calendar day for a specific date (with caching)
+   * Used when marking attendance for a date other than today
+   */
+  async getCalendarDayForDate(
+    instituteId: string,
+    dateStr: string,
+  ): Promise<{ day: InstituteCalendarDayEntity; defaultEventId: string | null }> {
+    const cacheKey = `${instituteId}_${dateStr}`;
 
     // Check cache
     const cached = this.cache.get(cacheKey);
@@ -38,14 +48,13 @@ export class CalendarDayCacheService {
 
     this.logger.debug(`Cache MISS for ${cacheKey}`);
 
-    // Fetch from database
-    // ✅ FIXED: Pass Sri Lanka date string instead of new Date() to avoid UTC timezone issues
+    // Fetch from database — getOrCreateCalendarDay accepts a date string
     const day = await this.calendarService.getOrCreateCalendarDay(
       instituteId,
-      today,
+      dateStr,
     );
 
-    // ✅ PERFORMANCE: Also fetch and cache default event to eliminate DB query per attendance mark
+    // Also fetch and cache default event to eliminate DB query per attendance mark
     let defaultEventId: string | null = null;
     try {
       const defaultEvent = await this.calendarService.getDefaultEventForDay(String(day.id));
@@ -66,11 +75,12 @@ export class CalendarDayCacheService {
   }
 
   /**
-   * Invalidate cache for a specific institute
+   * Invalidate cache for a specific institute and date
+   * If no date provided, invalidates today's cache
    */
-  invalidate(instituteId: string): void {
-    const today = this.getTodayDateString();
-    const cacheKey = `${instituteId}_${today}`;
+  invalidate(instituteId: string, dateStr?: string): void {
+    const targetDate = dateStr || this.getTodayDateString();
+    const cacheKey = `${instituteId}_${targetDate}`;
     this.cache.delete(cacheKey);
     this.logger.log(`Invalidated cache for ${cacheKey}`);
   }
