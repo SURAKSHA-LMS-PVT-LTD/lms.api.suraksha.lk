@@ -9,7 +9,7 @@
  *   await systemConfigService.set('ATTENDANCE', 'SYNC_MODE', 'IMMEDIATE', userId);
  *   const allAttendance = await systemConfigService.getGroup('ATTENDANCE');
  */
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemConfigEntity } from '../entities/system-config.entity';
@@ -20,7 +20,7 @@ interface CachedEntry {
 }
 
 @Injectable()
-export class SystemConfigService implements OnModuleInit {
+export class SystemConfigService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SystemConfigService.name);
 
   /** Cache: "GROUP:KEY" → value + expiry */
@@ -28,6 +28,8 @@ export class SystemConfigService implements OnModuleInit {
 
   /** Cache TTL: 5 minutes (300,000 ms) */
   private readonly CACHE_TTL_MS = 5 * 60 * 1000;
+
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     @InjectRepository(SystemConfigEntity)
@@ -51,7 +53,14 @@ export class SystemConfigService implements OnModuleInit {
     }
 
     // Cleanup expired entries every 10 minutes
-    setInterval(() => this.cleanup(), 10 * 60 * 1000);
+    this.cleanupInterval = setInterval(() => this.cleanup(), 10 * 60 * 1000);
+  }
+
+  onModuleDestroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════

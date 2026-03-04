@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -66,7 +66,7 @@ interface CacheItem<T> {
 }
 
 @Injectable()
-export class SmsService {
+export class SmsService implements OnModuleDestroy {
   private readonly logger = new Logger(SmsService.name);
 
   // LOCAL CACHING SYSTEM (with max-size limits to prevent memory leaks)
@@ -74,11 +74,12 @@ export class SmsService {
   private readonly credentialsCache = new Map<string, CacheItem<InstituteSmsCredentialsEntity>>();
   private readonly recipientCache = new Map<string, CacheItem<any[]>>();
   private readonly countCache = new Map<string, CacheItem<RecipientCountResponseDto>>();
+  private cacheCleanupInterval: ReturnType<typeof setInterval> | null = null;
   
   // CACHE CONFIGURATION
-  // ⚡ OPTIMIZED: Increased TTL for better performance
+  // ⚡ OPTIMIZED: Short TTL for credentials (credits change frequently)
   private readonly CACHE_TTL = {
-    CREDENTIALS: 1800000, // 30 minutes (credentials rarely change)
+    CREDENTIALS: 120000,  // 2 minutes (credits change on every SMS send)
     RECIPIENTS: 900000,   // 15 minutes (moderate frequency)
     COUNT: 600000,        // 10 minutes (frequently queried)
   };
@@ -553,11 +554,11 @@ export class SmsService {
 
     return {
       period: `Last ${period === 'month' ? 30 : 7} days`,
-      totalMessages: parseInt(stats.totalMessages) || 0,
-      totalRecipients: parseInt(stats.totalRecipients) || 0,
-      successfulSends: parseInt(stats.successfulSends) || 0,
-      failedSends: parseInt(stats.failedSends) || 0,
-      totalCreditsUsed: parseInt(stats.totalCreditsUsed) || 0,
+      totalMessages: parseInt(stats.totalMessages, 10) || 0,
+      totalRecipients: parseInt(stats.totalRecipients, 10) || 0,
+      successfulSends: parseInt(stats.successfulSends, 10) || 0,
+      failedSends: parseInt(stats.failedSends, 10) || 0,
+      totalCreditsUsed: parseInt(stats.totalCreditsUsed, 10) || 0,
       successRate: stats.totalRecipients > 0 
         ? `${((stats.successfulSends / stats.totalRecipients) * 100).toFixed(2)}%`
         : '0%'
@@ -979,7 +980,7 @@ export class SmsService {
       messageTemplate: campaign.messageTemplate,
       estimatedCredits: campaign.totalRecipients,
       status: campaign.status,
-      createdAt: campaign.createdAt.toISOString(),
+      createdAt: campaign.createdAt?.toISOString() || new Date().toISOString(),
       scheduledAt: campaign.scheduledAt?.toISOString(),
       filterCriteria: campaign.filterCriteria,
       maskIdUsed: campaign.maskIdUsed,
@@ -1018,19 +1019,18 @@ export class SmsService {
       );
     }
 
-    // Update status to APPROVED
-    message.status = SmsMessageStatus.APPROVED;
-    message.approvedBy = adminId;
-    message.approvedAt = now();
-    await this.smsMessageRepository.save(message);
-
-
-    // Get recipients from filter criteria
+    // Get recipients BEFORE changing status to avoid stuck APPROVED campaigns
     const recipients = await this.getRecipientsFromMessage(message);
 
     if (!recipients || recipients.length === 0) {
       throw new BadRequestException(`No recipients found for campaign ${messageId}`);
     }
+
+    // Update status to APPROVED only after recipients are confirmed
+    message.status = SmsMessageStatus.APPROVED;
+    message.approvedBy = adminId;
+    message.approvedAt = now();
+    await this.smsMessageRepository.save(message);
 
     // ✅ IMPORTANT: Send IMMEDIATELY after approval, regardless of scheduledAt time
     // Even if message was scheduled for past/future, approval triggers instant sending
@@ -1538,9 +1538,16 @@ export class SmsService {
   }
 
   private initializeCacheCleanup(): void {
-    setInterval(() => {
+    this.cacheCleanupInterval = setInterval(() => {
       this.cleanExpiredCache();
     }, 300000); // Clean every 5 minutes
+  }
+
+  onModuleDestroy(): void {
+    if (this.cacheCleanupInterval) {
+      clearInterval(this.cacheCleanupInterval);
+      this.cacheCleanupInterval = null;
+    }
   }
 
   private cleanExpiredCache(): void {
@@ -1657,15 +1664,21 @@ export class SmsService {
         `Please set SMSLENZ_USER_ID and SMSLENZ_API_KEY in .env file.`
       );
     }
-    
 
-    // Check credit availability for this institute
-    if (credentials.currentCredits < required) {
+    // ✅ FRESH DB READ: Always check credits from DB, never from cache
+    // Cached credits can be stale (up to 2 min old), allowing oversending
+    const freshCredentials = await this.smsCredentialsRepository.findOne({
+      where: { instituteId: credentials.instituteId, isActive: true },
+      select: ['currentCredits'],
+    });
+
+    const currentCredits = freshCredentials?.currentCredits ?? credentials.currentCredits;
+
+    if (currentCredits < required) {
       throw new ForbiddenException(
-        `Insufficient SMS credits. Required: ${required}, Available: ${credentials.currentCredits}. Please purchase more credits.`
+        `Insufficient SMS credits. Required: ${required}, Available: ${currentCredits}. Please purchase more credits.`
       );
     }
-
   }
 
   private normalizePhoneNumber(phone: string): string {
@@ -1959,13 +1972,10 @@ export class SmsService {
     };
 
     try {
-      const queryParts: string[] = [];
-      const parameters: any = { instituteId };
-      let paramIndex = 1;
-
       // ⚡ COUNT STUDENTS
       if (includeStudents) {
         let studentQuery = '';
+        let studentParams: any[] = [];
         
         // Case 1: No filters - count all students
         if (!dto.classIds?.length && !dto.subjectIds?.length) {
@@ -1973,64 +1983,68 @@ export class SmsService {
             SELECT COUNT(DISTINCT u.id) as count
             FROM institute_user iu
             INNER JOIN users u ON u.id = iu.user_id
-            WHERE iu.institute_id = :instituteId
+            WHERE iu.institute_id = ?
               AND iu.institute_user_type = 'STUDENT'
               AND iu.status = 'ACTIVE'
               AND u.is_active = 1
               AND u.phone_number IS NOT NULL
               AND u.phone_number != ''
           `;
+          studentParams = [instituteId];
         }
         // Case 2: Classes only
         else if (dto.classIds?.length > 0 && !dto.subjectIds?.length) {
-          parameters.classIds = dto.classIds;
+          const classPlaceholders = dto.classIds.map(() => '?').join(', ');
           studentQuery = `
             SELECT COUNT(DISTINCT u.id) as count
             FROM institute_class_students ics
             INNER JOIN users u ON u.id = ics.student_user_id
-            WHERE ics.institute_id = :instituteId
-              AND ics.institute_class_id IN (:...classIds)
+            WHERE ics.institute_id = ?
+              AND ics.institute_class_id IN (${classPlaceholders})
               AND ics.is_active = 1
               AND u.is_active = 1
               AND u.phone_number IS NOT NULL
               AND u.phone_number != ''
           `;
+          studentParams = [instituteId, ...dto.classIds];
         }
         // Case 3: Both classes and subjects
         else if (dto.classIds?.length > 0 && dto.subjectIds?.length > 0) {
-          parameters.classIds = dto.classIds;
-          parameters.subjectIds = dto.subjectIds;
+          const classPlaceholders = dto.classIds.map(() => '?').join(', ');
+          const subjectPlaceholders = dto.subjectIds.map(() => '?').join(', ');
           studentQuery = `
             SELECT COUNT(DISTINCT u.id) as count
             FROM institute_class_subject_students icss
             INNER JOIN users u ON u.id = icss.student_id
-            WHERE icss.institute_id = :instituteId
-              AND icss.class_id IN (:...classIds)
-              AND icss.subject_id IN (:...subjectIds)
+            WHERE icss.institute_id = ?
+              AND icss.class_id IN (${classPlaceholders})
+              AND icss.subject_id IN (${subjectPlaceholders})
               AND icss.is_active = 1
               AND u.is_active = 1
               AND u.phone_number IS NOT NULL
               AND u.phone_number != ''
           `;
+          studentParams = [instituteId, ...dto.classIds, ...dto.subjectIds];
         }
         // Case 4: Subjects only
         else if (!dto.classIds?.length && dto.subjectIds?.length > 0) {
-          parameters.subjectIds = dto.subjectIds;
+          const subjectPlaceholders = dto.subjectIds.map(() => '?').join(', ');
           studentQuery = `
             SELECT COUNT(DISTINCT u.id) as count
             FROM institute_class_subject_students icss
             INNER JOIN users u ON u.id = icss.student_id
-            WHERE icss.institute_id = :instituteId
-              AND icss.subject_id IN (:...subjectIds)
+            WHERE icss.institute_id = ?
+              AND icss.subject_id IN (${subjectPlaceholders})
               AND icss.is_active = 1
               AND u.is_active = 1
               AND u.phone_number IS NOT NULL
               AND u.phone_number != ''
           `;
+          studentParams = [instituteId, ...dto.subjectIds];
         }
 
         if (studentQuery) {
-          const result = await this.dataSource.query(studentQuery, parameters);
+          const result = await this.dataSource.query(studentQuery, studentParams);
           breakdown.students = parseInt(result[0]?.count || '0', 10);
         }
       }
@@ -2041,7 +2055,7 @@ export class SmsService {
           SELECT COUNT(DISTINCT u.id) as count
           FROM institute_user iu
           INNER JOIN users u ON u.id = iu.user_id
-          WHERE iu.institute_id = :instituteId
+          WHERE iu.institute_id = ?
             AND iu.institute_user_type = 'TEACHER'
             AND iu.status = 'ACTIVE'
             AND u.is_active = 1
@@ -2055,17 +2069,18 @@ export class SmsService {
       // ⚡ COUNT PARENTS
       if (includeParents) {
         let parentQuery = '';
+        let parentParams: any[] = [];
         
         if (dto.classIds?.length > 0) {
-          parameters.classIds = dto.classIds;
+          const classPlaceholders = dto.classIds.map(() => '?').join(', ');
           parentQuery = `
             SELECT COUNT(DISTINCT u.id) as count
             FROM institute_class_students ics
             INNER JOIN students s ON s.user_id = ics.student_user_id
             INNER JOIN parents p ON (p.user_id = s.father_id OR p.user_id = s.mother_id OR p.user_id = s.guardian_id)
             INNER JOIN users u ON u.id = p.user_id
-            WHERE ics.institute_id = :instituteId
-              AND ics.institute_class_id IN (:...classIds)
+            WHERE ics.institute_id = ?
+              AND ics.institute_class_id IN (${classPlaceholders})
               AND ics.is_active = 1
               AND s.is_active = 1
               AND p.is_active = 1
@@ -2073,6 +2088,7 @@ export class SmsService {
               AND u.phone_number IS NOT NULL
               AND u.phone_number != ''
           `;
+          parentParams = [instituteId, ...dto.classIds];
         } else {
           parentQuery = `
             SELECT COUNT(DISTINCT u.id) as count
@@ -2080,7 +2096,7 @@ export class SmsService {
             INNER JOIN students s ON s.user_id = ics.student_user_id
             INNER JOIN parents p ON (p.user_id = s.father_id OR p.user_id = s.mother_id OR p.user_id = s.guardian_id)
             INNER JOIN users u ON u.id = p.user_id
-            WHERE ics.institute_id = :instituteId
+            WHERE ics.institute_id = ?
               AND ics.is_active = 1
               AND s.is_active = 1
               AND p.is_active = 1
@@ -2088,9 +2104,10 @@ export class SmsService {
               AND u.phone_number IS NOT NULL
               AND u.phone_number != ''
           `;
+          parentParams = [instituteId];
         }
         
-        const result = await this.dataSource.query(parentQuery, parameters);
+        const result = await this.dataSource.query(parentQuery, parentParams);
         breakdown.parents = parseInt(result[0]?.count || '0', 10);
       }
 
@@ -2100,7 +2117,7 @@ export class SmsService {
           SELECT COUNT(DISTINCT u.id) as count
           FROM institute_user iu
           INNER JOIN users u ON u.id = iu.user_id
-          WHERE iu.institute_id = :instituteId
+          WHERE iu.institute_id = ?
             AND iu.institute_user_type = 'INSTITUTE_ADMIN'
             AND iu.status = 'ACTIVE'
             AND u.is_active = 1

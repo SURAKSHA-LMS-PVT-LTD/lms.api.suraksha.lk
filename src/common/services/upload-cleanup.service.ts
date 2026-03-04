@@ -1,9 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { CloudStorageService } from './cloud-storage.service';
 import { DataSource } from 'typeorm';
 
 @Injectable()
-export class UploadCleanupService {
+export class UploadCleanupService implements OnModuleDestroy {
   private readonly logger = new Logger(UploadCleanupService.name);
   private cleanupInterval: NodeJS.Timeout | null = null;
 

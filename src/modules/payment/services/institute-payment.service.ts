@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder, In, LessThan } from 'typeorm';
+import { Repository, SelectQueryBuilder, In, LessThan, DataSource } from 'typeorm';
 import { InstitutePayment, PaymentRequestStatus, PaymentTargetType } from '../entities/institute-payment.entity';
 import { InstitutePaymentSubmission, SubmissionStatus } from '../entities/institute-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
@@ -64,6 +64,7 @@ export class InstitutePaymentService {
     private jwtService: JwtService,
     private readonly cloudStorageService: CloudStorageService,
     private readonly userManagementService: UserManagementService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -895,78 +896,82 @@ export class InstitutePaymentService {
     // Access control will be handled by decorators
 
     try {
-      // Verify the payment exists and is active
-      const payment = await this.paymentRepository.findOne({
-        where: { 
-          id: paymentId, 
-          instituteId,
-          isActive: true,
-          status: PaymentRequestStatus.ACTIVE
-        }
-      });
-
-      if (!payment) {
-        throw new NotFoundException({
-          success: false,
-          message: 'Payment not found or not accepting submissions',
-          error: 'PAYMENT_NOT_FOUND'
+      // Wrap in transaction to prevent duplicate submission race condition
+      const savedSubmission = await this.dataSource.transaction(async (manager) => {
+        // Verify the payment exists and is active
+        const payment = await manager.findOne(InstitutePayment, {
+          where: { 
+            id: paymentId, 
+            instituteId,
+            isActive: true,
+            status: PaymentRequestStatus.ACTIVE
+          },
+          lock: { mode: 'pessimistic_read' },
         });
-      }
 
-      // Check if user already has a pending submission for this payment
-      const existingSubmission = await this.submissionRepository.findOne({
-        where: { 
-          paymentId, 
+        if (!payment) {
+          throw new NotFoundException({
+            success: false,
+            message: 'Payment not found or not accepting submissions',
+            error: 'PAYMENT_NOT_FOUND'
+          });
+        }
+
+        // Check if user already has a pending submission for this payment (inside transaction)
+        const existingSubmission = await manager.findOne(InstitutePaymentSubmission, {
+          where: { 
+            paymentId, 
+            submittedBy: user.s,
+            status: SubmissionStatus.PENDING
+          }
+        });
+
+        if (existingSubmission) {
+          throw new BadRequestException({
+            success: false,
+            message: 'You already have a pending submission for this payment',
+            error: 'DUPLICATE_SUBMISSION'
+          });
+        }
+
+        // Calculate late fee if applicable
+        let lateFeeApplied = 0;
+        const currentTimeMs = nowTimestamp();
+        const dueDateMs = payment.dueDate.getTime();
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const daysOverdue = Math.floor((currentTimeMs - dueDateMs) / msPerDay);
+        
+        if (payment.lateFeeAmount && payment.lateFeeAfterDays && daysOverdue > payment.lateFeeAfterDays) {
+          lateFeeApplied = payment.lateFeeAmount;
+        }
+
+        // Use receipt URL from DTO (uploaded via /upload/verify-and-publish)
+        const receiptFileUrl = createSubmissionDto.receiptUrl;
+        const receiptFileName = receiptFileUrl ? receiptFileUrl.split('/').pop() : undefined;
+
+        // Create submission - ALWAYS defaults to PENDING - NEVER auto-verified
+        const timestamp = now();
+        const submission = manager.create(InstitutePaymentSubmission, {
+          paymentId,
           submittedBy: user.s,
-          status: SubmissionStatus.PENDING
-        }
-      });
-
-      if (existingSubmission) {
-        throw new BadRequestException({
-          success: false,
-          message: 'You already have a pending submission for this payment',
-          error: 'DUPLICATE_SUBMISSION'
+          paymentAmount: createSubmissionDto.paymentAmount,
+          paymentMethod: createSubmissionDto.paymentMethod,
+          transactionReference: createSubmissionDto.transactionReference,
+          paymentDate: new Date(createSubmissionDto.paymentDate),
+          receiptFileUrl,
+          receiptFileName,
+          receiptFileSize: undefined,
+          receiptFileType: undefined,
+          status: SubmissionStatus.PENDING, // ALWAYS PENDING - never auto-verified
+          lateFeeApplied,
+          totalAmountPaid: createSubmissionDto.paymentAmount + lateFeeApplied,
+          paymentRemarks: createSubmissionDto.paymentRemarks,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         });
-      }
 
-      // Calculate late fee if applicable
-      let lateFeeApplied = 0;
-      const currentTimeMs = nowTimestamp();
-      const dueDateMs = payment.dueDate.getTime();
-      const msPerDay = 24 * 60 * 60 * 1000;
-      const daysOverdue = Math.floor((currentTimeMs - dueDateMs) / msPerDay);
-      
-      if (payment.lateFeeAmount && payment.lateFeeAfterDays && daysOverdue > payment.lateFeeAfterDays) {
-        lateFeeApplied = payment.lateFeeAmount;
-      }
-
-      // Use receipt URL from DTO (uploaded via /upload/verify-and-publish)
-      const receiptFileUrl = createSubmissionDto.receiptUrl;
-      const receiptFileName = receiptFileUrl ? receiptFileUrl.split('/').pop() : undefined;
-
-      // Create submission - ALWAYS defaults to PENDING - NEVER auto-verified
-      const timestamp = now();
-      const submission = this.submissionRepository.create({
-        paymentId,
-        submittedBy: user.s,
-        paymentAmount: createSubmissionDto.paymentAmount,
-        paymentMethod: createSubmissionDto.paymentMethod,
-        transactionReference: createSubmissionDto.transactionReference,
-        paymentDate: new Date(createSubmissionDto.paymentDate),
-        receiptFileUrl,
-        receiptFileName,
-        receiptFileSize: undefined,
-        receiptFileType: undefined,
-        status: SubmissionStatus.PENDING, // ALWAYS PENDING - never auto-verified
-        lateFeeApplied,
-        totalAmountPaid: createSubmissionDto.paymentAmount + lateFeeApplied,
-        paymentRemarks: createSubmissionDto.paymentRemarks,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+        return await manager.save(InstitutePaymentSubmission, submission);
       });
-
-      const savedSubmission = await this.submissionRepository.save(submission);
 
       // Load submission with relations for response
       const submissionWithRelations = await this.submissionRepository.findOne({
@@ -1406,17 +1411,33 @@ export class InstitutePaymentService {
       });
     }
 
-    // Update submission with verification details
+    // Update submission atomically with pessimistic lock to prevent concurrent verification
     const currentTime = now();
-    submission.status = verifyDto.status as any;
-    submission.verifiedBy = user.s;
-    submission.verifiedAt = currentTime;
-    submission.rejectionReason = verifyDto.status === 'REJECTED' ? verifyDto.rejectionReason : null;
-    submission.notes = verifyDto.notes || null;
-    submission.updatedAt = currentTime;
 
-    // Save the updated submission
-    const updatedSubmission = await this.submissionRepository.save(submission);
+    const updatedSubmission = await this.dataSource.transaction(async (manager) => {
+      // Re-fetch with lock inside transaction to prevent race condition
+      const lockedSubmission = await manager.findOne(InstitutePaymentSubmission, {
+        where: { id: submissionId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!lockedSubmission || lockedSubmission.status !== 'PENDING') {
+        throw new BadRequestException({
+          success: false,
+          message: `Submission is already ${lockedSubmission?.status?.toLowerCase() || 'processed'}`,
+          error: 'SUBMISSION_ALREADY_PROCESSED',
+        });
+      }
+
+      lockedSubmission.status = verifyDto.status as any;
+      lockedSubmission.verifiedBy = user.s;
+      lockedSubmission.verifiedAt = currentTime;
+      lockedSubmission.rejectionReason = verifyDto.status === 'REJECTED' ? verifyDto.rejectionReason : null;
+      lockedSubmission.notes = verifyDto.notes || null;
+      lockedSubmission.updatedAt = currentTime;
+
+      return await manager.save(InstitutePaymentSubmission, lockedSubmission);
+    });
 
     // 🔄 CRITICAL FIX: Refresh user cache after payment verification (payment status affects user data)
     if (verifyDto.status === 'VERIFIED') {

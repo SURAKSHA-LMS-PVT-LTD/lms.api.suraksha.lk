@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Query, Body, UseGuards, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Query, Body, UseGuards, HttpStatus, BadRequestException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsNumber, IsEnum } from 'class-validator';
 import { CloudStorageService } from '../services/cloud-storage.service';
@@ -42,6 +42,8 @@ class VerifyUploadDto {
 @Controller('upload')
 @ApiBearerAuth()
 export class UploadController {
+  private readonly logger = new Logger(UploadController.name);
+
   constructor(
     private readonly cloudStorageService: CloudStorageService,
     private readonly configService: ConfigService
@@ -633,13 +635,12 @@ export class UploadController {
   })
   async verifyAndPublish(@Body() dto: VerifyUploadDto) {
     try {
-      console.log('📝 Verify and publish request:', dto);
-      console.log('📝 Relative path:', dto.relativePath);
+      this.logger.log(`Verify and publish request for: ${dto.relativePath}`);
       
       // Verify file exists and make it public
       const publicUrl = await this.cloudStorageService.verifyAndMakePublic(dto.relativePath);
 
-      console.log('✅ Successfully verified and published:', publicUrl);
+      this.logger.log(`Successfully verified and published: ${dto.relativePath}`);
 
       return {
         success: true,
@@ -652,9 +653,7 @@ export class UploadController {
         }
       };
     } catch (error) {
-      console.error('❌ Error in verifyAndPublish:', error);
-      console.error('❌ Error message:', error.message);
-      console.error('❌ Error stack:', error.stack);
+      this.logger.error(`Error in verifyAndPublish for ${dto.relativePath}: ${error.message}`);
       throw error;
     }
   }

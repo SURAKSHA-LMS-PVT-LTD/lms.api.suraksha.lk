@@ -199,14 +199,30 @@ export class InstantSmsService {
       query.andWhere('user.userType IN (:...userTypes)', { userTypes: dto.userTypes });
     }
 
-    // Apply class filter
+    // Apply class filter — use subquery to find users enrolled in specified classes
     if (dto.classIds && dto.classIds.length > 0) {
-      query.andWhere('iu.instituteId IN (:...classIds)', { classIds: dto.classIds });
+      query.andWhere(
+        `iu.userId IN (
+          SELECT ics.student_user_id FROM institute_class_students ics
+          WHERE ics.institute_id = :classInstituteId
+            AND ics.institute_class_id IN (:...classIds)
+            AND ics.is_active = 1
+        )`,
+        { classInstituteId: dto.instituteId, classIds: dto.classIds }
+      );
     }
 
-    // Apply subject filter
+    // Apply subject filter — use subquery to find users enrolled in specified subjects
     if (dto.subjectIds && dto.subjectIds.length > 0) {
-      query.andWhere('iu.instituteId IN (:...subjectIds)', { subjectIds: dto.subjectIds });
+      query.andWhere(
+        `iu.userId IN (
+          SELECT icss.student_id FROM institute_class_subject_students icss
+          WHERE icss.institute_id = :subjectInstituteId
+            AND icss.subject_id IN (:...subjectIds)
+            AND icss.is_active = 1
+        )`,
+        { subjectInstituteId: dto.instituteId, subjectIds: dto.subjectIds }
+      );
     }
 
     const instituteUsers = await query.getMany();

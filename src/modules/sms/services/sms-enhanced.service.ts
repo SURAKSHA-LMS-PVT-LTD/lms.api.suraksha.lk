@@ -134,21 +134,26 @@ export class SmsEnhancedService {
         : SmsMessageStatus.APPROVED;             // Auto-approved, ready to send
 
       // ============================================================================
-      // STEP 7: DEDUCT CREDITS BEFORE SENDING ✅
+      // STEP 7: DEDUCT CREDITS ATOMICALLY BEFORE SENDING ✅
       // ============================================================================
       if (!requiresApproval) {
-        await this.credentialsRepo.decrement(
-          { instituteId },
-          'currentCredits',
-          totalCost
-        );
-        
-        await this.credentialsRepo.increment(
-          { instituteId },
-          'totalUsed',
-          totalCost
-        );
-        
+        // Use a single atomic UPDATE to prevent race conditions and partial state
+        const deductResult = await this.credentialsRepo
+          .createQueryBuilder()
+          .update()
+          .set({
+            currentCredits: () => `GREATEST(current_credits - ${Number(totalCost)}, 0)`,
+            totalUsed: () => `total_used + ${Number(totalCost)}`,
+          })
+          .where('institute_id = :instituteId', { instituteId })
+          .andWhere('current_credits >= :totalCost', { totalCost })
+          .execute();
+
+        if (deductResult.affected === 0) {
+          throw new BadRequestException(
+            `Insufficient credits (concurrent deduction detected). Please retry.`
+          );
+        }
       }
 
       // ============================================================================

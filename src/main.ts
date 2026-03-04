@@ -183,42 +183,43 @@ async function bootstrap() {
       console.log('✅ Global validation pipes configured');
     }
 
-    // 📚 API DOCUMENTATION: Setup Swagger for API documentation
-    const config = new DocumentBuilder()
-      .setTitle('LMS API')
-      .setDescription('Learning Management System API Documentation')
-      .setVersion('1.0')
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          name: 'JWT',
-          description: 'Enter JWT token',
-          in: 'header',
-        },
-        'JWT-auth',
-      )
-      .addTag('Authentication', 'User authentication and authorization')
-      .addTag('Users', 'User management')
-      .addTag('Institutes', 'Institute management')
-      .addTag('Students', 'Student management')
-      .addTag('Classes', 'Class management')
-      .addTag('Subjects', 'Subject management')
-      .addTag('Attendance', 'Attendance tracking')
-      .addTag('Payments', 'Payment management')
-      .build();
-
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/docs', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
-        tagsSorter: 'alpha',
-        operationsSorter: 'alpha',
-      },
-    });
-
+    // 📚 API DOCUMENTATION: Only enable Swagger in non-production environments
+    // SECURITY: Swagger exposes all routes, DTOs, and parameter schemas.
     if (!isProduction) {
+      const config = new DocumentBuilder()
+        .setTitle('LMS API')
+        .setDescription('Learning Management System API Documentation')
+        .setVersion('1.0')
+        .addBearerAuth(
+          {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            name: 'JWT',
+            description: 'Enter JWT token',
+            in: 'header',
+          },
+          'JWT-auth',
+        )
+        .addTag('Authentication', 'User authentication and authorization')
+        .addTag('Users', 'User management')
+        .addTag('Institutes', 'Institute management')
+        .addTag('Students', 'Student management')
+        .addTag('Classes', 'Class management')
+        .addTag('Subjects', 'Subject management')
+        .addTag('Attendance', 'Attendance tracking')
+        .addTag('Payments', 'Payment management')
+        .build();
+
+      const document = SwaggerModule.createDocument(app, config);
+      SwaggerModule.setup('api/docs', app, document, {
+        swaggerOptions: {
+          persistAuthorization: true,
+          tagsSorter: 'alpha',
+          operationsSorter: 'alpha',
+        },
+      });
+
       console.log('✅ API documentation enabled at /api/docs');
     }
 

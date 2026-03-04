@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { CardPayment } from '../entities/card-payment.entity';
 import { UserIdCardOrder } from '../entities/user-id-card-order.entity';
 import { SubmitPaymentDto } from '../dto/submit-payment.dto';
@@ -16,6 +16,7 @@ export class CardPaymentService {
     private readonly paymentRepository: Repository<CardPayment>,
     @InjectRepository(UserIdCardOrder)
     private readonly orderRepository: Repository<UserIdCardOrder>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async submitPayment(
@@ -23,54 +24,56 @@ export class CardPaymentService {
     userId: string,
     submitPaymentDto: SubmitPaymentDto,
   ): Promise<PaymentResponseDto> {
-    // Verify order belongs to user
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId, userId },
-      relations: ['payments'],
+    return await this.dataSource.transaction(async (manager) => {
+      // Lock the order row to prevent concurrent payment submissions
+      const order = await manager.findOne(UserIdCardOrder, {
+        where: { id: orderId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
+
+      // Check if payment already submitted (prevent duplicate submissions)
+      const existingPayment = await manager.findOne(CardPayment, {
+        where: { orderId, paymentStatus: 'PENDING' },
+      });
+
+      if (existingPayment) {
+        throw new BadRequestException('Payment already submitted for this order');
+      }
+
+      // Check if order is in correct status
+      if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
+        throw new BadRequestException(
+          'Payment can only be submitted for orders in PENDING_PAYMENT status',
+        );
+      }
+
+      // Create payment submission
+      const timestamp = now();
+      const payment = manager.create(CardPayment, {
+        orderId,
+        submissionUrl: submitPaymentDto.submissionUrl,
+        paymentType: submitPaymentDto.paymentType,
+        paymentAmount: submitPaymentDto.paymentAmount,
+        paymentReference: submitPaymentDto.paymentReference,
+        notes: submitPaymentDto.notes,
+        paymentStatus: 'PENDING',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+
+      const savedPayment = await manager.save(CardPayment, payment);
+
+      // Update order status to PAYMENT_RECEIVED
+      order.orderStatus = OrderStatus.PAYMENT_RECEIVED;
+      order.paymentId = savedPayment.id;
+      await manager.save(UserIdCardOrder, order);
+
+      return this.toResponseDto(savedPayment);
     });
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-
-    // Check if payment already submitted (prevent duplicate submissions)
-    const existingPayment = await this.paymentRepository.findOne({
-      where: { orderId, paymentStatus: 'PENDING' },
-    });
-
-    if (existingPayment) {
-      throw new BadRequestException('Payment already submitted for this order');
-    }
-
-    // Check if order is in correct status
-    if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
-      throw new BadRequestException(
-        'Payment can only be submitted for orders in PENDING_PAYMENT status',
-      );
-    }
-
-    // Create payment submission
-    const timestamp = now();
-    const payment = this.paymentRepository.create({
-      orderId,
-      submissionUrl: submitPaymentDto.submissionUrl,
-      paymentType: submitPaymentDto.paymentType,
-      paymentAmount: submitPaymentDto.paymentAmount,
-      paymentReference: submitPaymentDto.paymentReference,
-      notes: submitPaymentDto.notes,
-      paymentStatus: 'PENDING',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-
-    const savedPayment = await this.paymentRepository.save(payment);
-
-    // Update order status to PAYMENT_RECEIVED
-    order.orderStatus = OrderStatus.PAYMENT_RECEIVED;
-    order.paymentId = savedPayment.id;
-    await this.orderRepository.save(order);
-
-    return this.toResponseDto(savedPayment);
   }
 
   async getPaymentsByOrder(orderId: string, userId?: string): Promise<PaymentResponseDto[]> {
@@ -143,52 +146,56 @@ export class CardPaymentService {
     verifyPaymentDto: VerifyCardPaymentDto,
     adminUserId: string,
   ): Promise<PaymentResponseDto> {
-    const payment = await this.paymentRepository.findOne({
-      where: { id: paymentId },
-      relations: ['order'],
+    return await this.dataSource.transaction(async (manager) => {
+      // Lock the payment row to prevent concurrent verification
+      const payment = await manager.findOne(CardPayment, {
+        where: { id: paymentId },
+        relations: ['order'],
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!payment) {
+        throw new NotFoundException('Payment not found');
+      }
+
+      if (payment.paymentStatus !== 'PENDING') {
+        throw new BadRequestException('Payment has already been processed');
+      }
+
+      // Update payment status
+      payment.paymentStatus = verifyPaymentDto.paymentStatus;
+      payment.verifiedBy = adminUserId;
+      payment.verifiedAt = now();
+
+      if (verifyPaymentDto.rejectionReason) {
+        payment.rejectionReason = verifyPaymentDto.rejectionReason;
+      }
+
+      if (verifyPaymentDto.notes) {
+        payment.notes = verifyPaymentDto.notes;
+      }
+
+      await manager.save(CardPayment, payment);
+
+      // Update order status based on payment verification
+      const order = payment.order;
+      if (verifyPaymentDto.paymentStatus === 'VERIFIED') {
+        order.orderStatus = OrderStatus.VERIFYING;
+      } else if (verifyPaymentDto.paymentStatus === 'REJECTED') {
+        order.orderStatus = OrderStatus.REJECTED;
+        order.rejectedReason = verifyPaymentDto.rejectionReason;
+      }
+
+      await manager.save(UserIdCardOrder, order);
+
+      // Fetch updated payment with relations
+      const finalPayment = await manager.findOne(CardPayment, {
+        where: { id: paymentId },
+        relations: ['order', 'verifier'],
+      });
+
+      return this.toResponseDto(finalPayment);
     });
-
-    if (!payment) {
-      throw new NotFoundException('Payment not found');
-    }
-
-    if (payment.paymentStatus !== 'PENDING') {
-      throw new BadRequestException('Payment has already been processed');
-    }
-
-    // Update payment status
-    payment.paymentStatus = verifyPaymentDto.paymentStatus;
-    payment.verifiedBy = adminUserId;
-    payment.verifiedAt = now();
-
-    if (verifyPaymentDto.rejectionReason) {
-      payment.rejectionReason = verifyPaymentDto.rejectionReason;
-    }
-
-    if (verifyPaymentDto.notes) {
-      payment.notes = verifyPaymentDto.notes;
-    }
-
-    const updatedPayment = await this.paymentRepository.save(payment);
-
-    // Update order status based on payment verification
-    const order = payment.order;
-    if (verifyPaymentDto.paymentStatus === 'VERIFIED') {
-      order.orderStatus = OrderStatus.VERIFYING;
-    } else if (verifyPaymentDto.paymentStatus === 'REJECTED') {
-      order.orderStatus = OrderStatus.REJECTED;
-      order.rejectedReason = verifyPaymentDto.rejectionReason;
-    }
-
-    await this.orderRepository.save(order);
-
-    // Fetch updated payment with relations
-    const finalPayment = await this.paymentRepository.findOne({
-      where: { id: paymentId },
-      relations: ['order', 'verifier'],
-    });
-
-    return this.toResponseDto(finalPayment);
   }
 
   // Note: Payments cannot be deleted (audit trail requirement)

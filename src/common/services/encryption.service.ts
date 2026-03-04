@@ -110,15 +110,13 @@ export class EncryptionService {
 
   /**
    * 🔢 Generate secure numeric OTP
+   * Uses crypto.randomInt to avoid modular bias (256 % 10 ≠ 0).
    */
   generateNumericOTP(length: number = 6): string {
-    const bytes = crypto.randomBytes(length);
     let otp = '';
-    
     for (let i = 0; i < length; i++) {
-      otp += (bytes[i] % 10).toString();
+      otp += crypto.randomInt(0, 10).toString();
     }
-    
     return otp;
   }
 
@@ -254,18 +252,23 @@ export class EncryptionService {
 
   /**
    * ⏱️ Constant time string comparison to prevent timing attacks
+   * Uses Node.js crypto.timingSafeEqual for guaranteed constant-time comparison.
    */
   private constantTimeCompare(a: string, b: string): boolean {
-    if (a.length !== b.length) {
+    // Use same-length buffers for timingSafeEqual; pad shorter to avoid length leak
+    const bufA = Buffer.from(a, 'utf-8');
+    const bufB = Buffer.from(b, 'utf-8');
+
+    // If lengths differ the values can't be equal, but we still run
+    // timingSafeEqual on padded buffers so the timing is constant.
+    if (bufA.length !== bufB.length) {
+      // Compare bufA against itself so the elapsed time is the same
+      // as a real comparison of equal-length strings.
+      crypto.timingSafeEqual(bufA, bufA);
       return false;
     }
 
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    }
-    
-    return result === 0;
+    return crypto.timingSafeEqual(bufA, bufB);
   }
 
   /**
