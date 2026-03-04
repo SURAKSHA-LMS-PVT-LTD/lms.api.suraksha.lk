@@ -19,7 +19,8 @@ export class DatabaseResetService {
    * Guard: Prevent dangerous operations in production
    */
   private ensureNotProduction(operation: string): void {
-    if (process.env.NODE_ENV === 'production') {
+    const env = (process.env.NODE_ENV || '').toLowerCase().trim();
+    if (env === 'production' || env === 'prod') {
       throw new Error(`BLOCKED: ${operation} is not allowed in production environment`);
     }
   }

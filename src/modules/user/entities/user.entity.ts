@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { UserType } from '../enums/user-type.enum';
 import { Gender } from '../enums/gender.enum';
 import { SubscriptionPlan } from '../enums/subscription-plan.enum';
@@ -50,6 +51,7 @@ export class UserEntity {
   email: string;
 
   @Column({ type: 'varchar', length: 120, nullable: true, select: false })
+  @Exclude()
   password?: string; // Bcrypt hash - exactly 60 characters (2x safety margin: 120 chars)
 
   @Column({ name: 'phone_number', type: 'varchar', length: 15, nullable: true })

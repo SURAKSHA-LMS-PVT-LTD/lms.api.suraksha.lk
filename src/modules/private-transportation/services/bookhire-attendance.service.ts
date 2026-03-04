@@ -886,6 +886,7 @@ export class BookhireAttendanceService {
       const packageConfig = await this.getPackageConfiguration(subscriptionPlan);
       return packageConfig?.isAds === true;
     } catch (error) {
+      this.logger.warn(`shouldReceiveAdvertisements failed for plan ${subscriptionPlan}: ${error?.message}`);
       return false; // Default to no ads if error
     }
   }
@@ -905,6 +906,7 @@ export class BookhireAttendanceService {
       
       return packageConfig;
     } catch (error) {
+      this.logger.warn(`getPackageConfiguration failed for plan ${subscriptionPlan}: ${error?.message}`);
       return null;
     }
   }

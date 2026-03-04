@@ -1,3 +1,4 @@
+﻿import * as crypto from 'crypto';
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
 import { EmailDto, EmailOtpVerifyDto, PhoneNumberDto, PhoneOtpVerifyDto, RejectReasonDto, FileUploadRequestDto, ImageUrlDto } from '../../common/dto/common-body.dto';
 import {
@@ -97,7 +98,7 @@ export class UsersController {
   ) {}
 
   /**
-   * 🚀 CREATE USER (Multi-Table Creation)
+   * ðŸš€ CREATE USER (Multi-Table Creation)
    * 
    * Advanced user creation endpoint that creates records across multiple tables
    * based on the userType:
@@ -139,30 +140,30 @@ export class UsersController {
   })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ 
-    summary: '🚀 Create comprehensive user with optional image (Multi-table creation) - Supports API Key',
+    summary: 'ðŸš€ Create comprehensive user with optional image (Multi-table creation) - Supports API Key',
     description: `Advanced user creation that automatically creates records in multiple tables based on userType.
     
-    **🔐 Two Authentication Methods:**
+    **ðŸ” Two Authentication Methods:**
     
-    1️⃣ **JWT Bearer Token (Standard):**
+    1ï¸âƒ£ **JWT Bearer Token (Standard):**
        - Authorization: Bearer <JWT_TOKEN>
        - Subject to role-based access control (SUPERADMIN, ORGANIZATION_MANAGER, INSTITUTE_ADMIN, TEACHER)
     
-    2️⃣ **Special API Key (External Systems):**
+    2ï¸âƒ£ **Special API Key (External Systems):**
        - Authorization: Bearer <SPECIAL_API_KEY>
        - Use environment variable: SPECIAL_API_KEY
        - Bypasses all role checks - full access
        - Ideal for external integrations and automated systems
        - Generate secure key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
     
-    **📊 Two Input Methods Supported:**
+    **ðŸ“Š Two Input Methods Supported:**
     
-    1️⃣ **JSON Request (with image URLs):**
+    1ï¸âƒ£ **JSON Request (with image URLs):**
        - Content-Type: application/json
        - Provide imageUrl and/or idUrl as strings in the JSON body
        - Example: { "firstName": "John", "imageUrl": "https://example.com/profile.jpg", "idUrl": "https://example.com/id.pdf" }
     
-    2️⃣ **Multipart/Form-Data (with file uploads):**
+    2ï¸âƒ£ **Multipart/Form-Data (with file uploads):**
        - Content-Type: multipart/form-data
        - Upload files directly: 'image' field for profile image, 'idDocument' field for ID document
        - Supports: JPG, JPEG, PNG for images; PDF, JPG, JPEG, PNG for ID documents
@@ -171,25 +172,25 @@ export class UsersController {
     **userType Behavior:**
     
     1. **USER** (Student with parent):
-       - ✅ Creates user in users table
-       - ✅ Creates student record in students table
-       - ✅ Creates parent record in parents table
-       - ✅ Links parent to student automatically
-       - 📋 Required fields: All user fields + studentData + parentData
+       - âœ… Creates user in users table
+       - âœ… Creates student record in students table
+       - âœ… Creates parent record in parents table
+       - âœ… Links parent to student automatically
+       - ðŸ“‹ Required fields: All user fields + studentData + parentData
     
     2. **USER_WITHOUT_PARENT** (Student only):
-       - ✅ Creates user in users table
-       - ✅ Creates student record in students table
-       - 📋 Required fields: All user fields + studentData
+       - âœ… Creates user in users table
+       - âœ… Creates student record in students table
+       - ðŸ“‹ Required fields: All user fields + studentData
     
     3. **USER_WITHOUT_STUDENT** (Parent only):
-       - ✅ Creates user in users table
-       - ✅ Creates parent record in parents table
-       - 📋 Required fields: All user fields + parentData
+       - âœ… Creates user in users table
+       - âœ… Creates parent record in parents table
+       - ðŸ“‹ Required fields: All user fields + parentData
     
     4. **SUPER_ADMIN / ORGANIZATION_MANAGER**:
-       - ✅ Creates user in users table only
-       - 📋 Required fields: All user fields
+       - âœ… Creates user in users table only
+       - ðŸ“‹ Required fields: All user fields
     
     **Response includes:**
     - Created user data
@@ -225,12 +226,12 @@ export class UsersController {
         country: { type: 'string', example: 'Sri Lanka' },
         imageUrl: { 
           type: 'string', 
-          description: '🖼️ Profile image URL (for JSON requests)', 
+          description: 'ðŸ–¼ï¸ Profile image URL (for JSON requests)', 
           example: 'https://example.com/images/profile.jpg' 
         },
         idUrl: { 
           type: 'string', 
-          description: '📄 ID document URL (for JSON requests)', 
+          description: 'ðŸ“„ ID document URL (for JSON requests)', 
           example: 'https://example.com/documents/id-card.pdf' 
         },
         isActive: { type: 'boolean', default: true },
@@ -368,15 +369,15 @@ export class UsersController {
     @Body() dto: any,
     @Request() req?: JwtRequest
   ): Promise<any> {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     
     try {
-      // 🛡️ CRITICAL VALIDATION: Check if dto exists
+      // ðŸ›¡ï¸ CRITICAL VALIDATION: Check if dto exists
       if (!dto || typeof dto !== 'object') {
         throw new BadRequestException('Invalid request body - expected object with user data');
       }
 
-      // 🛡️ CRITICAL VALIDATION: Required fields check
+      // ðŸ›¡ï¸ CRITICAL VALIDATION: Required fields check
       if (!dto.email || typeof dto.email !== 'string' || dto.email.trim() === '') {
         throw new BadRequestException('Email is required and must be a valid string');
       }
@@ -397,7 +398,7 @@ export class UsersController {
       
       const currentUser = req?.user;
 
-    // 🔒 SECURITY: Whitelist allowed top-level fields to prevent mass assignment
+    // ðŸ”’ SECURITY: Whitelist allowed top-level fields to prevent mass assignment
     const allowedFields = [
       'email', 'firstName', 'lastName', 'nameWithInitials', 'userType', 'password',
       'phoneNumber', 'dateOfBirth', 'gender', 'address', 'city', 'district', 'province',
@@ -414,7 +415,7 @@ export class UsersController {
     const originalDto = dto;
     dto = sanitizedDto;
     
-    // 🔧 Transform flat form-data into nested structure
+    // ðŸ”§ Transform flat form-data into nested structure
     // Form-data sends all fields flat, so we need to organize them
     
     // Helper function to clean empty strings to null or undefined
@@ -449,18 +450,18 @@ export class UsersController {
       return cleaned;
     };
     
-    // 🔧 CRITICAL: Clean firstName and lastName FIRST before using them
+    // ðŸ”§ CRITICAL: Clean firstName and lastName FIRST before using them
     dto.firstName = cleanField(dto.firstName);
     dto.lastName = cleanField(dto.lastName);
     
-    // 🔧 FIX: Clean and validate nameWithInitials - auto-generate if empty
+    // ðŸ”§ FIX: Clean and validate nameWithInitials - auto-generate if empty
     dto.nameWithInitials = cleanField(dto.nameWithInitials);
     if (!dto.nameWithInitials) {
       const firstName = dto.firstName || '';
       const lastName = dto.lastName || '';
       
       if (firstName && lastName) {
-        // 🔧 IMPROVED: Sri Lankan naming convention
+        // ðŸ”§ IMPROVED: Sri Lankan naming convention
         // "anura kumara" + "disse aiya kumara" -> "A.K.D.A. Kumara"
         // All words become initials EXCEPT the last word which is shown in full
         
@@ -487,23 +488,23 @@ export class UsersController {
         dto.nameWithInitials = `${allInitials} ${capitalizedFinalWord}`;
         
         this.logger.log(
-          `[${requestId}] 🔧 AUTO-GENERATED nameWithInitials: "${dto.nameWithInitials}" from firstName "${firstName}" and lastName "${lastName}"`
+          `[${requestId}] ðŸ”§ AUTO-GENERATED nameWithInitials: "${dto.nameWithInitials}" from firstName "${firstName}" and lastName "${lastName}"`
         );
       } else if (firstName) {
         dto.nameWithInitials = firstName;
         this.logger.log(
-          `[${requestId}] 🔧 Using firstName as nameWithInitials: "${dto.nameWithInitials}"`
+          `[${requestId}] ðŸ”§ Using firstName as nameWithInitials: "${dto.nameWithInitials}"`
         );
       } else {
         throw new BadRequestException('nameWithInitials is empty and cannot be generated - firstName is required');
       }
     } else {
       this.logger.log(
-        `[${requestId}] ✅ nameWithInitials received from request: "${dto.nameWithInitials}"`
+        `[${requestId}] âœ… nameWithInitials received from request: "${dto.nameWithInitials}"`
       );
     }
     
-    // 🔧 Clean other main user fields - convert empty strings to undefined
+    // ðŸ”§ Clean other main user fields - convert empty strings to undefined
     dto.email = cleanField(dto.email);
     dto.phoneNumber = cleanField(dto.phoneNumber);
     dto.nic = cleanField(dto.nic);
@@ -517,7 +518,7 @@ export class UsersController {
     dto.idUrl = cleanField(dto.idUrl);
     dto.instituteId = cleanField(dto.instituteId);
     
-    // 🔧 FIX: Normalize enum values to match backend expectations
+    // ðŸ”§ FIX: Normalize enum values to match backend expectations
     // Clean enum fields first to handle empty strings
     dto.district = cleanField(dto.district);
     dto.province = cleanField(dto.province);
@@ -615,7 +616,7 @@ export class UsersController {
       }
     }
     
-    // 🔧 Clean nested objects if they exist (when sent as JSON)
+    // ðŸ”§ Clean nested objects if they exist (when sent as JSON)
     if (dto.studentData && typeof dto.studentData === 'object') {
       dto.studentData = cleanObject(dto.studentData);
     }
@@ -653,7 +654,7 @@ export class UsersController {
     // Send welcome notifications
     if (result.success && result.userId && dto.email) {
       this.logger.log(
-        `[${requestId}] 📧 Sending welcome notifications - ` +
+        `[${requestId}] ðŸ“§ Sending welcome notifications - ` +
         `Email: ${dto.email}, Name: ${dto.nameWithInitials || dto.firstName || 'MISSING'}, UserId: ${result.userId}`
       );
       this.userNotificationService.sendWelcomeNotifications({
@@ -664,11 +665,11 @@ export class UsersController {
         userId: result.userId,
         instituteId: dto.instituteId,
       }).catch((error) => {
-        this.logger.warn(`[${requestId}] ⚠️ Failed to send welcome notifications: ${error.message}`);
+        this.logger.warn(`[${requestId}] âš ï¸ Failed to send welcome notifications: ${error.message}`);
       });
     } else {
       this.logger.warn(
-        `[${requestId}] ⚠️ Skipping welcome notifications - ` +
+        `[${requestId}] âš ï¸ Skipping welcome notifications - ` +
         `Success: ${result.success}, UserId: ${result.userId || 'MISSING'}, Email: ${dto.email || 'MISSING'}`
       );
     }
@@ -676,10 +677,10 @@ export class UsersController {
     return result;
       
     } catch (error) {
-      this.logger.error(`[${requestId}] ❌ User creation failed: ${error.message}`);
+      this.logger.error(`[${requestId}] âŒ User creation failed: ${error.message}`);
       this.logger.error(`[${requestId}] Error stack: ${error.stack}`);
       
-      // 🛡️ STRICT ERROR HANDLING: Never expose internal errors to client
+      // ðŸ›¡ï¸ STRICT ERROR HANDLING: Never expose internal errors to client
       if (error instanceof BadRequestException || 
           error instanceof ConflictException || 
           error instanceof NotFoundException ||
@@ -689,7 +690,7 @@ export class UsersController {
       }
       
       // Unknown error - log details but send generic message to client
-      this.logger.error(`[${requestId}] 🚨 INTERNAL ERROR: ${JSON.stringify({
+      this.logger.error(`[${requestId}] ðŸš¨ INTERNAL ERROR: ${JSON.stringify({
         message: error.message,
         name: error.name,
         code: error.code,
@@ -710,11 +711,11 @@ export class UsersController {
   // ====================================================================
   // SPECIAL HIGH-PERFORMANCE BASIC INFO LOOKUP ENDPOINTS
   // ====================================================================
-  // ⚠️ IMPORTANT: Specific routes (phone, rfid) MUST come BEFORE generic (:userId)
+  // âš ï¸ IMPORTANT: Specific routes (phone, rfid) MUST come BEFORE generic (:userId)
   // to prevent incorrect route matching in NestJS
 
   /**
-   * 🚀 SPECIAL API: Get User Basic Info by Phone Number (Ultra-Fast)
+   * ðŸš€ SPECIAL API: Get User Basic Info by Phone Number (Ultra-Fast)
    * 
    * Returns only essential user information for UI display:
    * - imageUrl (profile picture)
@@ -732,7 +733,7 @@ export class UsersController {
   @Throttle({ default: { limit: 20, ttl: 900000 } }) // 20 requests per 15 minutes
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: '🚀 Get basic user info by phone number (Ultra-Fast API)',
+    summary: 'ðŸš€ Get basic user info by phone number (Ultra-Fast API)',
     description: `Special high-performance API that returns only essential user information for UI display using phone number lookup.
     
     **Performance Features:**
@@ -813,7 +814,7 @@ export class UsersController {
   }
 
   /**
-   * 🚀 SPECIAL API: Get User Basic Info by RFID (Ultra-Fast)
+   * ðŸš€ SPECIAL API: Get User Basic Info by RFID (Ultra-Fast)
    * 
    * Returns only essential user information for UI display:
    * - imageUrl (profile picture)
@@ -831,7 +832,7 @@ export class UsersController {
   @Throttle({ default: { limit: 20, ttl: 900000 } }) // 20 requests per 15 minutes
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: '🚀 Get basic user info by RFID (Ultra-Fast API)',
+    summary: 'ðŸš€ Get basic user info by RFID (Ultra-Fast API)',
     description: `Special high-performance API that returns only essential user information for UI display using RFID lookup.
     
     **Performance Features:**
@@ -912,7 +913,7 @@ export class UsersController {
   }
 
   /**
-   * 🚀 SPECIAL API: Get User Basic Info by Email (Ultra-Fast)
+   * ðŸš€ SPECIAL API: Get User Basic Info by Email (Ultra-Fast)
    * 
    * Returns only essential user information for UI display:
    * - imageUrl (profile picture)
@@ -930,7 +931,7 @@ export class UsersController {
   @Throttle({ default: { limit: 20, ttl: 900000 } }) // 20 requests per 15 minutes
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: '🚀 Get basic user info by email (Ultra-Fast API)',
+    summary: 'ðŸš€ Get basic user info by email (Ultra-Fast API)',
     description: `Special high-performance API that returns only essential user information for UI display using email lookup.
     
     **Performance Features:**
@@ -1011,7 +1012,7 @@ export class UsersController {
   }
 
   /**
-   * 🚀 SPECIAL API: Get User Basic Info by ID (Ultra-Fast)
+   * ðŸš€ SPECIAL API: Get User Basic Info by ID (Ultra-Fast)
    * 
    * Returns only essential user information for UI display:
    * - imageUrl (profile picture)
@@ -1029,7 +1030,7 @@ export class UsersController {
   @Throttle({ default: { limit: 20, ttl: 900000 } }) // 20 requests per 15 minutes
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: '🚀 Get basic user info by ID (Ultra-Fast API)',
+    summary: 'ðŸš€ Get basic user info by ID (Ultra-Fast API)',
     description: `Special high-performance API that returns only essential user information for UI display.
     
     **Performance Features:**
@@ -1216,7 +1217,7 @@ export class UsersController {
     const user = req.user;
     const result = await this.usersService.update(user.s, updateUserDto);
     
-    // 🔄 Refresh user cache after profile update (indexes updated only if needed)
+    // ðŸ”„ Refresh user cache after profile update (indexes updated only if needed)
     try {
       await this.userManagementService.refreshUserCache(user.s);
     } catch (cacheError) {
@@ -1488,7 +1489,7 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Get all institutes associated with a user',
-    description: `✅ ENHANCED: Retrieves COMPLETE institute details for all user affiliations.
+    description: `âœ… ENHANCED: Retrieves COMPLETE institute details for all user affiliations.
     
     **Access Control:**
     - Any authenticated user can view their OWN institutes only
@@ -1496,11 +1497,11 @@ export class UsersController {
     - User ID is validated against JWT token
     
     **Features:**
-    - ✅ Complete institute details (all fields)
-    - ✅ Paginated response with metadata
-    - ✅ Email/phone masking for privacy
-    - ✅ Sorted by institute name (A-Z)
-    - ✅ Includes: logos, colors, address, vision, mission, social links
+    - âœ… Complete institute details (all fields)
+    - âœ… Paginated response with metadata
+    - âœ… Email/phone masking for privacy
+    - âœ… Sorted by institute name (A-Z)
+    - âœ… Includes: logos, colors, address, vision, mission, social links
     
     **Response Format:**
     Returns full institute objects matching \`GET /institutes\` format with pagination metadata.`
@@ -1591,7 +1592,7 @@ export class UsersController {
   }> {
     const currentUser = req.user;
     
-    // ✅ Validate user can only access their own institutes
+    // âœ… Validate user can only access their own institutes
     if (currentUser.s !== id) {
       throw new ForbiddenException('Access denied. You can only view your own institutes');
     }
@@ -1626,7 +1627,7 @@ export class UsersController {
   /**
    * Get Parent Institutes (Children's Schools Only)
    * 
-   * 🎯 PARENT-SPECIFIC API: Returns ONLY institutes where user's children are enrolled as students.
+   * ðŸŽ¯ PARENT-SPECIFIC API: Returns ONLY institutes where user's children are enrolled as students.
    * This ensures parents see ONLY their children's schools, NOT institutes where they might have other roles.
    * 
    * Uses fatherId/motherId/guardianId from student table + institute_class_student for enrollment.
@@ -1650,9 +1651,9 @@ export class UsersController {
 
 **Parent Access:**
 - Parent with userId=2 and c=["500341", "500362"] can access:
-  - /users/500341/parent-institutes ✅
-  - /users/500362/parent-institutes ✅
-  - /users/999999/parent-institutes ❌ (not their child)
+  - /users/500341/parent-institutes âœ…
+  - /users/500362/parent-institutes âœ…
+  - /users/999999/parent-institutes âŒ (not their child)
 
 **vs Regular /users/:id/institutes:**
 - Regular API: Shows ALL institutes where user has ANY role
@@ -1719,7 +1720,7 @@ export class UsersController {
   }> {
     const currentUser = req.user;
     
-    // ✅ Security: Only allow parents to access their children's institutes
+    // âœ… Security: Only allow parents to access their children's institutes
     // The :id parameter should be a child's userId that exists in JWT's 'c' array
     const targetUserId = String(id);
     const childrenIds = currentUser.c ? currentUser.c.map(childId => String(childId)) : [];
@@ -1774,7 +1775,7 @@ export class UsersController {
   }> {
     const currentUser = req.user;
     
-    // ✅ Validate user can only access their own institutes
+    // âœ… Validate user can only access their own institutes
     if (currentUser.s !== id) {
       throw new ForbiddenException('Access denied. You can only view your own institutes');
     }
@@ -2423,7 +2424,7 @@ export class UsersController {
     
     const result = await this.usersService.update(id, updateUserDto);
     
-    // 🔄 Refresh user cache after admin update (indexes updated only if needed)
+    // ðŸ”„ Refresh user cache after admin update (indexes updated only if needed)
     try {
       await this.userManagementService.refreshUserCache(id);
     } catch (cacheError) {
@@ -2511,7 +2512,7 @@ export class UsersController {
     
     const result = await this.usersService.activate(id);
     
-    // 🔄 Refresh user cache after activation (status change only)
+    // ðŸ”„ Refresh user cache after activation (status change only)
     try {
       await this.userManagementService.refreshUserCache(id);
     } catch (cacheError) {
@@ -2600,7 +2601,7 @@ export class UsersController {
     
     const result = await this.usersService.softDelete(id);
     
-    // 🔄 Refresh user cache after deactivation (status change only)
+    // ðŸ”„ Refresh user cache after deactivation (status change only)
     try {
       await this.userManagementService.refreshUserCache(id);
     } catch (cacheError) {
@@ -2629,7 +2630,7 @@ export class UsersController {
     summary: 'Delete user permanently',
     description: `Permanently removes a user from the system.
     
-    **⚠️ CRITICAL OPERATION ⚠️**
+    **âš ï¸ CRITICAL OPERATION âš ï¸**
     This action is irreversible and will permanently delete all user data.
     
     **Access Control:**
@@ -2687,7 +2688,7 @@ export class UsersController {
       throw new ForbiddenException('Only SUPERADMIN can delete users permanently');
     }
     
-    // 🗑️ Remove user cache and access cache before deletion
+    // ðŸ—‘ï¸ Remove user cache and access cache before deletion
     try {
       // Remove user indexes (phone, email, RFID lookups)
       await this.userManagementService.removeUserIndexes(id);
@@ -2718,8 +2719,13 @@ export class UsersController {
   private hasUserCreationPermission(currentUser: any, targetUserType?: UserType): boolean {
     if (!currentUser) return false;
     
-    // Access control will be handled by decorators
-    return true;
+    const userType = currentUser.userType || String(currentUser.u);
+    // SUPERADMIN and ORG_MANAGER can create users
+    if (userType === UserType.SUPERADMIN || currentUser.u === 0) return true;
+    if (userType === UserType.ORGANIZATION_MANAGER || currentUser.u === 1) return true;
+    // Institute admins can create users (checked via decorator, but provide basic gate)
+    if (currentUser.i && currentUser.i.length > 0) return true;
+    return false;
   }
 
   /**
@@ -2730,8 +2736,12 @@ export class UsersController {
   private hasUserViewPermission(currentUser: any): boolean {
     if (!currentUser) return false;
     
-    // Access control will be handled by decorators
-    return true;
+    const userType = currentUser.userType || String(currentUser.u);
+    // SUPERADMIN, ORG_MANAGER, or users with institute access can view users
+    if (userType === UserType.SUPERADMIN || currentUser.u === 0) return true;
+    if (userType === UserType.ORGANIZATION_MANAGER || currentUser.u === 1) return true;
+    if (currentUser.i && currentUser.i.length > 0) return true;
+    return false;
   }
 
   /**
@@ -2750,8 +2760,13 @@ export class UsersController {
       return true;
     }
     
-    // Access control will be handled by decorators
-    return true;
+    const userType = currentUser.userType || String(currentUser.u);
+    // SUPERADMIN, ORG_MANAGER can access any user
+    if (userType === UserType.SUPERADMIN || currentUser.u === 0) return true;
+    if (userType === UserType.ORGANIZATION_MANAGER || currentUser.u === 1) return true;
+    // Users with institute access can access users in their institutes
+    if (currentUser.i && currentUser.i.length > 0) return true;
+    return false;
   }
 
   /**
@@ -2770,8 +2785,13 @@ export class UsersController {
       return true;
     }
     
-    // Access control will be handled by decorators
-    return true;
+    const userType = currentUser.userType || String(currentUser.u);
+    // SUPERADMIN, ORG_MANAGER can update any user
+    if (userType === UserType.SUPERADMIN || currentUser.u === 0) return true;
+    if (userType === UserType.ORGANIZATION_MANAGER || currentUser.u === 1) return true;
+    // Institute admins can update users in their institutes
+    if (currentUser.i && currentUser.i.length > 0) return true;
+    return false;
   }
 
   /**
@@ -2782,8 +2802,11 @@ export class UsersController {
   private hasUserManagementPermission(currentUser: any): boolean {
     if (!currentUser) return false;
     
-    // Access control will be handled by decorators
-    return true;
+    const userType = currentUser.userType || String(currentUser.u);
+    // Only SUPERADMIN and ORG_MANAGER can manage (activate/deactivate) users
+    if (userType === UserType.SUPERADMIN || currentUser.u === 0) return true;
+    if (userType === UserType.ORGANIZATION_MANAGER || currentUser.u === 1) return true;
+    return false;
   }
 
   /**
@@ -2794,8 +2817,8 @@ export class UsersController {
   private hasSuperAdminPermission(currentUser: any): boolean {
     if (!currentUser) return false;
     
-    // Access control will be handled by decorators
-    return true;
+    const userType = currentUser.userType || String(currentUser.u);
+    return userType === UserType.SUPERADMIN || currentUser.u === 0;
   }
 
   /**
@@ -2862,7 +2885,7 @@ export class UsersController {
       jwtToken
     );
     
-    // 🔄 Refresh user cache after Telegram ID update (no index changes needed)
+    // ðŸ”„ Refresh user cache after Telegram ID update (no index changes needed)
     try {
       await this.userManagementService.refreshUserCache(updateTelegramDto.s.toString());
     } catch (cacheError) {
@@ -2929,7 +2952,7 @@ export class UsersController {
       registerRfidDto.userRfid
     );
     
-    // 🔄 Refresh user cache and update indexes after RFID registration
+    // ðŸ”„ Refresh user cache and update indexes after RFID registration
     try {
       await this.userManagementService.refreshUserCache(req.user.s.toString());
       await this.userManagementService.setUserIndexes(req.user.s.toString());
@@ -2943,7 +2966,7 @@ export class UsersController {
   }
 
   /**
-   * 📸 Upload Profile Photo - Self Service
+   * ðŸ“¸ Upload Profile Photo - Self Service
    * Allows authenticated users to upload their own profile photo
    */
   @Patch('profile/upload-photo')
@@ -2951,27 +2974,27 @@ export class UsersController {
   @ApiTags('User Profile Management')
   @ApiBearerAuth()
   @ApiOperation({
-    summary: '📸 Upload Profile Photo (Self Service)',
+    summary: 'ðŸ“¸ Upload Profile Photo (Self Service)',
     description: `
-    🎯 **Purpose**: Allow users to upload their own profile photo
+    ðŸŽ¯ **Purpose**: Allow users to upload their own profile photo
     
-    📋 **Features**:
-    • Self-service profile photo upload
-    • Automatic image optimization and resizing
-    • Secure GCS storage with CDN delivery
-    • Cache refresh with 3-5ms response time
-    • Automatic cleanup of old profile photos
+    ðŸ“‹ **Features**:
+    â€¢ Self-service profile photo upload
+    â€¢ Automatic image optimization and resizing
+    â€¢ Secure GCS storage with CDN delivery
+    â€¢ Cache refresh with 3-5ms response time
+    â€¢ Automatic cleanup of old profile photos
     
-    🔒 **Security**: 
-    • JWT authentication required
-    • Users can only update their own profile
-    • File type validation (JPG, PNG, WebP)
-    • File size limit (5MB max)
+    ðŸ”’ **Security**: 
+    â€¢ JWT authentication required
+    â€¢ Users can only update their own profile
+    â€¢ File type validation (JPG, PNG, WebP)
+    â€¢ File size limit (5MB max)
     
-    ⚡ **Performance**: 
-    • GCS upload: ~200-500ms
-    • Database update: ~3-5ms
-    • Total response: ~300-600ms
+    âš¡ **Performance**: 
+    â€¢ GCS upload: ~200-500ms
+    â€¢ Database update: ~3-5ms
+    â€¢ Total response: ~300-600ms
     `
   })
   @ApiConsumes('application/json')
@@ -3066,7 +3089,7 @@ export class UsersController {
       // Update user profile with new image URL using dedicated method
       const updatedUser = await this.usersService.updateImageUrl(userId.toString(), imageUrl);
       
-      // 🔄 Refresh user cache after image update (imageUrl change only)
+      // ðŸ”„ Refresh user cache after image update (imageUrl change only)
       try {
         await this.userManagementService.refreshUserCache(userId.toString());
       } catch (cacheError) {
@@ -3125,7 +3148,7 @@ export class UsersController {
   }
 
   /**
-   * 🖼️ Update Profile Image URL - JSON Method
+   * ðŸ–¼ï¸ Update Profile Image URL - JSON Method
    * Allows users to update their profile image using a URL (no file upload needed)
    */
   @Patch('profile/image-url')
@@ -3137,26 +3160,26 @@ export class UsersController {
   @ApiTags('User Profile Management')
   @ApiBearerAuth()
   @ApiOperation({
-    summary: '🖼️ Update Profile Image URL (JSON) - SUPERADMIN Only',
+    summary: 'ðŸ–¼ï¸ Update Profile Image URL (JSON) - SUPERADMIN Only',
     description: `
-    🎯 **Purpose**: Update user profile image using an external image URL
+    ðŸŽ¯ **Purpose**: Update user profile image using an external image URL
     
-    📋 **Use Cases**:
-    • Use existing image from another service
-    • Import user data with images from external systems
-    • Update image without uploading file
-    • Faster updates when image is already hosted
+    ðŸ“‹ **Use Cases**:
+    â€¢ Use existing image from another service
+    â€¢ Import user data with images from external systems
+    â€¢ Update image without uploading file
+    â€¢ Faster updates when image is already hosted
     
-    🔒 **Security**: 
-    • JWT authentication required
-    • SUPERADMIN role required
-    • URL validation
-    • Must be a valid HTTP/HTTPS URL
+    ðŸ”’ **Security**: 
+    â€¢ JWT authentication required
+    â€¢ SUPERADMIN role required
+    â€¢ URL validation
+    â€¢ Must be a valid HTTP/HTTPS URL
     
-    ⚡ **Performance**: 
-    • Database update: ~3-5ms
-    • No file upload required
-    • Instant update
+    âš¡ **Performance**: 
+    â€¢ Database update: ~3-5ms
+    â€¢ No file upload required
+    â€¢ Instant update
     `
   })
   @ApiBody({
@@ -3266,11 +3289,11 @@ export class UsersController {
   }
 
   // ============================================================
-  // 📧📱 OTP VERIFICATION ENDPOINTS
+  // ðŸ“§ðŸ“± OTP VERIFICATION ENDPOINTS
   // ============================================================
 
   /**
-   * 📧 Request Email OTP
+   * ðŸ“§ Request Email OTP
    * 
    * Sends a 6-digit OTP code to the provided email address
    * - 1 minute TTL
@@ -3328,7 +3351,7 @@ export class UsersController {
     @Body() body: EmailDto,
     @Request() req: any,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestEmailOtp(body.email, ipAddress);
@@ -3337,7 +3360,7 @@ export class UsersController {
   }
 
   /**
-   * ✅ Verify Email OTP
+   * âœ… Verify Email OTP
    * 
    * Verifies the OTP code sent to the email address
    * 
@@ -3379,7 +3402,7 @@ export class UsersController {
   async verifyEmailOtp(
     @Body() body: EmailOtpVerifyDto,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     
     const result = await this.usersService.verifyEmailOtp(body.email, body.otpCode);
     
@@ -3387,7 +3410,7 @@ export class UsersController {
   }
 
   /**
-   * 🔄 Re-request Email OTP
+   * ðŸ”„ Re-request Email OTP
    * 
    * Resends OTP to the email address (same as request endpoint)
    * Maximum 2 requests per day (including initial request)
@@ -3444,7 +3467,7 @@ export class UsersController {
     @Body() body: EmailDto,
     @Request() req: any,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestEmailOtp(body.email, ipAddress);
@@ -3453,7 +3476,7 @@ export class UsersController {
   }
 
   /**
-   * 📱 Request Phone Number OTP
+   * ðŸ“± Request Phone Number OTP
    * 
    * Sends a 6-digit OTP code to the provided phone number via SMS
    * - 1 minute TTL
@@ -3511,7 +3534,7 @@ export class UsersController {
     @Body() body: PhoneNumberDto,
     @Request() req: any,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestPhoneOtp(body.phoneNumber, ipAddress);
@@ -3520,7 +3543,7 @@ export class UsersController {
   }
 
   /**
-   * ✅ Verify Phone Number OTP
+   * âœ… Verify Phone Number OTP
    * 
    * Verifies the OTP code sent to the phone number
    * 
@@ -3562,7 +3585,7 @@ export class UsersController {
   async verifyPhoneOtp(
     @Body() body: PhoneOtpVerifyDto,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     
     const result = await this.usersService.verifyPhoneOtp(body.phoneNumber, body.otpCode);
     
@@ -3570,7 +3593,7 @@ export class UsersController {
   }
 
   /**
-   * 🔄 Re-request Phone Number OTP
+   * ðŸ”„ Re-request Phone Number OTP
    * 
    * Resends OTP to the phone number (same as request endpoint)
    * Maximum 2 requests per day (including initial request)
@@ -3627,7 +3650,7 @@ export class UsersController {
     @Body() body: PhoneNumberDto,
     @Request() req: any,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     const ipAddress = req.ip || req.connection.remoteAddress;
     
     const result = await this.usersService.requestPhoneOtp(body.phoneNumber, ipAddress);
@@ -3636,11 +3659,11 @@ export class UsersController {
   }
 
   // ============================================================
-  // 🚫 PROFILE IMAGE REJECTION (SUPERADMIN ONLY)
+  // ðŸš« PROFILE IMAGE REJECTION (SUPERADMIN ONLY)
   // ============================================================
 
   /**
-   * 🚫 Reject User Profile Image
+   * ðŸš« Reject User Profile Image
    * 
    * Allows SUPERADMIN to reject a user's profile image
    * - Clears the imageUrl field
@@ -3710,7 +3733,7 @@ export class UsersController {
     @Body() body: RejectReasonDto,
     @Request() req: any,
   ) {
-    const requestId = `req_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
     const adminUser = req.user;
     
     try {
@@ -3722,7 +3745,7 @@ export class UsersController {
         data: result
       };
     } catch (error) {
-      this.logger.error(`[${requestId}] ❌ Failed to reject profile image: ${error.message}`);
+      this.logger.error(`[${requestId}] âŒ Failed to reject profile image: ${error.message}`);
       throw error;
     }
   }

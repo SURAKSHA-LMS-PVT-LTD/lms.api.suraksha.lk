@@ -1052,7 +1052,7 @@ export class SystemAdminUserService {
             });
             studentId = student?.studentId;
           } catch (e) {
-            // Ignore if student lookup fails
+            this.logger.debug(`Student lookup failed for userId ${user.id}: ${e?.message}`);
           }
 
           this.asyncEmailService.sendTemplateEmailAsync({
@@ -1754,7 +1754,11 @@ export class SystemAdminUserService {
       purpose: 'profile-image-reupload',
       exp: expiresAt.getTime(),
     });
-    const tokenSecret = process.env.JWT_SECRET || process.env.UPLOAD_TOKEN_SECRET || 'fallback-secret-change-me';
+    const tokenSecret = process.env.JWT_SECRET || process.env.UPLOAD_TOKEN_SECRET;
+    if (!tokenSecret) {
+      this.logger.error('JWT_SECRET or UPLOAD_TOKEN_SECRET must be set for token signing');
+      throw new Error('Server configuration error: signing secret not configured');
+    }
     const signature = crypto.createHmac('sha256', tokenSecret).update(tokenPayload).digest('base64url');
     const uploadToken = `${Buffer.from(tokenPayload).toString('base64url')}.${signature}`;
 
@@ -1819,7 +1823,8 @@ export class SystemAdminUserService {
         return parts[1] || null;
       }
       return null;
-    } catch {
+    } catch (e) {
+      this.logger.debug(`extractPathFromUrl failed: ${e?.message}`);
       return null;
     }
   }

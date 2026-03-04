@@ -9,6 +9,7 @@ import { UserDriveFileEntity } from '../entities/user-drive-file.entity';
 import { TokenEncryptionService } from './token-encryption.service';
 import { DriveConnectionStatusDto } from '../dto/drive-connection.dto';
 import { DriveUploadPurpose } from '../dto/drive-upload.dto';
+import * as crypto from 'crypto';
 
 /**
  * Google Drive Access Management Service.
@@ -55,6 +56,8 @@ export class UserDriveAccessService {
   ];
 
   // In-memory access token cache (userId -> { token, expiresAt })
+  // MAX 10,000 entries with LRU-style eviction
+  private static readonly MAX_CACHE_SIZE = 10000;
   private readonly accessTokenCache = new Map<string, { token: string; expiresAt: Date }>();
 
   constructor(
@@ -81,8 +84,31 @@ export class UserDriveAccessService {
   // OAUTH FLOW: Connect / Disconnect
   // ============================================================
 
+  /**
+   * Evict expired entries and trim cache to MAX_CACHE_SIZE to prevent memory leaks
+   */
+  private evictCacheIfNeeded(): void {
+    const now = new Date();
+    // First pass: remove expired entries
+    for (const [key, value] of this.accessTokenCache) {
+      if (value.expiresAt < now) {
+        this.accessTokenCache.delete(key);
+      }
+    }
+    // Second pass: if still over limit, remove oldest entries (FIFO — Map preserves insertion order)
+    if (this.accessTokenCache.size > UserDriveAccessService.MAX_CACHE_SIZE) {
+      const excess = this.accessTokenCache.size - UserDriveAccessService.MAX_CACHE_SIZE;
+      let removed = 0;
+      for (const key of this.accessTokenCache.keys()) {
+        if (removed >= excess) break;
+        this.accessTokenCache.delete(key);
+        removed++;
+      }
+    }
+  }
+
   generateAuthUrl(userId: string, state?: string): { authUrl: string; state: string } {
-    const stateParam = state || `drive_${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const stateParam = state || `drive_${userId}_${Date.now()}_${crypto.randomBytes(12).toString('base64url')}`;
 
     const params = new URLSearchParams({
       client_id: this.clientId,
@@ -158,6 +184,7 @@ export class UserDriveAccessService {
         await this.driveTokenRepo.save(newToken);
       }
 
+      this.evictCacheIfNeeded();
       this.accessTokenCache.set(userId, { token: tokenData.access_token, expiresAt });
 
       this.logger.log(`Google Drive connected for user ${userId} (${googleUserInfo.email})`);
@@ -530,6 +557,7 @@ export class UserDriveAccessService {
       tokenRecord.updatedAt = new Date();
       await this.driveTokenRepo.save(tokenRecord);
 
+      this.evictCacheIfNeeded();
       this.accessTokenCache.set(userId, { token: newTokenData.access_token, expiresAt });
       return newTokenData.access_token;
     } catch (error) {
@@ -612,8 +640,16 @@ export class UserDriveAccessService {
   }
 
   private async findOrCreateFolder(accessToken: string, folderName: string, parentId: string | null): Promise<string> {
-    let query = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    if (parentId) query += ` and '${parentId}' in parents`;
+    // Sanitize inputs to prevent Google Drive API query injection
+    const safeFolderName = folderName.replace(/'/g, "\\'");
+    let query = `name='${safeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    if (parentId) {
+      // Validate parentId is alphanumeric (Google Drive IDs are alphanumeric + dashes/underscores)
+      if (!/^[a-zA-Z0-9_-]+$/.test(parentId)) {
+        throw new BadRequestException('Invalid parent folder ID');
+      }
+      query += ` and '${parentId}' in parents`;
+    }
 
     const searchResponse = await firstValueFrom(
       this.httpService.get('https://www.googleapis.com/drive/v3/files', {

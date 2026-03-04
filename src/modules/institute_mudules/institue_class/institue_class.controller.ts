@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { ImageUrlDto, TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, UploadedFile, ClassSerializerInterceptor } from '@nestjs/common';
@@ -46,11 +47,7 @@ export class InstitueClassController {
 
   // Helper methods for security and validation
   private generateRequestId(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c == 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return crypto.randomUUID();
   }
 
   private sanitizeString(str: string): string {

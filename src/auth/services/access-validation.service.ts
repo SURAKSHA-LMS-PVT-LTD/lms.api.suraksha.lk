@@ -122,38 +122,26 @@ export class AccessValidationService {
   }
 
   /**
-   * DEPRECATED: Legacy method for backward compatibility
+   * DEPRECATED: Legacy method — throws ForbiddenException.
+   * Use cache validation decorators for proper authorization.
    */
   async hasInstituteAccessLegacy(token: string, instituteId: string): Promise<boolean> {
-    try {
-      this.extractTokenPayload(token);
-      return true; // Minimal validation
-    } catch {
-      return false;
-    }
+    throw new ForbiddenException('Legacy access validation is deprecated. Use cache-based decorators.');
   }
 
   /**
-   * DEPRECATED: Legacy method for backward compatibility  
+   * DEPRECATED: Legacy method — throws ForbiddenException.
+   * Use cache validation decorators for proper authorization.
    */
   async hasClassAccessLegacy(token: string, instituteId: string, classId: string): Promise<boolean> {
-    try {
-      this.extractTokenPayload(token);
-      return true; // Minimal validation
-    } catch {
-      return false;
-    }
+    throw new ForbiddenException('Legacy access validation is deprecated. Use cache-based decorators.');
   }
 
   /**
-   * DEPRECATED: Legacy method for backward compatibility
+   * DEPRECATED: Legacy method — throws ForbiddenException.
+   * Use cache validation decorators for proper authorization.
    */
   async hasSubjectAccessLegacy(token: string, instituteId: string, classId: string, subjectId: string): Promise<boolean> {
-    try {
-      this.extractTokenPayload(token);
-      return true; // Minimal validation
-    } catch {
-      return false;
-    }
+    throw new ForbiddenException('Legacy access validation is deprecated. Use cache-based decorators.');
   }
 }

@@ -366,6 +366,7 @@ export class UploadController {
   }
 
   @Public()
+  @UseGuards(ApiKeyOrJwtGuard)
   @Post('generate-signed-url')
   @ApiOperation({ 
     summary: 'Generate SHORT-LIVED private signed upload URL (10 min)',

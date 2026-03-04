@@ -1,10 +1,11 @@
+﻿import * as crypto from 'crypto';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
 /**
- * 🔍 SECURITY MONITORING SERVICE
+ * ðŸ” SECURITY MONITORING SERVICE
  * Tracks and analyzes security events in real-time
  */
 @Injectable()
@@ -33,7 +34,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
   }
 
   /**
-   * 🚨 Record a security event
+   * ðŸš¨ Record a security event
    */
   recordSecurityEvent(event: SecurityEventData): void {
     const securityEvent: SecurityEvent = {
@@ -70,7 +71,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
   }
 
   /**
-   * 🔍 Analyze security patterns for an IP
+   * ðŸ” Analyze security patterns for an IP
    */
   analyzeSecurityPatterns(ip: string): SecurityAnalysis {
     const events = this.securityEvents.get(ip) || [];
@@ -101,7 +102,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
   }
 
   /**
-   * 🎯 Get security metrics
+   * ðŸŽ¯ Get security metrics
    */
   getSecurityMetrics(): SecurityMetrics {
     const now = Date.now();
@@ -137,7 +138,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
   }
 
   /**
-   * 📊 Export security report
+   * ðŸ“Š Export security report
    */
   exportSecurityReport(): SecurityReport {
     const metrics = this.getSecurityMetrics();
@@ -160,7 +161,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
 
   private logSecurityEvent(event: SecurityEvent): void {
     const logLevel = this.getLogLevel(event.severity);
-    const message = `🚨 Security Event [${event.type}] from ${event.ip}: ${event.description}`;
+    const message = `ðŸš¨ Security Event [${event.type}] from ${event.ip}: ${event.description}`;
     
     switch (logLevel) {
       case 'error':
@@ -209,7 +210,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
       severity: 'HIGH',
     };
 
-    this.logger.error(`🚨 SECURITY ALERT [${alertType}] IP: ${ip} - ${description}`);
+    this.logger.error(`ðŸš¨ SECURITY ALERT [${alertType}] IP: ${ip} - ${description}`);
     
     // Send alert to external systems
     this.sendAlertToExternalSystems(alert);
@@ -324,7 +325,7 @@ export class SecurityMonitoringService implements OnModuleDestroy {
   }
 
   private generateEventId(): string {
-    return `sec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `sec_${Date.now()}_${crypto.randomBytes(6).toString('base64url')}`;
   }
 
   private sendToExternalMonitoring(event: SecurityEvent): void {

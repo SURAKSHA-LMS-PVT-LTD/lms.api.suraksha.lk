@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
+import { Exclude } from 'class-transformer';
 
 @Entity('password_reset_tokens')
 // 🎯 REAL QUERY-BASED INDEXES - Based on actual codebase queries (Nov 2024)
@@ -14,9 +15,11 @@ export class PasswordResetTokenEntity {
   email: string;
 
   @Column({ type: 'varchar', length: 6, name: 'otp' })
+  @Exclude()
   otp: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'verificationToken' })
+  @Exclude()
   verificationToken?: string;
 
   @Column({ type: 'varchar', length: 50, name: 'tokenType' })
@@ -102,6 +105,7 @@ export class RefreshTokenEntity {
   id: string;
 
   @Column({ type: 'varchar', length: 500 })
+  @Exclude()
   token: string;
 
   @Column({ type: 'bigint' })

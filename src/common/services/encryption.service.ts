@@ -269,18 +269,14 @@ export class EncryptionService {
   }
 
   /**
-   * 🧹 Securely clear sensitive data from memory
+   * 🧹 Clear sensitive data reference
+   * NOTE: JavaScript strings are immutable — true memory clearing is not possible in JS/V8.
+   * This method is a no-op placeholder. For sensitive data, rely on short variable lifetimes
+   * and avoid storing secrets in long-lived variables.
    */
-  secureMemoryClear(sensitiveData: string): void {
-    // Note: JavaScript doesn't provide true memory clearing,
-    // but this helps prevent casual observation
-    if (sensitiveData && typeof sensitiveData === 'string') {
-      // Overwrite with random data
-      for (let i = 0; i < sensitiveData.length; i++) {
-        sensitiveData = sensitiveData.substring(0, i) + 
-                      String.fromCharCode(Math.floor(Math.random() * 256)) + 
-                      sensitiveData.substring(i + 1);
-      }
-    }
+  secureMemoryClear(_sensitiveData: string): void {
+    // No-op: JavaScript strings are immutable and cannot be overwritten in memory.
+    // The previous implementation created garbage strings without clearing originals.
+    // Rely on V8 garbage collection and minimize sensitive data lifetime instead.
   }
 }

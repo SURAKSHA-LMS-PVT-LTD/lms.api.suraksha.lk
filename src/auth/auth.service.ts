@@ -294,6 +294,7 @@ export class AuthService {
         status: assignment.status
       }));
     } catch (error) {
+      this.logger.warn(`Failed to get institute assignments for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -320,6 +321,7 @@ export class AuthService {
         status: enrollment.isActive ? 'ACTIVE' : 'INACTIVE'
       }));
     } catch (error) {
+      this.logger.warn(`Failed to get student enrollments for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -349,6 +351,7 @@ export class AuthService {
 
       return classEnrollments || [];
     } catch (error) {
+      this.logger.warn(`Failed to get class enrollments for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -385,6 +388,7 @@ export class AuthService {
 
       return subjectEnrollments || [];
     } catch (error) {
+      this.logger.warn(`Failed to get subject enrollments for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -412,6 +416,7 @@ export class AuthService {
         assignedDate: assignment.createdAt
       }));
     } catch (error) {
+      this.logger.warn(`Failed to get teaching assignments for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -443,6 +448,7 @@ export class AuthService {
 
       return classes || [];
     } catch (error) {
+      this.logger.warn(`Failed to get classes teaching for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -473,6 +479,7 @@ export class AuthService {
 
       return subjects || [];
     } catch (error) {
+      this.logger.warn(`Failed to get subjects teaching for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -511,6 +518,7 @@ export class AuthService {
         addedDate: child.createdAt
       }));
     } catch (error) {
+      this.logger.warn(`Failed to get parent children for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -550,6 +558,7 @@ export class AuthService {
 
       return enrollments || [];
     } catch (error) {
+      this.logger.warn(`Failed to get children enrollments for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -579,6 +588,7 @@ export class AuthService {
 
       return managedInstitutes || [];
     } catch (error) {
+      this.logger.warn(`Failed to get managed institutes for user ${userId}: ${error.message}`);
       return [];
     }
   }
@@ -608,6 +618,7 @@ export class AuthService {
 
       return summary || { totalInstitutes: 0, totalClasses: 0, totalStudents: 0, totalTeachers: 0 };
     } catch (error) {
+      this.logger.error(`Failed to get institute summary for user ${userId}: ${error.message}`);
       return { totalInstitutes: 0, totalClasses: 0, totalStudents: 0, totalTeachers: 0 };
     }
   }
@@ -635,6 +646,7 @@ export class AuthService {
         totalTeachers: parseInt(totalTeachers?.count || '0')
       };
     } catch (error) {
+      this.logger.error(`Failed to get system summary: ${error.message}`);
       return { totalInstitutes: 0, totalUsers: 0, totalClasses: 0, totalStudents: 0, totalTeachers: 0 };
     }
   }
@@ -701,6 +713,7 @@ export class AuthService {
         canManagePayments: false
       };
     } catch (error) {
+      this.logger.error(`Failed to get permissions for user ${userId}: ${error.message}`);
       return {};
     }
   }
@@ -734,6 +747,7 @@ export class AuthService {
       const pepperedPassword = password + this.pepper;
       return await bcrypt.compare(pepperedPassword, hash);
     } catch (error) {
+      this.logger.error(`Password comparison failed: ${error.message}`);
       return false;
     }
   }

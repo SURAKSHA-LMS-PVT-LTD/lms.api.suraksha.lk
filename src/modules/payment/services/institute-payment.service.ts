@@ -28,10 +28,10 @@ import {
   PaginatedSecureInstitutePaymentSubmissionsResponseDto
 } from '../dto/secure-institute-payment-response.dto';
 
-// Minimal JWT token utility functions - validation is handled by decorators
+// Minimal JWT token utility functions - uses verify() to ensure signature validity
 function extractUserIdFromToken(token: string, jwtService: JwtService): string | null {
   try {
-    const payload = jwtService.decode(token) as JwtPayload;
+    const payload = jwtService.verify(token) as JwtPayload;
     return payload?.s || null; // 's' is the user ID in JWT v2
   } catch (error) {
     return null;
@@ -40,7 +40,7 @@ function extractUserIdFromToken(token: string, jwtService: JwtService): string |
 
 function extractUserRoleFromToken(token: string, jwtService: JwtService): string | null {
   try {
-    const payload = jwtService.decode(token) as JwtPayload;
+    const payload = jwtService.verify(token) as JwtPayload;
     if (payload?.u === undefined) return null;
     return payload.userType || String(payload.u); // Return DB string or compact number as string
   } catch (error) {
@@ -111,6 +111,7 @@ export class InstitutePaymentService {
         role: userEntity.userType
       };
     } catch (error) {
+      this.logger.warn(`getUserFromJWT failed: ${error?.message}`);
       return { user: null, hasAccess: false, role: null };
     }
   }

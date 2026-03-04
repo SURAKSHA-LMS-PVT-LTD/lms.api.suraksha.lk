@@ -1,3 +1,4 @@
+﻿import * as crypto from 'crypto';
 import { ExceptionFilter, Catch, ArgumentsHost, BadRequestException, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { getCurrentSriLankaISO, nowTimestamp } from '../utils/timezone.util';
@@ -27,7 +28,7 @@ export class FileUploadExceptionFilter implements ExceptionFilter {
         method: request.method,
         message: `Invalid form field name "${fieldName}". Please use field name "file" for file uploads.`,
         error: 'Bad Request',
-        requestId: `err_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`,
+        requestId: `err_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`,
         details: {
           expectedField: 'file',
           receivedField: fieldName,
@@ -51,7 +52,7 @@ export class FileUploadExceptionFilter implements ExceptionFilter {
         method: request.method,
         message: 'File size exceeds the maximum allowed limit',
         error: 'Bad Request',
-        requestId: `err_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`,
+        requestId: `err_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`,
         details: {
           maxSize: request.url.includes('profile-image') ? '5MB' : '10MB',
           hint: 'Please upload a smaller file'
@@ -73,7 +74,7 @@ export class FileUploadExceptionFilter implements ExceptionFilter {
       method: request.method,
       message: message,
       error: 'Bad Request',
-      requestId: `err_${nowTimestamp()}_${Math.random().toString(36).substr(2, 9)}`
+      requestId: `err_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`
     };
 
     this.logger.error(`Request error: ${message}`, exception.stack);

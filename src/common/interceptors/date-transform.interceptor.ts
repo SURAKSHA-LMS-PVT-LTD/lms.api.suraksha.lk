@@ -6,9 +6,14 @@ import { map } from 'rxjs/operators';
  * Global interceptor to ensure dates are properly serialized to ISO strings
  * with Sri Lanka timezone (+05:30) instead of UTC (Z)
  * Fixes issues with TypeORM bigNumberStrings causing dates to be empty objects
+ *
+ * The mysql2 driver (with timezone:'+05:30') returns proper UTC Date objects.
+ * This interceptor converts them to Sri Lanka local time ISO strings.
  */
 @Injectable()
 export class DateTransformInterceptor implements NestInterceptor {
+  private static readonly SRI_LANKA_OFFSET_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     return next.handle().pipe(
       map(data => this.transformDates(data))
@@ -16,14 +21,13 @@ export class DateTransformInterceptor implements NestInterceptor {
   }
 
   /**
-   * Convert Date to ISO string with Sri Lanka timezone offset (+05:30)
-   * Simply converts to ISO format and replaces Z with +05:30
-   * Database already stores in correct timezone via connection config
+   * Convert a UTC Date to an ISO string in Sri Lanka timezone (+05:30).
+   * Adds the +05:30 offset to the UTC epoch to get Sri Lanka wall-clock time,
+   * then formats as ISO with the +05:30 suffix.
    */
   private dateToSriLankaISO(date: Date): string {
-    // Use standard ISO string and just replace Z with +05:30
-    // This preserves the exact time from the database without any conversion
-    return date.toISOString().replace('Z', '+05:30');
+    const sriLankaDate = new Date(date.getTime() + DateTransformInterceptor.SRI_LANKA_OFFSET_MS);
+    return sriLankaDate.toISOString().replace('Z', '+05:30');
   }
 
   /**

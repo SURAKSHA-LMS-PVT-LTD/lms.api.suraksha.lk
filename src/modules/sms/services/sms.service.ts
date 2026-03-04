@@ -69,7 +69,8 @@ interface CacheItem<T> {
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
 
-  // LOCAL CACHING SYSTEM
+  // LOCAL CACHING SYSTEM (with max-size limits to prevent memory leaks)
+  private static readonly MAX_CACHE_ENTRIES = 5000;
   private readonly credentialsCache = new Map<string, CacheItem<InstituteSmsCredentialsEntity>>();
   private readonly recipientCache = new Map<string, CacheItem<any[]>>();
   private readonly countCache = new Map<string, CacheItem<RecipientCountResponseDto>>();
@@ -1553,6 +1554,17 @@ export class SmsService {
           cleanedCount++;
         }
       });
+      // Enforce max size after TTL cleanup — remove oldest entries (FIFO)
+      if (cache.size > SmsService.MAX_CACHE_ENTRIES) {
+        const excess = cache.size - SmsService.MAX_CACHE_ENTRIES;
+        let removed = 0;
+        for (const key of cache.keys()) {
+          if (removed >= excess) break;
+          cache.delete(key);
+          removed++;
+          cleanedCount++;
+        }
+      }
     });
 
     if (cleanedCount > 0) {

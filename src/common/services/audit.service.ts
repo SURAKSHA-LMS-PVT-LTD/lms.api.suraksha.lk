@@ -1,3 +1,4 @@
+﻿import * as crypto from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { getCurrentSriLankaTime } from '../utils/timezone.util';
 
@@ -22,7 +23,7 @@ export interface AuditLogEntry {
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger('AuditService');
-  // Bounded circular buffer — keeps only the last MAX_ENTRIES logs in memory.
+  // Bounded circular buffer â€” keeps only the last MAX_ENTRIES logs in memory.
   // Prevents OOM in production. For persistent audit trails, integrate a database.
   private static readonly MAX_ENTRIES = 10_000;
   private auditLogs: AuditLogEntry[] = [];
@@ -119,16 +120,16 @@ export class AuditService {
   }
 
   private getActionEmoji(action: string, statusCode: number): string {
-    if (statusCode >= 400) return '❌';
+    if (statusCode >= 400) return 'âŒ';
     
     switch (action.toUpperCase()) {
-      case 'CREATE': return '✅';
-      case 'READ': return '👁️';
-      case 'UPDATE': return '📝';
-      case 'DELETE': return '🗑️';
-      case 'LOGIN': return '🔐';
-      case 'LOGOUT': return '🚪';
-      default: return '📋';
+      case 'CREATE': return 'âœ…';
+      case 'READ': return 'ðŸ‘ï¸';
+      case 'UPDATE': return 'ðŸ“';
+      case 'DELETE': return 'ðŸ—‘ï¸';
+      case 'LOGIN': return 'ðŸ”';
+      case 'LOGOUT': return 'ðŸšª';
+      default: return 'ðŸ“‹';
     }
   }
 
@@ -141,7 +142,7 @@ export class AuditService {
   }
 
   private generateId(): string {
-    return `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `audit_${Date.now()}_${crypto.randomBytes(6).toString('base64url')}`;
   }
 
   private groupBy(array: any[], key: string): Record<string, number> {

@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
+import * as crypto from 'crypto';
 import {
   ApiTags,
   ApiOperation,
@@ -118,8 +119,17 @@ export class UserDriveAccessController {
   ): Promise<DriveAuthUrlDto> {
     const userId = JwtRequestHelper.getUserId(req.user);
 
-    const stateData = JSON.stringify({ userId, returnUrl: returnUrl || '/homework' });
-    const state = Buffer.from(stateData).toString('base64url');
+    // Validate returnUrl is a relative path (prevent open redirect)
+    const safeReturnUrl = (returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//')) 
+      ? returnUrl 
+      : '/homework';
+
+    const stateData = JSON.stringify({ userId, returnUrl: safeReturnUrl });
+    const statePayload = Buffer.from(stateData).toString('base64url');
+    // Sign state with HMAC to prevent forgery
+    const stateSecret = process.env.JWT_SECRET || '';
+    const hmac = crypto.createHmac('sha256', stateSecret).update(statePayload).digest('base64url');
+    const state = `${statePayload}.${hmac}`;
 
     const result = this.driveService.generateAuthUrl(userId, state);
     return { authUrl: result.authUrl, state: result.state };
@@ -145,10 +155,26 @@ export class UserDriveAccessController {
     try {
       let userId: string;
       try {
-        const stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
+        // Verify HMAC signature on state to prevent forgery
+        const parts = state.split('.');
+        if (parts.length !== 2) {
+          throw new BadRequestException('Invalid state parameter format');
+        }
+        const [statePayload, hmacSignature] = parts;
+        const stateSecret = process.env.JWT_SECRET || '';
+        const expectedHmac = crypto.createHmac('sha256', stateSecret).update(statePayload).digest('base64url');
+        if (!crypto.timingSafeEqual(Buffer.from(hmacSignature), Buffer.from(expectedHmac))) {
+          throw new BadRequestException('Invalid state signature — possible CSRF attack');
+        }
+        const stateData = JSON.parse(Buffer.from(statePayload, 'base64url').toString('utf-8'));
         userId = stateData.userId;
         returnUrl = stateData.returnUrl || '/homework';
-      } catch {
+        // Validate returnUrl is a safe relative path
+        if (!returnUrl.startsWith('/') || returnUrl.startsWith('//')) {
+          returnUrl = '/homework';
+        }
+      } catch (stateErr) {
+        if (stateErr instanceof BadRequestException) throw stateErr;
         throw new BadRequestException('Invalid state parameter');
       }
 

@@ -7,6 +7,7 @@ import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { SmslenzProvider } from '../../../modules/sms/providers/smslenz.provider';
 import { now, nowTimestamp, getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class UserOtpService {
@@ -28,7 +29,7 @@ export class UserOtpService {
    * Generate 6-digit OTP code
    */
   private generateOtpCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
   }
 
   /**

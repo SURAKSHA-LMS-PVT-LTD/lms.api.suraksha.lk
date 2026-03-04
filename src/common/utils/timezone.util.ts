@@ -156,11 +156,17 @@ export function formatSriLankaDateTime(date: Date | string, options?: Intl.DateT
 }
 
 /**
- * Create a new Date object with Sri Lanka timezone consideration
- * Use this instead of new Date() for current time
+ * Get current time as a proper UTC Date for database storage.
+ * The mysql2 connection (timezone:'+05:30') handles UTC→Sri Lanka conversion
+ * automatically, so this must return real UTC — NOT fake UTC.
+ *
+ * Previous implementation used getCurrentSriLankaTime() which created a Date
+ * with Sri Lanka components in UTC fields (fake UTC). Combined with mysql2's
+ * +05:30 client-side conversion, this caused a double offset: timestamps were
+ * stored 5h30m ahead of the correct value in MySQL.
  */
 export function now(): Date {
-  return getCurrentSriLankaTime();
+  return new Date();
 }
 
 /**

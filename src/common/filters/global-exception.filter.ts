@@ -1,3 +1,4 @@
+﻿import * as crypto from 'crypto';
 import {
   ExceptionFilter,
   Catch,
@@ -320,12 +321,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   private getErrorEmoji(errorType: string): string {
     switch (errorType) {
-      case 'RateLimitExceeded': return '🚦';
-      case 'ValidationError': return '⚠️';
-      case 'DatabaseError': return '💾';
-      case 'HttpException': return '🔴';
-      case 'UnknownError': return '💥';
-      default: return '❌';
+      case 'RateLimitExceeded': return 'ðŸš¦';
+      case 'ValidationError': return 'âš ï¸';
+      case 'DatabaseError': return 'ðŸ’¾';
+      case 'HttpException': return 'ðŸ”´';
+      case 'UnknownError': return 'ðŸ’¥';
+      default: return 'âŒ';
     }
   }
 
@@ -365,7 +366,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     
     const sanitized = { ...body };
     
-    // 🔒 COMPREHENSIVE PASSWORD SANITIZATION - Remove all sensitive fields
+    // ðŸ”’ COMPREHENSIVE PASSWORD SANITIZATION - Remove all sensitive fields
     const sensitiveFields = [
       'password', 
       'currentPassword', 
@@ -422,6 +423,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   private generateRequestId(): string {
-    return `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `err_${Date.now()}_${crypto.randomBytes(6).toString('base64url')}`;
   }
 }

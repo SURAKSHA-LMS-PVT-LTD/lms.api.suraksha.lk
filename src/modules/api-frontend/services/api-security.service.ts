@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import * as crypto from 'crypto';
 
 export interface SecurityValidationResult {
   isValid: boolean;
@@ -292,7 +292,7 @@ export class ApiSecurityService {
    * Helper methods
    */
   private generateRequestId(): string {
-    return createHash('md5').update(`${Date.now()}-${Math.random()}`).digest('hex').substring(0, 8);
+    return crypto.randomBytes(4).toString('hex');
   }
 
   private extractToken(request: Request): string | null {

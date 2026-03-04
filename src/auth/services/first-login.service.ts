@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, MoreThanOrEqual, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -62,6 +62,7 @@ export class FirstLoginService {
     // ✅ CACHING SERVICES
     private readonly userManagementService: UserManagementService,
     private readonly cacheService: CacheService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async initiateFirstLogin(
@@ -89,38 +90,54 @@ export class FirstLoginService {
     const expiryTimeMs = nowTimestamp() + (15 * 60 * 1000); // 15 minutes in milliseconds
     const expiresAt = new Date(expiryTimeMs);
 
-    // Invalidate any existing tokens for this email
-    await this.passwordResetTokenRepository.update(
-      { email: dto.email, isUsed: false },
-      { isUsed: true, updatedAt: now() }
-    );
+    // Use a transaction to ensure atomicity of token creation + log entry
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Create new token
-    const resetToken = this.passwordResetTokenRepository.create({
-      email: dto.email,
-      otp,
-      tokenType: 'FIRST_LOGIN',
-      expiresAt,
-      createdAt: now(), // Explicitly set Sri Lanka timezone
-      updatedAt: now(), // Initialize updatedAt
-      ipAddress,
-      userAgent,
-    });
+    try {
+      // Invalidate any existing tokens for this email
+      await queryRunner.manager.update(
+        PasswordResetTokenEntity,
+        { email: dto.email, isUsed: false },
+        { isUsed: true, updatedAt: now() }
+      );
 
-    await this.passwordResetTokenRepository.save(resetToken);
+      // Create new token
+      const resetToken = queryRunner.manager.create(PasswordResetTokenEntity, {
+        email: dto.email,
+        otp,
+        tokenType: 'FIRST_LOGIN',
+        expiresAt,
+        createdAt: now(),
+        updatedAt: now(),
+        ipAddress,
+        userAgent,
+      });
 
-    // Log the first login attempt
-    const loginLog = this.firstLoginLogRepository.create({
-      userId: user.id,
-      email: dto.email,
-      status: 'OTP_SENT',
-      createdAt: now(), // Explicitly set Sri Lanka timezone
-      ipAddress,
-      userAgent,
-      notes: 'First login OTP sent successfully'
-    });
+      await queryRunner.manager.save(resetToken);
 
-    await this.firstLoginLogRepository.save(loginLog);
+      // Log the first login attempt
+      const loginLog = queryRunner.manager.create(UserFirstLoginLogEntity, {
+        userId: user.id,
+        email: dto.email,
+        status: 'OTP_SENT',
+        createdAt: now(),
+        ipAddress,
+        userAgent,
+        notes: 'First login OTP sent successfully'
+      });
+
+      await queryRunner.manager.save(loginLog);
+
+      await queryRunner.commitTransaction();
+    } catch (txError) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Failed to create OTP token for ${maskPii(dto.email)}: ${txError.message}`);
+      throw new BadRequestException('Failed to initiate first login. Please try again.');
+    } finally {
+      await queryRunner.release();
+    }
 
     // Send OTP email using AWS Lambda email service (industry-level performance)
     // This doesn't block the response - user gets immediate feedback
@@ -351,7 +368,7 @@ export class FirstLoginService {
   }
 
   private generateOTP(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
   }
 
   async resendOTP(
@@ -367,7 +384,7 @@ export class FirstLoginService {
       where: {
         email,
         tokenType: 'FIRST_LOGIN',
-        createdAt: new Date(oneHourAgoMs)
+        createdAt: MoreThanOrEqual(new Date(oneHourAgoMs))
       }
     });
 
@@ -496,7 +513,7 @@ export class FirstLoginService {
           additionalData.emergencyContact = student.emergencyContact || undefined;
           additionalData.bloodGroup = student.bloodGroup || undefined;
         }
-      } catch { /* Student entity may not exist for this user */ }
+      } catch (e) { this.logger.debug(`Student entity not found for user ${userId}: ${e?.message}`); }
 
       // Try loading parent-specific data (user may be enrolled as parent in an institute)
       try {
@@ -513,7 +530,7 @@ export class FirstLoginService {
           additionalData.workplace = parent.workplace || undefined;
           additionalData.educationLevel = parent.educationLevel || undefined;
         }
-      } catch { /* Parent entity may not exist for this user */ }
+      } catch (e) { this.logger.debug(`Parent entity not found for user ${userId}: ${e?.message}`); }
     } catch (error) {
       this.logger.warn(`Could not fetch additional data for user ${userId}:`, error.message);
     }

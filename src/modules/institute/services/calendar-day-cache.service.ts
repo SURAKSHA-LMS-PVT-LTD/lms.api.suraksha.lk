@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { InstituteCalendarDayEntity } from '../entities/institute-calendar-day.entity';
 import { InstituteCalendarService } from './institute-calendar.service';
 import { getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
@@ -10,13 +10,20 @@ interface CacheEntry {
 }
 
 @Injectable()
-export class CalendarDayCacheService {
+export class CalendarDayCacheService implements OnModuleDestroy {
   private readonly logger = new Logger(CalendarDayCacheService.name);
   private readonly cache = new Map<string, CacheEntry>();
+  private cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor(private readonly calendarService: InstituteCalendarService) {
     // Start cleanup interval (every hour)
-    setInterval(() => this.cleanup(), 3600000);
+    this.cleanupInterval = setInterval(() => this.cleanup(), 3600000);
+  }
+
+  onModuleDestroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
   }
 
   /**

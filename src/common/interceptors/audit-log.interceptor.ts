@@ -1,3 +1,4 @@
+﻿import * as crypto from 'crypto';
 import {
   Injectable,
   NestInterceptor,
@@ -178,7 +179,7 @@ export class AuditLogInterceptor implements NestInterceptor {
   }
 
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${Date.now()}_${crypto.randomBytes(6).toString('base64url')}`;
   }
 
   private sanitizeBody(body: any): any {
@@ -186,7 +187,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     
     const sanitized = { ...body };
     
-    // 🔒 COMPREHENSIVE PASSWORD SANITIZATION - Remove all sensitive fields
+    // ðŸ”’ COMPREHENSIVE PASSWORD SANITIZATION - Remove all sensitive fields
     const sensitiveFields = [
       'password', 
       'currentPassword', 
@@ -253,7 +254,7 @@ export class AuditLogInterceptor implements NestInterceptor {
   }
 
   private logError(requestId: string, data: any): void {
-    this.logger.error(`❌ ERROR [${requestId}] ${data.method} ${data.url} - ${data.statusCode} (${data.duration}ms)`, {
+    this.logger.error(`âŒ ERROR [${requestId}] ${data.method} ${data.url} - ${data.statusCode} (${data.duration}ms)`, {
       requestId,
       type: 'ERROR',
       method: data.method,
@@ -267,7 +268,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     
     // Log validation errors in detail if it's a BadRequestException
     if (data.error?.name === 'BadRequestException' && data.error?.response?.message) {
-      this.logger.error(`🔍 Validation Details [${requestId}]:`, {
+      this.logger.error(`ðŸ” Validation Details [${requestId}]:`, {
         validationErrors: data.error.response.message,
         requestBody: data.requestBody,
       });
@@ -275,10 +276,10 @@ export class AuditLogInterceptor implements NestInterceptor {
   }
 
   private getStatusEmoji(statusCode: number): string {
-    if (statusCode >= 200 && statusCode < 300) return '🟢';
-    if (statusCode >= 300 && statusCode < 400) return '🟡';
-    if (statusCode >= 400 && statusCode < 500) return '🔴';
-    if (statusCode >= 500) return '💥';
-    return '⚪';
+    if (statusCode >= 200 && statusCode < 300) return 'ðŸŸ¢';
+    if (statusCode >= 300 && statusCode < 400) return 'ðŸŸ¡';
+    if (statusCode >= 400 && statusCode < 500) return 'ðŸ”´';
+    if (statusCode >= 500) return 'ðŸ’¥';
+    return 'âšª';
   }
 }
