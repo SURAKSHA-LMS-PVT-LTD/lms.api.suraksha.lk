@@ -148,6 +148,8 @@ export class AdvertisementCacheService {
 
   /**
    * Sync metrics to database (called on-demand based on timestamp)
+   * ✅ BUG-E FIX: Atomic swap — take snapshot, clear cache first, then sync to DB.
+   * If DB write fails, the buffered metrics are lost (acceptable trade-off vs double-counting).
    */
   private async syncMetricsToDB(metrics: { 
     data: Record<string, { sendings: number }>; 
@@ -161,9 +163,21 @@ export class AdvertisementCacheService {
         return;
       }
 
-      // Bulk update currentSendings in database
-      for (const adId of adIds) {
-        const { sendings } = metrics.data[adId];
+      // Step 1: Take snapshot of current data
+      const snapshot = { ...metrics.data };
+      
+      // Step 2: Clear cache FIRST to prevent double-counting on crash
+      const now = getCurrentSriLankaTime();
+      const clearedMetrics = {
+        data: {},
+        lastUpdated: now,
+        lastSyncTime: now
+      };
+      await this.cacheManager.set(this.METRICS_CACHE_KEY, clearedMetrics, this.CACHE_TTL * 24);
+
+      // Step 3: Bulk update currentSendings in database from snapshot
+      for (const adId of Object.keys(snapshot)) {
+        const { sendings } = snapshot[adId];
         
         await this.advertisementRepository.increment(
           { id: adId },
@@ -171,20 +185,9 @@ export class AdvertisementCacheService {
           sendings
         );
       }
-
-      const now = getCurrentSriLankaTime();
-      
-      // Update metrics with new sync time and clear data
-      const updatedMetrics = {
-        data: {},
-        lastUpdated: now,
-        lastSyncTime: now
-      };
-      
-      await this.cacheManager.set(this.METRICS_CACHE_KEY, updatedMetrics, this.CACHE_TTL * 24);
       
     } catch (error) {
-      this.logger.error('❌ Failed to sync metrics to database', error);
+      this.logger.error('❌ Failed to sync metrics to database (cache already cleared to prevent double-counting)', error);
     }
   }
 

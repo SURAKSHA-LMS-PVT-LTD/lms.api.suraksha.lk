@@ -9,6 +9,7 @@ import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
+import { NOTIFICATION_PACKAGES_CONFIG } from './notification-packages.config';
 
 export interface AdvertisementDeliveryResult {
   success: boolean;
@@ -372,13 +373,11 @@ export class AdvertisementDeliveryService {
 
   /**
    * Check if advertisements are enabled for subscription plan
-   * ✅ REFACTORED: Subscription plan no longer gates ad delivery.
-   * Delivery channels are determined solely by the ad's supportivePlatforms.
-   * Subscription plan is only used for other features (marks, attendance, etc.)
+   * ✅ Uses isAds flag from notification-packages.config to respect plan settings
    */
   private isAdvertisementEnabled(subscriptionPlan: string): boolean {
-    // Ads are always enabled — delivery channels come from ad.supportivePlatforms
-    return true;
+    const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[subscriptionPlan?.toUpperCase()];
+    return packageConfig?.isAds !== false;
   }
 
   /**

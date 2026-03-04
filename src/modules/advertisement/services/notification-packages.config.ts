@@ -15,7 +15,7 @@ export const NOTIFICATION_PACKAGES_CONFIG = {
       retryDelay: 10000
     },
     WHATSAPP: {
-      channels: ["telegram", "push"],
+      channels: ["whatsapp", "telegram", "push"],
       isAds: true,
       retryCount: 2,
       retryDelay: 7000

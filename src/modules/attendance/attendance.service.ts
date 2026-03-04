@@ -1495,7 +1495,16 @@ export class AttendanceService {
         advertisementData
       };
 
-      await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+      const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+
+      // ✅ BUG-B FIX: Only increment currentSendings AFTER successful delivery
+      if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && notificationResult.successfulChannels > 0) {
+        this.advertisementRepository.increment(
+          { id: advertisementData.id },
+          'currentSendings',
+          1
+        ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
+      }
       
     } catch (error) {
       this.logger.warn(`Attendance notification failed (non-blocking): ${error.message}`);
@@ -1599,6 +1608,11 @@ export class AttendanceService {
         attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: attendanceDto.date,
         time: formatSriLankaTime(now()),
+        location: attendanceDto.location || null,
+        instituteName: attendanceDto.instituteName || null,
+        className: attendanceDto.className || null,
+        subjectName: attendanceDto.subjectName || null,
+        attendanceType: (attendanceDto.subjectName ? 'SUBJECT' : (attendanceDto.className ? 'CLASS' : 'INSTITUTE')) as 'SUBJECT' | 'CLASS' | 'INSTITUTE',
         vehicleNumber: null,
         bookhireName: null,
         subscriptionPlan,
@@ -1606,7 +1620,16 @@ export class AttendanceService {
       };
 
       // 🚀 Send notification immediately (fire-and-forget)
-      await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+      const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+
+      // ✅ BUG-B FIX: Only increment currentSendings AFTER successful delivery
+      if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && notificationResult.successfulChannels > 0) {
+        this.advertisementRepository.increment(
+          { id: advertisementData.id },
+          'currentSendings',
+          1
+        ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
+      }
       
       // CASCADE TO PARENTS FEATURE
       // If ad has cascadeToParents=true, send SAME ad to ALL parents (not just primary)
@@ -1747,12 +1770,8 @@ export class AttendanceService {
         const bestMatch = matches[0];
         const advertisement = bestMatch.advertisement;
 
-        // Increment sending count (fire-and-forget)
-        this.advertisementRepository.increment(
-          { id: advertisement.id },
-          'currentSendings',
-          1
-        ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
+        // ✅ BUG-B FIX: currentSendings increment moved to AFTER successful notification delivery
+        // (see sendImmediateNotification and sendAttendanceNotificationWithAdvertising)
 
         return {
           id: advertisement.id,

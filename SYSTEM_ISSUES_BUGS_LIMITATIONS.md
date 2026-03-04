@@ -21,37 +21,19 @@
 
 ## 1. Bugs (Functional Defects)
 
-### 🔴 BUG-001: Bulk Attendance Missing Calendar Linkage
+### ✅ FIXED — BUG-001: Bulk Attendance Missing Calendar Linkage
 
-**File:** `attendance.service.ts` → `markBulkAttendance()` (line ~250)  
-**File:** `dynamodb-attendance.service.ts` → `markBulkAttendance()` (line ~400)
+**Fixed in:** `attendance.service.ts` Step 8.5 | `dynamodb-attendance.service.ts` `markBulkAttendance()`  
+**Status:** Resolved — `calendarDayId` + `eventId` are injected into every bulk record.
 
-**Description:**  
-Single `markAttendance()` correctly performs calendar lookup via `CalendarDayCacheService` and attaches `calendarDayId` + `eventId` to every DynamoDB record. However, `markBulkAttendance()` in the DynamoDB service builds attendance DTOs directly from the bulk DTO **without** performing any calendar lookup.
+**Original Problem:**  
+Single `markAttendance()` correctly performed calendar lookup via `CalendarDayCacheService`, but `markBulkAttendance()` skipped this step, leaving all bulk records without `calendarDayId` / `eventId`, making them invisible to calendar-linked attendance queries.
 
-**Impact:**  
-All bulk-marked attendance records will have **no `calendarDayId` and no `eventId`**. This means:
-- Calendar-linked queries (`getAttendanceByEvent`, `getAttendanceByCalendarDay`) will **never return** bulk-marked records
-- Reporting dashboards using event-based views will show incomplete data
-- The more efficient bulk path produces lower-quality records than the single path
+**What was implemented:**
+- `attendance.service.ts → markBulkAttendance()` **Step 8.5**: calls `calendarDayCacheService.getCalendarDayForDate(instituteId, date)`, writes `calendarDayId` + `defaultEventId` (or special `eventId` if frontend sent one) onto the DTO. Includes retry logic after cache invalidation on failure.
+- `dynamodb-attendance.service.ts → markBulkAttendance()`: reads `(bulkData as any).calendarDayId` and `(bulkData as any).defaultEventId` and propagates them into every per-student DynamoDB attendance record.
 
-**Root Cause:**  
-`attendance.service.ts → markBulkAttendance()` calls `this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto)` at Step 9 without injecting calendar data. The service resolves user types and names but skips the calendar lookup step that exists in the single-mark flow.
-
-**Fix:**
-```typescript
-// In attendance.service.ts → markBulkAttendance(), before Step 9:
-const { day: calendarDay, defaultEventId } = await this.calendarDayCacheService.getTodayCalendarDay(
-  bulkAttendanceDto.instituteId
-);
-if (calendarDay) {
-  (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
-  (bulkAttendanceDto as any).defaultEventId = defaultEventId;
-}
-
-// Then in dynamodb-attendance.service.ts → markBulkAttendance():
-// Pass calendarDayId and eventId into each attendance record
-```
+**Result:** Bulk-marked records are now fully calendar-linked and appear correctly in `getAttendanceByEvent`, `getAttendanceByCalendarDay`, and all event-based reporting views.
 
 ---
 
@@ -602,7 +584,7 @@ Error responses use free-text messages without structured error codes. Frontend 
 
 | # | Issue | Effort |
 |---|-------|--------|
-| BUG-001 | Add calendar lookup to bulk attendance flow | 1-2 hours |
+| ~~BUG-001~~ | ~~Add calendar lookup to bulk attendance flow~~ | ✅ DONE |
 | BUG-003 | Fix empty `instituteId` in `getStudentAttendance` | 30 minutes |
 | DATA-004 | Return `timestamp` in query results | 15 minutes |
 | PERF-003 | Add pagination loops to event/calendarDay queries | 1-2 hours |
