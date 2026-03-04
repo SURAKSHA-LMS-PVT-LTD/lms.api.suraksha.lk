@@ -510,4 +510,169 @@ export class UserOtpService {
       newPhoneNumber: normalizedPhone,
     };
   }
+
+  // ============================================================
+  // 📧 EMAIL CHANGE (AUTHENTICATED USERS ONLY)
+  // ============================================================
+
+  /**
+   * Request OTP to change email address (authenticated user, self only).
+   *
+   * - Sends OTP to the NEW email address.
+   * - New email must NOT already be registered to another user.
+   * - New email must differ from the caller's current email.
+   * - Subject to the same daily rate limit as registration OTPs.
+   */
+  async requestEmailChangeOtp(
+    userId: string,
+    newEmail: string,
+    ipAddress?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    expiresAt: Date;
+    remainingAttempts: number;
+    totalRequests: number;
+  }> {
+    const normalizedEmail = newEmail.toLowerCase().trim();
+
+    // Ensure the requesting user exists
+    const requestingUser = await this.userRepository.findOne({ where: { id: userId } });
+    if (!requestingUser) {
+      throw new BadRequestException('User not found');
+    }
+
+    // New email must differ from current email
+    if (requestingUser.email && requestingUser.email === normalizedEmail) {
+      throw new BadRequestException('The new email address is the same as your current email address.');
+    }
+
+    // Ensure the new email is not already taken by another user
+    const conflict = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (conflict) {
+      throw new BadRequestException(
+        'This email address is already registered to another account. Please use a different email.',
+      );
+    }
+
+    // Daily rate limit (keyed by email being verified)
+    const { allowed, remaining, totalToday } = await this.checkDailyLimit(normalizedEmail, OtpType.EMAIL);
+    if (!allowed) {
+      const tomorrowDate = this.getTomorrowDate();
+      throw new BadRequestException(
+        `Daily OTP limit reached. Maximum ${this.MAX_REQUESTS_PER_DAY} requests per day. Retry after ${tomorrowDate}.`,
+      );
+    }
+
+    // Invalidate any pending EMAIL_CHANGE OTPs for this user+email
+    await this.otpRepository.update(
+      {
+        userId,
+        email: normalizedEmail,
+        isVerified: false,
+        expiresAt: MoreThan(now()),
+      },
+      { expiresAt: now() },
+    );
+
+    // Create & save OTP
+    const otpCode = this.generateOtpCode();
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    const otp = this.otpRepository.create({
+      userId,
+      email: normalizedEmail,
+      otpCode,
+      otpType: OtpType.EMAIL,
+      otpPurpose: OtpPurpose.EMAIL_CHANGE,
+      expiresAt,
+      createdAt: now(),
+      createdDate: this.getTodayDate(),
+      ipAddress,
+    });
+    await this.otpRepository.save(otp);
+
+    // Send OTP via email
+    try {
+      await this.enhancedEmailService.sendOTP({
+        email: normalizedEmail,
+        otp: otpCode,
+        userName: requestingUser.firstName || normalizedEmail.split('@')[0],
+        expiryMinutes: this.OTP_EXPIRY_MINUTES.toString(),
+        requestType: 'Email Address Change',
+        ipAddress,
+      });
+    } catch (emailError) {
+      this.logger.error(`❌ Failed to send email-change OTP to ${normalizedEmail}: ${emailError.message}`);
+      // OTP is still valid even if delivery fails
+    }
+
+    return {
+      success: true,
+      message: `OTP sent to ${normalizedEmail}. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s). ${remaining - 1} requests remaining today.`,
+      expiresAt,
+      remainingAttempts: remaining - 1,
+      totalRequests: totalToday + 1,
+    };
+  }
+
+  /**
+   * Verify email-change OTP and commit the email update.
+   *
+   * - Validates the OTP created by `requestEmailChangeOtp`.
+   * - Re-checks that the new email is still free (race-condition guard).
+   * - Updates the user row and marks the OTP as verified.
+   */
+  async verifyEmailChangeAndUpdate(
+    userId: string,
+    newEmail: string,
+    otpCode: string,
+  ): Promise<{ success: boolean; message: string; newEmail: string }> {
+    const normalizedEmail = newEmail.toLowerCase().trim();
+
+    // Find the OTP
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId,
+        email: normalizedEmail,
+        otpCode,
+        otpPurpose: OtpPurpose.EMAIL_CHANGE,
+        isVerified: false,
+        expiresAt: MoreThan(now()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) {
+      this.logger.warn(`❌ Invalid/expired email-change OTP for userId=${userId}, email=${normalizedEmail}`);
+      throw new BadRequestException('Invalid or expired OTP code. Please request a new OTP.');
+    }
+
+    // Race-condition guard – ensure email is still free
+    const conflict = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (conflict && conflict.id !== userId) {
+      throw new BadRequestException(
+        'This email address has just been registered by another account. Please choose a different email.',
+      );
+    }
+
+    // Mark OTP as verified
+    otp.isVerified = true;
+    otp.verifiedAt = now();
+    await this.otpRepository.save(otp);
+
+    // Update user email
+    await this.userRepository.update({ id: userId }, { email: normalizedEmail });
+    this.logger.log(`✅ Email changed for userId=${userId} → ${normalizedEmail}`);
+
+    return {
+      success: true,
+      message: 'Email address updated successfully.',
+      newEmail: normalizedEmail,
+    };
+  }
 }

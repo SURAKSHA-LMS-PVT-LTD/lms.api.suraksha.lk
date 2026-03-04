@@ -10,6 +10,7 @@ export enum OtpPurpose {
   PASSWORD_RESET = 'PASSWORD_RESET',
   TWO_FACTOR = 'TWO_FACTOR',
   PHONE_CHANGE = 'PHONE_CHANGE',
+  EMAIL_CHANGE = 'EMAIL_CHANGE',
 }
 
 @Entity('user_otps')

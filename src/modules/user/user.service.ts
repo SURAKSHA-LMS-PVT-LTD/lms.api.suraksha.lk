@@ -3502,6 +3502,24 @@ export class UsersService {
   }
 
   // ============================================================
+  // 📧 EMAIL CHANGE (AUTHENTICATED USERS ONLY)
+  // ============================================================
+
+  /**
+   * 📧 Request OTP to change email address (authenticated user, self only)
+   */
+  async requestEmailChangeOtp(userId: string, newEmail: string, ipAddress?: string) {
+    return this.userOtpService.requestEmailChangeOtp(userId, newEmail, ipAddress);
+  }
+
+  /**
+   * ✅ Verify email-change OTP and commit the update (authenticated user, self only)
+   */
+  async verifyEmailChangeAndUpdate(userId: string, newEmail: string, otpCode: string) {
+    return this.userOtpService.verifyEmailChangeAndUpdate(userId, newEmail, otpCode);
+  }
+
+  // ============================================================
   // 🚫 PROFILE IMAGE REJECTION METHODS
   // ============================================================
 

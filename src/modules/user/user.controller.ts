@@ -3790,6 +3790,139 @@ export class UsersController {
   }
 
   // ============================================================
+  // 📧 EMAIL CHANGE (AUTHENTICATED USERS ONLY – SELF)
+  // ============================================================
+
+  /**
+   * 📧 Step 1 – Request OTP to verify new email address
+   *
+   * Sends a 6-digit OTP via email to the NEW address.
+   * The user must verify the OTP (Step 2) before the change is committed.
+   *
+   * Rules:
+   *  - Requires valid JWT (only for the requesting user's own account).
+   *  - New email must differ from the current email.
+   *  - New email must NOT already be registered by another user.
+   *  - Maximum 5 OTP requests per day (inclusive of re-requests).
+   */
+  @Post('email/change/request-otp')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Request OTP to Change Email Address',
+    description:
+      'Sends a 6-digit OTP to the NEW email address. ' +
+      'The user must then verify the OTP (Step 2) before the change is committed. ' +
+      'Only the authenticated user can change their own email. ' +
+      'Maximum 5 OTP requests per day.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email'],
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+          example: 'newaddress@example.com',
+          description: 'New email address to verify',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'OTP sent successfully to the new email address',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: {
+          type: 'string',
+          example: 'OTP sent to newaddress@example.com. Valid for 30 minute(s). 4 requests remaining today.',
+        },
+        expiresAt: { type: 'string', format: 'date-time' },
+        remainingAttempts: { type: 'number', example: 4 },
+        totalRequests: { type: 'number', example: 1 },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid email, same as current, or daily limit reached' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Email already registered by another user' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'JWT token missing or invalid' })
+  async requestEmailChangeOtp(
+    @Body() body: EmailDto,
+    @Request() req: JwtRequest,
+  ) {
+    const ipAddress = req.ip || (req as any).connection?.remoteAddress;
+    return this.usersService.requestEmailChangeOtp(req.user.s, body.email, ipAddress);
+  }
+
+  /**
+   * ✅ Step 2 – Verify OTP and commit the email address change
+   *
+   * Verifies the 6-digit OTP sent to the new email address.
+   * On success the user's email is updated immediately.
+   *
+   * Rules:
+   *  - Requires valid JWT (only the requesting user's own account).
+   *  - OTP must match the code sent in Step 1 and must not be expired.
+   *  - New email is re-checked to still be free before committing.
+   */
+  @Post('email/change/verify-otp')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Verify OTP and Confirm Email Address Change',
+    description:
+      "Verifies the 6-digit OTP sent to the new email address and, if valid, " +
+      "updates the authenticated user's email. " +
+      "Only the authenticated user can update their own email address.",
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'otpCode'],
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+          example: 'newaddress@example.com',
+          description: 'The new email address (must match the address used in the request-otp step)',
+        },
+        otpCode: {
+          type: 'string',
+          pattern: '^[0-9]{6}$',
+          example: '391847',
+          description: '6-digit OTP received via email',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Email address changed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Email address updated successfully.' },
+        newEmail: { type: 'string', example: 'newaddress@example.com' },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid or expired OTP' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'JWT token missing or invalid' })
+  async verifyEmailChangeAndUpdate(
+    @Body() body: EmailOtpVerifyDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.usersService.verifyEmailChangeAndUpdate(req.user.s, body.email, body.otpCode);
+  }
+
+  // ============================================================
   // ðŸš« PROFILE IMAGE REJECTION (SUPERADMIN ONLY)
   // ============================================================
 
