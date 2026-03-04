@@ -338,4 +338,176 @@ export class UserOtpService {
       message: 'Phone number verified successfully',
     };
   }
+
+  // ============================================================
+  // 📱 PHONE NUMBER CHANGE (AUTHENTICATED USERS ONLY)
+  // ============================================================
+
+  /**
+   * Request OTP to change phone number (for already-authenticated user).
+   *
+   * - Sends OTP to the NEW phone number.
+   * - The new number must NOT already be registered to another user.
+   * - The new number must be different from the caller's current number.
+   * - Subject to the same daily rate limit as registration OTPs.
+   */
+  async requestPhoneChangeOtp(
+    userId: string,
+    newPhoneNumber: string,
+    ipAddress?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    expiresAt: Date;
+    remainingAttempts: number;
+    totalRequests: number;
+  }> {
+    // Normalize
+    const normalizedPhone = normalizeSriLankanPhone(newPhoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format. Use Sri Lankan format e.g. 0771234567 or +94771234567.');
+    }
+
+    // Ensure the requesting user exists
+    const requestingUser = await this.userRepository.findOne({ where: { id: userId } });
+    if (!requestingUser) {
+      throw new BadRequestException('User not found');
+    }
+
+    // New number must differ from current number
+    if (requestingUser.phoneNumber && requestingUser.phoneNumber === normalizedPhone) {
+      throw new BadRequestException('The new phone number is the same as your current phone number.');
+    }
+
+    // Ensure the new number is not already taken by another user
+    const conflict = await this.userRepository.findOne({
+      where: { phoneNumber: normalizedPhone },
+    });
+    if (conflict) {
+      throw new BadRequestException(
+        'This phone number is already registered to another account. Please use a different number.',
+      );
+    }
+
+    // Daily rate limit (keyed by phone number being verified)
+    const { allowed, remaining, totalToday } = await this.checkDailyLimit(normalizedPhone, OtpType.PHONE);
+    if (!allowed) {
+      const tomorrowDate = this.getTomorrowDate();
+      throw new BadRequestException(
+        `Daily OTP limit reached. Maximum ${this.MAX_REQUESTS_PER_DAY} requests per day. Retry after ${tomorrowDate}.`,
+      );
+    }
+
+    // Invalidate any pending PHONE_CHANGE OTPs for this user+phone
+    await this.otpRepository.update(
+      {
+        userId,
+        phoneNumber: normalizedPhone,
+        isVerified: false,
+        expiresAt: MoreThan(now()),
+      },
+      { expiresAt: now() },
+    );
+
+    // Create & save OTP
+    const otpCode = this.generateOtpCode();
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    const otp = this.otpRepository.create({
+      userId,
+      phoneNumber: normalizedPhone,
+      otpCode,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.PHONE_CHANGE,
+      expiresAt,
+      createdAt: now(),
+      createdDate: this.getTodayDate(),
+      ipAddress,
+    });
+    await this.otpRepository.save(otp);
+
+    // Send OTP via SMS
+    try {
+      const smsResult = await this.smsProvider.sendSms({
+        contact: normalizedPhone,
+        message: `Your Suraksha LMS phone change verification code is: ${otpCode}. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s). Do not share this code.`,
+        senderId: 'SurakshaLMS',
+      });
+      if (!smsResult.success) {
+        this.logger.error(`❌ Failed to send phone-change OTP SMS to ${normalizedPhone}: ${smsResult.message}`);
+      }
+    } catch (smsError) {
+      this.logger.error(`❌ SMS error for phone-change OTP to ${normalizedPhone}: ${smsError.message}`);
+      // OTP is still valid even if SMS delivery fails
+    }
+
+    return {
+      success: true,
+      message: `OTP sent to ${normalizedPhone}. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s). ${remaining - 1} requests remaining today.`,
+      expiresAt,
+      remainingAttempts: remaining - 1,
+      totalRequests: totalToday + 1,
+    };
+  }
+
+  /**
+   * Verify phone-change OTP and commit the phone number update.
+   *
+   * - Validates the OTP created by `requestPhoneChangeOtp`.
+   * - Re-checks that the new number is still free (race-condition guard).
+   * - Updates the user row and marks the OTP as verified.
+   */
+  async verifyPhoneChangeAndUpdate(
+    userId: string,
+    newPhoneNumber: string,
+    otpCode: string,
+  ): Promise<{ success: boolean; message: string; newPhoneNumber: string }> {
+    const normalizedPhone = normalizeSriLankanPhone(newPhoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format.');
+    }
+
+    // Find the OTP
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId,
+        phoneNumber: normalizedPhone,
+        otpCode,
+        otpPurpose: OtpPurpose.PHONE_CHANGE,
+        isVerified: false,
+        expiresAt: MoreThan(now()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) {
+      this.logger.warn(`❌ Invalid/expired phone-change OTP for userId=${userId}, phone=${normalizedPhone}`);
+      throw new BadRequestException('Invalid or expired OTP code. Please request a new OTP.');
+    }
+
+    // Race-condition guard – ensure number is still free
+    const conflict = await this.userRepository.findOne({
+      where: { phoneNumber: normalizedPhone },
+    });
+    if (conflict && conflict.id !== userId) {
+      throw new BadRequestException(
+        'This phone number has just been registered by another account. Please choose a different number.',
+      );
+    }
+
+    // Mark OTP as verified
+    otp.isVerified = true;
+    otp.verifiedAt = now();
+    await this.otpRepository.save(otp);
+
+    // Update user phone number
+    await this.userRepository.update({ id: userId }, { phoneNumber: normalizedPhone });
+    this.logger.log(`✅ Phone number changed for userId=${userId} → ${normalizedPhone}`);
+
+    return {
+      success: true,
+      message: 'Phone number updated successfully.',
+      newPhoneNumber: normalizedPhone,
+    };
+  }
 }

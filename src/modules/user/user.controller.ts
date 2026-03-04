@@ -3659,6 +3659,137 @@ export class UsersController {
   }
 
   // ============================================================
+  // 📱 PHONE NUMBER CHANGE (AUTHENTICATED USERS ONLY – SELF)
+  // ============================================================
+
+  /**
+   * 📱 Step 1 – Request OTP to verify new phone number
+   *
+   * Sends a 6-digit OTP via SMS to the new phone number.
+   * The user must verify the OTP (Step 2) before the change is committed.
+   *
+   * Rules:
+   *  - Requires valid JWT (only for the requesting user's own account).
+   *  - New number must differ from the current number.
+   *  - New number must NOT already be registered by another user.
+   *  - Maximum 5 OTP requests per day (inclusive of re-requests).
+   */
+  @Post('phone/change/request-otp')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Request OTP to Change Phone Number',
+    description:
+      'Sends a 6-digit OTP via SMS to the NEW phone number. ' +
+      'The user must then verify the OTP (Step 2) before the change is committed. ' +
+      'Only the authenticated user can change their own phone number. ' +
+      'Maximum 5 OTP requests per day.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['phoneNumber'],
+      properties: {
+        phoneNumber: {
+          type: 'string',
+          example: '0771234567',
+          description: 'New Sri Lankan phone number (077X, 075X, +94X format)',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'OTP sent successfully to the new phone number',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: {
+          type: 'string',
+          example: 'OTP sent to +94771234567. Valid for 30 minute(s). 4 requests remaining today.',
+        },
+        expiresAt: { type: 'string', format: 'date-time' },
+        remainingAttempts: { type: 'number', example: 4 },
+        totalRequests: { type: 'number', example: 1 },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid phone number, same as current, or daily limit reached' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Phone number already registered by another user' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'JWT token missing or invalid' })
+  async requestPhoneChangeOtp(
+    @Body() body: PhoneNumberDto,
+    @Request() req: JwtRequest,
+  ) {
+    const ipAddress = req.ip || (req as any).connection?.remoteAddress;
+    return this.usersService.requestPhoneChangeOtp(req.user.s, body.phoneNumber, ipAddress);
+  }
+
+  /**
+   * ✅ Step 2 – Verify OTP and commit the phone number change
+   *
+   * Verifies the 6-digit OTP that was sent to the new phone number.
+   * On success the user's phone number is updated immediately.
+   *
+   * Rules:
+   *  - Requires valid JWT (only the requesting user's own account).
+   *  - OTP must match the code sent in Step 1 and must not be expired.
+   *  - New number is re-checked to still be free before committing.
+   */
+  @Post('phone/change/verify-otp')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Verify OTP and Confirm Phone Number Change',
+    description:
+      "Verifies the 6-digit OTP sent to the new phone number and, if valid, " +
+      "updates the authenticated user's phone number. " +
+      "Only the authenticated user can update their own phone number.",
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['phoneNumber', 'otpCode'],
+      properties: {
+        phoneNumber: {
+          type: 'string',
+          example: '0771234567',
+          description: 'The new phone number (must match the number used in the request-otp step)',
+        },
+        otpCode: {
+          type: 'string',
+          pattern: '^[0-9]{6}$',
+          example: '482931',
+          description: '6-digit OTP received via SMS on the new phone number',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Phone number changed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Phone number updated successfully.' },
+        newPhoneNumber: { type: 'string', example: '+94771234567' },
+      },
+    },
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid or expired OTP' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'JWT token missing or invalid' })
+  async verifyPhoneChangeAndUpdate(
+    @Body() body: PhoneOtpVerifyDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.usersService.verifyPhoneChangeAndUpdate(req.user.s, body.phoneNumber, body.otpCode);
+  }
+
+  // ============================================================
   // ðŸš« PROFILE IMAGE REJECTION (SUPERADMIN ONLY)
   // ============================================================
 

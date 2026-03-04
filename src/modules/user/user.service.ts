@@ -3484,6 +3484,24 @@ export class UsersService {
   }
 
   // ============================================================
+  // 📱 PHONE NUMBER CHANGE (AUTHENTICATED USERS ONLY)
+  // ============================================================
+
+  /**
+   * 📱 Request OTP to change phone number (authenticated user, self only)
+   */
+  async requestPhoneChangeOtp(userId: string, newPhoneNumber: string, ipAddress?: string) {
+    return this.userOtpService.requestPhoneChangeOtp(userId, newPhoneNumber, ipAddress);
+  }
+
+  /**
+   * ✅ Verify phone-change OTP and commit the update (authenticated user, self only)
+   */
+  async verifyPhoneChangeAndUpdate(userId: string, newPhoneNumber: string, otpCode: string) {
+    return this.userOtpService.verifyPhoneChangeAndUpdate(userId, newPhoneNumber, otpCode);
+  }
+
+  // ============================================================
   // 🚫 PROFILE IMAGE REJECTION METHODS
   // ============================================================
 
