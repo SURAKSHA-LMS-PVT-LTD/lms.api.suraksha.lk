@@ -291,6 +291,7 @@ export class UserDriveAccessService {
       [DriveUploadPurpose.HOMEWORK_CORRECTION]: 'Homework Corrections',
       [DriveUploadPurpose.EXAM_SUBMISSION]: 'Exam Submissions',
       [DriveUploadPurpose.PROFILE_DOCUMENT]: 'Profile Documents',
+      [DriveUploadPurpose.ID_CARD_PAYMENT]: 'ID Card Payment Receipts',
       [DriveUploadPurpose.GENERAL]: 'General',
     };
 

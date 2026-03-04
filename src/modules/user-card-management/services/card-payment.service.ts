@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { CardPayment } from '../entities/card-payment.entity';
+import { CardPayment, PaymentUploadMethod } from '../entities/card-payment.entity';
 import { UserIdCardOrder } from '../entities/user-id-card-order.entity';
-import { SubmitPaymentDto } from '../dto/submit-payment.dto';
+import { SubmitPaymentDto, SubmitDrivePaymentDto } from '../dto/submit-payment.dto';
 import { VerifyCardPaymentDto } from '../dto/verify-payment.dto';
 import { PaymentResponseDto, PaginatedPaymentsResponseDto } from '../dto/response/payment-response.dto';
 import { OrderStatus } from '../enums/order-status.enum';
@@ -68,6 +68,66 @@ export class CardPaymentService {
       const savedPayment = await manager.save(CardPayment, payment);
 
       // Update order status to PAYMENT_RECEIVED
+      order.orderStatus = OrderStatus.PAYMENT_RECEIVED;
+      order.paymentId = savedPayment.id;
+      await manager.save(UserIdCardOrder, order);
+
+      return this.toResponseDto(savedPayment);
+    });
+  }
+
+  /**
+   * Submit payment proof uploaded to Google Drive.
+   * The user uploads directly to their own Drive
+   * and provides the resulting file ID and view link.
+   */
+  async submitDrivePayment(
+    orderId: string,
+    userId: string,
+    dto: SubmitDrivePaymentDto,
+  ): Promise<PaymentResponseDto> {
+    return await this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(UserIdCardOrder, {
+        where: { id: orderId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
+
+      const existingPayment = await manager.findOne(CardPayment, {
+        where: { orderId, paymentStatus: 'PENDING' },
+      });
+
+      if (existingPayment) {
+        throw new BadRequestException('Payment already submitted for this order');
+      }
+
+      if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
+        throw new BadRequestException(
+          'Payment can only be submitted for orders in PENDING_PAYMENT status',
+        );
+      }
+
+      const timestamp = now();
+      const payment = manager.create(CardPayment, {
+        orderId,
+        uploadMethod: PaymentUploadMethod.GOOGLE_DRIVE,
+        driveFileId: dto.driveFileId,
+        driveWebViewLink: dto.driveWebViewLink,
+        driveFileName: dto.driveFileName,
+        paymentType: dto.paymentType,
+        paymentAmount: dto.paymentAmount,
+        paymentReference: dto.paymentReference,
+        notes: dto.notes,
+        paymentStatus: 'PENDING',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+
+      const savedPayment = await manager.save(CardPayment, payment);
+
       order.orderStatus = OrderStatus.PAYMENT_RECEIVED;
       order.paymentId = savedPayment.id;
       await manager.save(UserIdCardOrder, order);
@@ -210,6 +270,10 @@ export class CardPaymentService {
       id: payment.id,
       orderId: payment.orderId,
       submissionUrl: payment.submissionUrl || undefined,
+      uploadMethod: payment.uploadMethod || undefined,
+      driveFileId: payment.driveFileId || undefined,
+      driveWebViewLink: payment.driveWebViewLink || undefined,
+      driveFileName: payment.driveFileName || undefined,
       paymentType: payment.paymentType,
       paymentAmount: Number(payment.paymentAmount),
       paymentReference: payment.paymentReference || undefined,

@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, Index, ManyToOne, JoinColumn, ValueTransformer } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
+import { DriveUploadPurpose } from '../dto/drive-upload.dto';
 
 const dateTransformer: ValueTransformer = {
   to: (value: Date | string | null) => value,
@@ -91,9 +92,10 @@ export class UserDriveFileEntity {
     'HOMEWORK_CORRECTION',
     'EXAM_SUBMISSION',
     'PROFILE_DOCUMENT',
+    'ID_CARD_PAYMENT',
     'GENERAL',
   ], default: 'GENERAL' })
-  purpose: 'HOMEWORK_SUBMISSION' | 'HOMEWORK_REFERENCE' | 'HOMEWORK_CORRECTION' | 'EXAM_SUBMISSION' | 'PROFILE_DOCUMENT' | 'GENERAL';
+  purpose: DriveUploadPurpose;
 
   /**
    * Polymorphic reference: type of the entity this file is attached to.

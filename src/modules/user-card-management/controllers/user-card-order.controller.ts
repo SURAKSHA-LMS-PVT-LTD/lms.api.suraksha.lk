@@ -20,7 +20,7 @@ import { CardOrderService } from '../services/card-order.service';
 import { CardPaymentService } from '../services/card-payment.service';
 import { PaymentSlipUploadService } from '../services/payment-slip-upload.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
-import { SubmitPaymentDto } from '../dto/submit-payment.dto';
+import { SubmitPaymentDto, SubmitDrivePaymentDto } from '../dto/submit-payment.dto';
 import { UpdateCardStatusDto } from '../dto/update-card-status.dto';
 import { 
   GenerateUploadUrlDto, 
@@ -136,9 +136,9 @@ export class UserCardOrderController {
     return this.paymentSlipUploadService.generateViewUrl(relativePath);
   }
 
-  // Submit Payment
+  // Submit Payment (Cloud Storage)
   @Post('orders/:orderId/payment')
-  @ApiOperation({ summary: 'Submit payment for order (with uploaded slip URL)' })
+  @ApiOperation({ summary: 'Submit payment for order (with uploaded slip URL from cloud storage)' })
   @ApiResponse({ status: 201, description: 'Payment submitted successfully', type: PaymentResponseDto })
   async submitPayment(
     @Request() req: JwtRequest,
@@ -147,6 +147,28 @@ export class UserCardOrderController {
   ): Promise<PaymentResponseDto> {
     const userId = req.user.s;
     return this.paymentService.submitPayment(orderId, userId, submitPaymentDto);
+  }
+
+  // Submit Payment via Google Drive
+  @Post('orders/:orderId/payment/drive')
+  @ApiOperation({
+    summary: 'Submit payment proof uploaded to Google Drive',
+    description: `Upload payment receipt directly to your Google Drive and register it here.
+
+**Flow:**
+1. \`GET /drive-access/token\` – get a short-lived Google OAuth access token
+2. \`GET /drive-access/folder?purpose=ID_CARD_PAYMENT\` – create/get an organised Drive folder
+3. Upload file directly to Google Drive using the access token (returns a Drive \`fileId\` & \`webViewLink\`)
+4. Call this endpoint with the Drive file details`,
+  })
+  @ApiResponse({ status: 201, description: 'Drive payment registered successfully', type: PaymentResponseDto })
+  async submitDrivePayment(
+    @Request() req: JwtRequest,
+    @Param('orderId') orderId: string,
+    @Body() submitDrivePaymentDto: SubmitDrivePaymentDto,
+  ): Promise<PaymentResponseDto> {
+    const userId = req.user.s;
+    return this.paymentService.submitDrivePayment(orderId, userId, submitDrivePaymentDto);
   }
 
   // Get My Orders

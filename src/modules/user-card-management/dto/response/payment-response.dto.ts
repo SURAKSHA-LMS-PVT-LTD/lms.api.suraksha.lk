@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CardPaymentType } from '../../enums/payment-type.enum';
+import { PaymentUploadMethod } from '../../entities/card-payment.entity';
 
 export class PaymentResponseDto {
   @ApiProperty()
@@ -8,8 +9,23 @@ export class PaymentResponseDto {
   @ApiProperty()
   orderId: string;
 
-  @ApiProperty()
-  submissionUrl: string;
+  @ApiPropertyOptional({ description: 'Cloud storage relative path (present when uploadMethod is CLOUD_STORAGE)' })
+  submissionUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Upload method used: CLOUD_STORAGE (S3/GCS signed URL) or GOOGLE_DRIVE',
+    enum: PaymentUploadMethod,
+  })
+  uploadMethod?: PaymentUploadMethod;
+
+  @ApiPropertyOptional({ description: 'Google Drive file ID (present when uploadMethod is GOOGLE_DRIVE)' })
+  driveFileId?: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive shareable view link (present when uploadMethod is GOOGLE_DRIVE)' })
+  driveWebViewLink?: string;
+
+  @ApiPropertyOptional({ description: 'Original file name (Drive uploads)' })
+  driveFileName?: string;
 
   @ApiProperty({ enum: CardPaymentType })
   paymentType: CardPaymentType;

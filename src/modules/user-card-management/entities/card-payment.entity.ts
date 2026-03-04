@@ -3,6 +3,11 @@ import { UserEntity } from '../../user/entities/user.entity';
 import { UserIdCardOrder } from './user-id-card-order.entity';
 import { CardPaymentType } from '../enums/payment-type.enum';
 
+export enum PaymentUploadMethod {
+  CLOUD_STORAGE = 'CLOUD_STORAGE',
+  GOOGLE_DRIVE = 'GOOGLE_DRIVE',
+}
+
 @Entity('card_payments')
 @Index('idx_card_payment_order', ['orderId'])
 export class CardPayment {
@@ -12,8 +17,26 @@ export class CardPayment {
   @Column({ name: 'order_id', type: 'bigint' })
   orderId: string;
 
-  @Column({ name: 'submission_url', type: 'varchar', length: 500 })
-  submissionUrl: string;
+  @Column({ name: 'submission_url', type: 'varchar', length: 500, nullable: true })
+  submissionUrl?: string;
+
+  @Column({
+    name: 'upload_method',
+    type: 'enum',
+    enum: PaymentUploadMethod,
+    nullable: true,
+    default: PaymentUploadMethod.CLOUD_STORAGE,
+  })
+  uploadMethod?: PaymentUploadMethod;
+
+  @Column({ name: 'drive_file_id', type: 'varchar', length: 200, nullable: true })
+  driveFileId?: string;
+
+  @Column({ name: 'drive_web_view_link', type: 'varchar', length: 500, nullable: true })
+  driveWebViewLink?: string;
+
+  @Column({ name: 'drive_file_name', type: 'varchar', length: 255, nullable: true })
+  driveFileName?: string;
 
   @Column({ name: 'payment_type', type: 'enum', enum: CardPaymentType })
   paymentType: CardPaymentType;
