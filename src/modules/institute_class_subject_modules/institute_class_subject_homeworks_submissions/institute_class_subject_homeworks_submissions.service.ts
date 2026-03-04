@@ -44,7 +44,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       const submission = this.submissionRepository.create(submissionData);
       const savedSubmission = await this.submissionRepository.save(submission);
 
-      return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(savedSubmission, this.cloudStorageService);
+      return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(savedSubmission, this.cloudStorageService);
     } catch (error) {
       throw new BadRequestException(`Failed to create homework submission: ${error.message}`);
     }
@@ -111,8 +111,10 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       .orderBy('submission.submissionDate', 'DESC')
       .getManyAndCount();
 
-    const submissionDtos = submissions.map(submission => 
-      InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService)
+    const submissionDtos = await Promise.all(
+      submissions.map(submission =>
+        InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService)
+      )
     );
 
     return new PaginatedResponseDto(submissionDtos, page, limit, total);
@@ -137,7 +139,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       throw new NotFoundException(`Homework submission with ID ${id} not found`);
     }
 
-    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
+    return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
   }
 
   async update(id: string, updateDto: UpdateInstituteClassSubjectHomeworksSubmissionDto, user?: any): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
@@ -219,7 +221,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         .where('submission.id = :id', { id })
         .getOne();
 
-      return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission!, this.cloudStorageService);
+      return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission!, this.cloudStorageService);
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
@@ -285,8 +287,8 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       throw new NotFoundException(`Homework submission with ID ${id} not found`);
     }
 
-    // ✅ Transform URLs before returning
-    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
+    // ✅ Generate signed URLs before returning
+    return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
   }
 
   async findAllRaw(): Promise<any[]> {
@@ -444,7 +446,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         existingSubmission.updatedAt = getCurrentSriLankaTime();
 
         const updatedSubmission = await this.submissionRepository.save(existingSubmission);
-        return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission, this.cloudStorageService);
+        return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission, this.cloudStorageService);
       } else {
         // Create new submission
         const timestamp = getCurrentSriLankaTime();
@@ -459,7 +461,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         });
 
         const savedSubmission = await this.submissionRepository.save(newSubmission);
-        return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(savedSubmission, this.cloudStorageService);
+        return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(savedSubmission, this.cloudStorageService);
       }
     } catch (error) {
       throw new BadRequestException(`Failed to create or update homework submission: ${error.message}`);
@@ -505,8 +507,10 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       .orderBy('submission.submissionDate', 'DESC')
       .getManyAndCount();
 
-    const submissionDtos = submissions.map(submission => 
-      InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService)
+    const submissionDtos = await Promise.all(
+      submissions.map(submission =>
+        InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService)
+      )
     );
 
     return new PaginatedResponseDto(submissionDtos, page, limit, total);
@@ -538,8 +542,8 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       throw new NotFoundException(`Homework submission with ID ${submissionId} not found`);
     }
 
-    // ✅ Transform URLs before returning
-    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
+    // ✅ Generate signed URLs before returning
+    return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(submission, this.cloudStorageService);
   }
 
   async reviewSubmission(
@@ -665,7 +669,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
     const savedSubmission = await this.submissionRepository.save(submission);
 
-    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
+    return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
       savedSubmission, 
       this.cloudStorageService
     );
@@ -739,7 +743,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       relations: ['homework']
     });
 
-    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
+    return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
       updatedSubmission!,
       this.cloudStorageService
     );
@@ -804,7 +808,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       relations: ['homework']
     });
 
-    return InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
+    return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(
       updatedSubmission!,
       this.cloudStorageService
     );

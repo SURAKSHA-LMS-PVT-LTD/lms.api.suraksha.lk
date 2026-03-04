@@ -83,17 +83,33 @@ export class InstituteClassSubjectHomeworksSubmissionResponseDto {
   @ApiProperty({ description: 'Last update date', example: '2024-01-15T10:00:00Z' })
   updatedAt?: Date;
 
-  static fromEntity(entity: InstituteClassSubjectHomeworksSubmission, cloudStorageService?: CloudStorageService): InstituteClassSubjectHomeworksSubmissionResponseDto {
+  /**
+   * Resolve a stored file path to an accessible URL.
+   * - Relative paths (e.g. "homework-files/abc.jpg") → GCS/S3 signed URL (1 hour)
+   * - Full https:// URLs (e.g. Google Drive links) → returned unchanged
+   * - Empty / null → empty string
+   */
+  private static async resolveFileUrl(
+    url: string | null | undefined,
+    cloudStorageService: CloudStorageService,
+    expiresIn = 3600,
+  ): Promise<string> {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return cloudStorageService.getSignedUrl(url, expiresIn);
+  }
+
+  static async fromEntity(entity: InstituteClassSubjectHomeworksSubmission, cloudStorageService?: CloudStorageService): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
     const dto = new InstituteClassSubjectHomeworksSubmissionResponseDto();
     dto.id = entity.id;
     dto.homeworkId = entity.homeworkId;
     dto.studentId = entity.studentId;
     dto.submissionDate = entity.submissionDate;
     
-    // ✅ Transform relative URLs to full URLs using CloudStorageService
+    // ✅ Generate signed URL for private storage files; pass Drive URLs through unchanged
     if (cloudStorageService) {
-      dto.fileUrl = entity.fileUrl ? cloudStorageService.getFullUrl(entity.fileUrl) : '';
-      dto.teacherCorrectionFileUrl = entity.teacherCorrectionFileUrl ? cloudStorageService.getFullUrl(entity.teacherCorrectionFileUrl) : '';
+      dto.fileUrl = await InstituteClassSubjectHomeworksSubmissionResponseDto.resolveFileUrl(entity.fileUrl, cloudStorageService);
+      dto.teacherCorrectionFileUrl = await InstituteClassSubjectHomeworksSubmissionResponseDto.resolveFileUrl(entity.teacherCorrectionFileUrl, cloudStorageService);
     } else {
       dto.fileUrl = entity.fileUrl;
       dto.teacherCorrectionFileUrl = entity.teacherCorrectionFileUrl;
