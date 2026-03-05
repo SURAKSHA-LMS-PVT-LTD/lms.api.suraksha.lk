@@ -234,6 +234,10 @@ export class PaginatedSecureInstitutePaymentsResponseDto extends BaseResponseDto
       hasNextPage: boolean;
       hasPreviousPage: boolean;
     };
+    _debug?: {
+      totalRecordsInDB: number;
+      activeRecordsInDB: number;
+    };
   };
 }
 

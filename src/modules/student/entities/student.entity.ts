@@ -25,7 +25,7 @@ export class StudentEntity {
   @Column({ name: 'guardian_id', type: 'bigint', nullable: true })
   guardianId?: string;
 
-  @Column({ name: 'student_id', type: 'varchar', length: 15, unique: true, nullable: true })
+  @Column({ name: 'student_id', type: 'varchar', length: 20, unique: true, nullable: true })
   studentId?: string;
 
   @Column({ name: 'emergency_contact', type: 'varchar', length: 15, nullable: true })

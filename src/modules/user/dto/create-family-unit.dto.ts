@@ -251,12 +251,12 @@ export class FamilyMemberUserDto extends MinimalUserDto {
 export class FamilyStudentDto extends MinimalUserDto {
   @ApiPropertyOptional({ 
     description: 'Student ID (auto-generated if not provided)',
-    example: 'STU-2026-001',
-    maxLength: 15
+    example: 'STU-2026-0001234',
+    maxLength: 20
   })
   @IsOptional()
   @IsString()
-  @MaxLength(15)
+  @MaxLength(20)
   @Transform(({ value }) => value?.trim() || null)
   studentId?: string;
 

@@ -1149,8 +1149,8 @@ export class SystemAdminUserService {
       if (!existing) return candidateId;
       this.logger.warn(`Student ID collision on attempt ${attempt + 1}: ${candidateId}`);
     }
-    // Fallback with timestamp for guaranteed uniqueness
-    const ts = Date.now().toString(36);
+    // Fallback with timestamp for guaranteed uniqueness (must fit VARCHAR(20))
+    const ts = Date.now().toString(36).slice(-7);
     return `STU-${getCurrentSriLankaTime().getFullYear()}-${ts}`;
   }
 

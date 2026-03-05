@@ -632,15 +632,20 @@ export class CloudStorageService implements OnModuleInit {
     }
 
     // Build fields for presigned POST
-    const fields = {
+    // ⚠️ IMPORTANT: Every field here becomes an ["eq", "$field", "value"] condition in the policy.
+    // The frontend MUST send these EXACT values in the form data, otherwise S3 returns 403.
+    // Only include fields that are security-critical. Metadata like upload-timestamp is NOT
+    // included here because the frontend cannot reproduce the server's timestamp exactly.
+    const fields: Record<string, string> = {
       key: relativePath,
       'Content-Type': contentType,
       // 🔒 SECURITY: Add server-side encryption
       'x-amz-server-side-encryption': 'AES256',
-      // 🔒 SECURITY: Add metadata for tracking
-      'x-amz-meta-upload-timestamp': getCurrentSriLankaISO(),
-      'x-amz-meta-original-filename': relativePath.split('/').pop(),
     };
+
+    // Allow optional metadata fields (frontend can send any value or omit them)
+    conditions.push(['starts-with', '$x-amz-meta-upload-timestamp', '']);
+    conditions.push(['starts-with', '$x-amz-meta-original-filename', '']);
 
     try {
       // Generate presigned POST using AWS SDK v3

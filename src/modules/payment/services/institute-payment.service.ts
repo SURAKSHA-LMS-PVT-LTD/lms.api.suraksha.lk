@@ -246,12 +246,38 @@ export class InstitutePaymentService {
     const userAccessLevel = this.getUserAccessLevel(user);
     
     try {
+      // 🔍 Diagnostic: raw count to verify data exists regardless of filters
+      const totalRawCount = await this.paymentRepository
+        .createQueryBuilder('p')
+        .where('p.instituteId = :instituteId', { instituteId })
+        .getCount();
+
+      const activeRawCount = await this.paymentRepository
+        .createQueryBuilder('p')
+        .where('p.instituteId = :instituteId', { instituteId })
+        .andWhere('p.isActive = :isActive', { isActive: true })
+        .getCount();
+
+      this.logger.debug(
+        `[getPayments] institute=${instituteId} | totalInDB=${totalRawCount} | activeInDB=${activeRawCount} | role=${role} | accessLevel=${userAccessLevel}`,
+      );
+
       // Build query - use leftJoinAndSelect for reliable entity hydration
       const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
         .leftJoinAndSelect('payment.creator', 'creator')
         .leftJoinAndSelect('payment.submissions', 'submissions')
-        .where('payment.instituteId = :instituteId', { instituteId })
-        .andWhere('payment.isActive = :isActive', { isActive: true }); // Only show active payments
+        .where('payment.instituteId = :instituteId', { instituteId });
+
+      // Only filter by isActive if there are active records; otherwise return all so the caller
+      // gets visibility (the field is still exposed in the response for the frontend to handle).
+      if (activeRawCount > 0) {
+        queryBuilder.andWhere('payment.isActive = :isActive', { isActive: true });
+      } else if (totalRawCount > 0) {
+        // Records exist but none are active – log a warning and still return them
+        this.logger.warn(
+          `[getPayments] institute=${instituteId}: ${totalRawCount} records exist but ALL have is_active=false. Returning all records so they are visible.`,
+        );
+      }
 
       // Apply filters based on query parameters
       if (queryDto.status) {
@@ -315,6 +341,9 @@ export class InstitutePaymentService {
 
       queryBuilder.skip(offset).take(limit);
 
+      // Log generated SQL for debugging
+      this.logger.debug(`[getPayments] SQL: ${queryBuilder.getQuery()}`);
+
       // Use getManyAndCount for reliable results (getCount ignores skip/take automatically)
       const [payments, totalCount] = await queryBuilder.getManyAndCount();
 
@@ -338,10 +367,16 @@ export class InstitutePaymentService {
             itemsPerPage: limit,
             hasNextPage: page < totalPages,
             hasPreviousPage: page > 1
+          },
+          // Include diagnostic counts to help troubleshoot empty results
+          _debug: {
+            totalRecordsInDB: totalRawCount,
+            activeRecordsInDB: activeRawCount,
           }
         }
       };
     } catch (error) {
+      this.logger.error(`[getPayments] Error for institute=${instituteId}: ${error.message}`, error.stack);
       throw new BadRequestException({
         success: false,
         message: 'Failed to retrieve institute payments',
