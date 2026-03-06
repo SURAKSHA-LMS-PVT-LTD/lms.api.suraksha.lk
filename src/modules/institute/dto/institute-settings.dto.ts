@@ -1,0 +1,217 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Expose, Transform } from 'class-transformer';
+
+/**
+ * Institute Settings Response — Full data for Institute Admin settings page
+ * Includes all editable fields + branding + social media + S3 URLs
+ */
+export class InstituteSettingsResponseDto {
+  @ApiProperty({ description: 'Institute ID', example: '1' })
+  @Expose()
+  id: string;
+
+  @ApiProperty({ description: 'Institute name', example: 'Cambridge International School' })
+  @Expose()
+  name: string;
+
+  @ApiPropertyOptional({ description: 'Short name or abbreviation', example: 'CIS' })
+  @Expose()
+  shortName?: string;
+
+  @ApiProperty({ description: 'Unique institute code (read-only for admin)', example: 'CIS001' })
+  @Expose()
+  code: string;
+
+  @ApiProperty({ description: 'Institute email', example: 'admin@cambridge.edu' })
+  @Expose()
+  email: string;
+
+  @ApiPropertyOptional({ description: 'Contact phone', example: '+94771234567' })
+  @Expose()
+  phone?: string;
+
+  @ApiPropertyOptional({ description: 'System contact email for internal notifications', example: 'system@institute.lk' })
+  @Expose()
+  systemContactEmail?: string;
+
+  @ApiPropertyOptional({ description: 'System contact phone for internal notifications', example: '+94771234567' })
+  @Expose()
+  systemContactPhoneNumber?: string;
+
+  // Location
+  @ApiPropertyOptional({ description: 'Address', example: '123 Education Street' })
+  @Expose()
+  address?: string;
+
+  @ApiPropertyOptional({ description: 'City', example: 'Colombo' })
+  @Expose()
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'State', example: 'Western' })
+  @Expose()
+  state?: string;
+
+  @ApiPropertyOptional({ description: 'Country', example: 'SRI_LANKA' })
+  @Expose()
+  country?: string;
+
+  @ApiPropertyOptional({ description: 'District', example: 'COLOMBO' })
+  @Expose()
+  district?: string;
+
+  @ApiPropertyOptional({ description: 'Province', example: 'WESTERN' })
+  @Expose()
+  province?: string;
+
+  @ApiPropertyOptional({ description: 'Postal code', example: '10100' })
+  @Expose()
+  pinCode?: string;
+
+  @ApiPropertyOptional({ description: 'Institute type', example: 'SCHOOL' })
+  @Expose()
+  type?: string;
+
+  // Branding — all URLs are full S3 URLs
+  @ApiPropertyOptional({ description: 'Logo full S3 URL', example: 'https://storage.googleapis.com/bucket/logo.png' })
+  @Expose()
+  logoUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Loading GIF full S3 URL' })
+  @Expose()
+  loadingGifUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Primary theme color', example: '#1976D2' })
+  @Expose()
+  primaryColorCode?: string;
+
+  @ApiPropertyOptional({ description: 'Secondary theme color', example: '#FFC107' })
+  @Expose()
+  secondaryColorCode?: string;
+
+  @ApiPropertyOptional({ description: 'Gallery image S3 URLs', type: [String] })
+  @Expose()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try { return JSON.parse(value); } catch { return []; }
+    }
+    return value || [];
+  })
+  imageUrls?: string[];
+
+  @ApiPropertyOptional({ description: 'Legacy single image S3 URL', deprecated: true })
+  @Expose()
+  imageUrl?: string;
+
+  // Content
+  @ApiPropertyOptional({ description: 'Vision statement' })
+  @Expose()
+  vision?: string;
+
+  @ApiPropertyOptional({ description: 'Mission statement' })
+  @Expose()
+  mission?: string;
+
+  // Social & Web
+  @ApiPropertyOptional({ description: 'Website URL', example: 'https://school.edu' })
+  @Expose()
+  websiteUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Facebook page URL' })
+  @Expose()
+  facebookPageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'YouTube channel URL' })
+  @Expose()
+  youtubeChannelUrl?: string;
+
+  // Meta
+  @ApiProperty({ description: 'Active status', example: true })
+  @Expose()
+  isActive: boolean;
+
+  @ApiProperty({ description: 'Last update timestamp' })
+  @Expose()
+  updatedAt: Date;
+
+  constructor(partial: Partial<InstituteSettingsResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
+
+/**
+ * Institute Profile Response — Minimal beautiful view for teachers, students, attendance markers
+ * Only essential identity + branding + social links. No images array, no system contacts.
+ */
+export class InstituteProfileResponseDto {
+  @ApiProperty({ description: 'Institute ID', example: '1' })
+  @Expose()
+  id: string;
+
+  @ApiProperty({ description: 'Institute name', example: 'Cambridge International School' })
+  @Expose()
+  name: string;
+
+  @ApiPropertyOptional({ description: 'Short name', example: 'CIS' })
+  @Expose()
+  shortName?: string;
+
+  @ApiProperty({ description: 'Institute code', example: 'CIS001' })
+  @Expose()
+  code: string;
+
+  // Branding — only logo + colors (no gallery, no loading gif)
+  @ApiPropertyOptional({ description: 'Logo full S3 URL' })
+  @Expose()
+  logoUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Primary theme color', example: '#1976D2' })
+  @Expose()
+  primaryColorCode?: string;
+
+  @ApiPropertyOptional({ description: 'Secondary theme color', example: '#FFC107' })
+  @Expose()
+  secondaryColorCode?: string;
+
+  // Minimal contact — just enough to identify
+  @ApiPropertyOptional({ description: 'Contact phone', example: '+94771234567' })
+  @Expose()
+  phone?: string;
+
+  @ApiPropertyOptional({ description: 'Contact email', example: 'info@school.edu' })
+  @Expose()
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'City', example: 'Colombo' })
+  @Expose()
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'Institute type', example: 'SCHOOL' })
+  @Expose()
+  type?: string;
+
+  // Social media — useful for quick access
+  @ApiPropertyOptional({ description: 'Website URL' })
+  @Expose()
+  websiteUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Facebook page URL' })
+  @Expose()
+  facebookPageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'YouTube channel URL' })
+  @Expose()
+  youtubeChannelUrl?: string;
+
+  // Content — vision/mission for institute identity
+  @ApiPropertyOptional({ description: 'Vision statement' })
+  @Expose()
+  vision?: string;
+
+  @ApiPropertyOptional({ description: 'Mission statement' })
+  @Expose()
+  mission?: string;
+
+  constructor(partial: Partial<InstituteProfileResponseDto>) {
+    Object.assign(this, partial);
+  }
+}

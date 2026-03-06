@@ -28,6 +28,8 @@ import {
   InstituteQueryDto,
   PaginatedInstituteResponseDto
 } from './dto/index.dto';
+import { UpdateInstituteSettingsDto } from './dto/update-institute-settings.dto';
+import { InstituteSettingsResponseDto, InstituteProfileResponseDto } from './dto/institute-settings.dto';
 
 @ApiTags('Institutes')
 @ApiBearerAuth()
@@ -439,5 +441,78 @@ export class InstitutesController {
       
       throw new BadRequestException(`Failed to assign teacher to class: ${error.message}`);
     }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Institute Settings (Institute Admin)
+  // ═══════════════════════════════════════════════════
+
+  @Get(':id/settings')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Get institute settings (Institute Admin)',
+    description: `Returns full institute settings for the admin settings page.
+    All S3-stored images (logo, loading gif, gallery) are returned as full URLs.
+    Includes branding, contact info, social media, vision/mission.`
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Institute settings', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async getSettings(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.getSettings(id, req.user);
+  }
+
+  @Patch(':id/settings')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Update institute settings (Institute Admin)',
+    description: `Updates institute settings from the admin settings page.
+    **S3 uploads:** Logo, loading GIF, gallery images accept S3 relative paths
+    returned by \`/upload/verify-and-publish\`. The response returns full S3 URLs.
+    **External links:** websiteUrl, facebookPageUrl, youtubeChannelUrl accept full URLs.
+    **Restricted:** code, isDefault, isActive are NOT editable here (SUPERADMIN only).`
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Settings updated', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Email already taken by another institute' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async updateSettings(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Body() dto: UpdateInstituteSettingsDto,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.updateSettings(id, dto, req.user);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Institute Profile (All institute members — minimal view)
+  // ═══════════════════════════════════════════════════
+
+  @Get(':id/profile')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @ApiOperation({
+    summary: 'Get institute profile (all institute members)',
+    description: `Returns a lightweight institute profile for teachers, students,
+    attendance markers, and parents. Only shows identity info + branding +
+    social media links — NOT gallery images, system contacts, or admin data.
+    Ideal for a small beautiful card/header view.`
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Institute profile', type: InstituteProfileResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async getProfile(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest
+  ): Promise<InstituteProfileResponseDto> {
+    return this.institutesService.getProfile(id, req.user);
   }
 }
