@@ -1670,4 +1670,94 @@ export class InstitutePaymentService {
       });
     }
   }
+
+  /**
+   * Get pending submissions for review (Admin and Teacher view)
+   * Returns submissions with PENDING status across all payments for this institute,
+   * ordered by oldest first so reviewers process the backlog efficiently.
+   */
+  async getPendingSubmissions(instituteId: string, queryDto: GetInstitutePaymentSubmissionsQueryDto, user: JwtPayload) {
+    // Validate institute access
+    const { hasAccess, instituteRole } = await this.getUserFromJWT(user, instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'You do not have access to this institute',
+        error: 'NO_INSTITUTE_ACCESS',
+      });
+    }
+
+    const page = queryDto.page || 1;
+    const limit = Math.min(queryDto.limit || 10, 100);
+
+    try {
+      const qb = this.submissionRepository.createQueryBuilder('sub')
+        .innerJoinAndSelect('sub.payment', 'payment')
+        .leftJoinAndSelect('sub.submitter', 'submitter')
+        .where('payment.instituteId = :instituteId', { instituteId })
+        .andWhere('sub.status = :status', { status: SubmissionStatus.PENDING });
+
+      // Optional search filter
+      if (queryDto.search) {
+        qb.andWhere('(sub.transactionReference LIKE :search OR sub.paymentRemarks LIKE :search OR submitter.firstName LIKE :search OR submitter.lastName LIKE :search)', {
+          search: `%${queryDto.search}%`,
+        });
+      }
+
+      // Oldest first so reviewers clear the backlog
+      qb.orderBy('sub.createdAt', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      const [submissions, totalPending] = await qb.getManyAndCount();
+
+      const totalPages = Math.ceil(totalPending / limit);
+
+      const secureSubmissions = submissions.map(sub => ({
+        submissionId: sub.id,
+        paymentId: sub.paymentId,
+        paymentType: sub.payment?.paymentType,
+        paymentDescription: sub.payment?.description,
+        paymentAmount: sub.payment?.amount ? parseFloat(String(sub.payment.amount)) : null,
+        submittedBy: sub.submittedBy,
+        submitterName: sub.submitter
+          ? `${sub.submitter.firstName || ''} ${sub.submitter.lastName || ''}`.trim()
+          : null,
+        paymentAmountSubmitted: sub.paymentAmount ? parseFloat(String(sub.paymentAmount)) : null,
+        paymentMethod: sub.paymentMethod,
+        paymentDate: sub.paymentDate,
+        transactionReference: sub.transactionReference,
+        hasAttachment: !!sub.receiptFileUrl,
+        receiptUrl: sub.receiptFileUrl?.trim() || null,
+        lateFeeApplied: sub.lateFeeApplied ? parseFloat(String(sub.lateFeeApplied)) : 0,
+        paymentRemarks: sub.paymentRemarks,
+        submittedAt: sub.createdAt,
+      }));
+
+      return {
+        success: true,
+        message: 'Pending submissions retrieved successfully',
+        data: {
+          submissions: secureSubmissions,
+          totalPending,
+          userRole: user.u,
+          instituteId,
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalItems: totalPending,
+            itemsPerPage: limit,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+          },
+        },
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Failed to fetch pending submissions',
+        error: error.message,
+      });
+    }
+  }
 }

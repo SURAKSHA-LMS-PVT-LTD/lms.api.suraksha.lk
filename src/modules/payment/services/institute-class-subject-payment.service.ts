@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { InstituteClassSubjectPayment, PaymentStatus } from '../entities/institute-class-subject-payment.entity';
+import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-subject-payment.entity';
 import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
+import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
+import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
+import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { JwtPayload } from '../../../common/interfaces/jwt-request.interface';
 import { CreateInstituteClassSubjectPaymentDto } from '../dto/create-institute-class-subject-payment.dto';
 import { CreateInstituteClassSubjectPaymentSubmissionDto, VerifyPaymentSubmissionDto } from '../dto/create-institute-class-subject-payment-submission.dto';
@@ -25,11 +28,51 @@ export class InstituteClassSubjectPaymentService {
     private readonly submissionRepository: Repository<InstituteClassSubjectPaymentSubmission>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(InstituteUserEntity)
+    private readonly instituteUserRepository: Repository<InstituteUserEntity>,
     private readonly cloudStorageService: CloudStorageService,
     private readonly userManagementService: UserManagementService,
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
   ) {}
+
+  /**
+   * Resolve the user's institute-level role from the database.
+   * Returns instituteRole (STUDENT, PARENT, TEACHER, INSTITUTE_ADMIN, etc.)
+   */
+  private async getUserInstituteRole(user: JwtPayload, instituteId: string): Promise<{ hasAccess: boolean; instituteRole?: string }> {
+    try {
+      const userEntity = await this.userRepository.findOne({
+        where: { id: user.s },
+        select: ['id', 'userType', 'isActive'],
+      });
+      if (!userEntity || !userEntity.isActive) {
+        return { hasAccess: false };
+      }
+      // Superadmins and org managers bypass institute enrollment
+      if (userEntity.userType === UserType.SUPERADMIN || userEntity.userType === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1) {
+        return { hasAccess: true, instituteRole: 'SUPERADMIN' };
+      }
+      const membership = await this.instituteUserRepository.findOne({
+        where: { userId: user.s, instituteId, status: InstituteUserStatus.ACTIVE },
+      });
+      if (!membership) {
+        return { hasAccess: false };
+      }
+      return { hasAccess: true, instituteRole: membership.instituteUserType };
+    } catch (error) {
+      this.logger.warn(`getUserInstituteRole failed: ${error?.message}`);
+      return { hasAccess: false };
+    }
+  }
+
+  /**
+   * Returns true if the institute role is a payer (STUDENT or PARENT).
+   * Admins, teachers, and other staff roles are NOT payers.
+   */
+  private isPayerRole(instituteRole?: string): boolean {
+    return instituteRole === InstituteUserType.STUDENT || instituteRole === InstituteUserType.PARENT;
+  }
 
   async createPayment(
     instituteId: string,
@@ -160,6 +203,39 @@ export class InstituteClassSubjectPaymentService {
       });
     }
 
+    // FIXED: Only payer roles (STUDENT/PARENT) can submit payments
+    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'You do not have access to this institute',
+        error: 'NO_INSTITUTE_ACCESS',
+      });
+    }
+    if (!this.isPayerRole(instituteRole)) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Only students and parents can submit payments',
+        error: 'NOT_A_PAYER_ROLE',
+      });
+    }
+
+    // FIXED: Check targetType matches the user's role
+    if (instituteRole === InstituteUserType.STUDENT && payment.targetType === PaymentTargetType.PARENTS) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'This payment is targeted at parents only',
+        error: 'PAYMENT_TARGET_MISMATCH',
+      });
+    }
+    if (instituteRole === InstituteUserType.PARENT && payment.targetType === PaymentTargetType.STUDENTS) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'This payment is targeted at students only',
+        error: 'PAYMENT_TARGET_MISMATCH',
+      });
+    }
+
     // Check if payment is still active
     if (payment.status !== PaymentStatus.ACTIVE) {
       throw new BadRequestException({
@@ -177,9 +253,6 @@ export class InstituteClassSubjectPaymentService {
         error: 'PAYMENT_EXPIRED'
       });
     }
-
-    // Validate user access to this payment
-    this.validatePaymentAccessPermissions(user, payment.instituteId, payment.classId, payment.subjectId);
 
     // Check if user already submitted for this payment
     const existingSubmission = await this.submissionRepository.findOne({
@@ -371,35 +444,15 @@ export class InstituteClassSubjectPaymentService {
   }
 
   private validatePaymentCreationAccess(user: JwtPayload, instituteId: string, classId: string, subjectId: string): void {
-    // Access control will be handled by decorators
+    // Access control is handled by controller-level guards (@RequireAnyOfRoles)
+    // Service-level institute role checks use getUserInstituteRole() where needed
     return;
   }
 
   private validatePaymentAccessPermissions(user: JwtPayload, instituteId: string, classId: string, subjectId: string): void {
-    // Access control will be handled by decorators
+    // Access control is handled by controller-level guards (@RequireAnyOfRoles)
+    // Service-level institute role checks use getUserInstituteRole() where needed
     return;
-  }
-
-  private validateTeacherAccess(user: JwtPayload, instituteId: string, classId: string, subjectId: string): boolean {
-    // Check if teacher has institute access in JWT v2 format
-    if (!user.i || !Array.isArray(user.i)) {
-      return false;
-    }
-
-    // Find institute access and check class/subject permissions
-    const instituteAccess = user.i.find(inst => inst.i === instituteId);
-    if (!instituteAccess || !instituteAccess.c) {
-      return false;
-    }
-
-    // Check if teacher has access to this class and subject
-    const classAccess = instituteAccess.c.find(([cId]) => cId === classId);
-    if (!classAccess) {
-      return false;
-    }
-
-    // For now, simplified subject access check (can be enhanced based on business logic)
-    return true;
   }
 
   private mapPaymentToResponse(payment: InstituteClassSubjectPayment): InstituteClassSubjectPaymentResponseDto {
@@ -466,23 +519,46 @@ export class InstituteClassSubjectPaymentService {
     limit: number = 10,
     user: JwtPayload,
   ) {
-    // Validate access permissions
-    this.validatePaymentAccessPermissions(user, instituteId, classId, subjectId);
+    // FIXED: Resolve institute role and filter by targetType
+    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'You do not have access to this institute',
+        error: 'NO_INSTITUTE_ACCESS',
+      });
+    }
+
+    // Non-payer roles (ADMIN, TEACHER) don't have "applicable" payments — return empty
+    if (!this.isPayerRole(instituteRole) && instituteRole !== 'SUPERADMIN') {
+      return { data: [], total: 0, page, limit, totalPages: 0 };
+    }
+
+    // Build where clause with targetType filter
+    const whereConditions: any[] = [];
+    if (instituteRole === InstituteUserType.STUDENT || instituteRole === 'SUPERADMIN') {
+      whereConditions.push({
+        instituteId, classId, subjectId,
+        status: PaymentStatus.ACTIVE,
+        targetType: PaymentTargetType.STUDENTS,
+      });
+    }
+    if (instituteRole === InstituteUserType.PARENT || instituteRole === 'SUPERADMIN') {
+      whereConditions.push({
+        instituteId, classId, subjectId,
+        status: PaymentStatus.ACTIVE,
+        targetType: PaymentTargetType.PARENTS,
+      });
+    }
 
     const [payments, total] = await this.paymentRepository.findAndCount({
-      where: {
-        instituteId,
-        classId,
-        subjectId,
-        status: PaymentStatus.ACTIVE,
-      },
-      relations: ['creator', 'submissions'],
+      where: whereConditions,
+      relations: ['creator'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
 
-    // Filter to show only payments applicable to this user
     const responseData = payments.map(payment => this.mapPaymentToResponse(payment));
 
     return {
@@ -996,37 +1072,31 @@ export class InstituteClassSubjectPaymentService {
     // Validate permissions (Admin or teacher with subject access)
     this.validatePaymentCreationAccess(user, instituteId, classId, subjectId);
 
-    const whereCondition: any = {};
-    
-    // Add status filter if provided
+    // FIXED: Filter at DB level using a join to payment, instead of fetching ALL submissions then filtering in-memory
+    const qb = this.submissionRepository.createQueryBuilder('submission')
+      .innerJoinAndSelect('submission.payment', 'payment')
+      .where('payment.instituteId = :instituteId', { instituteId })
+      .andWhere('payment.classId = :classId', { classId })
+      .andWhere('payment.subjectId = :subjectId', { subjectId });
+
     if (status && Object.values(SubmissionStatus).includes(status as SubmissionStatus)) {
-      whereCondition.status = status;
+      qb.andWhere('submission.status = :status', { status });
     }
 
-    const [submissions, total] = await this.submissionRepository.findAndCount({
-      where: whereCondition,
-      relations: ['payment'],
-      order: { uploadedAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    qb.orderBy('submission.uploadedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
 
-    // Filter submissions for the specific institute/class/subject
-    const filteredSubmissions = submissions.filter(s => 
-      s.payment && 
-      s.payment.instituteId === instituteId && 
-      s.payment.classId === classId && 
-      s.payment.subjectId === subjectId
-    );
+    const [submissions, total] = await qb.getManyAndCount();
 
-    const responseData = filteredSubmissions.map(submission => this.mapSubmissionToResponse(submission));
+    const responseData = submissions.map(submission => this.mapSubmissionToResponse(submission));
 
     return {
       data: responseData,
-      total: filteredSubmissions.length,
+      total,
       page,
       limit,
-      totalPages: Math.ceil(filteredSubmissions.length / limit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -1039,59 +1109,29 @@ export class InstituteClassSubjectPaymentService {
     // Validate permissions (Admin or teacher with subject access)
     this.validatePaymentCreationAccess(user, instituteId, classId, subjectId);
 
-    const totalSubmissions = await this.submissionRepository.count({
-      relations: ['payment'],
-      where: {
-        payment: {
-          instituteId,
-          classId,
-          subjectId,
-        },
-      },
-    });
+    // OPTIMIZED: Single aggregation query instead of 4 separate COUNT queries
+    const stats = await this.submissionRepository.createQueryBuilder('submission')
+      .innerJoin('submission.payment', 'payment')
+      .select('COUNT(*)', 'totalSubmissions')
+      .addSelect(`SUM(CASE WHEN submission.status = '${SubmissionStatus.VERIFIED}' THEN 1 ELSE 0 END)`, 'verifiedSubmissions')
+      .addSelect(`SUM(CASE WHEN submission.status = '${SubmissionStatus.PENDING}' THEN 1 ELSE 0 END)`, 'pendingSubmissions')
+      .addSelect(`SUM(CASE WHEN submission.status = '${SubmissionStatus.REJECTED}' THEN 1 ELSE 0 END)`, 'rejectedSubmissions')
+      .where('payment.instituteId = :instituteId', { instituteId })
+      .andWhere('payment.classId = :classId', { classId })
+      .andWhere('payment.subjectId = :subjectId', { subjectId })
+      .getRawOne();
 
-    const verifiedSubmissions = await this.submissionRepository.count({
-      relations: ['payment'],
-      where: {
-        status: SubmissionStatus.VERIFIED,
-        payment: {
-          instituteId,
-          classId,
-          subjectId,
-        },
-      },
-    });
-
-    const pendingSubmissions = await this.submissionRepository.count({
-      relations: ['payment'],
-      where: {
-        status: SubmissionStatus.PENDING,
-        payment: {
-          instituteId,
-          classId,
-          subjectId,
-        },
-      },
-    });
-
-    const rejectedSubmissions = await this.submissionRepository.count({
-      relations: ['payment'],
-      where: {
-        status: SubmissionStatus.REJECTED,
-        payment: {
-          instituteId,
-          classId,
-          subjectId,
-        },
-      },
-    });
+    const total = parseInt(stats.totalSubmissions) || 0;
+    const verified = parseInt(stats.verifiedSubmissions) || 0;
+    const pending = parseInt(stats.pendingSubmissions) || 0;
+    const rejected = parseInt(stats.rejectedSubmissions) || 0;
 
     return {
-      totalSubmissions,
-      verifiedSubmissions,
-      pendingSubmissions,
-      rejectedSubmissions,
-      verificationRate: totalSubmissions > 0 ? (verifiedSubmissions / totalSubmissions * 100).toFixed(2) : '0.00',
+      totalSubmissions: total,
+      verifiedSubmissions: verified,
+      pendingSubmissions: pending,
+      rejectedSubmissions: rejected,
+      verificationRate: total > 0 ? (verified / total * 100).toFixed(2) : '0.00',
     };
   }
 }

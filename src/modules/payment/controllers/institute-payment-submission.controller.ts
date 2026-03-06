@@ -250,24 +250,6 @@ export class InstitutePaymentSubmissionController {
     @Query() queryDto: GetInstitutePaymentSubmissionsQueryDto,
     @Request() req: JwtRequest,
   ) {
-    // This would call a new service method for getting pending submissions
-    return {
-      success: true,
-      message: 'Pending submissions retrieved successfully',
-      data: {
-        submissions: [],
-        totalPending: 0,
-        userRole: req.user.u,
-        instituteId,
-        pagination: {
-          currentPage: queryDto.page || 1,
-          totalPages: 0,
-          totalItems: 0,
-          itemsPerPage: queryDto.limit || 10,
-          hasNextPage: false,
-          hasPreviousPage: false,
-        }
-      }
-    };
+    return this.institutePaymentService.getPendingSubmissions(instituteId, queryDto, req.user);
   }
 }
