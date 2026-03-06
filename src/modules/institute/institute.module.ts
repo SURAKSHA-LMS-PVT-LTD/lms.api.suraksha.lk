@@ -18,6 +18,7 @@ import { InstituteClassRepository } from '../institute_mudules/institue_class/re
 import { InstituteCalendarService } from './services/institute-calendar.service';
 import { CalendarDayCacheService } from './services/calendar-day-cache.service';
 import { CacheModule } from '../../common/modules/cache.module';
+import { CloudStorageService } from '../../common/services/cloud-storage.service';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { CacheModule } from '../../common/modules/cache.module';
     InstituteClassRepository,
     InstituteCalendarService,
     CalendarDayCacheService,
+    CloudStorageService,
   ],
   exports: [InstitutesService, InstituteCalendarService, CalendarDayCacheService], // Export calendar services for attendance module
 })
