@@ -141,6 +141,7 @@ export class InstituteSettingsResponseDto {
 /**
  * Institute Profile Response — Minimal beautiful view for teachers, students, attendance markers
  * Only essential identity + branding + social links. No images array, no system contacts.
+ * NOTE: code and pinCode are intentionally excluded — they are sensitive enrollment credentials.
  */
 export class InstituteProfileResponseDto {
   @ApiProperty({ description: 'Institute ID', example: '1' })
@@ -155,9 +156,7 @@ export class InstituteProfileResponseDto {
   @Expose()
   shortName?: string;
 
-  @ApiProperty({ description: 'Institute code', example: 'CIS001' })
-  @Expose()
-  code: string;
+  // Note: code and pinCode are NOT exposed in the profile — they are enrollment credentials
 
   // Branding — only logo + colors (no gallery, no loading gif)
   @ApiPropertyOptional({ description: 'Logo full S3 URL' })

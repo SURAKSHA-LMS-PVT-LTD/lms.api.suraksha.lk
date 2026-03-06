@@ -1,5 +1,5 @@
 // src/modules/institute/institute.service.ts
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere, In } from 'typeorm';
 import { InstituteEntity } from './entities/institute.entity';
@@ -19,6 +19,8 @@ import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class InstitutesService {
+  private readonly logger = new Logger(InstitutesService.name);
+
   constructor(
     @InjectRepository(InstituteEntity)
     private readonly instituteRepository: Repository<InstituteEntity>,
@@ -427,6 +429,9 @@ export class InstitutesService {
     // Build update payload — only set fields that are present in DTO
     const updateData: Partial<InstituteEntity> = {};
 
+    // Collect old storage paths that will be permanently deleted after save
+    const filesToDelete: string[] = [];
+
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.shortName !== undefined) updateData.shortName = dto.shortName;
     if (dto.email !== undefined) updateData.email = dto.email;
@@ -441,12 +446,37 @@ export class InstitutesService {
     if (dto.province !== undefined) updateData.province = dto.province;
     if (dto.pinCode !== undefined) updateData.pinCode = dto.pinCode;
     if (dto.type !== undefined) updateData.type = dto.type;
-    if (dto.logoUrl !== undefined) updateData.logoUrl = dto.logoUrl;
-    if (dto.loadingGifUrl !== undefined) updateData.loadingGifUrl = dto.loadingGifUrl;
+
+    // Image fields — track replaced/removed paths for permanent storage deletion
+    if (dto.logoUrl !== undefined) {
+      if (institute.logoUrl && institute.logoUrl !== dto.logoUrl) {
+        filesToDelete.push(institute.logoUrl);
+      }
+      updateData.logoUrl = dto.logoUrl;
+    }
+    if (dto.loadingGifUrl !== undefined) {
+      if (institute.loadingGifUrl && institute.loadingGifUrl !== dto.loadingGifUrl) {
+        filesToDelete.push(institute.loadingGifUrl);
+      }
+      updateData.loadingGifUrl = dto.loadingGifUrl;
+    }
+    if (dto.imageUrl !== undefined) {
+      if (institute.imageUrl && institute.imageUrl !== dto.imageUrl) {
+        filesToDelete.push(institute.imageUrl);
+      }
+      updateData.imageUrl = dto.imageUrl;
+    }
+    if (dto.imageUrls !== undefined) {
+      // Find paths that were in old gallery but are NOT in the new array
+      const oldPaths: string[] = Array.isArray(institute.imageUrls) ? institute.imageUrls : [];
+      const newPaths: string[] = Array.isArray(dto.imageUrls) ? dto.imageUrls : [];
+      const removedPaths = oldPaths.filter(p => p && !newPaths.includes(p));
+      filesToDelete.push(...removedPaths);
+      updateData.imageUrls = dto.imageUrls;
+    }
+
     if (dto.primaryColorCode !== undefined) updateData.primaryColorCode = dto.primaryColorCode;
     if (dto.secondaryColorCode !== undefined) updateData.secondaryColorCode = dto.secondaryColorCode;
-    if (dto.imageUrls !== undefined) updateData.imageUrls = dto.imageUrls;
-    if (dto.imageUrl !== undefined) updateData.imageUrl = dto.imageUrl;
     if (dto.vision !== undefined) updateData.vision = dto.vision;
     if (dto.mission !== undefined) updateData.mission = dto.mission;
     if (dto.websiteUrl !== undefined) updateData.websiteUrl = dto.websiteUrl;
@@ -456,6 +486,17 @@ export class InstitutesService {
     updateData.updatedAt = now();
 
     await this.instituteRepository.update(instituteId, updateData);
+
+    // Permanently delete replaced/removed storage files (fire-and-forget — DB save already succeeded)
+    if (filesToDelete.length > 0) {
+      Promise.all(
+        filesToDelete.map(path =>
+          this.cloudStorageService.deleteFile(path).catch(err =>
+            this.logger.warn(`Failed to delete storage file: ${path} — ${err.message}`)
+          )
+        )
+      ).catch(() => {});
+    }
 
     // Return fresh settings with full S3 URLs
     return this.getSettings(instituteId, user);
@@ -477,7 +518,7 @@ export class InstitutesService {
     const institute = await this.instituteRepository.findOne({
       where: { id: instituteId, isActive: true },
       select: [
-        'id', 'name', 'shortName', 'code', 'email', 'phone',
+        'id', 'name', 'shortName', 'email', 'phone',
         'city', 'type',
         'logoUrl', 'primaryColorCode', 'secondaryColorCode',
         'websiteUrl', 'facebookPageUrl', 'youtubeChannelUrl',
@@ -493,7 +534,7 @@ export class InstitutesService {
       id: institute.id,
       name: institute.name,
       shortName: institute.shortName,
-      code: institute.code,
+      // code and pinCode intentionally excluded — enrollment credentials
       logoUrl: institute.logoUrl ? this.cloudStorageService.getFullUrl(institute.logoUrl) : null,
       primaryColorCode: institute.primaryColorCode,
       secondaryColorCode: institute.secondaryColorCode,
