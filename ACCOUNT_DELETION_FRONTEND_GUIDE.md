@@ -4,7 +4,7 @@
 
 **URL for Google Play Console → Data Safety → Account Deletion:**
 ```
-https://app.suraksha.lk/profile/delete-account
+https://app.suraksha.lk/profile?tab=delete-account
 ```
 
 This URL should load a page in your frontend app that either:

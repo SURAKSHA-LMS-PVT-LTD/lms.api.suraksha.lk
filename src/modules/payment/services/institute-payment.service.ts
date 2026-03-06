@@ -1,7 +1,8 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder, In, LessThan, DataSource } from 'typeorm';
+import { Repository, In, LessThan, DataSource } from 'typeorm';
+import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { InstitutePayment, PaymentRequestStatus, PaymentTargetType } from '../entities/institute-payment.entity';
 import { InstitutePaymentSubmission, SubmissionStatus } from '../entities/institute-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
@@ -28,26 +29,6 @@ import {
   PaginatedSecureInstitutePaymentSubmissionsResponseDto
 } from '../dto/secure-institute-payment-response.dto';
 
-// Minimal JWT token utility functions - uses verify() to ensure signature validity
-function extractUserIdFromToken(token: string, jwtService: JwtService): string | null {
-  try {
-    const payload = jwtService.verify(token) as JwtPayload;
-    return payload?.s || null; // 's' is the user ID in JWT v2
-  } catch (error) {
-    return null;
-  }
-}
-
-function extractUserRoleFromToken(token: string, jwtService: JwtService): string | null {
-  try {
-    const payload = jwtService.verify(token) as JwtPayload;
-    if (payload?.u === undefined) return null;
-    return payload.userType || String(payload.u); // Return DB string or compact number as string
-  } catch (error) {
-    return null;
-  }
-}
-
 @Injectable()
 export class InstitutePaymentService {
   private readonly logger = new Logger(InstitutePaymentService.name);
@@ -71,7 +52,7 @@ export class InstitutePaymentService {
    * Extract user data from JWT token and validate institute membership
    * FIXED: Now actually checks InstituteUserEntity for membership
    */
-  private async getUserFromJWT(user: JwtPayload, instituteId: string): Promise<{ user: JwtPayload, hasAccess: boolean, role: string }> {
+  private async getUserFromJWT(user: JwtPayload, instituteId: string): Promise<{ user: JwtPayload, hasAccess: boolean, role: string, instituteRole?: string }> {
     try {
       // Get user entity from database using JWT ID
       const userEntity = await this.userRepository.findOne({
@@ -88,7 +69,8 @@ export class InstitutePaymentService {
         return {
           user: user,
           hasAccess: true,
-          role: userEntity.userType
+          role: userEntity.userType,
+          instituteRole: 'SUPERADMIN'
         };
       }
 
@@ -109,7 +91,8 @@ export class InstitutePaymentService {
       return {
         user: user,
         hasAccess: true, // User is enrolled and active in this institute
-        role: userEntity.userType
+        role: userEntity.userType,
+        instituteRole: instituteMembership.instituteUserType  // e.g. INSTITUTE_ADMIN, TEACHER, STUDENT, PARENT
       };
     } catch (error) {
       this.logger.warn(`getUserFromJWT failed: ${error?.message}`);
@@ -118,7 +101,8 @@ export class InstitutePaymentService {
   }
 
   // Utility method to determine user access level for secure data filtering
-  private getUserAccessLevel(user: JwtPayload, resourceUserId?: string): UserAccessLevel {
+  // Uses institute-level role (not system-level userType) to correctly determine access
+  private getUserAccessLevel(user: JwtPayload, resourceUserId?: string, instituteRole?: string): UserAccessLevel {
     const role = user.userType;
     const userId = user.s;
     
@@ -127,14 +111,24 @@ export class InstitutePaymentService {
       return UserAccessLevel.ADMIN;
     }
     
+    // Institute-level admins and teachers get ADMIN access within the institute
+    if (instituteRole === InstituteUserType.INSTITUTE_ADMIN || 
+        instituteRole === InstituteUserType.TEACHER || 
+        instituteRole === InstituteUserType.ATTENDANCE_MARKER) {
+      return UserAccessLevel.ADMIN;
+    }
+    
     // If user is accessing their own resource
     if (resourceUserId && userId === resourceUserId) {
       return UserAccessLevel.OWNER;
     }
     
-    // All flexible user types have regular user access
-    // (USER, USER_WITHOUT_PARENT, USER_WITHOUT_STUDENT)
     return UserAccessLevel.USER;
+  }
+
+  // Check if an institute role is a "payer" role (receives payment requests)
+  private isPayerRole(instituteRole?: string): boolean {
+    return instituteRole === InstituteUserType.STUDENT || instituteRole === InstituteUserType.PARENT;
   }
 
   // Helper Methods - Only extract user ID from JWT, no access validation
@@ -231,7 +225,7 @@ export class InstitutePaymentService {
   }
 
   async getPayments(instituteId: string, queryDto: GetInstitutePaymentsQueryDto, user: JwtPayload): Promise<PaginatedSecureInstitutePaymentsResponseDto> {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -241,43 +235,16 @@ export class InstitutePaymentService {
       });
     }
 
-    // All enrolled members can view institute payments, but with different data levels
-    // Use original JWT payload (user) for access level check, not DB entity
-    const userAccessLevel = this.getUserAccessLevel(user);
+    // Determine access level using institute role (not system-level userType)
+    const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
     
     try {
-      // 🔍 Diagnostic: raw count to verify data exists regardless of filters
-      const totalRawCount = await this.paymentRepository
-        .createQueryBuilder('p')
-        .where('p.instituteId = :instituteId', { instituteId })
-        .getCount();
-
-      const activeRawCount = await this.paymentRepository
-        .createQueryBuilder('p')
-        .where('p.instituteId = :instituteId', { instituteId })
-        .andWhere('p.isActive = :isActive', { isActive: true })
-        .getCount();
-
-      this.logger.debug(
-        `[getPayments] institute=${instituteId} | totalInDB=${totalRawCount} | activeInDB=${activeRawCount} | role=${role} | accessLevel=${userAccessLevel}`,
-      );
-
       // Build query - use leftJoinAndSelect for reliable entity hydration
       const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
         .leftJoinAndSelect('payment.creator', 'creator')
         .leftJoinAndSelect('payment.submissions', 'submissions')
-        .where('payment.instituteId = :instituteId', { instituteId });
-
-      // Only filter by isActive if there are active records; otherwise return all so the caller
-      // gets visibility (the field is still exposed in the response for the frontend to handle).
-      if (activeRawCount > 0) {
-        queryBuilder.andWhere('payment.isActive = :isActive', { isActive: true });
-      } else if (totalRawCount > 0) {
-        // Records exist but none are active – log a warning and still return them
-        this.logger.warn(
-          `[getPayments] institute=${instituteId}: ${totalRawCount} records exist but ALL have is_active=false. Returning all records so they are visible.`,
-        );
-      }
+        .where('payment.instituteId = :instituteId', { instituteId })
+        .andWhere('payment.isActive = :isActive', { isActive: true });
 
       // Apply filters based on query parameters
       if (queryDto.status) {
@@ -311,22 +278,12 @@ export class InstitutePaymentService {
         });
       }
 
-      // For non-admin users, apply additional filtering based on target type and role
+      // For non-admin users, filter by target type based on INSTITUTE role (not system userType)
       if (userAccessLevel !== UserAccessLevel.ADMIN) {
-        const targetFilters = [];
-        
-        if (role === UserType.USER_WITHOUT_PARENT) {
-          targetFilters.push('payment.targetType = :studentTarget', 'payment.targetType = :bothTarget');
-          queryBuilder.setParameter('studentTarget', 'STUDENTS');
-          queryBuilder.setParameter('bothTarget', 'BOTH');
-        } else if (role === UserType.USER_WITHOUT_STUDENT) {
-          targetFilters.push('payment.targetType = :parentTarget', 'payment.targetType = :bothTarget');
-          queryBuilder.setParameter('parentTarget', 'PARENTS');
-          queryBuilder.setParameter('bothTarget', 'BOTH');
-        }
-
-        if (targetFilters.length > 0) {
-          queryBuilder.andWhere(`(${targetFilters.join(' OR ')})`);
+        if (instituteRole === InstituteUserType.STUDENT) {
+          queryBuilder.andWhere('payment.targetType IN (:...studentTargets)', { studentTargets: ['STUDENTS', 'BOTH'] });
+        } else if (instituteRole === InstituteUserType.PARENT) {
+          queryBuilder.andWhere('payment.targetType IN (:...parentTargets)', { parentTargets: ['PARENTS', 'BOTH'] });
         }
       }
 
@@ -340,9 +297,6 @@ export class InstitutePaymentService {
       const offset = (page - 1) * limit;
 
       queryBuilder.skip(offset).take(limit);
-
-      // Log generated SQL for debugging
-      this.logger.debug(`[getPayments] SQL: ${queryBuilder.getQuery()}`);
 
       // Use getManyAndCount for reliable results (getCount ignores skip/take automatically)
       const [payments, totalCount] = await queryBuilder.getManyAndCount();
@@ -367,11 +321,6 @@ export class InstitutePaymentService {
             itemsPerPage: limit,
             hasNextPage: page < totalPages,
             hasPreviousPage: page > 1
-          },
-          // Include diagnostic counts to help troubleshoot empty results
-          _debug: {
-            totalRecordsInDB: totalRawCount,
-            activeRecordsInDB: activeRawCount,
           }
         }
       };
@@ -387,7 +336,7 @@ export class InstitutePaymentService {
   }
 
   async getMyApplicablePayments(instituteId: string, queryDto: GetInstitutePaymentsQueryDto, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -397,11 +346,32 @@ export class InstitutePaymentService {
       });
     }
 
-    // Access control will be handled by decorators
+    // Only payer roles (STUDENT, PARENT) can view "my applicable payments"
+    // INSTITUTE_ADMIN, TEACHER, ATTENDANCE_MARKER are not payment recipients
+    if (!this.isPayerRole(instituteRole)) {
+      return {
+        success: true,
+        message: 'This endpoint is for students and parents. Admins/teachers should use the payments list endpoint.',
+        data: {
+          payments: [],
+          userRole: instituteRole,
+          instituteId,
+          totalApplicable: 0,
+          pendingPayments: 0,
+          pagination: {
+            currentPage: queryDto.page || 1,
+            totalPages: 0,
+            totalItems: 0,
+            itemsPerPage: queryDto.limit || 10,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          }
+        },
+      };
+    }
+
+    const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
     
-    const userAccessLevel = this.getUserAccessLevel(userEntity);
-    
-    // Get real payments from database instead of mock data
     try {
       const whereConditions: any = {
         instituteId,
@@ -409,26 +379,26 @@ export class InstitutePaymentService {
         status: PaymentRequestStatus.ACTIVE,
       };
 
-      // Filter by target type based on user role
-      if (role === UserType.USER_WITHOUT_PARENT) {
+      // Filter by target type based on INSTITUTE role (not system userType)
+      if (instituteRole === InstituteUserType.STUDENT) {
         whereConditions.targetType = In([PaymentTargetType.STUDENTS, PaymentTargetType.BOTH]);
-      } else if (role === UserType.USER_WITHOUT_STUDENT) {
+      } else if (instituteRole === InstituteUserType.PARENT) {
         whereConditions.targetType = In([PaymentTargetType.PARENTS, PaymentTargetType.BOTH]);
-      } else if (role === UserType.USER) {
-        // Flexible users can see all payment types
-        whereConditions.targetType = In([PaymentTargetType.STUDENTS, PaymentTargetType.PARENTS, PaymentTargetType.BOTH]);
       }
 
-      // Query payments with submissions to get user's submission status
+      const page = Math.max(1, queryDto.page || 1);
+      const limit = Math.min(50, Math.max(1, queryDto.limit || 20));
+
+      // Query payments - only load submissions for the current user, not all submitters/verifiers
       const payments = await this.paymentRepository.find({
         where: whereConditions,
-        relations: ['creator', 'submissions', 'submissions.submitter', 'submissions.verifier'],
+        relations: ['creator', 'submissions'],
         order: { 
           dueDate: 'ASC',
           createdAt: 'DESC'
         },
-        take: queryDto.limit || 20,
-        skip: ((queryDto.page || 1) - 1) * (queryDto.limit || 20),
+        take: limit,
+        skip: (page - 1) * limit,
       });
 
       // Get user's submission status for each payment
@@ -455,18 +425,18 @@ export class InstitutePaymentService {
 
     return {
       success: true,
-      message: `Your applicable payments retrieved - ${role.toLowerCase()} specific view`,
+      message: `Your applicable payments retrieved - ${instituteRole?.toLowerCase() || 'user'} specific view`,
       data: {
         payments: securePayments,
-        userRole: role,
+        userRole: instituteRole,
         instituteId,
         totalApplicable: securePayments.length,
         pendingPayments: securePayments.filter(p => !p.mySubmissionStatus || p.mySubmissionStatus === 'PENDING').length,
         pagination: {
-          currentPage: queryDto.page || 1,
+          currentPage: page,
           totalPages: 1,
           totalItems: securePayments.length,
-          itemsPerPage: queryDto.limit || 10,
+          itemsPerPage: limit,
           hasNextPage: false,
           hasPreviousPage: false,
         }
@@ -482,7 +452,7 @@ export class InstitutePaymentService {
   }
 
   async getPaymentById(instituteId: string, paymentId: string, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -492,7 +462,7 @@ export class InstitutePaymentService {
       });
     }
 
-    const userAccessLevel = this.getUserAccessLevel(userEntity);
+    const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
 
     try {
       // Find payment with security validation
@@ -500,7 +470,7 @@ export class InstitutePaymentService {
         where: { 
           id: paymentId, 
           instituteId,
-          isActive: true // Only active payments
+          isActive: true
         },
         relations: ['creator', 'submissions']
       });
@@ -513,10 +483,9 @@ export class InstitutePaymentService {
         });
       }
 
-      // Apply role-based filtering for non-admin users
+      // Apply role-based filtering for non-admin users using INSTITUTE role
       if (userAccessLevel !== UserAccessLevel.ADMIN) {
-        // Students can only see payments targeted to them
-        if (role === UserType.USER_WITHOUT_PARENT && 
+        if (instituteRole === InstituteUserType.STUDENT && 
             !['STUDENTS', 'BOTH'].includes(payment.targetType)) {
           throw new ForbiddenException({
             success: false,
@@ -524,8 +493,7 @@ export class InstitutePaymentService {
             error: 'ROLE_BASED_ACCESS_DENIED'
           });
         }
-        // Parents can only see payments targeted to parents or both
-        if (role === UserType.USER_WITHOUT_STUDENT && 
+        if (instituteRole === InstituteUserType.PARENT && 
             !['PARENTS', 'BOTH'].includes(payment.targetType)) {
           throw new ForbiddenException({
             success: false,
@@ -554,7 +522,7 @@ export class InstitutePaymentService {
   }
 
   async updatePayment(instituteId: string, paymentId: string, updateDto: UpdateInstitutePaymentDto, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -618,7 +586,7 @@ export class InstitutePaymentService {
         relations: ['creator', 'submissions']
       });
 
-      const userAccessLevel = this.getUserAccessLevel(userEntity);
+      const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
 
       return {
         success: true,
@@ -639,7 +607,7 @@ export class InstitutePaymentService {
   }
 
   async getPaymentStatistics(instituteId: string, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { hasAccess } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -650,133 +618,67 @@ export class InstitutePaymentService {
     }
 
     try {
-      // Get real payment statistics from database
-      const totalPayments = await this.paymentRepository.count({
-        where: { instituteId }
-      });
+      // Consolidated payment stats in a single query instead of 4 separate count queries
+      const paymentStats = await this.paymentRepository
+        .createQueryBuilder('p')
+        .select('COUNT(*)', 'totalPayments')
+        .addSelect(`SUM(CASE WHEN p.status = :active AND p.isActive = true THEN 1 ELSE 0 END)`, 'activePayments')
+        .addSelect(`SUM(CASE WHEN p.status = :completed THEN 1 ELSE 0 END)`, 'completedPayments')
+        .addSelect(`SUM(CASE WHEN p.dueDate < :now AND p.status = :active THEN 1 ELSE 0 END)`, 'expiredPayments')
+        .where('p.instituteId = :instituteId', { instituteId })
+        .setParameter('active', PaymentRequestStatus.ACTIVE)
+        .setParameter('completed', PaymentRequestStatus.COMPLETED)
+        .setParameter('now', now())
+        .getRawOne();
 
-      const activePayments = await this.paymentRepository.count({
-        where: { 
-          instituteId,
-          status: PaymentRequestStatus.ACTIVE,
-          isActive: true
-        }
-      });
+      // Consolidated submission stats in a single query instead of 4 count + 2 find queries
+      const submissionStats = await this.submissionRepository
+        .createQueryBuilder('s')
+        .leftJoin('s.payment', 'p')
+        .select('COUNT(*)', 'totalSubmissions')
+        .addSelect(`SUM(CASE WHEN s.status = 'PENDING' THEN 1 ELSE 0 END)`, 'pendingSubmissions')
+        .addSelect(`SUM(CASE WHEN s.status = 'VERIFIED' THEN 1 ELSE 0 END)`, 'verifiedSubmissions')
+        .addSelect(`SUM(CASE WHEN s.status = 'REJECTED' THEN 1 ELSE 0 END)`, 'rejectedSubmissions')
+        .addSelect(`SUM(CASE WHEN s.status = 'VERIFIED' THEN s.paymentAmount ELSE 0 END)`, 'totalAmountCollected')
+        .addSelect(`SUM(CASE WHEN s.status = 'PENDING' THEN s.paymentAmount ELSE 0 END)`, 'pendingAmount')
+        .where('p.instituteId = :instituteId', { instituteId })
+        .getRawOne();
 
-      const completedPayments = await this.paymentRepository.count({
-        where: { 
-          instituteId,
-          status: PaymentRequestStatus.COMPLETED
-        }
-      });
-
-      const expiredPayments = await this.paymentRepository.count({
-        where: { 
-          instituteId,
-          dueDate: LessThan(now()),
-          status: PaymentRequestStatus.ACTIVE
-        }
-      });
-
-      // Get submission statistics
-      const totalSubmissions = await this.submissionRepository.count({
-        relations: ['payment'],
-        where: {
-          payment: { instituteId }
-        }
-      });
-
-      const pendingSubmissions = await this.submissionRepository.count({
-        relations: ['payment'],
-        where: {
-          payment: { instituteId },
-          status: SubmissionStatus.PENDING
-        }
-      });
-
-      const verifiedSubmissions = await this.submissionRepository.count({
-        relations: ['payment'],
-        where: {
-          payment: { instituteId },
-          status: SubmissionStatus.VERIFIED
-        }
-      });
-
-      const rejectedSubmissions = await this.submissionRepository.count({
-        relations: ['payment'],
-        where: {
-          payment: { instituteId },
-          status: SubmissionStatus.REJECTED
-        }
-      });
-
-      // Calculate total amounts
-      const verifiedSubmissionsWithAmounts = await this.submissionRepository.find({
-        relations: ['payment'],
-        where: {
-          payment: { instituteId },
-          status: SubmissionStatus.VERIFIED
-        },
-        select: ['paymentAmount']
-      });
-
-      const totalAmountCollected = verifiedSubmissionsWithAmounts.reduce(
-        (sum, submission) => sum + Number(submission.paymentAmount || 0), 0
-      );
-
-      const pendingSubmissionsWithAmounts = await this.submissionRepository.find({
-        relations: ['payment'],
-        where: {
-          payment: { instituteId },
-          status: SubmissionStatus.PENDING
-        },
-        select: ['paymentAmount']
-      });
-
-      const pendingAmount = pendingSubmissionsWithAmounts.reduce(
-        (sum, submission) => sum + Number(submission.paymentAmount || 0), 0
-      );
-
-      // Get latest verification info
-      const lastVerification = await this.submissionRepository.findOne({
-        relations: ['payment', 'verifier'],
-        where: {
-          payment: { instituteId },
-          status: SubmissionStatus.VERIFIED
-        },
-        order: { verifiedAt: 'DESC' }
-      });
-
-      // Get top submitters
-      const topSubmittersQuery = await this.submissionRepository
-        .createQueryBuilder('submission')
-        .leftJoin('submission.payment', 'payment')
-        .leftJoin('submission.submitter', 'submitter')
-        .select('submission.submittedBy', 'studentId')
-        .addSelect('COUNT(submission.id)', 'submissions')
-        .addSelect('SUM(submission.paymentAmount)', 'totalAmount')
-        .where('payment.instituteId = :instituteId', { instituteId })
-        .andWhere('submission.status = :status', { status: SubmissionStatus.VERIFIED })
-        .groupBy('submission.submittedBy')
-        .orderBy('COUNT(submission.id)', 'DESC')
-        .limit(5)
-        .getRawMany();
+      // Get latest verification and top submitters in parallel
+      const [lastVerification, topSubmittersQuery] = await Promise.all([
+        this.submissionRepository.findOne({
+          relations: ['payment', 'verifier'],
+          where: { payment: { instituteId }, status: SubmissionStatus.VERIFIED },
+          order: { verifiedAt: 'DESC' }
+        }),
+        this.submissionRepository
+          .createQueryBuilder('submission')
+          .leftJoin('submission.payment', 'payment')
+          .select('submission.submittedBy', 'studentId')
+          .addSelect('COUNT(submission.id)', 'submissions')
+          .addSelect('SUM(submission.paymentAmount)', 'totalAmount')
+          .where('payment.instituteId = :instituteId', { instituteId })
+          .andWhere('submission.status = :status', { status: SubmissionStatus.VERIFIED })
+          .groupBy('submission.submittedBy')
+          .orderBy('COUNT(submission.id)', 'DESC')
+          .limit(5)
+          .getRawMany()
+      ]);
 
       return {
         success: true,
-        message: 'Payment statistics retrieved - administrator access verified',
+        message: 'Payment statistics retrieved',
         data: {
-          totalPayments,
-          activePayments,
-          completedPayments,
-          expiredPayments,
-          totalSubmissions,
-          pendingSubmissions,
-          verifiedSubmissions,
-          rejectedSubmissions,
-          totalAmountCollected,
-          pendingAmount,
-          // Admin-only sensitive data
+          totalPayments: parseInt(paymentStats.totalPayments) || 0,
+          activePayments: parseInt(paymentStats.activePayments) || 0,
+          completedPayments: parseInt(paymentStats.completedPayments) || 0,
+          expiredPayments: parseInt(paymentStats.expiredPayments) || 0,
+          totalSubmissions: parseInt(submissionStats.totalSubmissions) || 0,
+          pendingSubmissions: parseInt(submissionStats.pendingSubmissions) || 0,
+          verifiedSubmissions: parseInt(submissionStats.verifiedSubmissions) || 0,
+          rejectedSubmissions: parseInt(submissionStats.rejectedSubmissions) || 0,
+          totalAmountCollected: parseFloat(submissionStats.totalAmountCollected) || 0,
+          pendingAmount: parseFloat(submissionStats.pendingAmount) || 0,
           lastVerificationBy: lastVerification?.verifier?.id || null,
           lastVerificationAt: lastVerification?.verifiedAt || null,
           topSubmitters: topSubmittersQuery.map(item => ({
@@ -796,7 +698,7 @@ export class InstitutePaymentService {
   }
 
   async getMyPaymentSummary(instituteId: string, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -806,23 +708,37 @@ export class InstitutePaymentService {
       });
     }
 
-    // Access control will be handled by decorators
+    // Only payer roles (STUDENT, PARENT) have a payment summary
+    if (!this.isPayerRole(instituteRole)) {
+      return {
+        success: true,
+        message: 'Payment summary not applicable for admin/teacher roles',
+        data: {
+          instituteId,
+          userRole: instituteRole,
+          totalApplicablePayments: 0,
+          pendingPayments: 0,
+          completedPayments: 0,
+          totalAmountDue: 0,
+          totalAmountPaid: 0,
+          nextDueDate: null,
+          upcomingPayments: []
+        }
+      };
+    }
 
     try {
-      // Get user's payment summary from real database
       const whereConditions: any = {
         instituteId,
         isActive: true,
         status: PaymentRequestStatus.ACTIVE,
       };
 
-      // Filter by target type based on user role
-      if (role === UserType.USER_WITHOUT_PARENT) {
+      // Filter by target type based on INSTITUTE role
+      if (instituteRole === InstituteUserType.STUDENT) {
         whereConditions.targetType = In([PaymentTargetType.STUDENTS, PaymentTargetType.BOTH]);
-      } else if (role === UserType.USER_WITHOUT_STUDENT) {
+      } else if (instituteRole === InstituteUserType.PARENT) {
         whereConditions.targetType = In([PaymentTargetType.PARENTS, PaymentTargetType.BOTH]);
-      } else if (role === UserType.USER) {
-        whereConditions.targetType = In([PaymentTargetType.STUDENTS, PaymentTargetType.PARENTS, PaymentTargetType.BOTH]);
       }
 
       // Get all applicable payments
@@ -890,10 +806,11 @@ export class InstitutePaymentService {
 
       return {
         success: true,
-        message: `Payment summary retrieved for ${role.toLowerCase()}`,
+        message: `Payment summary retrieved for ${instituteRole?.toLowerCase() || 'user'}`,
+
         data: {
           instituteId,
-          userRole: role,
+          userRole: instituteRole,
           totalApplicablePayments,
           pendingPayments,
           completedPayments,
@@ -918,7 +835,7 @@ export class InstitutePaymentService {
     createSubmissionDto: CreateInstitutePaymentSubmissionDto, 
     user: JwtPayload
   ) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -928,7 +845,14 @@ export class InstitutePaymentService {
       });
     }
 
-    // Access control will be handled by decorators
+    // Only payer roles (STUDENT, PARENT) can submit payments
+    if (!this.isPayerRole(instituteRole)) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Only students and parents can submit payments',
+        error: 'NOT_A_PAYER_ROLE'
+      });
+    }
 
     try {
       // Wrap in transaction to prevent duplicate submission race condition
@@ -1014,7 +938,7 @@ export class InstitutePaymentService {
         relations: ['payment', 'submitter']
       });
 
-      const userAccessLevel = this.getUserAccessLevel(userEntity);
+      const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
 
       return {
         success: true,
@@ -1035,7 +959,7 @@ export class InstitutePaymentService {
   }
 
   async getPaymentSubmissions(instituteId: string, paymentId: string, queryDto: GetInstitutePaymentSubmissionsQueryDto, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -1044,10 +968,6 @@ export class InstitutePaymentService {
         error: 'ACCESS_DENIED'
       });
     }
-
-    // Access control will be handled by decorators
-
-    const userAccessLevel = UserAccessLevel.ADMIN;
 
     // Build the query - use leftJoinAndSelect for reliable entity hydration
     const queryBuilder = this.submissionRepository.createQueryBuilder('submission')
@@ -1156,95 +1076,23 @@ export class InstitutePaymentService {
     const limit = queryDto.limit || 10;
     const skip = (page - 1) * limit;
 
-    // Get total count using a simpler query to avoid distinctAlias issues
-    const countQueryBuilder = this.submissionRepository.createQueryBuilder('submission')
-      .leftJoin('submission.payment', 'payment')
-      .where('submission.paymentId = :paymentId', { paymentId })
-      .andWhere('payment.instituteId = :instituteId', { instituteId });
-
-    // Apply the same filters for count as the main query
-    if (queryDto.status) {
-      countQueryBuilder.andWhere('submission.status = :status', { status: queryDto.status });
-    }
-
-    if (queryDto.paymentMethod) {
-      countQueryBuilder.andWhere('submission.paymentMethod = :paymentMethod', { paymentMethod: queryDto.paymentMethod });
-    }
-
-    if (queryDto.paymentDateFrom) {
-      countQueryBuilder.andWhere('submission.paymentDate >= :paymentDateFrom', { paymentDateFrom: new Date(queryDto.paymentDateFrom) });
-    }
-
-    if (queryDto.paymentDateTo) {
-      countQueryBuilder.andWhere('submission.paymentDate <= :paymentDateTo', { paymentDateTo: new Date(queryDto.paymentDateTo) });
-    }
-
-    if (queryDto.submissionDateFrom) {
-      countQueryBuilder.andWhere('submission.createdAt >= :submissionDateFrom', { submissionDateFrom: new Date(queryDto.submissionDateFrom) });
-    }
-
-    if (queryDto.submissionDateTo) {
-      countQueryBuilder.andWhere('submission.createdAt <= :submissionDateTo', { submissionDateTo: new Date(queryDto.submissionDateTo) });
-    }
-
-    if (queryDto.verificationDateFrom) {
-      countQueryBuilder.andWhere('submission.verifiedAt >= :verificationDateFrom', { verificationDateFrom: new Date(queryDto.verificationDateFrom) });
-    }
-
-    if (queryDto.verificationDateTo) {
-      countQueryBuilder.andWhere('submission.verifiedAt <= :verificationDateTo', { verificationDateTo: new Date(queryDto.verificationDateTo) });
-    }
-
-    if (queryDto.amountFrom !== undefined) {
-      countQueryBuilder.andWhere('submission.totalAmountPaid >= :amountFrom', { amountFrom: queryDto.amountFrom });
-    }
-
-    if (queryDto.amountTo !== undefined) {
-      countQueryBuilder.andWhere('submission.totalAmountPaid <= :amountTo', { amountTo: queryDto.amountTo });
-    }
-
-    if (queryDto.studentId) {
-      countQueryBuilder.andWhere('submission.submittedBy = :studentId', { studentId: queryDto.studentId });
-    }
-
-    if (queryDto.search) {
-      countQueryBuilder.andWhere('(submission.transactionReference LIKE :search OR submission.paymentRemarks LIKE :search OR submission.notes LIKE :search)', 
-        { search: `%${queryDto.search}%` });
-    }
-
-    if (queryDto.hasLateFee !== undefined) {
-      if (queryDto.hasLateFee) {
-        countQueryBuilder.andWhere('submission.lateFeeApplied > 0');
-      } else {
-        countQueryBuilder.andWhere('(submission.lateFeeApplied = 0 OR submission.lateFeeApplied IS NULL)');
-      }
-    }
-
-    if (queryDto.hasAttachment !== undefined) {
-      if (queryDto.hasAttachment) {
-        countQueryBuilder.andWhere('submission.receiptFileUrl IS NOT NULL');
-      } else {
-        countQueryBuilder.andWhere('submission.receiptFileUrl IS NULL');
-      }
-    }
-
-    // For student name filter, need to join submitter in count query too
-    if (queryDto.studentName) {
-      countQueryBuilder.leftJoin('submission.submitter', 'submitter')
-        .andWhere('(LOWER(submitter.firstName) LIKE LOWER(:studentName) OR LOWER(submitter.lastName) LIKE LOWER(:studentName) OR LOWER(CONCAT(submitter.firstName, \' \', submitter.lastName)) LIKE LOWER(:studentName))', 
-        { studentName: `%${queryDto.studentName}%` });
-    }
-
-    // Get total count using the simplified query
-    const totalCount = await countQueryBuilder.getCount();
-
-    // Get paginated results
-    const submissions = await queryBuilder
+    // Use getManyAndCount to avoid duplicating all filter logic in a separate count query
+    const [submissions, totalCount] = await queryBuilder
       .skip(skip)
       .take(limit)
-      .getMany();
+      .getManyAndCount();
 
     const totalPages = Math.ceil(totalCount / limit);
+
+    // Get summary counts in a single query instead of 3 separate count + 1 sum queries
+    const summaryResult = await this.submissionRepository
+      .createQueryBuilder('s')
+      .select(`SUM(CASE WHEN s.status = 'PENDING' THEN 1 ELSE 0 END)`, 'pendingCount')
+      .addSelect(`SUM(CASE WHEN s.status = 'VERIFIED' THEN 1 ELSE 0 END)`, 'verifiedCount')
+      .addSelect(`SUM(CASE WHEN s.status = 'REJECTED' THEN 1 ELSE 0 END)`, 'rejectedCount')
+      .addSelect(`SUM(CASE WHEN s.status = 'VERIFIED' THEN s.totalAmountPaid ELSE 0 END)`, 'totalVerifiedAmount')
+      .where('s.paymentId = :paymentId', { paymentId })
+      .getRawOne();
 
     // Transform submissions for clean frontend response (remove sensitive/empty data)
     const cleanSubmissions = this.transformSubmissionsForFrontend(submissions);
@@ -1273,10 +1121,10 @@ export class InstitutePaymentService {
         },
         summary: {
           totalSubmissions: totalCount,
-          pendingCount: await this.getSubmissionCountByStatus(paymentId, 'PENDING'),
-          verifiedCount: await this.getSubmissionCountByStatus(paymentId, 'VERIFIED'),
-          rejectedCount: await this.getSubmissionCountByStatus(paymentId, 'REJECTED'),
-          totalVerifiedAmount: await this.getTotalSubmissionAmount(paymentId)
+          pendingCount: parseInt(summaryResult?.pendingCount) || 0,
+          verifiedCount: parseInt(summaryResult?.verifiedCount) || 0,
+          rejectedCount: parseInt(summaryResult?.rejectedCount) || 0,
+          totalVerifiedAmount: parseFloat(summaryResult?.totalVerifiedAmount) || 0
         }
       }
     };
@@ -1358,34 +1206,14 @@ export class InstitutePaymentService {
     return Object.keys(response).length > 0 ? { filters: response } : {};
   }
 
-  // Helper method to get submission count by status
-  private async getSubmissionCountByStatus(paymentId: string, status: string): Promise<number> {
-    return await this.submissionRepository.count({
-      where: { paymentId, status: status as any }
-    });
-  }
-
-  // Helper method to get total submission amount
-  private async getTotalSubmissionAmount(paymentId: string): Promise<number> {
-    const result = await this.submissionRepository
-      .createQueryBuilder('submission')
-      .select('SUM(submission.totalAmountPaid)', 'total')
-      .where('submission.paymentId = :paymentId', { paymentId })
-      .andWhere('submission.status IN (:...statuses)', { statuses: ['VERIFIED'] })
-      .getRawOne();
-    
-    return parseFloat(result?.total || '0');
-  }
-
   async verifySubmission(
     instituteId: string, 
-    paymentId: string, // This will be ignored and auto-detected from submission
+    paymentId: string,
     submissionId: string, 
     verifyDto: VerifyInstitutePaymentSubmissionDto, 
     user: JwtPayload
   ) {
-    // Validate institute access and admin permissions
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -1394,8 +1222,6 @@ export class InstitutePaymentService {
         error: 'INSTITUTE_ACCESS_DENIED'
       });
     }
-
-    // Access control will be handled by decorators
 
     // Find the submission with relations
     const submission = await this.submissionRepository
@@ -1503,13 +1329,13 @@ export class InstitutePaymentService {
 
     return {
       success: true,
-      message: `Submission ${verifyDto.status.toLowerCase()} successfully by ${role}`,
+      message: `Submission ${verifyDto.status.toLowerCase()} successfully by ${instituteRole || role}`,
       data: responseData
     };
   }
 
   async getMySubmissions(instituteId: string, queryDto: GetInstitutePaymentSubmissionsQueryDto, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -1667,7 +1493,7 @@ export class InstitutePaymentService {
   }
 
   async getSubmissionById(instituteId: string, submissionId: string, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -1677,7 +1503,7 @@ export class InstitutePaymentService {
       });
     }
 
-    const userAccessLevel = this.getUserAccessLevel(userEntity);
+    const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
 
     try {
       // Get real submission from database
@@ -1780,7 +1606,7 @@ export class InstitutePaymentService {
   }
 
   async getStudentSubmissions(instituteId: string, studentId: string, queryDto: GetInstitutePaymentSubmissionsQueryDto, user: JwtPayload) {
-    const { user: userEntity, hasAccess, role } = await this.getUserFromJWT(user, instituteId);
+    const { user: userEntity, hasAccess, role, instituteRole } = await this.getUserFromJWT(user, instituteId);
 
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -1790,12 +1616,7 @@ export class InstitutePaymentService {
       });
     }
 
-    // Access control will be handled by decorators
-
-    // For parents, validate they have access to this specific student
-    // (In real implementation, check parent-student relationship)
-
-    const userAccessLevel = this.getUserAccessLevel(userEntity);
+    const userAccessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
 
     try {
       // Get real student submissions from database
@@ -1828,7 +1649,7 @@ export class InstitutePaymentService {
 
       return {
         success: true,
-        message: `Student submissions retrieved - ${role === UserType.USER_WITHOUT_STUDENT ? 'parent view (verification details hidden)' : 'admin view (full details)'}`,
+        message: `Student submissions retrieved - ${instituteRole === InstituteUserType.PARENT ? 'parent view (verification details hidden)' : 'admin view (full details)'}`,
         data: {
           submissions: secureSubmissions,
           pagination: {
