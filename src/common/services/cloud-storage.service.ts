@@ -643,9 +643,10 @@ export class CloudStorageService implements OnModuleInit {
       'x-amz-server-side-encryption': 'AES256',
     };
 
-    // Allow optional metadata fields (frontend can send any value or omit them)
-    conditions.push(['starts-with', '$x-amz-meta-upload-timestamp', '']);
-    conditions.push(['starts-with', '$x-amz-meta-original-filename', '']);
+    // NOTE: x-amz-meta-upload-timestamp and x-amz-meta-original-filename are intentionally
+    // NOT added to Conditions. Any field listed in Conditions (even starts-with) MUST be
+    // present in the multipart POST or S3 returns 403. These metadata fields are optional —
+    // the frontend may include them or omit them freely without affecting the policy.
 
     try {
       // Generate presigned POST using AWS SDK v3
