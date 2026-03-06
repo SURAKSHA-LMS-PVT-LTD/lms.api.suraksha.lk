@@ -11,6 +11,10 @@
 1. [Overview](#1-overview)
 2. [Architecture](#2-architecture)
 3. [API Endpoints](#3-api-endpoints)
+   - [3.1 GET settings](#31-get-institutesidsettings)
+   - [3.2 PATCH settings](#32-patch-institutesidsettings)
+   - [3.3 GET profile](#33-get-institutesidprofile)
+   - [3.4 Image Management Endpoints](#34-image-management-endpoints)
 4. [Role-Based Access](#4-role-based-access)
 5. [Image & File Management](#5-image--file-management)
    - [5.1 How URLs Work](#51-how-urls-work)
@@ -238,12 +242,107 @@ Three endpoints were added to the `/institutes` controller to support institute 
 
 ---
 
+### 3.4 Image Management Endpoints
+
+Dedicated endpoints for managing institute images. Each returns the **full updated settings** (`InstituteSettingsResponseDto`) so the frontend can sync in one call.
+
+**Access:** SUPERADMIN, Institute Admin on all image endpoints.
+
+#### DELETE `/institutes/:id/logo`
+
+Permanently deletes the logo file from storage and clears `logoUrl`.
+
+```
+DELETE /institutes/1/logo
+Authorization: Bearer <token>
+
+→ 200: InstituteSettingsResponseDto (logoUrl: null)
+```
+
+---
+
+#### DELETE `/institutes/:id/loading-gif`
+
+Permanently deletes the loading GIF from storage and clears `loadingGifUrl`.
+
+```
+DELETE /institutes/1/loading-gif
+Authorization: Bearer <token>
+
+→ 200: InstituteSettingsResponseDto (loadingGifUrl: null)
+```
+
+---
+
+#### DELETE `/institutes/:id/cover-image`
+
+Permanently deletes the cover/banner image from storage and clears `imageUrl`.
+
+```
+DELETE /institutes/1/cover-image
+Authorization: Bearer <token>
+
+→ 200: InstituteSettingsResponseDto (imageUrl: null)
+```
+
+---
+
+#### POST `/institutes/:id/gallery`
+
+Adds a **single image** to the gallery. Upload the file first via `/upload/verify-and-publish`, then send the relative path here.
+
+**Request body:** `AddGalleryImageDto`
+
+```json
+{ "relativePath": "institute-images/gallery-abc123.jpg" }
+```
+
+**Responses:**
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Image added — returns updated settings |
+| `400` | Gallery full (already 10 images) |
+| `403` | No access |
+| `404` | Institute not found |
+
+---
+
+#### DELETE `/institutes/:id/gallery/:imageIndex`
+
+Removes a gallery image by its **0-based index** and permanently deletes the file from storage.
+
+```
+DELETE /institutes/1/gallery/2
+Authorization: Bearer <token>
+
+→ 200: InstituteSettingsResponseDto (imageUrls array without item at index 2)
+```
+
+> The response reflects indices recalculated — index 2 is gone, index 3 becomes 2, etc.
+
+**Responses:**
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Image deleted — returns updated settings |
+| `400` | Invalid index (out of range) |
+| `403` | No access |
+| `404` | Institute not found |
+
+---
+
 ## 4. Role-Based Access
 
 | Endpoint | SUPERADMIN | Institute Admin | Teacher | Student | Parent | Att. Marker |
 |----------|:----------:|:---------------:|:-------:|:-------:|:------:|:-----------:|
 | `GET /:id/settings` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `PATCH /:id/settings` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `DELETE /:id/logo` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `DELETE /:id/loading-gif` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `DELETE /:id/cover-image` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `POST /:id/gallery` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `DELETE /:id/gallery/:index` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `GET /:id/profile` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Security Details
@@ -717,75 +816,50 @@ await saveSettings({
 
 ### 7.2 Gallery Manager Component
 
-```typescript
-// Full gallery management component logic
+> **Use the dedicated endpoints** — no need to manage relative path arrays manually anymore.
 
-const BASE_URL = import.meta.env.VITE_STORAGE_BASE_URL;
+```typescript
+// Full gallery management using dedicated endpoints
 
 function GalleryManager({ instituteId }) {
-  const [items, setItems] = useState<{ displayUrl: string; relativePath: string }[]>([]);
+  const [items, setItems] = useState<{ displayUrl: string; index: number }[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load existing gallery
+  // Load existing gallery on mount
   useEffect(() => {
     api.get(`/institutes/${instituteId}/settings`).then(settings => {
       setItems(
-        (settings.imageUrls ?? []).map(url => ({
-          displayUrl: url,
-          relativePath: url.replace(BASE_URL + '/', ''),
-        }))
+        (settings.imageUrls ?? []).map((url, i) => ({ displayUrl: url, index: i }))
       );
     });
   }, [instituteId]);
 
-  // Add image
+  // Add a single image
   async function addImage(file: File) {
     if (items.length >= 10) {
       alert('Gallery is full — maximum 10 images allowed');
       return;
     }
     setLoading(true);
+
+    // 1. Upload to storage
     const fd = new FormData();
     fd.append('file', file);
     const { relativePath } = await api.post('/upload/verify-and-publish', fd);
 
-    const newItems = [...items, { displayUrl: BASE_URL + '/' + relativePath, relativePath }];
-    setItems(newItems);
+    // 2. Add to gallery via dedicated endpoint
+    const updated = await api.post(`/institutes/${instituteId}/gallery`, { relativePath });
 
-    const updated = await api.patch(`/institutes/${instituteId}/settings`, {
-      imageUrls: newItems.map(i => i.relativePath),
-    });
-
-    // Sync with server response
-    setItems((updated.imageUrls ?? []).map(url => ({
-      displayUrl: url,
-      relativePath: url.replace(BASE_URL + '/', ''),
-    })));
+    // 3. Sync from server response (source of truth)
+    setItems((updated.imageUrls ?? []).map((url, i) => ({ displayUrl: url, index: i })));
     setLoading(false);
   }
 
-  // Remove image by index
-  async function removeImage(index: number) {
+  // Remove image by its current index
+  async function removeImage(imageIndex: number) {
     setLoading(true);
-    const newItems = items.filter((_, i) => i !== index);
-    setItems(newItems);
-
-    const updated = await api.patch(`/institutes/${instituteId}/settings`, {
-      imageUrls: newItems.map(i => i.relativePath),
-    });
-
-    setItems((updated.imageUrls ?? []).map(url => ({
-      displayUrl: url,
-      relativePath: url.replace(BASE_URL + '/', ''),
-    })));
-    setLoading(false);
-  }
-
-  // Clear entire gallery
-  async function clearGallery() {
-    setLoading(true);
-    await api.patch(`/institutes/${instituteId}/settings`, { imageUrls: [] });
-    setItems([]);
+    const updated = await api.delete(`/institutes/${instituteId}/gallery/${imageIndex}`);
+    setItems((updated.imageUrls ?? []).map((url, i) => ({ displayUrl: url, index: i })));
     setLoading(false);
   }
 
@@ -793,10 +867,10 @@ function GalleryManager({ instituteId }) {
     <div>
       <h3>Gallery ({items.length}/10)</h3>
       <div className="gallery-grid">
-        {items.map((item, i) => (
-          <div key={i} className="gallery-item">
-            <img src={item.displayUrl} alt={`Gallery ${i + 1}`} />
-            <button onClick={() => removeImage(i)} disabled={loading}>Remove</button>
+        {items.map((item) => (
+          <div key={item.index} className="gallery-item">
+            <img src={item.displayUrl} alt={`Gallery ${item.index + 1}`} />
+            <button onClick={() => removeImage(item.index)} disabled={loading}>Remove</button>
           </div>
         ))}
       </div>
@@ -808,9 +882,6 @@ function GalleryManager({ instituteId }) {
           disabled={loading}
         />
       )}
-      {items.length > 0 && (
-        <button onClick={clearGallery} disabled={loading}>Clear All</button>
-      )}
     </div>
   );
 }
@@ -818,18 +889,22 @@ function GalleryManager({ instituteId }) {
 
 ---
 
-### 7.3 Logo / GIF Uploader Component
+### 7.3 Logo / GIF / Cover Image Uploader
+
+> Use dedicated `DELETE` endpoints to remove images — no need to PATCH with `null`.
 
 ```typescript
 function ImageFieldUploader({
   instituteId,
-  field,            // "logoUrl" | "loadingGifUrl" | "imageUrl"
+  field,            // 'logo' | 'loading-gif' | 'cover-image'
+  settingsField,    // 'logoUrl' | 'loadingGifUrl' | 'imageUrl'
   currentDisplayUrl,
   label,
 }) {
   const [preview, setPreview] = useState(currentDisplayUrl);
   const [uploading, setUploading] = useState(false);
 
+  // Upload new image: upload to storage, then PATCH settings with relative path
   async function handleFileChange(file: File) {
     setUploading(true);
     const fd = new FormData();
@@ -837,18 +912,18 @@ function ImageFieldUploader({
     const { relativePath } = await api.post('/upload/verify-and-publish', fd);
 
     const updated = await api.patch(`/institutes/${instituteId}/settings`, {
-      [field]: relativePath,    // e.g. { logoUrl: "institute-images/logo-uuid.png" }
+      [settingsField]: relativePath,    // e.g. { logoUrl: 'institute-images/logo-uuid.png' }
     });
-
-    setPreview(updated[field]);   // updated[field] is now full URL
+    setPreview(updated[settingsField]);   // full URL from response
     setUploading(false);
   }
 
-  async function handleRemove() {
-    const updated = await api.patch(`/institutes/${instituteId}/settings`, {
-      [field]: null,              // clear the field
-    });
+  // Delete via dedicated endpoint — no need to PATCH null manually
+  async function handleDelete() {
+    setUploading(true);
+    await api.delete(`/institutes/${instituteId}/${field}`);  // DELETE /:id/logo etc.
     setPreview(null);
+    setUploading(false);
   }
 
   return (
@@ -857,12 +932,12 @@ function ImageFieldUploader({
       {preview && <img src={preview} alt={label} className="preview" />}
       <input
         type="file"
-        accept={field === 'loadingGifUrl' ? 'image/gif,image/*' : 'image/*'}
+        accept={field === 'loading-gif' ? 'image/gif,image/*' : 'image/*'}
         onChange={e => e.target.files?.[0] && handleFileChange(e.target.files[0])}
         disabled={uploading}
       />
       {preview && (
-        <button onClick={handleRemove} disabled={uploading}>Remove</button>
+        <button onClick={handleDelete} disabled={uploading}>Delete</button>
       )}
       {uploading && <span>Uploading...</span>}
     </div>
@@ -872,19 +947,22 @@ function ImageFieldUploader({
 // Usage:
 <ImageFieldUploader
   instituteId={id}
-  field="logoUrl"
+  field="logo"
+  settingsField="logoUrl"
   currentDisplayUrl={settings.logoUrl}
   label="Institute Logo"
 />
 <ImageFieldUploader
   instituteId={id}
-  field="loadingGifUrl"
+  field="loading-gif"
+  settingsField="loadingGifUrl"
   currentDisplayUrl={settings.loadingGifUrl}
   label="Loading GIF (animated)"
 />
 <ImageFieldUploader
   instituteId={id}
-  field="imageUrl"
+  field="cover-image"
+  settingsField="imageUrl"
   currentDisplayUrl={settings.imageUrl}
   label="Cover / Banner Image"
 />

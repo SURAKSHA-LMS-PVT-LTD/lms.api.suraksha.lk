@@ -1,5 +1,5 @@
 // src/modules/institute/institute.service.ts
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere, In } from 'typeorm';
 import { InstituteEntity } from './entities/institute.entity';
@@ -499,6 +499,108 @@ export class InstitutesService {
     }
 
     // Return fresh settings with full S3 URLs
+    return this.getSettings(instituteId, user);
+  }
+
+  // ───────────────────────────────────────────────────
+  // Institute Image Management (dedicated endpoints)
+  // ───────────────────────────────────────────────────
+
+  /**
+   * Shared helper — load institute and validate JWT access for settings-level operations.
+   */
+  private async loadInstituteForSettings(instituteId: string, user: any): Promise<InstituteEntity> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+    });
+    if (!institute) {
+      throw new NotFoundException(`Institute with ID ${instituteId} not found`);
+    }
+    return institute;
+  }
+
+  /**
+   * Permanently delete the institute logo from storage and clear the DB field.
+   */
+  async deleteLogoImage(instituteId: string, user: any): Promise<InstituteSettingsResponseDto> {
+    const institute = await this.loadInstituteForSettings(instituteId, user);
+    const oldPath = institute.logoUrl;
+    if (oldPath) {
+      await this.instituteRepository.update(instituteId, { logoUrl: null, updatedAt: now() });
+      this.cloudStorageService.deleteFile(oldPath).catch(err =>
+        this.logger.warn(`Failed to delete logo: ${oldPath} — ${err.message}`)
+      );
+    }
+    return this.getSettings(instituteId, user);
+  }
+
+  /**
+   * Permanently delete the loading GIF from storage and clear the DB field.
+   */
+  async deleteLoadingGif(instituteId: string, user: any): Promise<InstituteSettingsResponseDto> {
+    const institute = await this.loadInstituteForSettings(instituteId, user);
+    const oldPath = institute.loadingGifUrl;
+    if (oldPath) {
+      await this.instituteRepository.update(instituteId, { loadingGifUrl: null, updatedAt: now() });
+      this.cloudStorageService.deleteFile(oldPath).catch(err =>
+        this.logger.warn(`Failed to delete loading GIF: ${oldPath} — ${err.message}`)
+      );
+    }
+    return this.getSettings(instituteId, user);
+  }
+
+  /**
+   * Permanently delete the cover/banner image from storage and clear the DB field.
+   */
+  async deleteCoverImage(instituteId: string, user: any): Promise<InstituteSettingsResponseDto> {
+    const institute = await this.loadInstituteForSettings(instituteId, user);
+    const oldPath = institute.imageUrl;
+    if (oldPath) {
+      await this.instituteRepository.update(instituteId, { imageUrl: null, updatedAt: now() });
+      this.cloudStorageService.deleteFile(oldPath).catch(err =>
+        this.logger.warn(`Failed to delete cover image: ${oldPath} — ${err.message}`)
+      );
+    }
+    return this.getSettings(instituteId, user);
+  }
+
+  /**
+   * Add a single image to the gallery array (max 10).
+   * Accepts the S3/GCS relative path from /upload/verify-and-publish.
+   */
+  async addGalleryImage(instituteId: string, relativePath: string, user: any): Promise<InstituteSettingsResponseDto> {
+    const institute = await this.loadInstituteForSettings(instituteId, user);
+    const current: string[] = Array.isArray(institute.imageUrls) ? institute.imageUrls : [];
+    if (current.length >= 10) {
+      throw new BadRequestException('Gallery is full — maximum 10 images allowed');
+    }
+    await this.instituteRepository.update(instituteId, {
+      imageUrls: [...current, relativePath],
+      updatedAt: now(),
+    });
+    return this.getSettings(instituteId, user);
+  }
+
+  /**
+   * Remove a gallery image by its 0-based index and permanently delete from storage.
+   */
+  async deleteGalleryImage(instituteId: string, imageIndex: number, user: any): Promise<InstituteSettingsResponseDto> {
+    const institute = await this.loadInstituteForSettings(instituteId, user);
+    const current: string[] = Array.isArray(institute.imageUrls) ? institute.imageUrls : [];
+    if (imageIndex < 0 || imageIndex >= current.length) {
+      throw new BadRequestException(
+        `Invalid index ${imageIndex} — gallery has ${current.length} image(s) (0-based)`
+      );
+    }
+    const removedPath = current[imageIndex];
+    const newPaths = current.filter((_, i) => i !== imageIndex);
+    await this.instituteRepository.update(instituteId, { imageUrls: newPaths, updatedAt: now() });
+    if (removedPath) {
+      this.cloudStorageService.deleteFile(removedPath).catch(err =>
+        this.logger.warn(`Failed to delete gallery image: ${removedPath} — ${err.message}`)
+      );
+    }
     return this.getSettings(instituteId, user);
   }
 

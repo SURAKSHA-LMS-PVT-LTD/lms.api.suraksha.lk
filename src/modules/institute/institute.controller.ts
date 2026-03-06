@@ -29,7 +29,7 @@ import {
   PaginatedInstituteResponseDto
 } from './dto/index.dto';
 import { UpdateInstituteSettingsDto } from './dto/update-institute-settings.dto';
-import { InstituteSettingsResponseDto, InstituteProfileResponseDto } from './dto/institute-settings.dto';
+import { InstituteSettingsResponseDto, InstituteProfileResponseDto, AddGalleryImageDto } from './dto/institute-settings.dto';
 
 @ApiTags('Institutes')
 @ApiBearerAuth()
@@ -489,6 +489,106 @@ export class InstitutesController {
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
     return this.institutesService.updateSettings(id, dto, req.user);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Institute Image Management (dedicated endpoints)
+  // ═══════════════════════════════════════════════════
+
+  @Delete(':id/logo')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Delete institute logo (Institute Admin)',
+    description: 'Permanently deletes the logo file from storage and clears the logoUrl field.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Logo deleted — returns updated settings', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async deleteLogo(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.deleteLogoImage(id, req.user);
+  }
+
+  @Delete(':id/loading-gif')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Delete institute loading GIF (Institute Admin)',
+    description: 'Permanently deletes the loading GIF file from storage and clears the loadingGifUrl field.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Loading GIF deleted — returns updated settings', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async deleteLoadingGif(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.deleteLoadingGif(id, req.user);
+  }
+
+  @Delete(':id/cover-image')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Delete institute cover/banner image (Institute Admin)',
+    description: 'Permanently deletes the cover image from storage and clears the imageUrl field.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Cover image deleted — returns updated settings', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async deleteCoverImage(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.deleteCoverImage(id, req.user);
+  }
+
+  @Post(':id/gallery')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Add image to gallery (Institute Admin)',
+    description: `Adds a single image to the gallery array. Maximum 10 images.
+    Upload the file via \`/upload/verify-and-publish\` first, then send the returned relative path here.`,
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Image added — returns updated settings', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Gallery full (max 10 images)' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async addGalleryImage(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Body() dto: AddGalleryImageDto,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.addGalleryImage(id, dto.relativePath, req.user);
+  }
+
+  @Delete(':id/gallery/:imageIndex')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Delete gallery image by index (Institute Admin)',
+    description: 'Removes a gallery image by its 0-based index and permanently deletes the file from storage.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiParam({ name: 'imageIndex', description: 'Zero-based index of the image in the gallery array' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Image deleted — returns updated settings', type: InstituteSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid image index' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async deleteGalleryImage(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Param('imageIndex', ParseIntPipe) imageIndex: number,
+    @Request() req: JwtRequest
+  ): Promise<InstituteSettingsResponseDto> {
+    return this.institutesService.deleteGalleryImage(id, imageIndex, req.user);
   }
 
   // ═══════════════════════════════════════════════════

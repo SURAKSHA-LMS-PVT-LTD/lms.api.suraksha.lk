@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
+import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 /**
  * Institute Settings Response — Full data for Institute Admin settings page
@@ -213,4 +214,19 @@ export class InstituteProfileResponseDto {
   constructor(partial: Partial<InstituteProfileResponseDto>) {
     Object.assign(this, partial);
   }
+}
+
+/**
+ * DTO for adding a single image to the institute gallery.
+ * Accepts the S3/GCS relative path returned by /upload/verify-and-publish.
+ */
+export class AddGalleryImageDto {
+  @ApiProperty({
+    description: 'S3/GCS relative path returned by /upload/verify-and-publish',
+    example: 'institute-images/gallery-abc123.jpg',
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(255)
+  relativePath: string;
 }
