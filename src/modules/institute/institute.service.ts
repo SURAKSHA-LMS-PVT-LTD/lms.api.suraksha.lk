@@ -622,7 +622,8 @@ export class InstitutesService {
       select: [
         'id', 'name', 'shortName', 'email', 'phone',
         'city', 'type',
-        'logoUrl', 'primaryColorCode', 'secondaryColorCode',
+        'logoUrl', 'loadingGifUrl', 'imageUrls', 'imageUrl',
+        'primaryColorCode', 'secondaryColorCode',
         'websiteUrl', 'facebookPageUrl', 'youtubeChannelUrl',
         'vision', 'mission',
       ],
@@ -638,6 +639,11 @@ export class InstitutesService {
       shortName: institute.shortName,
       // code and pinCode intentionally excluded — enrollment credentials
       logoUrl: institute.logoUrl ? this.cloudStorageService.getFullUrl(institute.logoUrl) : null,
+      loadingGifUrl: institute.loadingGifUrl ? this.cloudStorageService.getFullUrl(institute.loadingGifUrl) : null,
+      imageUrls: Array.isArray(institute.imageUrls)
+        ? institute.imageUrls.map(url => this.cloudStorageService.getFullUrl(url))
+        : [],
+      imageUrl: institute.imageUrl ? this.cloudStorageService.getFullUrl(institute.imageUrl) : null,
       primaryColorCode: institute.primaryColorCode,
       secondaryColorCode: institute.secondaryColorCode,
       phone: institute.phone,

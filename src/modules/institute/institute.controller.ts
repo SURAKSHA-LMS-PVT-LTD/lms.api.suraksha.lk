@@ -1,4 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { NoDataMasking } from '../../common/decorators/no-data-masking.decorator';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpStatus, ParseIntPipe, UseGuards, Put, Request, BadRequestException, ForbiddenException, Inject, UploadedFile, UploadedFiles } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import {
@@ -598,6 +599,7 @@ export class InstitutesController {
   @Get(':id/profile')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ anyInstituteRole: true })
+  @NoDataMasking()
   @ApiOperation({
     summary: 'Get institute profile (all institute members)',
     description: `Returns a lightweight institute profile for teachers, students,

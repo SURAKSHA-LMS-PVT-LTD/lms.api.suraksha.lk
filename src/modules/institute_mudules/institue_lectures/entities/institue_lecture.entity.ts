@@ -4,7 +4,7 @@ import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institue_class/entities/institue_class.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
 import { LectureStatus, LectureType } from '../enums/lecture.enum';
-import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
+
 
 @Entity('institute_lectures')
 @Index(['instituteId', 'startTime']) // For institute lecture scheduling
@@ -108,7 +108,7 @@ export class InstituteLectureEntity {
 
   getIsOngoing(): boolean {
     if (!this.startTime || !this.endTime) return false;
-    const now = getCurrentSriLankaTime();
+    const now = new Date();
     return this.status === LectureStatus.ONGOING || 
            (this.status === LectureStatus.SCHEDULED && 
             now >= this.startTime && 
@@ -117,7 +117,7 @@ export class InstituteLectureEntity {
 
   getIsUpcoming(): boolean {
     if (!this.startTime) return false;
-    const now = getCurrentSriLankaTime();
+    const now = new Date();
     return this.status === LectureStatus.SCHEDULED && now < this.startTime;
   }
 }

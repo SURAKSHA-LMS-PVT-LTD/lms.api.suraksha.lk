@@ -7,7 +7,7 @@ import {
 import { plainToClass } from 'class-transformer';
 import { validate } from 'class-validator';
 import { EXAM_CONSTANTS } from '../constants/exam.constants';
-import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
+
 
 @Injectable()
 export class ExamValidationPipe implements PipeTransform {
@@ -51,7 +51,7 @@ export class ExamValidationPipe implements PipeTransform {
       }
 
       // Check if exam is not scheduled too far in the past
-      const now = getCurrentSriLankaTime();
+      const now = new Date();
       const timeDiff = startTime.getTime() - now.getTime();
       const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
 

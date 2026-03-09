@@ -159,10 +159,14 @@ export class InstituteProfileResponseDto {
 
   // Note: code and pinCode are NOT exposed in the profile — they are enrollment credentials
 
-  // Branding — only logo + colors (no gallery, no loading gif)
-  @ApiPropertyOptional({ description: 'Logo full S3 URL' })
+  // Branding
+  @ApiPropertyOptional({ description: 'Logo full URL' })
   @Expose()
   logoUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Loading GIF full URL' })
+  @Expose()
+  loadingGifUrl?: string;
 
   @ApiPropertyOptional({ description: 'Primary theme color', example: '#1976D2' })
   @Expose()
@@ -171,6 +175,14 @@ export class InstituteProfileResponseDto {
   @ApiPropertyOptional({ description: 'Secondary theme color', example: '#FFC107' })
   @Expose()
   secondaryColorCode?: string;
+
+  @ApiPropertyOptional({ description: 'Gallery image URLs', type: [String] })
+  @Expose()
+  imageUrls?: string[];
+
+  @ApiPropertyOptional({ description: 'Legacy single image URL' })
+  @Expose()
+  imageUrl?: string;
 
   // Minimal contact — just enough to identify
   @ApiPropertyOptional({ description: 'Contact phone', example: '+94771234567' })
