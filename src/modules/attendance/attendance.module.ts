@@ -27,6 +27,7 @@ import { InstituteModule } from '../institute/institute.module';
 import { AttendanceDeviceModule } from '../attendance-device/attendance-device.module';
 import { AttendanceRecordEntity } from './entities/attendance-record.entity';
 import { InstituteEntity } from '../institute/entities/institute.entity';
+import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { InstituteEntity } from '../institute/entities/institute.entity';
       UserFcmTokenEntity,
       AttendanceRecordEntity,
       InstituteEntity,
+      InstituteClassEntity,
     ])
   ],
   controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController],

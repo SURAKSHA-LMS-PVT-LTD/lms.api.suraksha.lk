@@ -2,7 +2,7 @@ import { Controller, Post, Get, Query, Param, Body, HttpException, HttpStatus, R
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AttendanceService } from './attendance.service';
-import { MarkAttendanceDto, BulkAttendanceDto, AttendanceResponseDto, GetStudentAttendanceDto, GetStudentAttendanceQueryDto, StudentAttendanceResponseDto } from './dto/attendance.dto';
+import { MarkAttendanceDto, BulkAttendanceDto, AttendanceResponseDto, GetStudentAttendanceDto, GetStudentAttendanceQueryDto, StudentAttendanceResponseDto, MyAttendanceQueryDto, MyAttendanceResponseDto } from './dto/attendance.dto';
 import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto } from './dto/card-attendance.dto';
 import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteCardUserResponseDto } from './dto/institute-card-attendance.dto';
 import { UserType } from '../user/enums/user-type.enum';
@@ -1383,6 +1383,43 @@ export class AttendanceController {
           message: error.message || 'Failed to mark attendance by institute card',
         },
         error.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // MY ATTENDANCE HISTORY — returns the calling user's own attendance, enriched
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  @Get('my-history')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get my attendance history (self-service)',
+    description: `Returns the calling user's own attendance records from DynamoDB across 
+    all institutes they belong to. Each record is enriched with live institute name, 
+    logo URL, and class name from the database. Supports date range filtering, 
+    pagination, status filter, and optional single-institute filter.\n\n
+    **Default date range**: last 30 days.\n
+    **Auth**: JWT only — no additional role required.`,
+  })
+  @ApiResponse({ status: 200, description: 'Attendance history', type: MyAttendanceResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getMyAttendance(
+    @Query() query: MyAttendanceQueryDto,
+    @Req() req: any
+  ): Promise<MyAttendanceResponseDto> {
+    try {
+      // Extract user ID from JWT (support both JWT v2 short form and legacy)
+      const userId = req.user?.s || req.user?.subject || req.user?.sub || req.user?.id;
+      if (!userId) {
+        throw new HttpException({ success: false, message: 'User ID not found in token' }, HttpStatus.UNAUTHORIZED);
+      }
+      return await this.attendanceService.getMyAttendance(String(userId), query);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve attendance history' },
+        HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
   }

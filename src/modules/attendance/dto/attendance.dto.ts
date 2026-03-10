@@ -339,3 +339,90 @@ export class StudentAttendanceResponseDto {
     attendanceRate: number;
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// My Attendance History (self-service endpoint — uses JWT userId automatically)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class MyAttendanceQueryDto {
+  @ApiPropertyOptional({ description: 'Start date YYYY-MM-DD (default: 30 days ago)' })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: 'End date YYYY-MM-DD (default: today)' })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by institute ID' })
+  @IsOptional()
+  @IsString()
+  instituteId?: string;
+
+  @ApiPropertyOptional({ description: 'Page number', minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ description: 'Records per page (max 100)', minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  limit?: number = 30;
+
+  @ApiPropertyOptional({ description: 'Filter by status', enum: AttendanceStatus })
+  @IsOptional()
+  @IsEnum(AttendanceStatus)
+  status?: AttendanceStatus;
+}
+
+export class MyAttendanceRecordDto {
+  @ApiProperty() date: string;
+  @ApiProperty() status: AttendanceStatus;
+  @ApiPropertyOptional() statusLabel?: string;
+  @ApiProperty() instituteId: string;
+  @ApiProperty() instituteName: string;
+  @ApiPropertyOptional() instituteLogoUrl?: string;
+  @ApiPropertyOptional() classId?: string;
+  @ApiPropertyOptional() className?: string;
+  @ApiPropertyOptional() subjectId?: string;
+  @ApiPropertyOptional() subjectName?: string;
+  @ApiPropertyOptional() markingMethod?: MarkingMethod;
+  @ApiPropertyOptional() remarks?: string;
+  @ApiPropertyOptional() userType?: string;
+  @ApiProperty() timestamp: number;
+}
+
+export class MyAttendanceResponseDto {
+  @ApiProperty() success: boolean;
+  @ApiProperty() message: string;
+  @ApiProperty() pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalRecords: number;
+    recordsPerPage: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+  @ApiProperty({ type: [MyAttendanceRecordDto] }) data: MyAttendanceRecordDto[];
+  @ApiProperty() summary: {
+    totalPresent: number;
+    totalAbsent: number;
+    totalLate: number;
+    totalLeft: number;
+    totalLeftEarly: number;
+    totalLeftLately: number;
+    attendanceRate: number;
+  };
+  @ApiPropertyOptional({ description: 'Per-institute breakdown' }) byInstitute?: Record<string, {
+    instituteName: string;
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+    attendanceRate: number;
+  }>;
+}
+

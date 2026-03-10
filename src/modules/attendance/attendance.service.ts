@@ -7,7 +7,9 @@ import { AttendanceNotificationService } from './services/attendance-notificatio
 import { InstituteCalendarService } from '../institute/services/institute-calendar.service';
 import { CalendarDayCacheService } from '../institute/services/calendar-day-cache.service';
 import { NOTIFICATION_PACKAGES_CONFIG } from '../advertisement/services/notification-packages.config';
-import { MarkAttendanceDto, BulkAttendanceDto, GetStudentAttendanceDto, StudentAttendanceResponseDto, AttendanceStatus, AttendanceUserType } from './dto/attendance.dto';
+import { MarkAttendanceDto, BulkAttendanceDto, GetStudentAttendanceDto, StudentAttendanceResponseDto, AttendanceStatus, AttendanceUserType, MyAttendanceQueryDto, MyAttendanceResponseDto, MyAttendanceRecordDto } from './dto/attendance.dto';
+import { InstituteEntity } from '../institute/entities/institute.entity';
+import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
 import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto } from './dto/card-attendance.dto';
 import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteCardUserResponseDto } from './dto/institute-card-attendance.dto';
 import { StudentEntity } from '../student/entities/student.entity';
@@ -54,6 +56,10 @@ export class AttendanceService {
     private readonly instituteUserRepository: Repository<InstituteUserEntity>,
     @InjectRepository(AdvertisementEntity)
     private readonly advertisementRepository: Repository<AdvertisementEntity>,
+    @InjectRepository(InstituteEntity)
+    private readonly instituteRepository: Repository<InstituteEntity>,
+    @InjectRepository(InstituteClassEntity)
+    private readonly classRepository: Repository<InstituteClassEntity>,
     private readonly CloudStorageService: CloudStorageService,
     private readonly attendanceDeviceService: AttendanceDeviceService,
     private readonly syncConfigService: AttendanceSyncConfigService,
@@ -2406,4 +2412,161 @@ export class AttendanceService {
   ): Promise<void> {
     return this.validateUserEnrollment(studentId, instituteId, AttendanceUserType.STUDENT);
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // MY ATTENDANCE HISTORY — self-service, enriched with institute + class details
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the calling user's own attendance history from DynamoDB.
+   * Enriches each record with up-to-date institute name/logo and class name
+   * fetched from MySQL (with an in-request in-memory cache to avoid N+1 queries).
+   *
+   * Strategy:
+   *  1. Fetch all DynamoDB records for this student via GSI (across all institutes).
+   *  2. Collect unique instituteId + classId pairs from the records.
+   *  3. Bulk-fetch those from MySQL in two queries (institutes + classes).
+   *  4. Overwrite the DynamoDB-stored names with the live DB values.
+   *  5. Paginate and return with summary + per-institute breakdown.
+   */
+  async getMyAttendance(userId: string, query: MyAttendanceQueryDto): Promise<MyAttendanceResponseDto> {
+    const { page = 1, limit = 30, status, instituteId: filterInstituteId } = query;
+
+    // Default date range: last 30 days → today
+    const today = getCurrentSriLankaDate();
+    const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const startDate = query.startDate || defaultStart;
+    const endDate = query.endDate || today;
+
+    // 1. Fetch from DynamoDB via GSI (all institutes for this student)
+    let rawRecords = await this.dynamoAttendanceService.getStudentAttendanceAllInstitutes(
+      userId,
+      startDate,
+      endDate,
+    );
+
+    // Optional: filter by a specific institute
+    if (filterInstituteId) {
+      rawRecords = rawRecords.filter(r => String(r.instituteId) === String(filterInstituteId));
+    }
+
+    // Optional: filter by status
+    if (status) {
+      rawRecords = rawRecords.filter(r => r.status === status);
+    }
+
+    // Sort newest first (DynamoDB GSI returns newest first already, but re-sort after filter)
+    rawRecords.sort((a, b) => ((b as any).timestamp || 0) - ((a as any).timestamp || 0));
+
+    // 2. Collect unique IDs for enrichment
+    const uniqueInstituteIds = [...new Set(rawRecords.map(r => String(r.instituteId)).filter(Boolean))];
+    const uniqueClassIds     = [...new Set(rawRecords.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
+
+    // 3. Bulk-fetch from DB (in parallel)
+    const [institutes, classes] = await Promise.all([
+      uniqueInstituteIds.length
+        ? this.instituteRepository.find({
+            where: { id: In(uniqueInstituteIds) as any },
+            select: ['id', 'name', 'shortName', 'logoUrl'],
+          })
+        : Promise.resolve([]),
+      uniqueClassIds.length
+        ? this.classRepository.find({
+            where: { id: In(uniqueClassIds) as any },
+            select: ['id', 'name'],
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // 4. Build lookup maps
+    const instituteMap = new Map(institutes.map(i => [String(i.id), i]));
+    const classMap     = new Map(classes.map(c => [String(c.id), c]));
+
+    // 5. Enrich and build summary + per-institute breakdown
+    const byInstitute: Record<string, { instituteName: string; total: number; present: number; absent: number; late: number; attendanceRate: number }> = {};
+    let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalLeft = 0, totalLeftEarly = 0, totalLeftLately = 0;
+
+    const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
+      const iid = String(r.instituteId);
+      const cid = r.classId ? String(r.classId) : undefined;
+      const dbInstitute = instituteMap.get(iid);
+      const dbClass     = cid ? classMap.get(cid) : undefined;
+
+      const instituteName = dbInstitute?.name || r.instituteName || iid;
+      const className     = dbClass?.name     || r.className     || undefined;
+      const rawLogoUrl    = dbInstitute?.logoUrl;
+      const instituteLogoUrl = rawLogoUrl
+        ? this.CloudStorageService.getFullUrl(rawLogoUrl)
+        : undefined;
+
+      // Summary counters
+      if (!byInstitute[iid]) {
+        byInstitute[iid] = { instituteName, total: 0, present: 0, absent: 0, late: 0, attendanceRate: 0 };
+      }
+      byInstitute[iid].total++;
+      if (r.status === AttendanceStatus.PRESENT)  { totalPresent++;     byInstitute[iid].present++; }
+      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++;   byInstitute[iid].absent++; }
+      else if (r.status === AttendanceStatus.LATE)   { totalLate++;     byInstitute[iid].late++; }
+      else if (r.status === AttendanceStatus.LEFT)        totalLeft++;
+      else if (r.status === AttendanceStatus.LEFT_EARLY)  totalLeftEarly++;
+      else if (r.status === AttendanceStatus.LEFT_LATELY) totalLeftLately++;
+
+      const statusLabels: Record<string, string> = {
+        [AttendanceStatus.PRESENT]: 'Present',
+        [AttendanceStatus.ABSENT]:  'Absent',
+        [AttendanceStatus.LATE]:    'Late',
+        [AttendanceStatus.LEFT]:    'Left',
+        [AttendanceStatus.LEFT_EARLY]:   'Left Early',
+        [AttendanceStatus.LEFT_LATELY]:  'Left Lately',
+      };
+
+      return {
+        date: r.date,
+        status: r.status,
+        statusLabel: statusLabels[r.status as string] || String(r.status),
+        instituteId: iid,
+        instituteName,
+        instituteLogoUrl,
+        classId: cid,
+        className,
+        subjectId: r.subjectId,
+        subjectName: r.subjectName,
+        markingMethod: r.markingMethod as any,
+        remarks: r.remarks,
+        userType: (r as any).userType,
+        timestamp: (r as any).timestamp || 0,
+      } as MyAttendanceRecordDto;
+    });
+
+    // Compute per-institute attendance rate
+    for (const id of Object.keys(byInstitute)) {
+      const s = byInstitute[id];
+      s.attendanceRate = s.total > 0 ? parseFloat(((s.present / s.total) * 100).toFixed(2)) : 0;
+    }
+
+    // 6. Paginate
+    const totalRecords = enriched.length;
+    const totalPages   = Math.ceil(totalRecords / limit);
+    const paginated    = enriched.slice((page - 1) * limit, page * limit);
+    const attendanceRate = totalRecords > 0
+      ? parseFloat(((totalPresent / totalRecords) * 100).toFixed(2))
+      : 0;
+
+    return {
+      success: true,
+      message: 'Attendance history retrieved successfully',
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalRecords,
+        recordsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+      data: paginated,
+      summary: { totalPresent, totalAbsent, totalLate, totalLeft, totalLeftEarly, totalLeftLately, attendanceRate },
+      byInstitute,
+    };
+  }
 }
+

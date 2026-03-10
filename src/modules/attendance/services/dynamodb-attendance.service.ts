@@ -810,6 +810,71 @@ export class DynamoDBAttendanceService {
     return allRecords;
   }
 
+  /**
+   * Query ALL attendance for a student across ALL institutes via GSI.
+   * Uses GSI_PK = STUDENT#{studentId} (no institute filter) so a single
+   * DynamoDB query returns every record for this student regardless of institute.
+   * Supports optional date-range on the GSI sort key for efficiency.
+   */
+  async getStudentAttendanceAllInstitutes(
+    studentId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<(MarkAttendanceDto & { timestamp?: number; calendarDayId?: string; eventId?: string })[]> {
+    const sanitized = String(studentId).replace(/[^a-zA-Z0-9_-]/g, '');
+    const gsiPk = `STUDENT#${sanitized}`;
+
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      IndexName: this.gsiName,
+      ScanIndexForward: false, // newest first
+    };
+
+    if (startDate && endDate) {
+      // gsi_sk pattern: I#{instituteId}#D#{date}#TS#... — prefix all institutes with date range
+      params.KeyConditionExpression = 'gsi_pk = :gsi_pk AND gsi_sk BETWEEN :start AND :end';
+      params.ExpressionAttributeValues = marshall({
+        ':gsi_pk': gsiPk,
+        ':start': `I#`,
+        ':end': `I#~`,
+      }, { removeUndefinedValues: true });
+
+      // Use FilterExpression to narrow by date since BETWEEN on prefix isn't date-exact
+      params.FilterExpression = '#dt >= :startDate AND #dt <= :endDate';
+      params.ExpressionAttributeNames = { '#dt': 'date' };
+      // Merge filter values into the existing ExpressionAttributeValues
+      const merged = marshall({
+        ':gsi_pk': gsiPk,
+        ':start': `I#`,
+        ':end': `I#~`,
+        ':startDate': startDate,
+        ':endDate': endDate,
+      }, { removeUndefinedValues: true });
+      params.ExpressionAttributeValues = merged;
+    } else {
+      params.KeyConditionExpression = 'gsi_pk = :gsi_pk';
+      params.ExpressionAttributeValues = marshall({ ':gsi_pk': gsiPk }, { removeUndefinedValues: true });
+    }
+
+    const allRecords: (MarkAttendanceDto & { timestamp?: number; calendarDayId?: string; eventId?: string })[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      if (lastEvaluatedKey) {
+        params.ExclusiveStartKey = lastEvaluatedKey;
+      }
+      const result = await this.retryWithBackoff(async () => {
+        return await this.dynamoClient.send(new QueryCommand(params));
+      });
+      if (result.Items) {
+        allRecords.push(...result.Items.map(item => this.recordToAttendance(unmarshall(item))));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return allRecords;
+  }
+
   // Get attendance summary for date range
   // ✅ PERFORMANCE: Added pagination support to prevent scanning millions of records
   // ✅ FIXED PERF-006: Records are now opt-in via includeRecords parameter to reduce memory usage
