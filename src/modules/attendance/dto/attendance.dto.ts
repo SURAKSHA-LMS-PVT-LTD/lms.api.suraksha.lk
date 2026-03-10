@@ -393,6 +393,8 @@ export class MyAttendanceRecordDto {
   @ApiPropertyOptional() remarks?: string;
   @ApiPropertyOptional() userType?: string;
   @ApiProperty() timestamp: number;
+  /** ISO datetime of when attendance was marked (derived from the stored epoch timestamp) */
+  @ApiPropertyOptional() markedAt?: string;
 }
 
 export class MyAttendanceResponseDto {
@@ -418,10 +420,13 @@ export class MyAttendanceResponseDto {
   };
   @ApiPropertyOptional({ description: 'Per-institute breakdown' }) byInstitute?: Record<string, {
     instituteName: string;
-    total: number;
-    present: number;
-    absent: number;
-    late: number;
+    instituteLogoUrl?: string;
+    totalPresent: number;
+    totalAbsent: number;
+    totalLate: number;
+    totalLeft: number;
+    totalLeftEarly: number;
+    totalLeftLately: number;
     attendanceRate: number;
   }>;
 }

@@ -682,7 +682,8 @@ export class AttendanceService {
     const totalLeft = allRecords.filter(r => r.status === AttendanceStatus.LEFT).length;
     const totalLeftEarly = allRecords.filter(r => r.status === AttendanceStatus.LEFT_EARLY).length;
     const totalLeftLately = allRecords.filter(r => r.status === AttendanceStatus.LEFT_LATELY).length;
-    const attendanceRate = totalRecords > 0 ? (totalPresent / totalRecords) * 100 : 0;
+    const presentAbsent = totalPresent + totalAbsent;
+    const attendanceRate = presentAbsent > 0 ? parseFloat(((totalPresent / presentAbsent) * 100).toFixed(2)) : 0;
 
     // Transform records to response format
     const data = paginatedRecords.map(record => ({
@@ -694,7 +695,7 @@ export class AttendanceService {
       subjectName: record.subjectName,
       address: record.location || this.generateAddress(record.instituteName, record.className, record.subjectName),
       markedBy: 'system',
-      markedAt: record.date,
+      markedAt: (record as any).timestamp ? new Date((record as any).timestamp).toISOString() : record.date,
       markingMethod: record.markingMethod,
       status: record.status,
       userType: (record as any).userType || AttendanceUserType.STUDENT
@@ -1067,7 +1068,7 @@ export class AttendanceService {
           className: record.className,
           subjectName: record.subjectName,
           address: record.location,
-          markedAt: record.date,
+          markedAt: (record as any).timestamp ? new Date((record as any).timestamp).toISOString() : record.date,
           markingMethod: record.markingMethod,
           status: record.status,
           userType: (record as any).userType || AttendanceUserType.STUDENT
@@ -2483,7 +2484,7 @@ export class AttendanceService {
     const classMap     = new Map(classes.map(c => [String(c.id), c]));
 
     // 5. Enrich and build summary + per-institute breakdown
-    const byInstitute: Record<string, { instituteName: string; total: number; present: number; absent: number; late: number; attendanceRate: number }> = {};
+    const byInstitute: Record<string, { instituteName: string; instituteLogoUrl?: string; totalPresent: number; totalAbsent: number; totalLate: number; totalLeft: number; totalLeftEarly: number; totalLeftLately: number; attendanceRate: number }> = {};
     let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalLeft = 0, totalLeftEarly = 0, totalLeftLately = 0;
 
     const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
@@ -2501,15 +2502,14 @@ export class AttendanceService {
 
       // Summary counters
       if (!byInstitute[iid]) {
-        byInstitute[iid] = { instituteName, total: 0, present: 0, absent: 0, late: 0, attendanceRate: 0 };
+        byInstitute[iid] = { instituteName, instituteLogoUrl, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
       }
-      byInstitute[iid].total++;
-      if (r.status === AttendanceStatus.PRESENT)  { totalPresent++;     byInstitute[iid].present++; }
-      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++;   byInstitute[iid].absent++; }
-      else if (r.status === AttendanceStatus.LATE)   { totalLate++;     byInstitute[iid].late++; }
-      else if (r.status === AttendanceStatus.LEFT)        totalLeft++;
-      else if (r.status === AttendanceStatus.LEFT_EARLY)  totalLeftEarly++;
-      else if (r.status === AttendanceStatus.LEFT_LATELY) totalLeftLately++;
+      if (r.status === AttendanceStatus.PRESENT)       { totalPresent++;    byInstitute[iid].totalPresent++; }
+      else if (r.status === AttendanceStatus.ABSENT)   { totalAbsent++;     byInstitute[iid].totalAbsent++; }
+      else if (r.status === AttendanceStatus.LATE)     { totalLate++;       byInstitute[iid].totalLate++; }
+      else if (r.status === AttendanceStatus.LEFT)     { totalLeft++;       byInstitute[iid].totalLeft++; }
+      else if (r.status === AttendanceStatus.LEFT_EARLY)   { totalLeftEarly++;  byInstitute[iid].totalLeftEarly++; }
+      else if (r.status === AttendanceStatus.LEFT_LATELY)  { totalLeftLately++; byInstitute[iid].totalLeftLately++; }
 
       const statusLabels: Record<string, string> = {
         [AttendanceStatus.PRESENT]: 'Present',
@@ -2535,21 +2535,24 @@ export class AttendanceService {
         remarks: r.remarks,
         userType: (r as any).userType,
         timestamp: (r as any).timestamp || 0,
+        markedAt: (r as any).timestamp ? new Date((r as any).timestamp).toISOString() : r.date,
       } as MyAttendanceRecordDto;
     });
 
     // Compute per-institute attendance rate
     for (const id of Object.keys(byInstitute)) {
       const s = byInstitute[id];
-      s.attendanceRate = s.total > 0 ? parseFloat(((s.present / s.total) * 100).toFixed(2)) : 0;
+      const denom = s.totalPresent + s.totalAbsent;
+      s.attendanceRate = denom > 0 ? parseFloat(((s.totalPresent / denom) * 100).toFixed(2)) : 0;
     }
 
     // 6. Paginate
     const totalRecords = enriched.length;
     const totalPages   = Math.ceil(totalRecords / limit);
     const paginated    = enriched.slice((page - 1) * limit, page * limit);
-    const attendanceRate = totalRecords > 0
-      ? parseFloat(((totalPresent / totalRecords) * 100).toFixed(2))
+    const presentAbsent = totalPresent + totalAbsent;
+    const attendanceRate = presentAbsent > 0
+      ? parseFloat(((totalPresent / presentAbsent) * 100).toFixed(2))
       : 0;
 
     return {

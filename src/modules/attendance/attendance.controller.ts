@@ -674,14 +674,14 @@ export class AttendanceController {
       const end = new Date(endDate);
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       
-      const maxDays = studentId ? 30 : 5;
+      const maxDays = studentId ? 30 : 7;
       if (daysDiff > maxDays) {
         throw new HttpException(
           {
             success: false,
             message: studentId 
               ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 5 days for institute-wide queries. Add studentId parameter to query up to 30 days.',
+              : 'Date range cannot exceed 7 days for institute-wide queries. Add studentId parameter to query up to 30 days.',
           },
           HttpStatus.BAD_REQUEST
         );
