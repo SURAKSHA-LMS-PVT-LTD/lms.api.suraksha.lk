@@ -131,6 +131,26 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         };
       }
 
+      // NestJS ValidationPipe produces: { message: string[], error: 'Bad Request', statusCode: 400 }
+      // We must turn the array into a readable top-level message + structured details.
+      if (typeof response === 'object' && Array.isArray((response as any).message)) {
+        const validationMessages: string[] = (response as any).message;
+        const firstMessage = validationMessages[0] || 'Validation failed';
+        // Capitalise first letter and ensure it ends with a period.
+        const friendlyFirst = firstMessage.charAt(0).toUpperCase() + firstMessage.slice(1);
+        const suffix = validationMessages.length > 1 ? ` (and ${validationMessages.length - 1} more issue${validationMessages.length - 1 > 1 ? 's' : ''})` : '';
+        return {
+          statusCode: exception.getStatus(),
+          message: `${friendlyFirst}${suffix}`,
+          type: 'ValidationError',
+          details: {
+            actionHint: 'Please check the highlighted fields and correct the errors before submitting again.',
+            fields: validationMessages,
+          },
+          stack: process.env.NODE_ENV === 'development' ? exception.stack : undefined,
+        };
+      }
+
       return {
         statusCode: exception.getStatus(),
         message: typeof response === 'string' ? response : (response as any).message || exception.message,
