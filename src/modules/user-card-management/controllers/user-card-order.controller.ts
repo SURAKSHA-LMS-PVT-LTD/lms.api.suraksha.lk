@@ -239,4 +239,23 @@ export class UserCardOrderController {
     const userId = req.user.s;
     return this.orderService.updateCardStatus(orderId, userId, updateCardStatusDto);
   }
+
+  // Cancel Order (only while in PENDING_PAYMENT status)
+  @Patch('orders/:orderId/cancel')
+  @ApiOperation({
+    summary: 'Cancel a card order',
+    description:
+      'Cancels an order that is still in PENDING_PAYMENT status (no payment has been submitted yet). ' +
+      'Stock is restored automatically.',
+  })
+  @ApiResponse({ status: 200, description: 'Order cancelled successfully', type: OrderResponseDto })
+  @ApiResponse({ status: 400, description: 'Order cannot be cancelled in its current status' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async cancelOrder(
+    @Request() req: JwtRequest,
+    @Param('orderId') orderId: string,
+  ): Promise<OrderResponseDto> {
+    const userId = req.user.s;
+    return this.orderService.cancelOrder(orderId, userId);
+  }
 }

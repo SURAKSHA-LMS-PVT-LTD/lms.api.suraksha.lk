@@ -606,6 +606,71 @@ export class CardOrderService {
     }
   }
 
+  /**
+   * Cancel a card order.
+   *
+   * Rules:
+   * - Only the owning user may cancel.
+   * - Only orders in PENDING_PAYMENT status can be cancelled (no payment submitted yet).
+   * - Stock is restored atomically inside a transaction.
+   */
+  async cancelOrder(orderId: string, userId: string): Promise<OrderResponseDto> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Lock the order row to prevent concurrent modifications
+      const order = await queryRunner.manager
+        .createQueryBuilder(UserIdCardOrder, 'order')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('order.card', 'card')
+        .where('order.id = :orderId AND order.userId = :userId', { orderId, userId })
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundException('Order not found or does not belong to you');
+      }
+
+      if (order.orderStatus !== OrderStatus.PENDING_PAYMENT) {
+        throw new BadRequestException(
+          `Only orders in PENDING_PAYMENT status can be cancelled. Current status: ${order.orderStatus}`,
+        );
+      }
+
+      // Restore stock
+      const card = await queryRunner.manager
+        .createQueryBuilder(Card, 'card')
+        .setLock('pessimistic_write')
+        .where('card.id = :id', { id: order.cardId })
+        .getOne();
+
+      if (card) {
+        card.quantityAvailable += 1;
+        await queryRunner.manager.save(card);
+      }
+
+      // Cancel the order
+      order.orderStatus = OrderStatus.CANCELLED;
+      order.updatedAt = now();
+      await queryRunner.manager.save(order);
+
+      await queryRunner.commitTransaction();
+
+      const finalOrder = await this.orderRepository.findOne({
+        where: { id: orderId },
+        relations: ['card'],
+      });
+
+      return this.toResponseDto(finalOrder);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   async getStatistics(dateFrom?: Date, dateTo?: Date): Promise<any> {
     // Use SQL aggregation instead of loading all orders into memory
     const baseQuery = this.orderRepository.createQueryBuilder('order');
