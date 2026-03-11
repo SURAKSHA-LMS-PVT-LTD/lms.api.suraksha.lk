@@ -678,6 +678,79 @@ export class InstituteCalendarController {
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  //  MONTH VIEW
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Get Month Calendar — all days + embedded events for a calendar month.
+   *
+   * Accessible by any institute user (SUPERADMIN, INSTITUTE_ADMIN, TEACHER,
+   * STUDENT, PARENT…).  All users see the same data so results are served from
+   * an in-memory cache keyed by month_<instituteId>_<year>_<mm>.  The cache
+   * is automatically invalidated whenever any write operation (event / day
+   * create, update, delete, generate, or delete-calendar) is performed.
+   *
+   * Response shape per day:
+   *   { id, calendarDate, dayType, title, isAttendanceExpected, events: [...] }
+   *
+   * Events include full details (eventType, title, startTime, endTime,
+   * isDefault, venue, status, …) so the frontend can render them visually.
+   */
+  @Get('month')
+  @ApiOperation({
+    summary: 'Get institute calendar for a specific month (with events)',
+    description:
+      'Returns every calendar day of the requested month with all events embedded. ' +
+      'Results are served from an in-memory cache shared across all institute users — ' +
+      'no DB call is made until the cache expires or a write operation invalidates it. ' +
+      'Pass ?year=2026&month=3 to get March 2026.',
+  })
+  @ApiQuery({ name: 'year', required: false, description: 'Year (e.g. 2026). Defaults to current year.' })
+  @ApiQuery({ name: 'month', required: false, description: 'Month 1–12 (e.g. 3 for March). Defaults to current month.' })
+  @ApiResponse({ status: 200, description: 'Month calendar with events for each day' })
+  @ApiResponse({ status: 400, description: 'Invalid year or month' })
+  async getMonthCalendar(
+    @Param('instituteId') instituteId: string,
+    @Query('year') yearStr?: string,
+    @Query('month') monthStr?: string,
+  ) {
+    try {
+      // Resolve defaults from Sri Lanka "today"
+      const todayParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Colombo',
+        year: 'numeric',
+        month: '2-digit',
+      }).formatToParts(new Date());
+      const defaultYear = parseInt(todayParts.find(p => p.type === 'year')!.value, 10);
+      const defaultMonth = parseInt(todayParts.find(p => p.type === 'month')!.value, 10);
+
+      const year = yearStr ? parseInt(yearStr, 10) : defaultYear;
+      const month = monthStr ? parseInt(monthStr, 10) : defaultMonth;
+
+      if (isNaN(year) || year < 2000 || year > 2100) {
+        throw new BadRequestException('Invalid year. Must be between 2000 and 2100.');
+      }
+      if (isNaN(month) || month < 1 || month > 12) {
+        throw new BadRequestException('Invalid month. Must be between 1 and 12.');
+      }
+
+      const days = await this.cacheService.getMonthCalendar(instituteId, year, month);
+
+      return {
+        success: true,
+        data: {
+          year,
+          month,
+          totalDays: days.length,
+          days,
+        },
+      };
+    } catch (error) {
+      this.handleError(error, 'Failed to get month calendar');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   //  CACHE MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════
 

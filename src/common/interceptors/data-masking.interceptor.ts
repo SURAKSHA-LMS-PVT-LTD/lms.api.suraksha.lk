@@ -153,24 +153,36 @@ export class DataMaskingInterceptor implements NestInterceptor {
   }
 
   /**
-   * Detect if an object is an Institute object based on its fields
-   * Institute objects typically have: id, name, code, and at least one of (logoUrl, type, status)
+   * Detect if an object is an Institute object based on its fields.
+   * Handles all institute response shapes including those without `code`
+   * (e.g. InstituteProfileResponseDto which excludes code intentionally).
    */
   private isInstituteObject(obj: any): boolean {
     if (!obj || typeof obj !== 'object') return false;
-    
-    // Check for typical institute fields
-    const hasInstituteIdentifiers = 
-      'code' in obj && 
-      'name' in obj && 
+
+    // Institute-specific fields that never appear on user objects
+    const hasInstituteOnlyField =
+      'primaryColorCode' in obj ||
+      'loadingGifUrl' in obj ||
+      'facebookPageUrl' in obj ||
+      'youtubeChannelUrl' in obj ||
+      'instituteUserType' in obj ||
+      'isDefault' in obj;
+
+    if (hasInstituteOnlyField) return true;
+
+    // Broader check: code + name + at least one branding/type field
+    const hasBroadIdentifiers =
+      'code' in obj &&
+      'name' in obj &&
       (
-        'logoUrl' in obj || 
-        'type' in obj || 
+        'logoUrl' in obj ||
+        'type' in obj ||
         'status' in obj ||
         'shortName' in obj ||
         'instituteId' in obj
       );
-    
-    return hasInstituteIdentifiers;
+
+    return hasBroadIdentifiers;
   }
 }

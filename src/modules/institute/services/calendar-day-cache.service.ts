@@ -9,10 +9,18 @@ interface CacheEntry {
   expiresAt: number;
 }
 
+interface MonthCacheEntry {
+  days: InstituteCalendarDayEntity[];
+  expiresAt: number;
+}
+
 @Injectable()
 export class CalendarDayCacheService implements OnModuleDestroy {
   private readonly logger = new Logger(CalendarDayCacheService.name);
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly monthCache = new Map<string, MonthCacheEntry>();
+  /** 24-hour safety-net TTL for month cache (writes always invalidate proactively) */
+  private readonly MONTH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   private cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor(private readonly calendarService: InstituteCalendarService) {
@@ -82,6 +90,38 @@ export class CalendarDayCacheService implements OnModuleDestroy {
   }
 
   /**
+   * Get the full month calendar (all days + embedded events) for an institute.
+   *
+   * Cache key: month_<instituteId>_<year>_<mm>
+   * All users in the same institute share this cache — it is invalidated whenever
+   * any calendar write (event create/update/delete, day update, generate, etc.) calls
+   * invalidate(instituteId).
+   */
+  async getMonthCalendar(
+    instituteId: string,
+    year: number,
+    month: number,
+  ): Promise<InstituteCalendarDayEntity[]> {
+    const cacheKey = `month_${instituteId}_${year}_${String(month).padStart(2, '0')}`;
+
+    const cached = this.monthCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      this.logger.debug(`Month cache HIT for ${cacheKey}`);
+      return cached.days;
+    }
+
+    this.logger.debug(`Month cache MISS for ${cacheKey}`);
+    const days = await this.calendarService.getMonthCalendarWithEvents(instituteId, year, month);
+
+    this.monthCache.set(cacheKey, {
+      days,
+      expiresAt: Date.now() + this.MONTH_CACHE_TTL_MS,
+    });
+
+    return days;
+  }
+
+  /**
    * Invalidate cache for a specific institute and date
    * If no date provided, invalidates today's cache
    */
@@ -90,6 +130,19 @@ export class CalendarDayCacheService implements OnModuleDestroy {
     const cacheKey = `${instituteId}_${targetDate}`;
     this.cache.delete(cacheKey);
     this.logger.log(`Invalidated cache for ${cacheKey}`);
+
+    // Also clear all month caches for this institute so the next month-view
+    // request re-fetches fresh data after any write operation.
+    let monthInvalidated = 0;
+    for (const key of this.monthCache.keys()) {
+      if (key.startsWith(`month_${instituteId}_`)) {
+        this.monthCache.delete(key);
+        monthInvalidated++;
+      }
+    }
+    if (monthInvalidated > 0) {
+      this.logger.log(`Invalidated ${monthInvalidated} month cache(s) for institute ${instituteId}`);
+    }
   }
 
   /**
@@ -97,16 +150,19 @@ export class CalendarDayCacheService implements OnModuleDestroy {
    */
   clear(): void {
     this.cache.clear();
+    this.monthCache.clear();
     this.logger.log('Cleared all calendar cache');
   }
 
   /**
    * Get cache statistics
    */
-  getStats(): { size: number; keys: string[] } {
+  getStats(): { size: number; keys: string[]; monthCacheSize: number; monthCacheKeys: string[] } {
     return {
       size: this.cache.size,
       keys: Array.from(this.cache.keys()),
+      monthCacheSize: this.monthCache.size,
+      monthCacheKeys: Array.from(this.monthCache.keys()),
     };
   }
 
@@ -162,6 +218,13 @@ export class CalendarDayCacheService implements OnModuleDestroy {
     for (const [key, entry] of this.cache.entries()) {
       if (entry.expiresAt < now) {
         this.cache.delete(key);
+        removed++;
+      }
+    }
+
+    for (const [key, entry] of this.monthCache.entries()) {
+      if (entry.expiresAt < now) {
+        this.monthCache.delete(key);
         removed++;
       }
     }

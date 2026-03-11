@@ -353,6 +353,35 @@ export class InstituteCalendarService {
   }
 
   /**
+   * Get all calendar days with their events for a given month (single JOIN query).
+   *
+   * This is the backbone of the month-view cache — one DB round-trip returns every
+   * calendar day in the month with all events already embedded. All users of the
+   * same institute see identical data, so the result can be cached indefinitely
+   * until any write operation (create/update/delete event or day) invalidates it.
+   */
+  async getMonthCalendarWithEvents(
+    instituteId: string,
+    year: number,
+    month: number,
+  ): Promise<InstituteCalendarDayEntity[]> {
+    const paddedMonth = String(month).padStart(2, '0');
+    const startDate = `${year}-${paddedMonth}-01`;
+    const lastDay = new Date(year, month, 0).getDate(); // month is 1-based; this resolves to last day
+    const endDate = `${year}-${paddedMonth}-${String(lastDay).padStart(2, '0')}`;
+
+    return this.calendarDayRepo
+      .createQueryBuilder('day')
+      .leftJoinAndSelect('day.events', 'event')
+      .where('day.instituteId = :instituteId', { instituteId })
+      .andWhere('day.calendarDate BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .orderBy('day.calendarDate', 'ASC')
+      .addOrderBy('event.isDefault', 'DESC')
+      .addOrderBy('event.startTime', 'ASC')
+      .getMany();
+  }
+
+  /**
    * Get events for a specific calendar day
    */
   async getEventsForDay(
