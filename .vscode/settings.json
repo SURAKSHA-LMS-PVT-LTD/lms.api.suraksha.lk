@@ -1,5 +1,0 @@
-{
-    "codeQL.githubDatabase.download": "never",
-    "postman.settings.dotenv-detection-notification-visibility": false,
-    "chat.agent.maxRequests": 1000
-}
