@@ -352,4 +352,73 @@ export class UserProfileImageController {
       }
     };
   }
+
+  /**
+   * Get the authenticated user's profile image history / current status.
+   * GET /users/profile/image-history
+   *
+   * Returns an array with the current image record (status, URL, verification
+   * metadata). A separate history table does not exist, so the single current
+   * record is returned inside a consistent array envelope so the frontend can
+   * iterate it exactly like a real history list.
+   */
+  @Get('profile/image-history')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true, global: [] })
+  @ApiOperation({
+    summary: 'Get current user profile image history',
+    description: 'Returns the profile image status record for the authenticated user. Includes current image URL, verification status, rejection reason (if any), and verification timestamps.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Image history retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              imageUrl: { type: 'string', nullable: true },
+              status: { type: 'string', enum: ['PENDING', 'VERIFIED', 'REJECTED'], nullable: true },
+              rejectionReason: { type: 'string', nullable: true },
+              verifiedAt: { type: 'string', format: 'date-time', nullable: true },
+              verifiedBy: { type: 'string', nullable: true },
+            },
+          },
+        },
+      },
+    },
+  })
+  async getProfileImageHistory(@Req() request: JwtRequest): Promise<any> {
+    const userId = request.user.s;
+    const user = await this.userService.findOne(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    const u = user as any;
+    const rawUrl: string | null = u.imageUrl ?? null;
+    const fullUrl = rawUrl ? this.cloudStorageService.getFullUrl(rawUrl) : null;
+
+    // Build a single-entry array so the frontend can treat it as a list
+    const history = rawUrl
+      ? [
+          {
+            imageUrl: fullUrl,
+            status: u.imageVerificationStatus ?? null,
+            rejectionReason: u.imageRejectionReason ?? null,
+            verifiedAt: u.imageVerifiedAt ?? null,
+            verifiedBy: u.imageVerifiedBy ?? null,
+          },
+        ]
+      : [];
+
+    return {
+      success: true,
+      data: history,
+    };
+  }
 }
