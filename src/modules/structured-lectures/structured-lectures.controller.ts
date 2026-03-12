@@ -245,6 +245,55 @@ export class StructuredLecturesController {
     }
   }
 
+  @Get('subject/:subjectId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    student: true,
+    parent: true
+  })
+  @ApiOperation({
+    summary: 'Get lectures by subject ID with grade as query param',
+    description: 'Retrieve all lectures for a specific subject and grade. Grade is passed as a query parameter. Accessible by SUPERADMIN, Institute Admin, Teacher, or Student.'
+  })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID to filter lectures' })
+  @ApiQuery({ name: 'grade', required: false, description: 'Grade level (1-13)' })
+  @ApiQuery({ name: 'isActive', required: false, description: 'Filter by active status (default: true for non-admin users)' })
+  @ApiResponse({ status: 200, description: 'Lectures retrieved successfully', type: GetLecturesBySubjectResponseDto })
+  @ApiResponse({ status: 404, description: 'No lectures found for the subject and grade' })
+  async getLecturesBySubjectQuery(
+    @Param('subjectId') subjectId: string,
+    @Req() request: JwtRequest,
+    @Query('grade') grade?: number,
+    @Query('isActive') isActive?: boolean
+  ) {
+    try {
+      if (grade !== undefined && (grade < 1 || grade > 13)) {
+        throw new HttpException(
+          { success: false, message: 'Grade must be between 1 and 13' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      let activeFilter = isActive;
+      if (request.user.u !== 0 && activeFilter === undefined) {
+        activeFilter = true;
+      }
+
+      return await this.lecturesService.getLecturesBySubjectAndGrade(subjectId, grade, activeFilter);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve lectures for subject' },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   @Get('statistics/:subjectId')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({

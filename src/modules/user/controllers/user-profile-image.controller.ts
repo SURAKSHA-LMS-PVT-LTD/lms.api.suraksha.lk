@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
-import { Controller, Post, Body, BadRequestException, Param, UseGuards, Request, HttpStatus, HttpCode, UseFilters } from '@nestjs/common';
+import { Controller, Post, Get, Body, BadRequestException, Param, UseGuards, Request, Req, HttpStatus, HttpCode, UseFilters } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiConsumes, ApiProperty } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -37,6 +37,51 @@ export class UserProfileImageController {
     private readonly cloudStorageService: CloudStorageService,
     private readonly userService: UsersService
   ) {}
+
+  /**
+   * Get the calling user's profile image verification status.
+   * GET /users/profile/image-status
+   */
+  @Get('profile/image-status')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true, global: [] })
+  @ApiOperation({
+    summary: 'Get current user profile image status',
+    description: 'Returns the profile image URL and verification status (PENDING, VERIFIED, REJECTED) for the authenticated user.'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Image status retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            userId: { type: 'string' },
+            imageUrl: { type: 'string', nullable: true },
+            imageVerificationStatus: { type: 'string', enum: ['PENDING', 'VERIFIED', 'REJECTED'], nullable: true }
+          }
+        }
+      }
+    }
+  })
+  async getProfileImageStatus(@Req() request: JwtRequest): Promise<any> {
+    const userId = request.user.s;
+    const user = await this.userService.findOne(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+    return {
+      success: true,
+      data: {
+        userId,
+        imageUrl: (user as any).imageUrl ?? null,
+        imageVerificationStatus: (user as any).imageVerificationStatus ?? null,
+      },
+    };
+  }
 
   @Post(':id/profile-image')
   @Throttle({ default: { limit: 5, ttl: 900000 } }) // 🔒 SECURITY: 5 profile image updates per 15 minutes
@@ -181,11 +226,17 @@ export class UserProfileImageController {
     // Strip base URL to store only relative path
     const relativePath = this.stripBaseUrl(dto.idUrl);
     
-    // ✅ SECURITY: Verify file exists in cloud storage before accepting URL
-    const fileExists = await this.cloudStorageService.fileExists(relativePath);
+    // ✅ SECURITY: Verify file exists in cloud storage before accepting URL.
+    // Retry once after a short delay to handle the race condition where the S3
+    // presigned POST upload has just completed when this endpoint is called.
+    let fileExists = await this.cloudStorageService.fileExists(relativePath);
+    if (!fileExists) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      fileExists = await this.cloudStorageService.fileExists(relativePath);
+    }
     if (!fileExists) {
       throw new BadRequestException(
-        'ID document file not found in storage. Please upload the file using /upload/generate-signed-url first.'
+        'ID document file not found in storage. Please ensure the file upload has completed before calling this endpoint.'
       );
     }
     
