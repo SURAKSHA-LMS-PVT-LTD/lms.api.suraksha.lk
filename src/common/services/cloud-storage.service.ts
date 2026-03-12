@@ -263,9 +263,11 @@ export class CloudStorageService implements OnModuleInit {
       return trimmedPath;
     }
 
-    // ✅ If relative path, prepend base URL from environment
+    // ✅ If relative path, prepend base URL and encode each path segment
+    // so URLs with spaces (e.g. "Screenshot 2025.png") are always valid.
     const cleanPath = trimmedPath.startsWith('/') ? trimmedPath.substring(1) : trimmedPath;
-    return `${this.baseUrl}/${cleanPath}`;
+    const encodedPath = cleanPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return `${this.baseUrl}/${encodedPath}`;
   }
 
   /**

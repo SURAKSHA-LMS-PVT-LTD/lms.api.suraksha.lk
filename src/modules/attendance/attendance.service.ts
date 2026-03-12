@@ -161,6 +161,7 @@ export class AttendanceService {
 
       // ✅ STEP 3: Fetch user data based on user type
       let userName: string;
+      let nameWithInitialsValue: string | null = null;
       let globalImageUrl: string | null = null;
       let studentData: any = null;
 
@@ -172,20 +173,22 @@ export class AttendanceService {
           throw new Error(`Student not found: ${markAttendanceDto.studentId}`);
         }
 
-        userName = `${studentData.student.user.firstName} ${studentData.student.user.lastName}`.trim();
+        nameWithInitialsValue = studentData.student.user.nameWithInitials || null;
+        userName = nameWithInitialsValue || `${studentData.student.user.firstName} ${studentData.student.user.lastName}`.trim();
         globalImageUrl = studentData.student.user.imageUrl || null;
       } else {
         // NON-STUDENT path: Query UserEntity directly (TEACHER, INSTITUTE_ADMIN, etc.)
         const user = await this.userRepository.findOne({
           where: { id: markAttendanceDto.studentId },
-          select: ['id', 'firstName', 'lastName', 'imageUrl', 'email', 'phoneNumber', 'subscriptionPlan'],
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'email', 'phoneNumber', 'subscriptionPlan'],
         });
 
         if (!user) {
           throw new Error(`User not found: ${markAttendanceDto.studentId}`);
         }
 
-        userName = `${user.firstName} ${user.lastName || ''}`.trim();
+        nameWithInitialsValue = user.nameWithInitials || null;
+        userName = nameWithInitialsValue || `${user.firstName} ${user.lastName || ''}`.trim();
         globalImageUrl = user.imageUrl || null;
       }
 
@@ -352,6 +355,7 @@ export class AttendanceService {
         imageUrl: imageUrl,
         status: markAttendanceDto.status,
         name: userName,
+        nameWithInitials: nameWithInitialsValue,
         userType: userType,
         date: markAttendanceDto.date,
         eventId: (markAttendanceDto as any).eventId || null,
@@ -420,6 +424,7 @@ export class AttendanceService {
                 id: true,
                 firstName: true,
                 lastName: true,
+                nameWithInitials: true,
                 email: true,
                 phoneNumber: true,
                 subscriptionPlan: true,
@@ -434,7 +439,7 @@ export class AttendanceService {
       const nonStudentEntities = nonStudentUserIds.length > 0
         ? await this.userRepository.find({
             where: { id: In(nonStudentUserIds) },
-            select: ['id', 'firstName', 'lastName', 'imageUrl'],
+            select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
           })
         : [];
 
@@ -444,7 +449,7 @@ export class AttendanceService {
       for (const student of studentEntities) {
         if (student.user) {
           userDataMap.set(student.userId, {
-            name: `${student.user.firstName} ${student.user.lastName}`.trim(),
+            name: student.user.nameWithInitials || `${student.user.firstName} ${student.user.lastName}`.trim(),
             userType: AttendanceUserType.STUDENT,
           });
         }
@@ -459,7 +464,7 @@ export class AttendanceService {
           [InstituteUserType.PARENT]: AttendanceUserType.PARENT,
         };
         userDataMap.set(user.id.toString(), {
-          name: `${user.firstName} ${user.lastName || ''}`.trim(),
+          name: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
           userType: iu ? (typeMap[iu.instituteUserType] || AttendanceUserType.STUDENT) : AttendanceUserType.NOT_ENROLLED,
         });
       }
@@ -772,14 +777,14 @@ export class AttendanceService {
       // NFC/RFID scan → look up by rfid column
       user = await this.userRepository.findOne({
         where: { rfid: studentCardId },
-        select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
       cardType = 'rfid';
     } else {
       // QR/Barcode scan → look up by cardId column first, fallback to rfid
       user = await this.userRepository.findOne({
         where: { cardId: studentCardId },
-        select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
       cardType = 'normal';
 
@@ -787,7 +792,7 @@ export class AttendanceService {
       if (!user) {
         user = await this.userRepository.findOne({
           where: { rfid: studentCardId },
-          select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
         });
         if (user) cardType = 'rfid';
       }
@@ -825,7 +830,7 @@ export class AttendanceService {
 
     const markAttendanceDto: MarkAttendanceDto = {
       studentId: user.id.toString(),
-      studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+      studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
       instituteId: markAttendanceByCardDto.instituteId,
       instituteName: markAttendanceByCardDto.instituteName,
       classId: markAttendanceByCardDto.classId || 'default',
@@ -864,13 +869,13 @@ export class AttendanceService {
     if (isNfc) {
       users = await this.userRepository.find({
         where: cardIds.map(cardId => ({ rfid: cardId })),
-        select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
       cardType = 'rfid';
     } else {
       users = await this.userRepository.find({
         where: cardIds.map(cardId => ({ cardId: cardId })),
-        select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
       cardType = 'normal';
 
@@ -878,7 +883,7 @@ export class AttendanceService {
       if (users.length === 0) {
         users = await this.userRepository.find({
           where: cardIds.map(cardId => ({ rfid: cardId })),
-          select: ['id', 'firstName', 'lastName', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'imageUrl', 'cardId', 'cardStatus', 'cardExpiryDate']
         });
         if (users.length > 0) cardType = 'rfid';
       }
@@ -898,7 +903,7 @@ export class AttendanceService {
         if (!validation.valid) {
           invalidCards.push({
             cardId: student.studentCardId,
-            userName: `${user.firstName} ${user.lastName || ''}`.trim(),
+            userName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
             reason: validation.error,
             cardStatus: validation.cardStatus,
             cardExpiryDate: validation.cardExpiryDate
@@ -941,7 +946,7 @@ export class AttendanceService {
         const user = userMap.get(student.studentCardId)!;
         return {
           studentId: user.id.toString(),
-          studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
           status: student.status,
           remarks: undefined
         };
@@ -1003,14 +1008,14 @@ export class AttendanceService {
       // ✅ DUAL LOOKUP: try cardId first, then rfid (backward compat)
       let user = await this.userRepository.findOne({
         where: { cardId: studentCardId },
-        select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
       let cardType: 'rfid' | 'normal' = 'normal';
 
       if (!user) {
         user = await this.userRepository.findOne({
           where: { rfid: studentCardId },
-          select: ['id', 'firstName', 'lastName', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
         });
         cardType = 'rfid';
       }
@@ -1041,7 +1046,7 @@ export class AttendanceService {
         studentInfo: {
           studentId: user.id.toString(),
           studentCardId: studentCardId,
-          studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
           nameWithInitials: user.nameWithInitials || undefined
         },
         cardInfo: {
@@ -2070,6 +2075,7 @@ export class AttendanceService {
           id: true,
           firstName: true,
           lastName: true,
+          nameWithInitials: true,
           imageUrl: true,
           userType: true
         }
@@ -2154,6 +2160,7 @@ export class AttendanceService {
         'user.id',
         'user.firstName',
         'user.lastName',
+        'user.nameWithInitials',
         'user.imageUrl',
         'user.userType'
       ])
@@ -2218,9 +2225,9 @@ export class AttendanceService {
         throw new Error(`Student not found with ID: ${instituteUser.userId}`);
       }
 
-      userName = `${studentData.user.firstName} ${studentData.user.lastName}`.trim();
+      userName = studentData.user.nameWithInitials || `${studentData.user.firstName} ${studentData.user.lastName}`.trim();
       // Use nameWithInitials for notification display name
-      notificationName = studentData.user.nameWithInitials || userName;
+      notificationName = userName;
       globalImageUrl = studentData.user.imageUrl || null;
       subscriptionPlan = studentData.user.subscriptionPlan || 'FREE';
 
@@ -2246,7 +2253,7 @@ export class AttendanceService {
       if (!instituteUser.user) {
         throw new Error(`User not found with ID: ${instituteUser.userId}`);
       }
-      userName = `${instituteUser.user.firstName} ${instituteUser.user.lastName || ''}`.trim();
+      userName = instituteUser.user.nameWithInitials || `${instituteUser.user.firstName} ${instituteUser.user.lastName || ''}`.trim();
       globalImageUrl = instituteUser.user.imageUrl || null;
     }
 
@@ -2324,6 +2331,7 @@ export class AttendanceService {
       imageVerificationStatus: instituteUser.imageVerificationStatus,
       status: markAttendanceDto.status,
       name: userName,
+      nameWithInitials: (isStudent ? studentData?.user?.nameWithInitials : instituteUser.user?.nameWithInitials) || null,
       userType: detectedUserType,  // ✅ NEW: Return user type
       instituteCardId: instituteCardId,
       userIdByInstitute: instituteUser.userIdByInstitute,

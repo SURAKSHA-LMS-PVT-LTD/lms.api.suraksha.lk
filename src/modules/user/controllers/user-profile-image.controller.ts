@@ -168,16 +168,17 @@ export class UserProfileImageController {
     // e.g., "https://storage.googleapis.com/bucket/path/file.png" -> "path/file.png"
     try {
       const urlObj = new URL(url);
-      // Remove leading slash and bucket name if present
-      let path = urlObj.pathname.substring(1);
+      // Remove leading slash; then decode %20 etc. so the path matches
+      // the actual S3/GCS key (which was stored with literal spaces, not %20).
+      let filePath = decodeURIComponent(urlObj.pathname.substring(1));
       
-      // If URL contains bucket name, remove it
+      // If URL contains bucket name as first path segment, remove it
       const bucketName = process.env.GCS_BUCKET_NAME || process.env.AWS_S3_BUCKET || '';
-      if (bucketName && path.startsWith(bucketName + '/')) {
-        path = path.substring(bucketName.length + 1);
+      if (bucketName && filePath.startsWith(bucketName + '/')) {
+        filePath = filePath.substring(bucketName.length + 1);
       }
       
-      return path;
+      return filePath;
     } catch (error) {
       // If not a valid URL, assume it's already a relative path
       return url.startsWith('/') ? url.substring(1) : url;
