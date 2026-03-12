@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { CreateInstituteClassSubjectDto, BulkCreateInstituteClassSubjectDto } from './dto/create-institute_class_subject.dto';
+import { CreateInstituteClassSubjectDto, BulkCreateInstituteClassSubjectDto, SubjectBulkItemDto } from './dto/create-institute_class_subject.dto';
 import { UpdateInstituteClassSubjectDto } from './dto/update-institute_class_subject.dto';
 import { QueryInstituteClassSubjectDto } from './dto/query-institute-class-subject.dto';
 import { InstituteClassSubjectResponseDto, PaginatedInstituteClassSubjectResponseDto, BulkInstituteClassSubjectResponseDto, InstituteClassSubjectSuccessResponseDto } from './dto/institute-class-subject-response.dto';
@@ -56,43 +56,58 @@ export class InstituteClassSubjectService {
     let skippedCount = 0;
     const errors: string[] = [];
 
-    for (const subjectId of bulkCreateDto.subjectIds) {
+    // Normalise both input formats into a unified list of per-subject entries
+    type SubjectEntry = { subjectId: string; isActive?: boolean; enrollmentEnabled?: boolean; enrollmentKey?: string };
+    let subjectEntries: SubjectEntry[];
+
+    if (bulkCreateDto.subjects && bulkCreateDto.subjects.length > 0) {
+      // Rich format: [{ subjectId, isActive?, enrollmentEnabled?, enrollmentKey? }]
+      subjectEntries = bulkCreateDto.subjects;
+    } else if (bulkCreateDto.subjectIds && bulkCreateDto.subjectIds.length > 0) {
+      // Simple format: ["41", "42", ...] — use shared enrollment settings
+      subjectEntries = bulkCreateDto.subjectIds.map(id => ({
+        subjectId: id,
+        enrollmentEnabled: bulkCreateDto.enrollmentEnabled,
+        enrollmentKey: bulkCreateDto.enrollmentKey,
+      }));
+    } else {
+      throw new BadRequestException('Either subjects or subjectIds must be provided and non-empty');
+    }
+
+    for (const entry of subjectEntries) {
       try {
         const exists = await this.instituteClassSubjectRepository.existsByInstituteClassAndSubject(
           bulkCreateDto.instituteId,
           bulkCreateDto.classId,
-          subjectId,
+          entry.subjectId,
         );
 
         if (!exists) {
-          // Use optimized create method - no unnecessary SELECT queries
-            // Handle enrollment settings for each subject assignment
-            const enrollmentData = this.handleEnrollmentSettings(
-              bulkCreateDto.enrollmentEnabled,
-              bulkCreateDto.enrollmentKey
-            );
-            await this.instituteClassSubjectRepository.createOptimized({
-              instituteId: bulkCreateDto.instituteId,
-              classId: bulkCreateDto.classId,
-              subjectId,
-              teacherId: bulkCreateDto.defaultTeacherId || null,
-              isActive: true,
-              enrollmentEnabled: enrollmentData.enrollmentEnabled,
-              enrollmentKey: enrollmentData.enrollmentKey,
-            });
+          const enrollmentData = this.handleEnrollmentSettings(
+            entry.enrollmentEnabled,
+            entry.enrollmentKey,
+          );
+          await this.instituteClassSubjectRepository.createOptimized({
+            instituteId: bulkCreateDto.instituteId,
+            classId: bulkCreateDto.classId,
+            subjectId: entry.subjectId,
+            teacherId: bulkCreateDto.defaultTeacherId || null,
+            isActive: entry.isActive ?? true,
+            enrollmentEnabled: enrollmentData.enrollmentEnabled,
+            enrollmentKey: enrollmentData.enrollmentKey,
+          });
           assignedCount++;
         } else {
           skippedCount++;
         }
       } catch (error) {
-        errors.push(`Failed to assign subject ${subjectId}: ${error.message}`);
+        errors.push(`Failed to assign subject ${entry.subjectId}: ${error.message}`);
       }
     }
 
-    // Return optimized response
     return {
       success: true,
-      message: `Successfully processed ${bulkCreateDto.subjectIds.length} subjects: ${assignedCount} assigned, ${skippedCount} skipped`,
+      message: `Successfully processed ${subjectEntries.length} subjects: ${assignedCount} assigned, ${skippedCount} skipped`,
       assignedCount,
       skippedCount,
       errors: errors.length > 0 ? errors : undefined,

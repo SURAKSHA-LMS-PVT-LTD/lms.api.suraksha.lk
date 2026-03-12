@@ -1,5 +1,6 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateInstituteClassSubjectDto {
@@ -51,6 +52,28 @@ export class CreateInstituteClassSubjectDto {
   notes?: string;
 }
 
+export class SubjectBulkItemDto {
+  @ApiProperty({ description: 'Subject ID (Long ID)', example: '41' })
+  @IsBigIntId()
+  subjectId: string;
+
+  @ApiPropertyOptional({ description: 'Is the subject assignment active', default: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enable self-enrollment for this subject', default: false })
+  @IsOptional()
+  @IsBoolean()
+  enrollmentEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enrollment key required to join (leave empty for open enrollment)', example: 'MATH-2026' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  enrollmentKey?: string;
+}
+
 export class BulkCreateInstituteClassSubjectDto {
   @ApiPropertyOptional({ description: 'Institute ID (Long ID) - Set from URL parameter', example: '40' })
   @IsOptional()
@@ -62,28 +85,38 @@ export class BulkCreateInstituteClassSubjectDto {
   @IsBigIntId()
   classId?: string;
 
-  @ApiProperty({ 
-    description: 'Array of subject IDs to assign (Long IDs)', 
+  @ApiPropertyOptional({ 
+    description: 'Array of subject IDs to assign (Long IDs) — use this OR the subjects array', 
     example: ['41', '42', '43'],
     type: [String]
   })
+  @IsOptional()
   @IsArray()
-  @IsNotEmpty()
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
-  subjectIds: string[];
+  subjectIds?: string[];
+
+  @ApiPropertyOptional({ 
+    description: 'Array of subject assignments with per-subject configuration — use this OR the subjectIds array',
+    type: [SubjectBulkItemDto]
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SubjectBulkItemDto)
+  subjects?: SubjectBulkItemDto[];
 
   @ApiPropertyOptional({ description: 'Default teacher ID for all subjects (Long ID)', example: '40' })
   @IsOptional()
   @IsOptionalBigIntId()
   defaultTeacherId?: string;
 
-  @ApiPropertyOptional({ description: 'Enable self-enrollment for all subjects', default: false, example: true })
+  @ApiPropertyOptional({ description: 'Enable self-enrollment for all subjects (used with subjectIds format)', default: false, example: true })
   @IsOptional()
   @IsBoolean()
   enrollmentEnabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Enrollment key for all subjects (leave empty for open enrollment)', example: 'MATH-2026' })
+  @ApiPropertyOptional({ description: 'Enrollment key for all subjects (used with subjectIds format)', example: 'MATH-2026' })
   @IsOptional()
   @IsString()
   enrollmentKey?: string;
