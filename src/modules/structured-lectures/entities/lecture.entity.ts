@@ -1,9 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad, ManyToOne, JoinColumn } from 'typeorm';
+// NOTE: @Entity decorators removed from this file to avoid duplicate table registrations
+// with structured-lecture.entity.ts which is the canonical entity used by the module.
+// LectureDocumentEntity and LectureEntity here are only used by the unregistered
+// StructuredLecturesServiceTypeorm and must NOT be registered as TypeORM entities.
+import { PrimaryGeneratedColumn, Column, AfterLoad, ManyToOne, JoinColumn } from 'typeorm';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
 
-@Entity('lecture_documents')
-@Index('idx_lecture_documents_lecture_id', ['lectureId'])
 export class LectureDocumentEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
@@ -41,13 +43,9 @@ export class LectureDocumentEntity {
   }
 }
 
-@Entity('structured_lectures')
-@Index('idx_lecture_institute', ['instituteId'])
-@Index('idx_lecture_institute_class', ['instituteId', 'classId'])
-@Index('idx_lecture_institute_class_subject', ['instituteId', 'classId', 'subjectId'])
-@Index('idx_lecture_class_subject', ['classId', 'subjectId'])
-@Index('idx_lecture_subject_grade', ['subjectId', 'grade'])
-@Index('idx_lecture_active', ['isActive'])
+// @Entity removed — duplicate of StructuredLectureEntity for 'structured_lectures' table.
+// Extra columns here (lessonNumber, provider, lectureLink, etc.) do not exist in the DB
+// and caused TypeORM to generate SQL referencing unknown columns (ER_BAD_FIELD_ERROR).
 export class LectureEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -1368,11 +1368,15 @@ export class SystemAdminUserService {
     // Build full URL
     const fullUrl = await this.cloudStorageService.getFullUrl(dto.relativePath);
 
-    // Update user's imageUrl
+    // Update user's imageUrl and mark as VERIFIED (admin is explicitly assigning)
     await this.userRepository.update(
       { id: student.userId },
       { 
         imageUrl: fullUrl,
+        imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+        imageVerifiedBy: adminUserId,
+        imageVerifiedAt: now(),
+        imageRejectionReason: null,
         updatedAt: now()
       }
     );
@@ -1511,11 +1515,15 @@ export class SystemAdminUserService {
     // Get full URL
     const fullUrl = this.cloudStorageService.getFullUrl(dto.relativePath);
 
-    // Update user's imageUrl
+    // Update user's imageUrl and mark as VERIFIED (admin is explicitly assigning)
     await this.userRepository.update(
       dto.userId.toString(),
       { 
         imageUrl: fullUrl,
+        imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+        imageVerifiedBy: adminUserId.toString(),
+        imageVerifiedAt: now(),
+        imageRejectionReason: null,
         updatedAt: now()
       }
     );

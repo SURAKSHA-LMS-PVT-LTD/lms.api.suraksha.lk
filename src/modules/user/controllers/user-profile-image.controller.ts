@@ -9,12 +9,21 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { UsersService } from '../user.service';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 import { IsUrl, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+/** Encode spaces (and other illegal characters) in the path portion of a URL so
+ *  that @IsUrl() accepts filenames with spaces like 'Screenshot 2025-03-29.png'. */
+function encodeUrlSpaces(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  return value.replace(/ /g, '%20');
+}
 
 class UpdateImageUrlDto {
   @ApiProperty({ 
     description: 'Profile image URL obtained from /upload/generate-signed-url endpoint',
-    example: 'https://storage.googleapis.com/suraksha-lms/profile-images/user-123-profile.png'
+    example: 'https://storage.suraksha.lk/profile-images/user-123-profile.png'
   })
+  @Transform(({ value }) => encodeUrlSpaces(value))
   @IsUrl({}, { message: 'Image URL must be a valid URL' })
   imageUrl: string;
 }
@@ -22,8 +31,9 @@ class UpdateImageUrlDto {
 class UpdateIdDocumentUrlDto {
   @ApiProperty({ 
     description: 'ID document URL obtained from /upload/generate-signed-url endpoint',
-    example: 'https://storage.googleapis.com/suraksha-lms/id-documents/user-123-id.pdf'
+    example: 'https://storage.suraksha.lk/id-documents/user-123-id.pdf'
   })
+  @Transform(({ value }) => encodeUrlSpaces(value))
   @IsUrl({}, { message: 'ID document URL must be a valid URL' })
   idUrl: string;
 }
