@@ -175,16 +175,19 @@ export class AdvertisementCacheService {
       };
       await this.cacheManager.set(this.METRICS_CACHE_KEY, clearedMetrics, this.CACHE_TTL * 24);
 
-      // Step 3: Bulk update currentSendings in database from snapshot
-      for (const adId of Object.keys(snapshot)) {
-        const { sendings } = snapshot[adId];
-        
-        await this.advertisementRepository.increment(
-          { id: adId },
-          'currentSendings',
-          sendings
-        );
-      }
+      // Step 3: BUG-7 FIX — Use Promise.allSettled so one failed DB write
+      // does NOT silently drop all remaining metric increments.
+      const syncTasks = Object.entries(snapshot).map(([adId, { sendings }]) =>
+        this.advertisementRepository
+          .increment({ id: adId }, 'currentSendings', sendings)
+          .catch(err => {
+            this.logger.error(
+              `❌ Failed to sync sendings for ad ${adId} (${sendings} sends lost): ${err.message}`,
+            );
+          }),
+      );
+
+      await Promise.allSettled(syncTasks);
       
     } catch (error) {
       this.logger.error('❌ Failed to sync metrics to database (cache already cleared to prevent double-counting)', error);

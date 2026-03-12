@@ -13,6 +13,7 @@ import { AdvertisementDeliveryService } from './services/advertisement-delivery.
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
 import { SmsModule } from '../sms/sms.module';
 import { CacheModule } from '../../common/modules/cache.module';
+// Static import with forwardRef to resolve circular dependency (BUG-3 fix)
 import { AttendanceModule } from '../attendance/attendance.module';
 
 @Module({
@@ -26,7 +27,7 @@ import { AttendanceModule } from '../attendance/attendance.module';
     ]),
     SmsModule,
     CacheModule, // For advertisement caching with 12-hour TTL + daily 5 AM refresh
-    forwardRef(() => require('../attendance/attendance.module').AttendanceModule),
+    forwardRef(() => AttendanceModule),
   ],
   controllers: [AdvertisementController],
   providers: [

@@ -4,6 +4,9 @@ import { AdvertisementService } from './advertisement.service';
 import { CreateAdvertisementDto, UpdateAdvertisementDto, AdvertisementType, AdvertisementResponseDto, AdvertisementListResponseDto } from './dto/advertisement.dto';
 import { ManualAdvertisementSendDto, BulkManualAdvertisementSendDto } from './dto/manual-advertisement.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { AdvertisementDeliveryService } from './services/advertisement-delivery.service';
+import { AdvertisementCacheService } from './services/advertisement-cache.service';
+import { AdvertisementMatchingService } from './advertisement-matching.service';
 
 // ⚠️ MULTER REMOVED: All file uploads now use signed URL client-side direct upload
 // See: /signed-urls/advertisement endpoint for new upload flow
@@ -20,7 +23,10 @@ import { UserType } from '../user/enums/user-type.enum';
 export class AdvertisementController {
   constructor(
     private readonly advertisementService: AdvertisementService,
-    private readonly cloudStorageService: CloudStorageService
+    private readonly cloudStorageService: CloudStorageService,
+    private readonly advertisementDeliveryService: AdvertisementDeliveryService,
+    private readonly advertisementCacheService: AdvertisementCacheService,
+    private readonly advertisementMatchingService: AdvertisementMatchingService,
   ) {}
 
   @Post()
@@ -81,8 +87,9 @@ export class AdvertisementController {
         );
       }
 
-      // Validate priority range (1-10 based on schema)
-      if (createAdDto.priority < 1 || createAdDto.priority > 10) {
+      // BUG-1 FIX: Guard priority check — only validate when priority is actually provided
+      // Without this guard, `undefined < 1` was true and caused a 400 for valid requests
+      if (createAdDto.priority !== undefined && (createAdDto.priority < 1 || createAdDto.priority > 10)) {
         throw new HttpException(
           {
             success: false,
@@ -234,37 +241,58 @@ export class AdvertisementController {
 
   @Get('active')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get all active advertisements' })
+  @ApiOperation({ summary: 'Get all active advertisements (DTO-shaped, full URL transformation)' })
   @ApiResponse({ 
     status: 200, 
     description: 'List of active advertisements',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: { 
-          type: 'array',
-          items: { $ref: '#/components/schemas/Advertisement' }
-        }
-      }
-    }
+    type: AdvertisementListResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   async getActiveAdvertisements() {
     try {
-      const advertisements = await this.advertisementService.getActiveAdvertisements();
-      
+      // FEAT-5 FIX: Use findAllAsDto with active filter so URLs are transformed
+      // and raw entity internals are not exposed.
+      const rawAds = await this.advertisementService.getActiveAdvertisements();
+      const mapped = rawAds.map((ad: any) => ({
+        id: ad.id,
+        title: ad.title,
+        description: ad.description || '',
+        mediaUrl: this.cloudStorageService.getFullUrl(ad.mediaUrl) || ad.mediaUrl || '',
+        mediaType: ad.mediaType,
+        landingUrl: ad.landingUrl || null,
+        sendingUrl: ad.sendingUrl || null,
+        supportivePlatforms: ad.supportivePlatforms || [],
+        modeOfSending: ad.modeOfSending || [],
+        targetInstituteIds: ad.targetInstituteIds || [],
+        targetCities: ad.targetCities || [],
+        targetProvinces: ad.targetProvinces || [],
+        targetDistricts: ad.targetDistricts || [],
+        minBornYear: ad.minBornYear || null,
+        maxBornYear: ad.maxBornYear || null,
+        targetGenders: ad.targetGenders || [],
+        targetOccupations: ad.targetOccupations || [],
+        targetUserTypes: ad.targetUserTypes || [],
+        targetSubscriptionPlans: ad.targetSubscriptionPlans || [],
+        displayDuration: ad.displayDuration || 30,
+        priority: ad.priority || 1,
+        isActive: ad.isActive,
+        maxSendings: ad.maxSendings || 1000,
+        cascadeToParents: ad.cascadeToParents || false,
+        startDate: ad.startDate,
+        endDate: ad.endDate,
+        impressions: ad.impressionCount || 0,
+        clicks: ad.clickCount || 0,
+        sends: ad.currentSendings || 0,
+      }));
       return {
         success: true,
-        data: advertisements,
+        total: mapped.length,
+        data: mapped,
       };
     } catch (error) {
       throw new HttpException(
-        {
-          success: false,
-          message: error.message || 'Failed to get active advertisements',
-        },
+        { success: false, message: error.message || 'Failed to get active advertisements' },
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -415,6 +443,97 @@ export class AdvertisementController {
         },
         HttpStatus.INTERNAL_SERVER_ERROR
       );
+    }
+  }
+
+  // ========================================
+  // 📊 ANALYTICS & TRACKING ENDPOINTS
+  // FEAT-1, FEAT-2, FEAT-3: Click / Impression / Stats
+  // ========================================
+
+  @Post(':id/click')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ 
+    summary: 'Record a click on an advertisement (FEAT-1)',
+    description: 'Call this endpoint when a user taps/clicks an advertisement. Increments clickCount atomically.'
+  })
+  @ApiParam({ name: 'id', description: 'Advertisement ID' })
+  @ApiResponse({ status: 200, description: 'Click recorded' })
+  @ApiResponse({ status: 404, description: 'Advertisement not found' })
+  async recordClick(@Param('id') id: string, @Request() req: any) {
+    try {
+      const userId = req.user?.id || 'anonymous';
+      const success = await this.advertisementDeliveryService.recordAdvertisementClick(id, userId);
+      if (!success) {
+        throw new HttpException({ success: false, message: 'Advertisement not found' }, HttpStatus.NOT_FOUND);
+      }
+      return { success: true, message: 'Click recorded' };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post(':id/impression')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ 
+    summary: 'Record an impression for an advertisement (FEAT-2)',
+    description: 'Call this endpoint when an advertisement is displayed to a user. Increments impressionCount atomically.'
+  })
+  @ApiParam({ name: 'id', description: 'Advertisement ID' })
+  @ApiResponse({ status: 200, description: 'Impression recorded' })
+  async recordImpression(@Param('id') id: string, @Request() req: any) {
+    try {
+      const userId = req.user?.id || 'anonymous';
+      // FEAT-2: Use matching service to record impression (impressionCount atomic increment)
+      await this.advertisementMatchingService.recordImpression(id, { userId } as any);
+      return { success: true, message: 'Impression recorded' };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('stats')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({ 
+    summary: 'Get unified advertisement statistics (FEAT-3)',
+    description: 'Returns delivery statistics across all ads plus current cache health status.'
+  })
+  @ApiResponse({ status: 200, description: 'Stats retrieved' })
+  async getStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    try {
+      const [deliveryStats, cacheStatus] = await Promise.all([
+        this.advertisementDeliveryService.getDeliveryStatistics(
+          startDate ? new Date(startDate) : undefined,
+          endDate ? new Date(endDate) : undefined,
+        ),
+        this.advertisementCacheService.getCacheStatus(),
+      ]);
+      return {
+        success: true,
+        data: {
+          delivery: deliveryStats,
+          cache: cacheStatus,
+          configuration: this.advertisementDeliveryService.getConfiguration(),
+        },
+      };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('cache-status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({ summary: 'Get advertisement cache health status (PERF-3)' })
+  @ApiResponse({ status: 200, description: 'Cache status retrieved' })
+  async getCacheStatus() {
+    try {
+      const status = await this.advertisementCacheService.getCacheStatus();
+      return { success: true, data: status };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 

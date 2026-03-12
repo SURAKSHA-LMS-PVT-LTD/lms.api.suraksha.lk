@@ -299,9 +299,11 @@ export class AdvertisementMatchingService {
       return false; // Can't match if occupation is unknown
     }
 
-    return advertisement.targetOccupations.some(targetOccupation =>
-      userProfile.occupation.toLowerCase().includes(targetOccupation.toLowerCase()) ||
-      targetOccupation.toLowerCase().includes(userProfile.occupation.toLowerCase())
+    // BUG-8 FIX: Use exact case-insensitive enum match instead of substring .includes()
+    // Substring matching caused false positives (e.g. "Doctor" matched "Contractor")
+    return advertisement.targetOccupations.some(
+      targetOccupation =>
+        targetOccupation.toLowerCase() === userProfile.occupation.toLowerCase()
     );
   }
 

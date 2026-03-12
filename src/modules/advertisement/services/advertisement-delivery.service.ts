@@ -108,7 +108,8 @@ export class AdvertisementDeliveryService {
         attendanceData.advertisementData = {
           id: advertisementResult.advertisementId,
           mediaUrl: advertisementResult.advertisementUrl || this.defaultAdMediaUrl,
-          mediaType: advertisementResult.advertisementMediaType || 'IMAGE',
+          // BUG-4 FIX: Use actual mediaType from the ad, not hardcoded 'IMAGE'
+          mediaType: advertisementResult.advertisementMediaType || 'image',
           title: advertisementResult.advertisementTitle || this.defaultAdTitle,
           content: advertisementResult.advertisementContent || this.defaultAdContent,
           sendingUrl: advertisementResult.advertisementSendingUrl,
@@ -117,12 +118,35 @@ export class AdvertisementDeliveryService {
         };
       }
 
-      // Step 3: Send notification with advertisement
+      // Step 3: Send notification with advertisement to the student
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(attendanceData);
 
       // Step 4: Record impression if advertisement was delivered successfully
       if (advertisementResult.success && advertisementResult.advertisementId && notificationResult.successfulChannels > 0) {
         await this.recordAdvertisementImpression(advertisementResult.advertisementId, studentId);
+      }
+
+      // Step 5: FEAT-4 — cascadeToParents delivery
+      // If the matched ad has cascadeToParents=true, send the same ad to student's parents
+      if (
+        advertisementResult.success &&
+        advertisementResult.advertisementId &&
+        notificationResult.successfulChannels > 0
+      ) {
+        // Fetch full ad entity to check cascadeToParents flag
+        try {
+          const ad = await this.advertisementRepository.findOne({
+            where: { id: advertisementResult.advertisementId },
+            select: ['id', 'cascadeToParents'],
+          });
+
+          if (ad?.cascadeToParents) {
+            await this.cascadeAdToParents(studentId, attendanceData);
+          }
+        } catch (cascadeErr) {
+          // Non-fatal — log and continue
+          this.logger.warn(`⚠️ cascadeToParents check failed for student ${studentId}: ${cascadeErr.message}`);
+        }
       }
 
       const duration = Date.now() - startTime;
@@ -135,7 +159,8 @@ export class AdvertisementDeliveryService {
           id: advertisementResult.advertisementId!,
           title: advertisementResult.advertisementTitle!,
           mediaUrl: advertisementResult.advertisementUrl!,
-          mediaType: 'IMAGE',
+          // BUG-4 FIX: propagate real mediaType here too
+          mediaType: advertisementResult.advertisementMediaType || 'image',
           matchScore: advertisementResult.matchScore
         } : undefined,
         deliveryTimestamp: getCurrentSriLankaTime()
@@ -162,6 +187,62 @@ export class AdvertisementDeliveryService {
           deliveryTimestamp: getCurrentSriLankaTime()
         };
       }
+    }
+  }
+
+  /**
+   * FEAT-4: Cascade advertisement to all parents of a student.
+   * Sends the same advertisement (via attendanceData) to father, mother, and guardian.
+   * Each parent gets sent individually so one failure doesn't block others.
+   */
+  private async cascadeAdToParents(
+    studentId: string,
+    attendanceData: AttendanceNotificationData
+  ): Promise<void> {
+    try {
+      const student = await this.studentRepository.findOne({
+        where: { userId: studentId },
+        relations: ['father', 'mother', 'guardian', 'father.user', 'mother.user', 'guardian.user'],
+        select: {
+          userId: true,
+          father: { userId: true, user: { id: true, email: true, phoneNumber: true } },
+          mother: { userId: true, user: { id: true, email: true, phoneNumber: true } },
+          guardian: { userId: true, user: { id: true, email: true, phoneNumber: true } },
+        },
+      });
+
+      if (!student) return;
+
+      const parents = [student.father, student.mother, student.guardian].filter(Boolean);
+
+      if (parents.length === 0) {
+        this.logger.debug(`No parents found to cascade ad for student ${studentId}`);
+        return;
+      }
+
+      // Build parent notification tasks (non-fatal each)
+      const cascadeTasks = parents.map(async (parent) => {
+        if (!parent?.user) return;
+        try {
+          const parentNotificationData: AttendanceNotificationData = {
+            ...attendanceData,
+            studentId: parent.userId,
+            studentName: attendanceData.studentName, // Keep student name for context
+            parentContact: parent.user.phoneNumber || null,
+            parentEmail: parent.user.email || null,
+            parentTelegramId: null,
+          };
+          await this.attendanceNotificationService.sendAttendanceNotification(parentNotificationData);
+          this.logger.debug(`✅ cascadeToParents: ad sent to parent ${parent.userId}`);
+        } catch (err) {
+          this.logger.warn(`⚠️ cascadeToParents: failed for parent ${parent?.userId}: ${err.message}`);
+        }
+      });
+
+      await Promise.allSettled(cascadeTasks);
+      this.logger.log(`📨 cascadeToParents: cascaded to ${parents.length} parent(s) for student ${studentId}`);
+    } catch (err) {
+      this.logger.warn(`⚠️ cascadeAdToParents error for student ${studentId}: ${err.message}`);
     }
   }
 

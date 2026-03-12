@@ -546,9 +546,9 @@ export class AdvertisementService {
   }
 
   /**
-   * 📱 Send advertisement to users via the ad's supportivePlatforms channels
-   * Delivery channels are defined on the advertisement entity itself.
-   * Subscription plan does NOT affect which channels are used.
+   * 📱 Send advertisement to users via the ad's delivery channels
+   * PERF-1 FIX: Sends in concurrent batches of 20 instead of serially to every user.
+   * This dramatically reduces total delivery time for large audiences.
    */
   private async sendAdvertisementToUsers(
     advertisement: AdvertisementEntity,
@@ -557,50 +557,57 @@ export class AdvertisementService {
   ): Promise<{ sentUsers: string[]; failedUsers: string[] }> {
     const sentUsers: string[] = [];
     const failedUsers: string[] = [];
+    const BATCH_SIZE = 20; // concurrent sends per batch
     // modeOfSending is the primary delivery channel selector; supportivePlatforms is fallback
     const deliveryChannels = (advertisement.modeOfSending && advertisement.modeOfSending.length > 0)
       ? advertisement.modeOfSending
       : (advertisement.supportivePlatforms || []);
 
-    this.logger.log(`📡 Delivering ad "${advertisement.title}" via channels: [${deliveryChannels.join(', ')}] (modeOfSending: [${(advertisement.modeOfSending || []).join(', ')}]) to ${users.length} users`);
+    this.logger.log(`📡 Delivering ad "${advertisement.title}" via channels: [${deliveryChannels.join(', ')}] to ${users.length} users (batch size: ${BATCH_SIZE})`);
 
-    for (const user of users) {
-      try {
-        // Prepare advertisement notification data
-        const notificationData = {
-          studentId: user.id,
-          studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
-          parentContact: user.phoneNumber || null,
-          parentEmail: user.email || null,
-          parentTelegramId: user.telegramId || null,
-          attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT', // Required by notification service
-          date: getCurrentSriLankaDate(),
-          time: formatSriLankaTime(getCurrentSriLankaTime()),
-          vehicleNumber: null,
-          bookhireName: null,
-          subscriptionPlan: user.subscriptionPlan || 'BASIC',
-          advertisementData: {
-            id: advertisement.id,
-            mediaUrl: advertisement.mediaUrl,
-            mediaType: advertisement.mediaType,
-            title: advertisement.title,
-            content: customMessage || advertisement.description || `Check out our latest update!`,
-            sendingUrl: advertisement.sendingUrl || undefined,
-            // 🎯 supportivePlatforms = which platforms the ad supports (display/analytics)
-            supportivePlatforms: advertisement.supportivePlatforms || [],
-            // 🎯 modeOfSending = actual delivery channels used when sending (primary for channel selection)
-            modeOfSending: advertisement.modeOfSending || [],
-          }
-        };
+    // Process in batches of BATCH_SIZE for concurrency
+    for (let i = 0; i < users.length; i += BATCH_SIZE) {
+      const batch = users.slice(i, i + BATCH_SIZE);
 
-        // Send notification using existing notification service
-        await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
-        
-        sentUsers.push(user.id);
-        
-      } catch (error) {
-        failedUsers.push(user.id);
-        this.logger.error(`❌ Failed to send advertisement to user ${user.id}: ${error.message}`);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (user) => {
+          const notificationData = {
+            studentId: user.id,
+            studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+            parentContact: user.phoneNumber || null,
+            parentEmail: user.email || null,
+            parentTelegramId: user.telegramId || null,
+            attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
+            date: getCurrentSriLankaDate(),
+            time: formatSriLankaTime(getCurrentSriLankaTime()),
+            vehicleNumber: null,
+            bookhireName: null,
+            subscriptionPlan: user.subscriptionPlan || 'BASIC',
+            advertisementData: {
+              id: advertisement.id,
+              mediaUrl: advertisement.mediaUrl,
+              mediaType: advertisement.mediaType,
+              title: advertisement.title,
+              content: customMessage || advertisement.description || `Check out our latest update!`,
+              sendingUrl: advertisement.sendingUrl || undefined,
+              supportivePlatforms: advertisement.supportivePlatforms || [],
+              modeOfSending: advertisement.modeOfSending || [],
+            }
+          };
+          await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+          return user.id;
+        })
+      );
+
+      for (let j = 0; j < batchResults.length; j++) {
+        const result = batchResults[j];
+        const user = batch[j];
+        if (result.status === 'fulfilled') {
+          sentUsers.push(user.id);
+        } else {
+          failedUsers.push(user.id);
+          this.logger.error(`❌ Failed to send advertisement to user ${user.id}: ${result.reason?.message}`);
+        }
       }
     }
 
@@ -608,23 +615,63 @@ export class AdvertisementService {
   }
 
   /**
-   *  Get manual sending analytics for admin dashboard
+   * 📊 Get manual sending analytics — real data from advertisement table
+   * BUG-5 FIX: Previously returned all-zero stub data. Now queries real DB stats.
    */
   async getManualSendAnalytics(adminUserId: string, startDate?: string, endDate?: string): Promise<any> {
     try {
-      // This would typically query a manual_sends table if we had one
-      // For now, return mock analytics structure
+      const qb = this.advertisementRepository
+        .createQueryBuilder('ad')
+        .select([
+          'ad.id',
+          'ad.title',
+          'ad.currentSendings',
+          'ad.maxSendings',
+          'ad.impressionCount',
+          'ad.clickCount',
+          'ad.isActive',
+          'ad.createdBy',
+          'ad.createdAt',
+        ]);
+
+      if (startDate) {
+        qb.andWhere('ad.createdAt >= :startDate', { startDate: new Date(startDate) });
+      }
+      if (endDate) {
+        qb.andWhere('ad.createdAt <= :endDate', { endDate: new Date(endDate) });
+      }
+
+      const ads = await qb.orderBy('ad.currentSendings', 'DESC').getMany();
+
+      const totalCampaigns = ads.length;
+      const totalUsersSent = ads.reduce((sum, ad) => sum + (ad.currentSendings || 0), 0);
+      const totalImpressions = ads.reduce((sum, ad) => sum + (ad.impressionCount || 0), 0);
+      const totalClicks = ads.reduce((sum, ad) => sum + (ad.clickCount || 0), 0);
+
       return {
         success: true,
         message: 'Manual send analytics retrieved',
         data: {
-          totalCampaigns: 0,
-          totalUsersSent: 0,
-          totalAdsShown: 0,
-          packageBreakdown: {},
-          topPerformingAds: [],
-          recentCampaigns: []
-        }
+          totalCampaigns,
+          totalUsersSent,
+          totalImpressions,
+          totalClicks,
+          averageCTR: totalImpressions > 0
+            ? parseFloat(((totalClicks / totalImpressions) * 100).toFixed(2))
+            : 0,
+          topPerformingAds: ads.slice(0, 10).map(ad => ({
+            id: ad.id,
+            title: ad.title,
+            sends: ad.currentSendings,
+            maxSendings: ad.maxSendings,
+            impressions: ad.impressionCount,
+            clicks: ad.clickCount,
+            isActive: ad.isActive,
+            completionPct: ad.maxSendings > 0
+              ? parseFloat(((ad.currentSendings / ad.maxSendings) * 100).toFixed(1))
+              : 0,
+          })),
+        },
       };
     } catch (error) {
       this.logger.error(`Error getting manual send analytics: ${error.message}`);
@@ -678,9 +725,15 @@ export class AdvertisementService {
       const targetedUsers = await this.getTargetedUsers(sendDto);
       dbQueryCount++;
 
-      // Calculate user breakdown
-      const students = targetedUsers.filter(u => u.userType === UserType.USER || u.userType === UserType.USER_WITHOUT_PARENT).length;
-      const parents = targetedUsers.filter(u => u.userType === UserType.USER || u.userType === UserType.USER_WITHOUT_STUDENT).length;
+      // Calculate user breakdown by actual userType
+      // BUG-6 FIX: Use correct UserType enum values instead of USER for both
+      const students = targetedUsers.filter(u =>
+        u.userType === UserType.USER ||
+        u.userType === UserType.USER_WITHOUT_PARENT
+      ).length;
+      const parents = targetedUsers.filter(u =>
+        u.userType === UserType.USER_WITHOUT_STUDENT
+      ).length;
 
       // By institute
       const byInstitute: Record<string, number> = {};
