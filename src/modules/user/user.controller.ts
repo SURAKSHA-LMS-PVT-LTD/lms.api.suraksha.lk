@@ -3278,11 +3278,16 @@ export class UsersController {
    */
   private extractImageKeyFromUrl(imageUrl: string): string | null {
     try {
-      // Extract key from GCS URL format: https://storage.googleapis.com/bucket-name/folder/filename
       const url = new URL(imageUrl);
+      // S3 host-style URL: bucket is in hostname, path IS the key
+      // e.g. https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/folder/file.jpg
+      if (url.hostname.includes('.amazonaws.com')) {
+        return url.pathname.substring(1) || null; // strip leading /
+      }
+      // GCS URL: https://storage.googleapis.com/bucket-name/folder/filename
+      // First path segment is the bucket name — skip it
       const pathParts = url.pathname.split('/');
-      // Remove empty first element and bucket name, join the rest as the key
-      return pathParts.slice(2).join('/');
+      return pathParts.slice(2).join('/') || null;
     } catch (error) {
       return null;
     }

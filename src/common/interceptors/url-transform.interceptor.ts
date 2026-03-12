@@ -12,10 +12,20 @@ export class UrlTransformInterceptor implements NestInterceptor {
   private readonly baseUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    // Get base URL from environment (fallback to default)
-    this.baseUrl = this.configService.get<string>('GCS_BASE_URL') || 
-                   this.configService.get<string>('STORAGE_BASE_URL') || 
-                   'https://storage.googleapis.com/suraksha-lms';
+    // Build provider-aware base URL (mirrors CloudStorageService.getBaseUrl)
+    const provider = (this.configService.get<string>('STORAGE_PROVIDER') || 'google').toLowerCase();
+    if (provider === 'aws' || provider === 's3') {
+      const bucket = this.configService.get<string>('AWS_S3_BUCKET');
+      const region = this.configService.get<string>('AWS_REGION', 'us-east-1');
+      this.baseUrl = `https://${bucket}.s3.${region}.amazonaws.com`;
+    } else if (provider === 'local') {
+      this.baseUrl = this.configService.get<string>('LOCAL_STORAGE_BASE_URL', 'http://localhost:3000/uploads');
+    } else {
+      // GCS
+      const bucket = this.configService.get<string>('GCS_BUCKET_NAME') ||
+                     this.configService.get<string>('GOOGLE_STORAGE_BUCKET');
+      this.baseUrl = `https://storage.googleapis.com/${bucket}`;
+    }
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {

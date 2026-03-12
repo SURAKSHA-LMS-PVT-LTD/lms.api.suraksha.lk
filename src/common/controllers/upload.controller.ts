@@ -183,10 +183,8 @@ export class UploadController {
       maxFileSize // 🔒 SECURITY: Enforce file size limit in GCS signature
     );
 
-    // Construct public URL (will be accessible after verification)
-    const bucketName = this.configService.get<string>('GCS_BUCKET_NAME', 'suraksha-lms');
-    const storageBaseUrl = this.configService.get<string>('STORAGE_BASE_URL', 'https://storage.googleapis.com');
-    const publicUrl = `${storageBaseUrl}/${bucketName}/${result.relativePath}`;
+    // Construct public URL using provider-aware helper (handles GCS, S3, local correctly)
+    const publicUrl = this.cloudStorageService.getFullUrl(result.relativePath);
 
     // Determine upload method based on provider
     const provider = this.configService.get<string>('STORAGE_PROVIDER', 'google').toLowerCase();
@@ -338,10 +336,8 @@ export class UploadController {
       maxFileSize
     );
 
-    // Construct public URL
-    const bucketName = this.configService.get<string>('GCS_BUCKET_NAME', 'suraksha-lms');
-    const storageBaseUrl = this.configService.get<string>('STORAGE_BASE_URL', 'https://storage.googleapis.com');
-    const publicUrl = `${storageBaseUrl}/${bucketName}/${result.relativePath}`;
+    // Construct public URL using provider-aware helper (handles GCS, S3, local correctly)
+    const publicUrl = this.cloudStorageService.getFullUrl(result.relativePath);
 
     // Determine upload method based on provider
     const provider = this.configService.get<string>('STORAGE_PROVIDER', 'google').toLowerCase();

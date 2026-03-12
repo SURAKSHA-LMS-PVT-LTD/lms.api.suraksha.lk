@@ -1817,10 +1817,20 @@ export class SystemAdminUserService {
    */
   private extractPathFromUrl(url: string): string | null {
     try {
-      const bucketName = process.env.GCS_BUCKET_NAME;
-      if (url.includes(bucketName)) {
-        const parts = url.split(`${bucketName}/`);
-        return parts[1] || null;
+      const urlObj = new URL(url);
+      // S3 host-style URL: bucket is in hostname, path is the relative key
+      if (urlObj.hostname.includes('.amazonaws.com')) {
+        return urlObj.pathname.substring(1) || null; // strip leading /
+      }
+      // GCS URL: https://storage.googleapis.com/bucket-name/folder/filename
+      if (urlObj.hostname.includes('googleapis.com')) {
+        const parts = urlObj.pathname.split('/').filter(Boolean);
+        return parts.slice(1).join('/') || null; // skip bucket name segment
+      }
+      // Fallback: split by known bucket name from env
+      const bucketName = process.env.AWS_S3_BUCKET || process.env.GCS_BUCKET_NAME;
+      if (bucketName && url.includes(`${bucketName}/`)) {
+        return url.split(`${bucketName}/`)[1] || null;
       }
       return null;
     } catch (e) {

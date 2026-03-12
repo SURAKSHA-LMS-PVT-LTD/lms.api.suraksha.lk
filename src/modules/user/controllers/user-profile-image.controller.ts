@@ -117,7 +117,7 @@ export class UserProfileImageController {
       let path = urlObj.pathname.substring(1);
       
       // If URL contains bucket name, remove it
-      const bucketName = process.env.GCS_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME || '';
+      const bucketName = process.env.GCS_BUCKET_NAME || process.env.AWS_S3_BUCKET || '';
       if (bucketName && path.startsWith(bucketName + '/')) {
         path = path.substring(bucketName.length + 1);
       }

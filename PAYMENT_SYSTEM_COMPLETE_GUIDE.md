@@ -85,7 +85,7 @@ Both systems share the identical workflow:
 
 #### Create Payment Request
 ```
-POST /institute-payments/institute/:instituteId
+POST /institute-payments/institute/:instituteId/payments
 ```
 **Access:** SUPERADMIN, INSTITUTE_ADMIN, TEACHER  
 **Body:**
@@ -116,7 +116,7 @@ POST /institute-payments/institute/:instituteId
 
 #### List All Payments (Admin View)
 ```
-GET /institute-payments/institute/:instituteId
+GET /institute-payments/institute/:instituteId/payments
 ```
 **Access:** SUPERADMIN, INSTITUTE_ADMIN, TEACHER, STUDENT, PARENT  
 **Query Params:** `page`, `limit`, `status`, `priority`, `targetType`, `search`, `sortBy`, `sortOrder`
@@ -612,7 +612,7 @@ PATCH /institute-class-subject-payment-submissions/submission/:submissionId/dele
 
 **Request:**
 ```http
-POST /institute-payments/institute/101
+POST /institute-payments/institute/101/payments
 Authorization: Bearer <admin-jwt-token>
 Content-Type: application/json
 

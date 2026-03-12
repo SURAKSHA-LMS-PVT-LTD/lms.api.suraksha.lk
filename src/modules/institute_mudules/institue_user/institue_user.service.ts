@@ -3450,7 +3450,7 @@ export class InstitueUserService {
 
       const data = instituteUsers.map(iu => ({
         ...new SecureUserResponseDto(iu.user),
-        instituteUserImageUrl: iu.instituteUserImageUrl,
+        instituteUserImageUrl: iu.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(iu.instituteUserImageUrl) : null,
         instituteCardId: iu.instituteCardId,
         imageVerificationStatus: iu.imageVerificationStatus,
         imageVerifiedBy: iu.imageVerifiedBy
@@ -3505,7 +3505,7 @@ export class InstitueUserService {
 
       const data = instituteUsers.map(iu => ({
         ...new SecureUserResponseDto(iu.user),
-        instituteUserImageUrl: iu.instituteUserImageUrl,
+        instituteUserImageUrl: iu.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(iu.instituteUserImageUrl) : null,
         instituteCardId: iu.instituteCardId,
         imageVerificationStatus: iu.imageVerificationStatus,
         imageVerifiedBy: iu.imageVerifiedBy,
@@ -3575,7 +3575,9 @@ export class InstitueUserService {
         userType: instituteUser.instituteUserType, // Institute-specific user type (STUDENT, TEACHER, ADMIN, etc.)
         status: instituteUser.status,
         userIdByInstitute: instituteUser.userIdByInstitute,
-        instituteUserImageUrl: instituteUser.instituteUserImageUrl || instituteUser.user.imageUrl, // Use institute image or fallback to user image
+        instituteUserImageUrl: (instituteUser.instituteUserImageUrl || instituteUser.user.imageUrl)
+          ? this.cloudStorageService.getFullUrl(instituteUser.instituteUserImageUrl || instituteUser.user.imageUrl)
+          : null, // Use institute image or fallback to user image
         instituteCardId: instituteUser.instituteCardId,
         imageVerificationStatus: instituteUser.imageVerificationStatus,
         imageVerifiedBy: instituteUser.imageVerifiedBy,
