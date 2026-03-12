@@ -27,6 +27,7 @@ import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto
 import { maskPhoneNumber } from '../../../common/utils/phone-mask.util';
 import { UserType } from '../../user/enums/user-type.enum';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -47,6 +48,7 @@ export class InstituteClassSubjectStudentsService {
     @InjectRepository(InstituteClassStudentEntity)
     private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
     private readonly userManagementService: UserManagementService,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectStudentDto): Promise<InstituteClassSubjectStudentResponseDto> {
@@ -752,7 +754,7 @@ export class InstituteClassSubjectStudentsService {
             lastName: row.father_last_name,
             email: row.father_email,
             phoneNumber: maskPhoneNumber(row.father_phone),
-            imageUrl: row.father_image,
+            imageUrl: row.father_image ? this.cloudStorageService.getFullUrl(row.father_image) : null,
             gender: row.father_gender,
             occupation: row.father_occupation,
             workplace: row.father_workplace
@@ -772,7 +774,7 @@ export class InstituteClassSubjectStudentsService {
             lastName: row.mother_last_name,
             email: row.mother_email,
             phoneNumber: maskPhoneNumber(row.mother_phone),
-            imageUrl: row.mother_image,
+            imageUrl: row.mother_image ? this.cloudStorageService.getFullUrl(row.mother_image) : null,
             gender: row.mother_gender,
             occupation: row.mother_occupation,
             workplace: row.mother_workplace
@@ -792,7 +794,7 @@ export class InstituteClassSubjectStudentsService {
             lastName: row.guardian_last_name,
             email: row.guardian_email,
             phoneNumber: maskPhoneNumber(row.guardian_phone),
-            imageUrl: row.guardian_image,
+            imageUrl: row.guardian_image ? this.cloudStorageService.getFullUrl(row.guardian_image) : null,
             gender: row.guardian_gender,
             occupation: row.guardian_occupation,
             workplace: row.guardian_workplace
@@ -1223,7 +1225,7 @@ export class InstituteClassSubjectStudentsService {
         studentLastName: enrollment.student?.lastName,
         studentNameWithInitials: enrollment.student?.nameWithInitials,
         studentEmail: enrollment.student?.email,
-        studentImageUrl: enrollment.student?.imageUrl,
+        studentImageUrl: enrollment.student?.imageUrl ? this.cloudStorageService.getFullUrl(enrollment.student.imageUrl) : null,
         enrollmentMethod: enrollment.enrollmentMethod,
         verificationStatus: enrollment.verificationStatus,
         enrolledAt: enrollment.createdAt,

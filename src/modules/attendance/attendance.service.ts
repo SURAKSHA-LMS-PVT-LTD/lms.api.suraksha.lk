@@ -2317,7 +2317,7 @@ export class AttendanceService {
     return {
       success: true,
       message: 'Attendance marked successfully using institute card',
-      imageUrl: finalImageUrl,
+      imageUrl: finalImageUrl ? this.CloudStorageService.getFullUrl(finalImageUrl) : null,
       isInstituteImage: isVerified && !!instituteUser.instituteUserImageUrl,
       imageVerificationStatus: instituteUser.imageVerificationStatus,
       status: markAttendanceDto.status,

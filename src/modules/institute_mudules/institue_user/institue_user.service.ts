@@ -644,7 +644,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'father' as const
             });
           }
@@ -659,7 +659,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'mother' as const
             });
           }
@@ -674,7 +674,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'guardian' as const
             });
           }
@@ -690,7 +690,7 @@ export class InstitueUserService {
         lastName: raw.last_name || (raw as any).last_name,
         email: raw.email,
         phoneNumber: raw.phone_number || (raw as any).phone_number,
-        imageUrl: raw.user_image_url || (raw as any).user_image_url,
+        imageUrl: this.cloudStorageService.getFullUrl(raw.user_image_url || (raw as any).user_image_url),
         gender: raw.gender,
         dateOfBirth: raw.date_of_birth,
         addressLine1: raw.address_line1,
@@ -900,7 +900,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'father' as const
             });
           }
@@ -915,7 +915,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'mother' as const
             });
           }
@@ -930,7 +930,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'guardian' as const
             });
           }
@@ -946,7 +946,7 @@ export class InstitueUserService {
         lastName: raw.last_name || (raw as any).last_name,
         email: raw.email,
         phoneNumber: raw.phone_number || (raw as any).phone_number,
-        imageUrl: raw.user_image_url || (raw as any).user_image_url,
+        imageUrl: this.cloudStorageService.getFullUrl(raw.user_image_url || (raw as any).user_image_url),
         gender: raw.gender,
         dateOfBirth: raw.date_of_birth,
         addressLine1: raw.address_line1,
@@ -1131,7 +1131,7 @@ export class InstitueUserService {
           lastName: raw.last_name || (raw as any).last_name,
           email: raw.email,
           phoneNumber: raw.phone_number || (raw as any).phone_number,
-          imageUrl: raw.user_image_url || (raw as any).user_image_url,
+          imageUrl: this.cloudStorageService.getFullUrl(raw.user_image_url || (raw as any).user_image_url),
           gender: raw.gender,
           dateOfBirth: raw.date_of_birth,
           addressLine1: raw.address_line1,
@@ -1190,7 +1190,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'father' as const
             });
           }
@@ -1205,7 +1205,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'mother' as const
             });
           }
@@ -1220,7 +1220,7 @@ export class InstitueUserService {
               name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
               email: this.shouldMaskSensitiveData ? maskEmail(student.email) : student.email,
               phoneNumber: this.shouldMaskSensitiveData ? maskPhoneNumber(student.phone_number) : student.phone_number,
-              imageUrl: student.user_image_url,
+              imageUrl: this.cloudStorageService.getFullUrl(student.user_image_url),
               relationshipType: 'guardian' as const
             });
           }
@@ -3294,7 +3294,7 @@ export class InstitueUserService {
       return {
         success: true,
         message: 'Institute user image uploaded successfully',
-        imageUrl: imageUrl,
+        imageUrl: this.cloudStorageService.getFullUrl(imageUrl),
         userId,
         instituteId
       };

@@ -242,7 +242,7 @@ export class StudentsService {
           phoneNumber: userResponse.phoneNumber,
           dateOfBirth: userResponse.dateOfBirth,
           gender: userResponse.gender,
-          imageUrl: userResponse.imageUrl,
+          imageUrl: userResponse.imageUrl ? this.cloudStorageService.getFullUrl(userResponse.imageUrl) : userResponse.imageUrl,
           addressLine1: userResponse.addressLine1,
           addressLine2: userResponse.addressLine2,
           city: userResponse.city,

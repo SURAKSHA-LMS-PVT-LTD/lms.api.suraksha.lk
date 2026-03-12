@@ -10,6 +10,7 @@ import { UserEntity } from '../../user/entities/user.entity';
 import { BookhireEntity } from '../entities/bookhire.entity';
 import { StudentBookhireEnrollmentEntity } from '../entities/student-bookhire-enrollment.entity';
 import { MarkBookhireAttendanceDto, BulkMarkAttendanceDto } from '../dto/bookhire-attendance.dto';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 @Injectable()
 export class BookhireAttendanceService {
@@ -27,6 +28,7 @@ export class BookhireAttendanceService {
     private readonly bookhireRepository: Repository<BookhireEntity>,
     @InjectRepository(StudentBookhireEnrollmentEntity)
     private readonly enrollmentRepository: Repository<StudentBookhireEnrollmentEntity>,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   /**
@@ -182,7 +184,7 @@ export class BookhireAttendanceService {
 
     return {
       success: true,
-      imageUrl: studentData.student?.user?.imageUrl || user.imageUrl || null,
+      imageUrl: (() => { const rawUrl = studentData.student?.user?.imageUrl || user.imageUrl || null; return rawUrl ? this.cloudStorageService.getFullUrl(rawUrl) : null; })(),
       status: attendanceRecord.status,
       name: transformedStudentData.studentName,
       studentId: markAttendanceDto.studentId,
@@ -335,7 +337,7 @@ export class BookhireAttendanceService {
 
     return {
       success: true,
-      imageUrl: studentData.student?.user?.imageUrl || user.imageUrl || null,
+      imageUrl: (() => { const rawUrl = studentData.student?.user?.imageUrl || user.imageUrl || null; return rawUrl ? this.cloudStorageService.getFullUrl(rawUrl) : null; })(),
       status: attendanceRecord.status,
       name: transformedStudentData.studentName,
       rfidCardId: markAttendanceDto.rfidCardId,

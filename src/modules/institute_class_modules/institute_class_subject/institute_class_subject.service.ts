@@ -8,12 +8,14 @@ import { InstituteClassSubjectRepository } from './repositories/institute-class-
 import { IInstituteClassSubjectStats } from './interfaces/institute-class-subject.interface';
 import { INSTITUTE_CLASS_SUBJECT_CONSTANTS } from './constants/institute-class-subject.constants';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 @Injectable()
 export class InstituteClassSubjectService {
   constructor(
     private readonly instituteClassSubjectRepository: InstituteClassSubjectRepository,
     private readonly userManagementService: UserManagementService,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectDto): Promise<InstituteClassSubjectSuccessResponseDto> {
@@ -296,7 +298,7 @@ export class InstituteClassSubjectService {
         firstName: entity.teacher.firstName,
         lastName: entity.teacher.lastName,
         email: entity.teacher.email,
-        imageUrl: entity.teacher.imageUrl
+        imageUrl: entity.teacher.imageUrl ? this.cloudStorageService.getFullUrl(entity.teacher.imageUrl) : null
       } : undefined,
       isActive: entity.isActive,
       enrollmentEnabled: entity.enrollmentEnabled || false,

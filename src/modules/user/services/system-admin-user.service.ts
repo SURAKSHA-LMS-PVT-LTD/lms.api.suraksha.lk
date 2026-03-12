@@ -1263,7 +1263,7 @@ export class SystemAdminUserService {
       nameWithInitials: user.nameWithInitials,
       email: user.email,
       phoneNumber: user.phoneNumber,
-      imageUrl: user.imageUrl,
+      imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
       profileCompletionStatus: user.profileCompletionStatus,
       profileCompletionPercentage: user.profileCompletionPercentage
     };
@@ -1418,7 +1418,7 @@ export class SystemAdminUserService {
       nameWithInitials: user.nameWithInitials,
       email: user.email,
       phoneNumber: user.phoneNumber,
-      imageUrl: user.imageUrl,
+      imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
       profileCompletionStatus: user.profileCompletionStatus,
       profileCompletionPercentage: user.profileCompletionPercentage,
     };
@@ -1575,7 +1575,7 @@ export class SystemAdminUserService {
         nameWithInitials: user.nameWithInitials,
         email: this.maskEmail(user.email),
         phoneNumber: this.maskPhone(user.phoneNumber),
-        imageUrl: user.imageUrl,
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
         imageVerificationStatus: user.imageVerificationStatus || ImageVerificationStatus.PENDING,
         imageUploadedAt: user.updatedAt,
         userType: user.userType,
@@ -2013,7 +2013,7 @@ export class SystemAdminUserService {
       userName: `${user.firstName} ${user.lastName || ''}`.trim(),
       email: this.maskEmail(user.email),
       phoneNumber: this.maskPhone(user.phoneNumber),
-      imageUrl: user.imageUrl,
+      imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
       normalCard: {
         cardId: user.cardId,
         cardStatus: user.cardStatus,

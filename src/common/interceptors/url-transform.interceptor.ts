@@ -77,6 +77,8 @@ export class UrlTransformInterceptor implements NestInterceptor {
     const imageUrlFields = [
       'imageUrl',
       'image_url',
+      'studentImageUrl',
+      'student_image_url',
       'logoUrl',
       'logo_url',
       'loadingGifUrl',

@@ -10,6 +10,7 @@ import {
   InstituteClassSubjectParamsValidationPipe,
 } from './pipes/institute-class-subject-validation.pipe';
 import { CacheModule } from '../../../common/modules/cache.module';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CacheModule } from '../../../common/modules/cache.module';
   providers: [
     InstituteClassSubjectService,
     InstituteClassSubjectRepository,
+    CloudStorageService,
     // Pipes
     InstituteClassSubjectValidationPipe,
     BulkInstituteClassSubjectValidationPipe,

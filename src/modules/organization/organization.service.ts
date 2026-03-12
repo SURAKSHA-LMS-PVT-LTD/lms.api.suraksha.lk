@@ -756,7 +756,7 @@ export class OrganizationService {
     const formattedInstitutes = institutes.map(inst => ({
       instituteId: inst.institute_id,
       name: inst.institute_name,
-      imageUrl: inst.institute_imageUrl,
+      imageUrl: inst.institute_imageUrl ? this.cloudStorageService.getFullUrl(inst.institute_imageUrl) : null,
       organizationCount: parseInt(inst.organizationCount) || 0
     }));
 

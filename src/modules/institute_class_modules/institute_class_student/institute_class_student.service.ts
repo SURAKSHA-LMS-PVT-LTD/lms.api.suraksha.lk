@@ -439,7 +439,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         studentName: `${enrollment.student?.user?.firstName || ''} ${enrollment.student?.user?.lastName || ''}`.trim() || 'Unknown',
         studentEmail: enrollment.student?.user?.email || '',
         phoneNumber: maskPhoneNumber(enrollment.student?.user?.phoneNumber || ''),
-        imageUrl: enrollment.student?.user?.imageUrl,
+        imageUrl: enrollment.student?.user?.imageUrl ? this.cloudStorageService.getFullUrl(enrollment.student.user.imageUrl) : enrollment.student?.user?.imageUrl,
         enrollmentMethod: enrollment.enrollmentMethod,
         enrollmentDate: enrollment.createdAt,
         instituteStudentId: enrollment.student?.studentId

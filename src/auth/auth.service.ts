@@ -264,7 +264,7 @@ export class AuthService {
         email: user.email,
         nameWithInitials: user.nameWithInitials,
         userType: user.userType,
-        imageUrl: user.imageUrl,
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
       },
     };
   }
@@ -1457,7 +1457,7 @@ export class AuthService {
           email: user.email,
           nameWithInitials: user.nameWithInitials,
           userType: user.userType,
-          imageUrl: user.imageUrl
+          imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null
         }
       };
     } catch (error) {
@@ -1468,6 +1468,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
+
 
   /**
    * 🔐 Revoke refresh token
@@ -1588,7 +1589,7 @@ export class AuthService {
         email: user.email,
         nameWithInitials: user.nameWithInitials,
         userType: user.userType,
-        imageUrl: user.imageUrl,
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
       },
     };
   }
@@ -1770,7 +1771,7 @@ export class AuthService {
           email: user.email,
           nameWithInitials: user.nameWithInitials,
           userType: user.userType,
-          imageUrl: user.imageUrl
+          imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null
         }
       };
     } catch (error) {
