@@ -124,6 +124,9 @@ export class InstituteCardUserResponseDto {
   @ApiProperty({ description: 'User name (full name)' })
   userName: string;
 
+  @ApiPropertyOptional({ description: 'Name with initials (e.g. A.B. Perera)' })
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'Institute user ID assigned by institute' })
   userIdByInstitute: string;
 

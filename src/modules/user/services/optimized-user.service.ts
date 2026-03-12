@@ -35,7 +35,7 @@ export class OptimizedUserService {
    */
   async findPublic(id: string): Promise<UserPublicResponseDto> {
     const user = await this.userRepository.findOne({
-      select: ['id', 'firstName', 'lastName', 'imageUrl'],
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
       where: { id, isActive: true }
     });
 
@@ -174,6 +174,7 @@ export class OptimizedUserService {
     return users.map(user => ({
       id: user.id,
       name: `${user.firstName} ${user.lastName || ''}`.trim(),
+      nameWithInitials: user.nameWithInitials || undefined,
       email: user.email || ''
     }));
   }

@@ -15,6 +15,9 @@ export class AdminUserDataResponseDto {
   @ApiProperty({ description: 'User last name' })
   lastName?: string;
 
+  @ApiProperty({ description: 'Name with initials (e.g. A.B. Perera)', required: false })
+  nameWithInitials?: string;
+
   @ApiProperty({ description: 'User email' })
   email: string;
 

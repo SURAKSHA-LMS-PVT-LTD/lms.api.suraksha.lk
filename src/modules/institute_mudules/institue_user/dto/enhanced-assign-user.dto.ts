@@ -151,6 +151,7 @@ export class EnhancedAssignmentResponseDto {
     properties: {
       userId: { type: 'string', example: '123' },
       userName: { type: 'string', example: 'John Doe' },
+      nameWithInitials: { type: 'string', example: 'J. Doe' },
       userType: { type: 'string', example: 'USER' },
       identifier: { type: 'string', example: 'phone: +94771234567' }
     }
@@ -158,6 +159,7 @@ export class EnhancedAssignmentResponseDto {
   user: {
     userId: string;
     userName: string;
+    nameWithInitials?: string;
     userType: string;
     identifier: string; // Shows which identifier was used
   };

@@ -28,6 +28,7 @@ export interface IInstituteClassSubjectWithRelations extends IInstituteClassSubj
     id: string;
     firstName: string;
     lastName?: string;
+    nameWithInitials?: string;
     email?: string;
     phone?: string;
     imageUrl?: string;

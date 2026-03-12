@@ -15,6 +15,13 @@ export class ChildInfoDto {
   name: string;
 
   @ApiProperty({ 
+    description: 'Name with initials (e.g. S. Perera)', 
+    example: 'S. Perera',
+    required: false
+  })
+  nameWithInitials?: string;
+
+  @ApiProperty({ 
     description: 'Masked child phone number (only last 3 digits visible for security)', 
     example: '+94****567' 
   })

@@ -1041,7 +1041,8 @@ export class AttendanceService {
         studentInfo: {
           studentId: user.id.toString(),
           studentCardId: studentCardId,
-          studentName: `${user.firstName} ${user.lastName || ''}`.trim()
+          studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          nameWithInitials: user.nameWithInitials || undefined
         },
         cardInfo: {
           cardType,
@@ -2109,6 +2110,7 @@ export class AttendanceService {
     return {
       userId: instituteUser.userId,
       userName: `${instituteUser.user?.firstName || ''} ${instituteUser.user?.lastName || ''}`.trim(),
+      nameWithInitials: instituteUser.user?.nameWithInitials || undefined,
       userIdByInstitute: instituteUser.userIdByInstitute || '',
       instituteCardId: instituteUser.instituteCardId || '',
       imageUrl: imageUrl,

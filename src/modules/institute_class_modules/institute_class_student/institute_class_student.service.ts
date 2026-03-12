@@ -437,6 +437,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       const secureData = unverifiedStudents.map(enrollment => ({
         studentUserId: enrollment.studentUserId,
         studentName: `${enrollment.student?.user?.firstName || ''} ${enrollment.student?.user?.lastName || ''}`.trim() || 'Unknown',
+        nameWithInitials: enrollment.student?.user?.nameWithInitials || undefined,
         studentEmail: enrollment.student?.user?.email || '',
         phoneNumber: maskPhoneNumber(enrollment.student?.user?.phoneNumber || ''),
         imageUrl: enrollment.student?.user?.imageUrl ? this.cloudStorageService.getFullUrl(enrollment.student.user.imageUrl) : enrollment.student?.user?.imageUrl,
@@ -645,6 +646,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         'user.id as id',
         'user.first_name as firstName',
         'user.last_name as lastName',
+        'user.name_with_initials as nameWithInitials',
         'user.phone_number as phoneNumber',
         'user.image_url as imageUrl',
         'ics.institute_id as instituteId',
@@ -671,6 +673,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       enrollmentDate: row.enrollmentDate,
       id: row.id,
       name: `${row.firstName} ${row.lastName || ''}`.trim(),
+      nameWithInitials: row.nameWithInitials || undefined,
       phoneNumber: maskPhoneNumber(row.phoneNumber),
       // ✅ Transform imageUrl to full URL
       imageUrl: row.imageUrl ? this.cloudStorageService.getFullUrl(row.imageUrl) : row.imageUrl,

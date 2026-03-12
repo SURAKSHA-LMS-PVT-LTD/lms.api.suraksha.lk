@@ -77,6 +77,7 @@ export class ParentAccessController {
       children: students.map(student => ({
         studentId: student.userId,
         name: `${student.user.firstName} ${student.user.lastName}`,
+        nameWithInitials: student.user.nameWithInitials || undefined,
         email: student.user.email,
         isActive: student.isActive,
         studentIdNumber: student.studentId,
@@ -127,6 +128,7 @@ export class ParentAccessController {
       child: {
         id: student.userId,
         name: `${student.user.firstName} ${student.user.lastName}`,
+        nameWithInitials: student.user.nameWithInitials || undefined,
         email: student.user.email,
         phone: student.user.phoneNumber,
         dateOfBirth: student.user.dateOfBirth,
@@ -451,7 +453,7 @@ export class ParentAccessController {
         category: subjectData.subject?.category,
         teacher: subjectData.teacher ? {
           teacherId: subjectData.teacher.userId,
-          teacherName: `${subjectData.teacher.user?.firstName || ''} ${subjectData.teacher.user?.lastName || ''}`.trim(),
+          teacherName: subjectData.teacher.user?.nameWithInitials || `${subjectData.teacher.user?.firstName || ''} ${subjectData.teacher.user?.lastName || ''}`.trim(),
           teacherEmail: subjectData.teacher.user?.email
         } : null,
         enrollmentDate: subjectData.enrolledAt || subjectData.createdAt,

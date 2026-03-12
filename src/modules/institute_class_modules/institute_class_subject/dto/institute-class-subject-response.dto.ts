@@ -25,6 +25,7 @@ export class InstituteClassSubjectResponseDto {
     id: string;
     firstName: string;
     lastName: string;
+    nameWithInitials?: string;
     email: string;
     imageUrl: string;
   };

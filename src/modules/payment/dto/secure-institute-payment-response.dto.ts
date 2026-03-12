@@ -139,7 +139,7 @@ export function transformInstitutePaymentToSecureResponse(
     return {
       ...baseData,
       createdBy: payment.createdBy,
-      creatorName: payment.creator?.firstName + ' ' + payment.creator?.lastName,
+      creatorName: payment.creator?.nameWithInitials || ((payment.creator?.firstName || '') + ' ' + (payment.creator?.lastName || '')).trim() || undefined,
       autoReminderEnabled: payment.autoReminderEnabled,
       notes: payment.notes,
       totalSubmissions: payment.totalSubmissions,
@@ -199,11 +199,11 @@ export function transformInstitutePaymentSubmissionToSecureResponse(
       ...baseData,
       submittedBy: submission.submittedBy,
       submitterName: submission.submitter
-        ? submission.submitter.firstName + ' ' + submission.submitter.lastName
+        ? (submission.submitter.nameWithInitials || (submission.submitter.firstName + ' ' + submission.submitter.lastName).trim())
         : undefined,
       verifiedBy: submission.verifiedBy,
       verifierName: submission.verifier
-        ? submission.verifier.firstName + ' ' + submission.verifier.lastName
+        ? (submission.verifier.nameWithInitials || (submission.verifier.firstName + ' ' + submission.verifier.lastName).trim())
         : undefined,
       notes: submission.notes,
       updatedAt: submission.updatedAt?.toISOString() || null,

@@ -132,6 +132,7 @@ export class OrganizationService {
         'ou.userId as userId',
         'user.firstName as firstName',
         'user.lastName as lastName',
+        'user.nameWithInitials as nameWithInitials',
         'user.email as email',
         'org.organizationId as organizationId',
         'org.name as organizationName',
@@ -162,6 +163,7 @@ export class OrganizationService {
     const members = rows.map(r => ({
       userId: r.userId,
       name: `${r.firstName} ${r.lastName || ''}`.trim(),
+      nameWithInitials: r.nameWithInitials || undefined,
       email: r.email,
       organization: {
         organizationId: r.organizationId,
@@ -212,6 +214,7 @@ export class OrganizationService {
         'ou.userId as userId',
         'user.firstName as firstName',
         'user.lastName as lastName',
+        'user.nameWithInitials as nameWithInitials',
         'user.email as email',
         'user.phoneNumber as phoneNumber',
         'user.imageUrl as imageUrl',
@@ -243,6 +246,7 @@ export class OrganizationService {
       firstName: r.firstName,
       lastName: r.lastName || '',
       name: `${r.firstName} ${r.lastName || ''}`.trim(),
+      nameWithInitials: r.nameWithInitials || undefined,
       email: r.email,
       phoneNumber: r.phoneNumber || null,
       // ✅ Transform imageUrl to full URL
@@ -806,6 +810,7 @@ export class OrganizationService {
       members: members.map(member => ({
         userId: member.userId,
         name: `${member.user.firstName} ${member.user.lastName || ''}`.trim(),
+        nameWithInitials: member.user.nameWithInitials || undefined,
         email: member.user.email,
         role: member.role,
         isVerified: member.isVerified,
@@ -845,6 +850,7 @@ export class OrganizationService {
       unverifiedMembers: members.map(member => ({
         userId: member.userId,
         name: `${member.user.firstName} ${member.user.lastName || ''}`.trim(),
+        nameWithInitials: member.user.nameWithInitials || undefined,
         email: member.user.email,
         role: member.role,
         isVerified: member.isVerified,
@@ -1251,7 +1257,8 @@ export class OrganizationService {
         user: {
           id: user.id,
           email: user.email,
-          name: `${user.firstName} ${user.lastName}`
+          name: `${user.firstName} ${user.lastName}`,
+          nameWithInitials: user.nameWithInitials || undefined
         },
         institute: {
           id: institute.id,

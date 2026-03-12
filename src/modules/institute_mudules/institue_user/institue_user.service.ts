@@ -137,7 +137,7 @@ export class InstitueUserService {
   // =================== DEPRECATED UNSAFE METHODS ===================
   // These methods expose sensitive data and are disabled for security
 
-  async create(createInstitueUserDto: CreateInstitueUserDto, currentUser?: any): Promise<{ success: boolean; message: string; user?: { id: string; name: string } }> {
+  async create(createInstitueUserDto: CreateInstitueUserDto, currentUser?: any): Promise<{ success: boolean; message: string; user?: { id: string; name: string; nameWithInitials?: string } }> {
     try {
       // Validate current user authorization (SUPERADMIN, INSTITUTE_ADMIN and TEACHER can create institute users)
       if (!currentUser) {
@@ -178,7 +178,7 @@ export class InstitueUserService {
       // Verify user exists
       const user = await this.userRepository.findOne({
         where: { id: userId },
-        select: ['id', 'firstName', 'lastName', 'email']
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email']
       });
 
       if (!user) {
@@ -217,7 +217,8 @@ export class InstitueUserService {
         message: `User successfully assigned to institute with status: ${newInstituteUser.status}`,
         user: {
           id: userId,
-          name: userName
+          name: userName,
+          nameWithInitials: user.nameWithInitials || undefined
         }
       };
 
@@ -3570,6 +3571,7 @@ export class InstitueUserService {
         instituteId: instituteUser.instituteId,
         firstName: instituteUser.user.firstName,
         lastName: instituteUser.user.lastName,
+        nameWithInitials: instituteUser.user.nameWithInitials || undefined,
         email: instituteUser.user.email,
         phoneNumber: instituteUser.user.phoneNumber,
         userType: instituteUser.instituteUserType, // Institute-specific user type (STUDENT, TEACHER, ADMIN, etc.)
@@ -3630,7 +3632,7 @@ export class InstitueUserService {
         .leftJoinAndSelect('user.student', 'student')
         .leftJoinAndSelect('user.parent', 'parent')
         .select([
-          'user.id', 'user.userType', 'user.firstName', 'user.lastName',
+          'user.id', 'user.userType', 'user.firstName', 'user.lastName', 'user.nameWithInitials',
           'user.email', 'user.phoneNumber', 'user.rfid', 'user.isActive',
           'student.id', 'student.firstName', 'student.lastName',
           'parent.id', 'parent.firstName', 'parent.lastName'
@@ -3760,6 +3762,7 @@ export class InstitueUserService {
         user: {
           userId: user.id,
           userName: `${user.firstName} ${user.lastName}`.trim(),
+          nameWithInitials: user.nameWithInitials || undefined,
           userType: user.userType,
           identifier: identifierString
         },

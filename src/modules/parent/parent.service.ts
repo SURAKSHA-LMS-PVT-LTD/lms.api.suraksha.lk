@@ -580,6 +580,7 @@ export class ParentsService {
         return new ChildInfoDto({
           id: child.userId,
           name: user ? `${user.firstName} ${user.lastName}`.trim() : '',
+          nameWithInitials: user?.nameWithInitials || undefined,
           phoneNumber: user?.phoneNumber || '',
           email: user?.email || '',
           // ✅ Use cloudStorageService to transform relative URLs to full URLs

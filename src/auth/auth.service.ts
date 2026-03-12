@@ -497,6 +497,7 @@ export class AuthService {
           's.userId as studentUserId',
           'u.firstName as firstName',
           'u.lastName as lastName',
+          'u.name_with_initials as nameWithInitials',
           `CASE 
             WHEN s.fatherId = :userId THEN 'father'
             WHEN s.motherId = :userId THEN 'mother'
@@ -513,7 +514,7 @@ export class AuthService {
 
       return children.map((child: any) => ({
         studentId: child.studentUserId,
-        studentName: `${child.firstName || ''} ${child.lastName || ''}`.trim(),
+        studentName: child.nameWithInitials || `${child.firstName || ''} ${child.lastName || ''}`.trim(),
         relationship: child.relationship,
         addedDate: child.createdAt
       }));

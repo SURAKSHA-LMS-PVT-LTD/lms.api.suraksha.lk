@@ -13,8 +13,10 @@ interface UserLikeData {
   user_id?: string;
   firstName?: string;
   lastName?: string;
+  nameWithInitials?: string;
   first_name?: string;
   last_name?: string;
+  name_with_initials?: string;
   name?: string;
   email?: string;
   phoneNumber?: string;
@@ -68,8 +70,11 @@ export class SecureUserResponseDto {
   @ApiProperty({ example: '123', description: 'User ID' })
   id: string;
 
-  @ApiProperty({ example: 'John Doe', description: 'Full name' })
+  @ApiProperty({ example: 'John Doe', description: 'Full name (firstName + lastName)' })
   name: string;
+
+  @ApiProperty({ example: 'J. Doe', description: 'Name with initials (e.g. A.B. Perera)', required: false })
+  nameWithInitials?: string;
 
   @ApiProperty({ example: 'john.doe@example.com', description: 'User email address (respects IS_EMAILS_MASKED env)' })
   email: string;
@@ -112,6 +117,7 @@ export class SecureUserResponseDto {
     const firstName = user.firstName || (user as any).first_name || '';
     const lastName = user.lastName || (user as any).last_name || '';
     this.name = `${firstName} ${lastName}`.trim();
+    this.nameWithInitials = (user as any).nameWithInitials || (user as any).name_with_initials || undefined;
     
     // ✅ Handle email from both naming conventions and apply masking if needed
     const email = user.email || (user as any).email || '';
@@ -155,8 +161,11 @@ export class SecureParentDetailsDto {
   @ApiProperty({ example: '456', description: 'Parent user ID' })
   id?: string;
 
-  @ApiProperty({ example: 'Robert Doe', description: 'Parent full name' })
+  @ApiProperty({ example: 'Robert Doe', description: 'Parent full name (firstName + lastName)' })
   name?: string;
+
+  @ApiProperty({ example: 'R. Doe', description: 'Parent name with initials', required: false })
+  nameWithInitials?: string;
 
   @ApiProperty({ example: 'robert.doe@example.com', description: 'Parent email address (respects IS_EMAILS_MASKED env)' })
   email?: string;
@@ -208,6 +217,7 @@ export class SecureParentDetailsDto {
       const firstName = parent.first_name || parent.firstName || '';
       const lastName = parent.last_name || parent.lastName || '';
       this.name = parent.name || (firstName || lastName ? `${firstName} ${lastName}`.trim() : undefined);
+      this.nameWithInitials = parent.nameWithInitials || parent.name_with_initials || undefined;
       
       // ✅ Respect masking setting from environment variables with null safety
       // ✅ Return null instead of undefined so fields appear in JSON response

@@ -218,6 +218,7 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
         'teacher.id',
         'teacher.firstName',
         'teacher.lastName',
+        'teacher.nameWithInitials',
         'teacher.email',
         'teacher.imageUrl'
       ])
@@ -306,6 +307,7 @@ export class InstituteClassSubjectRepository implements IInstituteClassSubjectRe
         'teacher.id',
         'teacher.firstName',
         'teacher.lastName',
+        'teacher.nameWithInitials',
         'teacher.email',
         'teacher.imageUrl'
       ]);

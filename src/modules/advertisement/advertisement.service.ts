@@ -573,7 +573,7 @@ export class AdvertisementService {
         batch.map(async (user) => {
           const notificationData = {
             studentId: user.id,
-            studentName: `${user.firstName} ${user.lastName || ''}`.trim(),
+            studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
             parentContact: user.phoneNumber || null,
             parentEmail: user.email || null,
             parentTelegramId: user.telegramId || null,

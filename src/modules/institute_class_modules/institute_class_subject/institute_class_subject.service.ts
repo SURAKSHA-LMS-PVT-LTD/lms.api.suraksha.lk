@@ -297,6 +297,7 @@ export class InstituteClassSubjectService {
         id: entity.teacher.id,
         firstName: entity.teacher.firstName,
         lastName: entity.teacher.lastName,
+        nameWithInitials: entity.teacher.nameWithInitials || undefined,
         email: entity.teacher.email,
         imageUrl: entity.teacher.imageUrl ? this.cloudStorageService.getFullUrl(entity.teacher.imageUrl) : null
       } : undefined,

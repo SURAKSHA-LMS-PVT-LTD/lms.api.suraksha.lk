@@ -1141,7 +1141,7 @@ export class InstitutePaymentService {
         paymentDate: sub.paymentDate?.toISOString(),
         status: sub.status,
         totalAmount: parseFloat(sub.totalAmountPaid),
-        studentName: sub.submitter ? `${sub.submitter.firstName} ${sub.submitter.lastName}`.trim() : null,
+        studentName: sub.submitter ? (sub.submitter.nameWithInitials || `${sub.submitter.firstName} ${sub.submitter.lastName}`.trim()) : null,
         userId: sub.submitter?.id || null
       };
 
@@ -1313,7 +1313,7 @@ export class InstitutePaymentService {
     const responseData: any = {
       id: updatedSubmission.id,
       status: updatedSubmission.status,
-      verifierName: `${(userEntity as any).firstName} ${(userEntity as any).lastName}`,
+      verifierName: (userEntity as any).nameWithInitials || `${(userEntity as any).firstName} ${(userEntity as any).lastName}`.trim(),
       verificationDate: updatedSubmission.verifiedAt?.toISOString() || null
     };
 
@@ -1721,7 +1721,7 @@ export class InstitutePaymentService {
         paymentAmount: sub.payment?.amount ? parseFloat(String(sub.payment.amount)) : null,
         submittedBy: sub.submittedBy,
         submitterName: sub.submitter
-          ? `${sub.submitter.firstName || ''} ${sub.submitter.lastName || ''}`.trim()
+          ? (sub.submitter.nameWithInitials || `${sub.submitter.firstName || ''} ${sub.submitter.lastName || ''}`.trim())
           : null,
         paymentAmountSubmitted: sub.paymentAmount ? parseFloat(String(sub.paymentAmount)) : null,
         paymentMethod: sub.paymentMethod,

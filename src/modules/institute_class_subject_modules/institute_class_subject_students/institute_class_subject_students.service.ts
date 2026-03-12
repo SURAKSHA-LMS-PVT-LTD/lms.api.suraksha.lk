@@ -964,7 +964,7 @@ export class InstituteClassSubjectStudentsService {
       const [users, classEnrollments, existingSubjectEnrollments] = await Promise.all([
         this.userRepository.find({
           where: { id: In(studentIds) },
-          select: ['id', 'firstName', 'lastName'],
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials'],
         }),
         this.classStudentRepository.find({
           where: {
@@ -989,7 +989,7 @@ export class InstituteClassSubjectStudentsService {
 
       for (const studentId of studentIds) {
         const user = userMap.get(studentId);
-        const studentName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+        const studentName = user ? (user.nameWithInitials || `${user.firstName} ${user.lastName}`.trim()) : 'Unknown';
 
         if (!classEnrolledSet.has(studentId)) {
           failedAssignments.push({
@@ -1389,7 +1389,7 @@ export class InstituteClassSubjectStudentsService {
         }),
         this.userRepository.find({
           where: { id: In(studentIds) },
-          select: ['id', 'firstName', 'lastName'],
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials'],
         }),
       ]);
 
@@ -1402,7 +1402,7 @@ export class InstituteClassSubjectStudentsService {
       for (const studentId of studentIds) {
         const enrollment = enrollmentMap.get(studentId);
         const user = userMap.get(studentId);
-        const studentName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+        const studentName = user ? (user.nameWithInitials || `${user.firstName} ${user.lastName}`.trim()) : 'Unknown';
 
         if (!enrollment) {
           failed.push({ studentId, reason: 'Enrollment not found' });
@@ -1478,7 +1478,7 @@ export class InstituteClassSubjectStudentsService {
         }),
         this.userRepository.find({
           where: { id: In(studentIds) },
-          select: ['id', 'firstName', 'lastName'],
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials'],
         }),
       ]);
 
@@ -1491,7 +1491,7 @@ export class InstituteClassSubjectStudentsService {
       for (const studentId of studentIds) {
         const enrollment = enrollmentMap.get(studentId);
         const user = userMap.get(studentId);
-        const studentName = user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+        const studentName = user ? (user.nameWithInitials || `${user.firstName} ${user.lastName}`.trim()) : 'Unknown';
 
         if (!enrollment) {
           failed.push({ studentId, reason: 'Enrollment not found' });

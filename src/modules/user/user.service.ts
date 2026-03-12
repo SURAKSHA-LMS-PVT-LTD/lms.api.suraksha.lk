@@ -3267,6 +3267,7 @@ export class UsersService {
     id: string;
     imageUrl: string | null;
     fullName: string;
+    nameWithInitials?: string;
     userType: UserType;
   } | null> {
     try {
@@ -3278,6 +3279,7 @@ export class UsersService {
           'user.imageUrl', 
           'user.firstName',
           'user.lastName',
+          'user.nameWithInitials',
           'user.userType'
         ])
         .where('user.id = :userId', { userId })
@@ -3295,6 +3297,7 @@ export class UsersService {
         // ✅ Transform imageUrl to full URL
         imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
         fullName,
+        nameWithInitials: user.nameWithInitials || undefined,
         userType: user.userType
       };
 
@@ -3316,6 +3319,7 @@ export class UsersService {
     id: string;
     imageUrl: string | null;
     fullName: string;
+    nameWithInitials?: string;
     userType: UserType;
   } | null> {
     try {
@@ -3327,6 +3331,7 @@ export class UsersService {
           'user.imageUrl', 
           'user.firstName',
           'user.lastName',
+          'user.nameWithInitials',
           'user.userType'
         ])
         .where('user.phoneNumber = :phoneNumber', { phoneNumber })
@@ -3344,6 +3349,7 @@ export class UsersService {
         // ✅ Transform imageUrl to full URL
         imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
         fullName,
+        nameWithInitials: user.nameWithInitials || undefined,
         userType: user.userType
       };
 
@@ -3365,6 +3371,7 @@ export class UsersService {
     id: string;
     imageUrl: string | null;
     fullName: string;
+    nameWithInitials?: string;
     userType: UserType;
   } | null> {
     try {
@@ -3376,6 +3383,7 @@ export class UsersService {
           'user.imageUrl', 
           'user.firstName',
           'user.lastName',
+          'user.nameWithInitials',
           'user.userType'
         ])
         .where('user.rfid = :rfid', { rfid })
@@ -3393,6 +3401,7 @@ export class UsersService {
         // ✅ Transform imageUrl to full URL
         imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
         fullName,
+        nameWithInitials: user.nameWithInitials || undefined,
         userType: user.userType
       };
 
@@ -3414,6 +3423,7 @@ export class UsersService {
     id: string;
     imageUrl: string | null;
     fullName: string;
+    nameWithInitials?: string;
     userType: UserType;
   } | null> {
     try {
@@ -3425,6 +3435,7 @@ export class UsersService {
           'user.imageUrl', 
           'user.firstName',
           'user.lastName',
+          'user.nameWithInitials',
           'user.userType'
         ])
         .where('user.email = :email', { email })
@@ -3442,6 +3453,7 @@ export class UsersService {
         // ✅ Transform imageUrl to full URL
         imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
         fullName,
+        nameWithInitials: user.nameWithInitials || undefined,
         userType: user.userType
       };
 
