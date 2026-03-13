@@ -3450,11 +3450,12 @@ export class InstitueUserService {
       // New-flow REJECTED: institute_user untouched — previous approved image remains visible.
 
       // Mirror the decision into the user_images table (skip for legacy — no row exists)
+      const decisionAt = new Date();
       if (!isLegacy) {
         await this.userImageRepository.update(pendingImage!.id, {
           status: verifyImageDto.status,
           verifiedBy: verifierId,
-          verifiedAt: new Date(),
+          verifiedAt: decisionAt,
           rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
         });
       }
@@ -3462,7 +3463,12 @@ export class InstitueUserService {
       // Sync the user-level verification status so the admin dashboard reflects the result
       await this.userRepository.update(userId, {
         imageVerificationStatus: verifyImageDto.status,
-        updatedAt: new Date(),
+        imageVerifiedBy: verifierId,
+        imageVerifiedAt: decisionAt,
+        imageRejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED
+          ? (verifyImageDto.rejectionReason ?? null)
+          : null,
+        updatedAt: decisionAt,
       });
 
       const statusMessage = verifyImageDto.status === ImageVerificationStatus.VERIFIED 
@@ -3494,7 +3500,8 @@ export class InstitueUserService {
   }
 
   /**
-   * Get institute users with images for verification
+   * Get institute users with images for verification.
+   * Dual-source: approved images from institute_user + pending new-flow submissions from user_images.
    */
   async getInstituteUsersForImageVerification(
     instituteId: string,
@@ -3505,33 +3512,93 @@ export class InstitueUserService {
       const limit = Math.min(parseInt(query.limit || '10'), 100);
       const offset = (page - 1) * limit;
 
-      const queryBuilder = this.instituteUserRepository
+      // ── Source A: institute_user rows that have an approved image ─────────────
+      const sourceAUsers = await this.instituteUserRepository
         .createQueryBuilder('iu')
         .leftJoinAndSelect('iu.user', 'user')
         .where('iu.instituteId = :instituteId', { instituteId })
         .andWhere('iu.instituteUserImageUrl IS NOT NULL')
-        .orderBy('iu.imageVerificationStatus', 'ASC')
-        .addOrderBy('iu.createdAt', 'DESC')
-        .skip(offset)
-        .take(limit);
+        .getMany();
 
-      // Filter by verification status if provided
-      if (query.isVerified !== undefined) {
-        const isVerified = query.isVerified === 'true';
-        const status = isVerified ? ImageVerificationStatus.VERIFIED : ImageVerificationStatus.PENDING;
-        queryBuilder.andWhere('iu.imageVerificationStatus = :status', { status });
+      const sourceAUserIds = sourceAUsers.map(u => u.userId);
+
+      // ── Latest PENDING user_images per userId for this institute ──────────────
+      const pendingImages = await this.userImageRepository
+        .createQueryBuilder('ui')
+        .where('ui.instituteId = :instituteId', { instituteId })
+        .andWhere('ui.scope = :scope', { scope: ImageScope.INSTITUTE })
+        .andWhere('ui.status = :status', { status: ImageVerificationStatus.PENDING })
+        .orderBy('ui.createdAt', 'DESC')
+        .getMany();
+
+      const pendingByUser = new Map<string, UserImageEntity>();
+      for (const img of pendingImages) {
+        if (!pendingByUser.has(img.userId)) pendingByUser.set(img.userId, img);
       }
 
-      const [instituteUsers, total] = await queryBuilder.getManyAndCount();
+      // ── Source B: first-time submitters (pending, no approved URL yet) ────────
+      const sourceBUserIds = Array.from(pendingByUser.keys()).filter(id => !sourceAUserIds.includes(id));
+      let sourceBUsers: typeof sourceAUsers = [];
+      if (sourceBUserIds.length > 0) {
+        sourceBUsers = await this.instituteUserRepository
+          .createQueryBuilder('iu')
+          .leftJoinAndSelect('iu.user', 'user')
+          .where('iu.instituteId = :instituteId', { instituteId })
+          .andWhere('iu.userId IN (:...userIds)', { userIds: sourceBUserIds })
+          .getMany();
+      }
 
-      const data = instituteUsers.map(iu => ({
-        ...new SecureUserResponseDto(iu.user),
-        userId: iu.userId,
-        instituteUserImageUrl: iu.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(iu.instituteUserImageUrl) : null,
-        instituteCardId: iu.instituteCardId,
-        imageVerificationStatus: iu.imageVerificationStatus,
-        imageVerifiedBy: iu.imageVerifiedBy
-      }));
+      let allUsers = [...sourceAUsers, ...sourceBUsers];
+
+      // ── Apply isVerified filter ───────────────────────────────────────────────
+      if (query.isVerified !== undefined) {
+        const isVerified = query.isVerified === 'true';
+        allUsers = allUsers.filter(iu => {
+          const hasPending = pendingByUser.has(iu.userId);
+          if (isVerified) {
+            // Verified = has approved image, no pending submission
+            return !hasPending && iu.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
+          } else {
+            // Unverified = has pending submission OR legacy PENDING status on institute_user
+            return hasPending || iu.imageVerificationStatus === ImageVerificationStatus.PENDING;
+          }
+        });
+      }
+
+      // ── Sort: PENDING first, REJECTED next, VERIFIED last ────────────────────
+      allUsers.sort((a, b) => {
+        const rank = (iu: typeof a) => {
+          if (pendingByUser.has(iu.userId)) return 0;
+          if (iu.imageVerificationStatus === ImageVerificationStatus.REJECTED) return 1;
+          if (iu.imageVerificationStatus === ImageVerificationStatus.VERIFIED) return 2;
+          return 0;
+        };
+        return rank(a) - rank(b);
+      });
+
+      const total = allUsers.length;
+      const paginated = allUsers.slice(offset, offset + limit);
+
+      const data = paginated.map(iu => {
+        const pendingImg = pendingByUser.get(iu.userId);
+        const approvedUrl = iu.instituteUserImageUrl ?? null;
+        const displayUrl = pendingImg?.imageUrl ?? approvedUrl;
+        const effectiveStatus = pendingImg
+          ? ImageVerificationStatus.PENDING
+          : (iu.imageVerificationStatus ?? ImageVerificationStatus.PENDING);
+        return {
+          ...new SecureUserResponseDto(iu.user),
+          userId: iu.userId,
+          // Image to review (pending submission if exists, else current approved)
+          instituteUserImageUrl: displayUrl ? this.cloudStorageService.getFullUrl(displayUrl) : null,
+          // Currently live approved image (for comparison)
+          approvedInstituteImageUrl: approvedUrl ? this.cloudStorageService.getFullUrl(approvedUrl) : null,
+          pendingImageId: pendingImg?.id ?? null,
+          instituteCardId: iu.instituteCardId,
+          imageVerificationStatus: effectiveStatus,
+          imageVerifiedBy: iu.imageVerifiedBy,
+        };
+      });
 
       return {
         data,
@@ -3548,8 +3615,8 @@ export class InstitueUserService {
   }
 
   /**
-   * Get institute users with uploaded images that are still unverified
-   * Specifically for admin review - shows only users who have images but haven't been verified yet
+   * Get institute users with uploaded images that are still unverified.
+   * Dual-source: new-flow (user_images PENDING) + legacy (institute_user PENDING).
    */
   async getUnverifiedUsersWithImages(
     instituteId: string,
@@ -3560,35 +3627,96 @@ export class InstitueUserService {
       const limit = Math.min(parseInt(query.limit || '10'), 100);
       const offset = (page - 1) * limit;
 
-      const queryBuilder = this.instituteUserRepository
+      // ── Source 1 (new-flow): user_images with PENDING status ─────────────────
+      const pendingImages = await this.userImageRepository
+        .createQueryBuilder('ui')
+        .where('ui.instituteId = :instituteId', { instituteId })
+        .andWhere('ui.scope = :scope', { scope: ImageScope.INSTITUTE })
+        .andWhere('ui.status = :status', { status: ImageVerificationStatus.PENDING })
+        .orderBy('ui.createdAt', 'DESC')
+        .getMany();
+
+      // Latest pending image per userId
+      const pendingByUser = new Map<string, UserImageEntity>();
+      for (const img of pendingImages) {
+        if (!pendingByUser.has(img.userId)) pendingByUser.set(img.userId, img);
+      }
+      const newFlowUserIds = Array.from(pendingByUser.keys());
+
+      // Load institute_user rows for new-flow users
+      let newFlowInstituteUsers: Awaited<ReturnType<typeof this.instituteUserRepository.createQueryBuilder>>[] = [];
+      let newFlowIURows: any[] = [];
+      if (newFlowUserIds.length > 0) {
+        newFlowIURows = await this.instituteUserRepository
+          .createQueryBuilder('iu')
+          .leftJoinAndSelect('iu.user', 'user')
+          .where('iu.instituteId = :instituteId', { instituteId })
+          .andWhere('iu.userId IN (:...userIds)', { userIds: newFlowUserIds })
+          .getMany();
+      }
+
+      // ── Source 2 (legacy): institute_user PENDING, imageUrl set, NOT in new-flow ─
+      const legacyQB = this.instituteUserRepository
         .createQueryBuilder('iu')
         .leftJoinAndSelect('iu.user', 'user')
         .where('iu.instituteId = :instituteId', { instituteId })
-        .andWhere('iu.instituteUserImageUrl IS NOT NULL') // Has uploaded image
-        .andWhere('iu.imageVerificationStatus = :status', { status: ImageVerificationStatus.PENDING }) // Not yet verified
-        .orderBy('iu.createdAt', 'DESC') // Show newest first
-        .skip(offset)
-        .take(limit);
+        .andWhere('iu.instituteUserImageUrl IS NOT NULL')
+        .andWhere('iu.imageVerificationStatus = :status', { status: ImageVerificationStatus.PENDING });
+      if (newFlowUserIds.length > 0) {
+        legacyQB.andWhere('iu.userId NOT IN (:...excludeIds)', { excludeIds: newFlowUserIds });
+      }
+      const legacyIURows = await legacyQB.getMany();
+
+      // ── Merge ─────────────────────────────────────────────────────────────────
+      type Row = { iu: any; pendingImg: UserImageEntity | null; isLegacy: boolean };
+      let combined: Row[] = [
+        ...newFlowIURows.map(iu => ({ iu, pendingImg: pendingByUser.get(iu.userId) ?? null, isLegacy: false })),
+        ...legacyIURows.map(iu => ({ iu, pendingImg: null, isLegacy: true })),
+      ];
 
       // Optional search by user name or email
       if (query.search) {
-        queryBuilder.andWhere(
-          '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search)',
-          { search: `%${query.search}%` }
-        );
+        const s = query.search.toLowerCase();
+        combined = combined.filter(({ iu }) => {
+          const u = iu.user;
+          return (
+            u?.firstName?.toLowerCase().includes(s) ||
+            u?.lastName?.toLowerCase().includes(s) ||
+            u?.email?.toLowerCase().includes(s)
+          );
+        });
       }
 
-      const [instituteUsers, total] = await queryBuilder.getManyAndCount();
+      // Sort newest first (by pending image creation or institute_user update time)
+      combined.sort((a, b) => {
+        const aDate = a.pendingImg?.createdAt ?? a.iu.updatedAt ?? a.iu.createdAt;
+        const bDate = b.pendingImg?.createdAt ?? b.iu.updatedAt ?? b.iu.createdAt;
+        return new Date(bDate as any).getTime() - new Date(aDate as any).getTime();
+      });
 
-      const data = instituteUsers.map(iu => ({
-        ...new SecureUserResponseDto(iu.user),
-        userId: iu.userId,
-        instituteUserImageUrl: iu.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(iu.instituteUserImageUrl) : null,
-        instituteCardId: iu.instituteCardId,
-        imageVerificationStatus: iu.imageVerificationStatus,
-        imageVerifiedBy: iu.imageVerifiedBy,
-        userIdByInstitute: iu.userIdByInstitute
-      }));
+      const total = combined.length;
+      const paginated = combined.slice(offset, offset + limit);
+
+      const data = paginated.map(({ iu, pendingImg, isLegacy }) => {
+        // For new-flow: approved URL is institute_user.instituteUserImageUrl (may be null for first-timers)
+        // For legacy: there is no separate approved URL; the pending image IS the institute_user URL
+        const approvedUrl = isLegacy ? null : (iu.instituteUserImageUrl ?? null);
+        const displayUrl = pendingImg?.imageUrl ?? iu.instituteUserImageUrl ?? null;
+        return {
+          ...new SecureUserResponseDto(iu.user),
+          userId: iu.userId,
+          // Image admin needs to review
+          instituteUserImageUrl: displayUrl ? this.cloudStorageService.getFullUrl(displayUrl) : null,
+          // Current live approved image (for new-flow users only)
+          approvedInstituteImageUrl: approvedUrl ? this.cloudStorageService.getFullUrl(approvedUrl) : null,
+          pendingImageId: pendingImg?.id ?? null,
+          isLegacy,
+          instituteCardId: iu.instituteCardId,
+          imageVerificationStatus: ImageVerificationStatus.PENDING,
+          imageVerifiedBy: iu.imageVerifiedBy,
+          userIdByInstitute: iu.userIdByInstitute,
+        };
+      });
 
       return {
         data,
@@ -3605,18 +3733,36 @@ export class InstitueUserService {
   }
 
   /**
-   * Get count of unverified users with images for dashboard stats
+   * Get count of unverified users with images for dashboard stats.
+   * Dual-source: new-flow (user_images PENDING) + legacy (institute_user PENDING).
    */
   async getUnverifiedUsersWithImagesCount(instituteId: string): Promise<number> {
     try {
-      const count = await this.instituteUserRepository
+      // New-flow count: distinct userIds in user_images PENDING for this institute
+      const newFlowRows = await this.userImageRepository
+        .createQueryBuilder('ui')
+        .select('ui.userId', 'userId')
+        .where('ui.instituteId = :instituteId', { instituteId })
+        .andWhere('ui.scope = :scope', { scope: ImageScope.INSTITUTE })
+        .andWhere('ui.status = :status', { status: ImageVerificationStatus.PENDING })
+        .distinct(true)
+        .getRawMany();
+
+      const newFlowUserIds: string[] = newFlowRows.map((r: any) => r.userId);
+      const newFlowCount = newFlowUserIds.length;
+
+      // Legacy count: institute_user PENDING with imageUrl, NOT in new-flow
+      const legacyQB = this.instituteUserRepository
         .createQueryBuilder('iu')
         .where('iu.instituteId = :instituteId', { instituteId })
-        .andWhere('iu.instituteUserImageUrl IS NOT NULL') // Has uploaded image
-        .andWhere('iu.imageVerificationStatus = :status', { status: ImageVerificationStatus.PENDING }) // Not yet verified
-        .getCount();
+        .andWhere('iu.instituteUserImageUrl IS NOT NULL')
+        .andWhere('iu.imageVerificationStatus = :status', { status: ImageVerificationStatus.PENDING });
+      if (newFlowUserIds.length > 0) {
+        legacyQB.andWhere('iu.userId NOT IN (:...excludeIds)', { excludeIds: newFlowUserIds });
+      }
+      const legacyCount = await legacyQB.getCount();
 
-      return count;
+      return newFlowCount + legacyCount;
     } catch (error) {
       throw new InternalServerErrorException(`Failed to get unverified users count: ${error.message}`);
     }
