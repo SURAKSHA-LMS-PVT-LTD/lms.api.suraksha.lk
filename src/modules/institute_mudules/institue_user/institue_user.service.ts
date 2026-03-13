@@ -3390,14 +3390,25 @@ export class InstitueUserService {
         order: { createdAt: 'DESC' },
       });
 
-      if (!pendingImage) {
-        throw new BadRequestException('No pending image found to verify');
+      // Legacy path: image was assigned directly to institute_user without going through
+      // the user_images submission flow (e.g. admin-assigned, imported, or pre-migration).
+      const isLegacy = !pendingImage;
+
+      if (isLegacy) {
+        // Must still have an image URL on the institute_user row to act on
+        if (!instituteUser.instituteUserImageUrl) {
+          throw new BadRequestException('No pending image found to verify');
+        }
       }
+
+      const imageUrlToProcess = isLegacy
+        ? instituteUser.instituteUserImageUrl
+        : pendingImage!.imageUrl;
 
       // If rejecting, delete the submitted (pending) file from cloud storage
       if (verifyImageDto.status === ImageVerificationStatus.REJECTED) {
         try {
-          await this.cloudStorageService.deleteFile(pendingImage.imageUrl);
+          await this.cloudStorageService.deleteFile(imageUrlToProcess);
         } catch (deleteError) {
           // Continue with verification even if deletion fails
         }
@@ -3405,26 +3416,36 @@ export class InstitueUserService {
 
       // institute_user update:
       // VERIFIED → promote pending image URL as the active institute image
-      // REJECTED → do NOT touch institute_user at all; old approved image + status stays intact
+      // REJECTED → clear the image URL (file deleted above); old status updated
       if (verifyImageDto.status === ImageVerificationStatus.VERIFIED) {
         await this.instituteUserRepository.update(
           { instituteId, userId },
           {
-            instituteUserImageUrl: pendingImage.imageUrl,
+            instituteUserImageUrl: imageUrlToProcess,
             imageVerificationStatus: ImageVerificationStatus.VERIFIED,
             imageVerifiedBy: verifierId,
           },
         );
+      } else if (verifyImageDto.status === ImageVerificationStatus.REJECTED) {
+        await this.instituteUserRepository.update(
+          { instituteId, userId },
+          {
+            instituteUserImageUrl: null,
+            imageVerificationStatus: ImageVerificationStatus.REJECTED,
+            imageVerifiedBy: verifierId,
+          },
+        );
       }
-      // (REJECTED: institute_user row unchanged — previous approved image remains active)
 
-      // Mirror the decision into the user_images table
-      await this.userImageRepository.update(pendingImage.id, {
-        status: verifyImageDto.status,
-        verifiedBy: verifierId,
-        verifiedAt: new Date(),
-        rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
-      });
+      // Mirror the decision into the user_images table (skip for legacy — no row exists)
+      if (!isLegacy) {
+        await this.userImageRepository.update(pendingImage!.id, {
+          status: verifyImageDto.status,
+          verifiedBy: verifierId,
+          verifiedAt: new Date(),
+          rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
+        });
+      }
 
       // Sync the user-level verification status so the admin dashboard reflects the result
       await this.userRepository.update(userId, {
