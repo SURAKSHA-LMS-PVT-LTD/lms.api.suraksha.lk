@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+﻿import * as crypto from 'crypto';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { ImageUrlDto, TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, UploadedFile, ClassSerializerInterceptor } from '@nestjs/common';
@@ -620,7 +620,7 @@ export class InstitueClassController {
         studentUserId: verifyDto.studentUserId,
         approved: verifyDto.approve,
         verifiedBy: teacherId,
-        verifiedAt: getCurrentSriLankaTime(),
+        verifiedAt: new Date(), // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
         student: result ? {
           instituteId: result.instituteId,
           classId: result.classId,
@@ -887,7 +887,7 @@ export class InstitueClassController {
           },
           studentUserId: studentUserId,
           removedBy: req.user?.s,
-          removedAt: getCurrentSriLankaTime()
+          removedAt: new Date()
         };
       } else {
         throw new BadRequestException('Failed to remove student from class');

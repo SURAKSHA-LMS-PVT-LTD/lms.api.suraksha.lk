@@ -1189,6 +1189,7 @@ export class AttendanceNotificationService {
       }
       
       return date.toLocaleDateString('en-US', {
+        timeZone: 'UTC', // Time values are stored as Sri Lanka time in UTC slots — read without offset
         year: 'numeric',
         month: 'long',
         day: 'numeric'
@@ -1210,6 +1211,7 @@ export class AttendanceNotificationService {
       // Check if valid date
       if (!isNaN(date.getTime())) {
         return date.toLocaleTimeString('en-US', {
+          timeZone: 'UTC', // Time values are stored as Sri Lanka time in UTC slots — read without offset
           hour: 'numeric',
           minute: '2-digit',
           hour12: true

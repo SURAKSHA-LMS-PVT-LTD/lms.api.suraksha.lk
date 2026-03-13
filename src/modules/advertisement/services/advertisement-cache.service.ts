@@ -198,7 +198,7 @@ export class AdvertisementCacheService {
    * Fetch from database with optimized query
    */
   private async fetchFromDatabase(): Promise<AdvertisementEntity[]> {
-    const currentTime = getCurrentSriLankaTime();
+    const currentTime = new Date();
     
     const ads = await this.advertisementRepository
       .createQueryBuilder('ad')

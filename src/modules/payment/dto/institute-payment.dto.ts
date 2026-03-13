@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsBoolean, IsInt, Min, Max, ValidateNested, Length, Matches, IsEmail, IsUrl, MaxLength } from 'class-validator';
+﻿import { IsNotEmpty, IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsBoolean, IsInt, Min, Max, ValidateNested, Length, Matches, IsEmail, IsUrl, MaxLength } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { PaymentTargetType, PaymentPriority } from '../entities/institute-payment.entity';
 import { PaymentMethodType } from '../entities/institute-payment-submission.entity';
@@ -267,7 +267,7 @@ export class CreateInstitutePaymentSubmissionDto {
       const date = new Date(value);
       if (isNaN(date.getTime())) return value;
       // Ensure payment date is not in future
-      if (date > getCurrentSriLankaTime()) {
+      if (date > new Date()) {
         throw new Error('Payment date cannot be in the future');
       }
       return date.toISOString();

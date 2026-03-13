@@ -1,7 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, Not, IsNull } from 'typeorm';
-import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectHomeworksSubmissionDto } from './dto/create-institute_class_subject_homeworks_submission.dto';
 import { UpdateInstituteClassSubjectHomeworksSubmissionDto } from './dto/update-institute_class_subject_homeworks_submission.dto';
 import { QueryInstituteClassSubjectHomeworksSubmissionDto } from './dto/query-institute_class_subject_homeworks_submission.dto';
@@ -28,11 +27,11 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
   async create(createDto: CreateInstituteClassSubjectHomeworksSubmissionDto): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
     try {
-      const timestamp = getCurrentSriLankaTime();
+      const timestamp = new Date();
       const submissionData = {
         homeworkId: createDto.homeworkId,
         studentId: createDto.studentId,
-        submissionDate: createDto.submissionDate ? new Date(createDto.submissionDate) : getCurrentSriLankaTime(),
+        submissionDate: createDto.submissionDate ? new Date(createDto.submissionDate) : new Date(),
         fileUrl: createDto.fileUrl || '',
         teacherCorrectionFileUrl: createDto.teacherCorrectionFileUrl || '',
         remarks: createDto.remarks || null,
@@ -443,13 +442,13 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
         existingSubmission.fileUrl = submissionData.fileUrl;
         existingSubmission.submissionDate = submissionData.submissionDate;
         existingSubmission.isActive = submissionData.isActive;
-        existingSubmission.updatedAt = getCurrentSriLankaTime();
+        existingSubmission.updatedAt = new Date();
 
         const updatedSubmission = await this.submissionRepository.save(existingSubmission);
         return await InstituteClassSubjectHomeworksSubmissionResponseDto.fromEntity(updatedSubmission, this.cloudStorageService);
       } else {
         // Create new submission
-        const timestamp = getCurrentSriLankaTime();
+        const timestamp = new Date();
         const newSubmission = this.submissionRepository.create({
           homeworkId: submissionData.homeworkId,
           studentId: submissionData.studentId,
@@ -566,7 +565,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
 
     try {
       const updateData: any = {
-        updatedAt: getCurrentSriLankaTime()
+        updatedAt: new Date()
       };
 
       if (reviewData.remarks !== undefined) {
@@ -651,7 +650,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
     }
 
     // Create submission record
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date();
     const submission = this.submissionRepository.create({
       homeworkId,
       studentId,
@@ -720,7 +719,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       );
     }
 
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date();
     const correctionDriveViewUrl = `https://drive.google.com/file/d/${driveFileId}/view`;
 
     // Update submission with Drive correction fields
@@ -787,7 +786,7 @@ export class InstituteClassSubjectHomeworksSubmissionsService {
       shareWithEmails: shareWithStudentEmail ? [shareWithStudentEmail] : undefined,
     });
 
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date();
     const correctionDriveViewUrl = registeredFile.driveWebViewLink || `https://drive.google.com/file/d/${driveFileId}/view`;
 
     await this.submissionRepository.update(submissionId, {

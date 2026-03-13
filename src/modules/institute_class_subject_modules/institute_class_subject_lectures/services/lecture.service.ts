@@ -1,6 +1,5 @@
-import { Injectable, ConflictException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+﻿import { Injectable, ConflictException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { LectureRepository } from '../repositories/lecture.repository';
-import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 import { 
   ILectureService,
   ILectureCriteria,
@@ -215,8 +214,8 @@ export class LectureService implements ILectureService {
     criteria: Partial<ILectureCriteria>,
     days: number = 7,
   ): Promise<InstituteClassSubjectLecture[]> {
-    const startDate = getCurrentSriLankaTime();
-    const endDate = getCurrentSriLankaTime();
+    const startDate = new Date();
+    const endDate = new Date();
     endDate.setDate(endDate.getDate() + days);
 
     return await this.repository.findByDateRange(startDate, endDate, {
@@ -242,7 +241,7 @@ export class LectureService implements ILectureService {
   private validateTimeSlot(startTime: Date, endTime: Date): void {
     const start = new Date(startTime);
     const end = new Date(endTime);
-    const now = getCurrentSriLankaTime();
+    const now = new Date();
 
     if (start >= end) {
       throw new BadRequestException(LECTURE_CONSTANTS.ERRORS.INVALID_TIME_SLOT);
@@ -278,7 +277,7 @@ export class LectureService implements ILectureService {
   }
 
   private validateLectureModification(lecture: InstituteClassSubjectLecture): void {
-    const now = getCurrentSriLankaTime();
+    const now = new Date();
     const lectureStart = new Date(lecture.startTime);
     const cutoffTime = new Date(lectureStart.getTime() - (LECTURE_CONSTANTS.TIME_CONSTRAINTS.MODIFICATION_CUTOFF * 60 * 1000));
 

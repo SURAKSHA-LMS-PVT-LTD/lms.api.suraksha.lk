@@ -20,6 +20,7 @@ export function getImageRejectionEmailTemplate(data: ImageRejectionEmailData): {
 
   const expiryDate = new Date(expiresAt);
   const formattedExpiry = expiryDate.toLocaleString('en-US', {
+    timeZone: 'UTC', // Dates are stored as Sri Lanka time in UTC slots — read without offset
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -194,6 +195,7 @@ export function getImageApprovalEmailTemplate(data: ImageApprovalEmailData): {
   const { userName, approvedAt, dashboardUrl = 'https://lms.suraksha.lk/dashboard' } = data;
 
   const approvalDate = new Date(approvedAt).toLocaleString('en-US', {
+    timeZone: 'UTC', // Dates are stored as Sri Lanka time in UTC slots — read without offset
     weekday: 'long',
     year: 'numeric',
     month: 'long',

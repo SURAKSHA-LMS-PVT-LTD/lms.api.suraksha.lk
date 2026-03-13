@@ -1,4 +1,4 @@
-// NestJS Core
+﻿// NestJS Core
 import { Injectable, NotFoundException, ConflictException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -11,7 +11,6 @@ import { UserEntity } from '../user/entities/user.entity';
 // Services
 import { UsersService } from '../user/user.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
-import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 // DTOs
 import { CreateParentDto } from './dto/create-parent.dto';
@@ -90,13 +89,13 @@ export class ParentsService {
       const savedUser = {
         id: userResponse.id,
         ...userDataWithNullFields,
-        createdAt: getCurrentSriLankaTime(),
-        updatedAt: getCurrentSriLankaTime()
+        createdAt: new Date(), // real UTC
+        updatedAt: new Date()  // real UTC
       };
 
       // Create parent with user relation
       const { user, ...parentData } = createParentDto;
-      const timestamp = getCurrentSriLankaTime();
+      const timestamp = new Date();
       const parentEntity = this.parentRepository.create({ 
         ...parentData, 
         userId: savedUser.id,
@@ -263,13 +262,13 @@ export class ParentsService {
     const savedUser = {
       id: userResponse.id,
       ...userDataWithNullFields,
-      createdAt: getCurrentSriLankaTime(),
-      updatedAt: getCurrentSriLankaTime()
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
     // Create parent
     const { user, ...parentData } = createParentDto;
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date();
     const parentEntity = this.parentRepository.create({ 
       ...parentData, 
       userId: savedUser.id,
@@ -455,11 +454,11 @@ export class ParentsService {
 
       // 🚀 ULTRA-OPTIMIZED: Build response from existing data instead of unnecessary SELECT
       // Create updated parent with current data + updates
-      const updatedParentEntity = Object.assign({}, parent, parentUpdateData, { updatedAt: getCurrentSriLankaTime() });
+      const updatedParentEntity = Object.assign({}, parent, parentUpdateData, { updatedAt: new Date() });
       
       // Update user entity if user data was provided
       if (updateParentDto.user) {
-        Object.assign(updatedParentEntity.user, updateParentDto.user, { updatedAt: getCurrentSriLankaTime() });
+        Object.assign(updatedParentEntity.user, updateParentDto.user, { updatedAt: new Date() });
       }
 
       return this.mapToResponseDto(updatedParentEntity);
@@ -507,13 +506,13 @@ export class ParentsService {
       // 🚀 ULTRA-OPTIMIZED: Build response from existing data instead of unnecessary SELECT
       const deactivatedParent = Object.assign({}, parent, { 
         isActive: false, 
-        updatedAt: getCurrentSriLankaTime() 
+        updatedAt: new Date() 
       });
       
       // Update user active status
       Object.assign(deactivatedParent.user, { 
         isActive: false, 
-        updatedAt: getCurrentSriLankaTime() 
+        updatedAt: new Date() 
       });
 
       return this.mapToResponseDto(deactivatedParent);

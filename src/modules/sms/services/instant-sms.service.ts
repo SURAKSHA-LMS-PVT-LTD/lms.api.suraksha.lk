@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -9,7 +9,6 @@ import { SendSingleSmsDto, SendInstantBulkSmsDto, InstantSmsResponseDto, CreditB
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { SenderMaskValidationService } from './sender-mask-validation.service';
-import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 /**
  * Simplified SMS Service
@@ -66,7 +65,7 @@ export class InstantSmsService {
       await this.deductCredits(dto.instituteId, this.costPerMessage);
 
       // Create campaign record with validated mask
-      const timestamp = getCurrentSriLankaTime();
+      const timestamp = new Date();
       const campaign = this.campaignRepository.create({
         instituteId: dto.instituteId,
         senderId: validatedMask.maskId, // Use validated mask ID
@@ -132,7 +131,7 @@ export class InstantSmsService {
       await this.deductCredits(dto.instituteId, requiredCredits);
 
       // Create campaign record with validated mask
-      const timestamp = getCurrentSriLankaTime();
+      const timestamp = new Date();
       const campaign = this.campaignRepository.create({
         instituteId: dto.instituteId,
         senderId: validatedMask.maskId, // Use validated mask ID
@@ -325,7 +324,7 @@ export class InstantSmsService {
           successfulSends: 1,
           providerCampaignId: response.data?.campaignId?.toString(),
           providerResponse: response,
-          sentAt: getCurrentSriLankaTime(),
+          sentAt: new Date(),
         });
       } else {
         await this.campaignRepository.update(campaignId, {
@@ -372,7 +371,7 @@ export class InstantSmsService {
           successfulSends: phoneNumbers.length,
           providerCampaignId: response.data?.campaignId?.toString(),
           providerResponse: response,
-          sentAt: getCurrentSriLankaTime(),
+          sentAt: new Date(),
         });
       } else {
         await this.campaignRepository.update(campaignId, {
@@ -400,7 +399,7 @@ export class InstantSmsService {
 
     if (!credit) {
       // Initialize credit account if it doesn't exist
-      const timestamp = getCurrentSriLankaTime();
+      const timestamp = new Date();
       const newCredit = this.creditRepository.create({
         instituteId,
         balance: 0,
@@ -440,7 +439,7 @@ export class InstantSmsService {
       let credit = await queryRunner.manager.findOne(SmsCreditEntity, { where: { instituteId } });
 
       if (!credit) {
-        const timestamp = getCurrentSriLankaTime();
+        const timestamp = new Date();
         credit = queryRunner.manager.create(SmsCreditEntity, {
           instituteId,
           balance: 0,
@@ -454,7 +453,7 @@ export class InstantSmsService {
       credit.balance = Number(credit.balance) + amount;
       credit.totalPurchased = Number(credit.totalPurchased) + amount;
       credit.lastTopupAmount = amount;
-      credit.lastTopupAt = getCurrentSriLankaTime();
+      credit.lastTopupAt = new Date();
 
       await queryRunner.manager.save(credit);
       await queryRunner.commitTransaction();

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * System Admin User Service
  * 
  * Provides APIs for system administrators to:
@@ -1132,7 +1132,7 @@ export class SystemAdminUserService {
    * Uses crypto.randomInt for collision-resistant IDs
    */
   private generateStudentId(): string {
-    const year = getCurrentSriLankaTime().getFullYear();
+    const year = new Date().getFullYear();
     const random = crypto.randomInt(0, 10000000).toString().padStart(7, '0');
     return `STU-${year}-${random}`;
   }
@@ -1151,7 +1151,7 @@ export class SystemAdminUserService {
     }
     // Fallback with timestamp for guaranteed uniqueness (must fit VARCHAR(20))
     const ts = Date.now().toString(36).slice(-7);
-    return `STU-${getCurrentSriLankaTime().getFullYear()}-${ts}`;
+    return `STU-${new Date().getFullYear()}-${ts}`;
   }
 
   /**
@@ -1160,7 +1160,7 @@ export class SystemAdminUserService {
    * Uses cryptographically secure random
    */
   private generateCardId(): string {
-    const year = getCurrentSriLankaTime().getFullYear();
+    const year = new Date().getFullYear();
     const random = crypto.randomInt(0, 10000000).toString().padStart(7, '0');
     return `CARD-${year}-${random}`;
   }
@@ -1178,7 +1178,7 @@ export class SystemAdminUserService {
     }
     // Fallback with timestamp for guaranteed uniqueness
     const ts = Date.now().toString(36);
-    return `CARD-${getCurrentSriLankaTime().getFullYear()}-${ts}`;
+    return `CARD-${new Date().getFullYear()}-${ts}`;
   }
 
   /**
@@ -1612,7 +1612,7 @@ export class SystemAdminUserService {
       throw new BadRequestException('User has no image to approve');
     }
 
-    const approvedAt = getCurrentSriLankaTime();
+    const approvedAt = new Date();
 
     // ✅ Generate card ID if not exists + set ACTIVE status + 2-year expiry
     let cardGenerated = false;
@@ -1748,7 +1748,7 @@ export class SystemAdminUserService {
       imageUrl: null,
       imageVerificationStatus: ImageVerificationStatus.REJECTED,
       imageVerifiedBy: adminId,
-      imageVerifiedAt: getCurrentSriLankaTime(),
+      imageVerifiedAt: new Date(),
       imageRejectionReason: rejectionReason,
       updatedAt: now()
     });
@@ -1792,7 +1792,7 @@ export class SystemAdminUserService {
           templateData: {
             USER_NAME: user.nameWithInitials || user.firstName || 'User',
             MESSAGE_TITLE: '🔔 Profile Image Update Required',
-            MESSAGE_BODY: `We've reviewed your profile image submission and unfortunately it doesn't meet our guidelines at this time.\n\nRejection Reason:\n${rejectionReason}\n\n📋 Image Guidelines:\n✓ Clear, well-lit photo showing your face\n✓ Professional or neutral background\n✓ No filters, sunglasses, or face coverings\n✓ Minimum resolution: 400x400px\n\nThis link expires on: ${expiresAt.toLocaleString()}`,
+            MESSAGE_BODY: `We've reviewed your profile image submission and unfortunately it doesn't meet our guidelines at this time.\n\nRejection Reason:\n${rejectionReason}\n\n📋 Image Guidelines:\n✓ Clear, well-lit photo showing your face\n✓ Professional or neutral background\n✓ No filters, sunglasses, or face coverings\n✓ Minimum resolution: 400x400px\n\nThis link expires on: ${expiresAt.toLocaleString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
             ACTION_URL: frontendUploadUrl,
             ACTION_TEXT: 'Upload New Image',
             FOOTER_TEXT: 'Need help? Contact us: support@suraksha.lk'

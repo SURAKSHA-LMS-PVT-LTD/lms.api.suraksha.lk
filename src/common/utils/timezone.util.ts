@@ -170,18 +170,19 @@ export function now(): Date {
 }
 
 /**
- * Get Date.now() equivalent in Sri Lanka timezone
+ * Get current Unix timestamp in milliseconds (real UTC).
+ * Equivalent to Date.now() — use this for all time math, JWT iat, and duration calculations.
  */
 export function nowTimestamp(): number {
-  return getCurrentSriLankaTime().getTime();
+  return Date.now();
 }
 
 /**
- * Calculate expiry date from current Sri Lanka time
- * @param years - Number of years to add
+ * Calculate expiry date N years from now (real UTC).
+ * MySQL2 timezone:'+05:30' handles the UTC→SriLanka conversion on write.
  */
 export function getExpiryDate(years: number): Date {
-  const currentDate = getCurrentSriLankaTime();
+  const currentDate = new Date();
   currentDate.setFullYear(currentDate.getFullYear() + years);
   return currentDate;
 }
@@ -221,7 +222,7 @@ export function logTimezoneInfo(): void {
   console.log('🌍 Timezone Information:');
   console.log(`   - Timezone: ${TIMEZONE.name}`);
   console.log(`   - Offset: UTC${TIMEZONE.offset}`);
-  console.log(`   - Current Sri Lanka Time: ${now.toISOString().replace('T', ' ').substring(0, 19)} (${formatSriLankaTime(now)})`);
+  console.log(`   - Current Sri Lanka Time: ${now.toISOString().replace('T', ' ').substring(0, 19)} (${formatSriLankaTime(utcNow)})`); // utcNow = real UTC; formatSriLankaTime applies Asia/Colombo correctly
   console.log(`   - Current UTC Time: ${utcNow.toISOString().replace('T', ' ').substring(0, 19)}`);
   console.log(`   - Current Date: ${getCurrentSriLankaDate()}`);
   console.log(`   - System TZ Variable: ${process.env.TZ || 'not set'}`);

@@ -402,7 +402,7 @@ export class AdvertisementMatchingService {
    * Check if advertisement is currently active
    */
   private isAdvertisementActive(advertisement: AdvertisementEntity): boolean {
-    const now = getCurrentSriLankaTime();
+    const now = new Date(); // real UTC for correct comparison with DB-stored dates
     return advertisement.isActive && 
            now >= advertisement.startDate && 
            now <= advertisement.endDate &&

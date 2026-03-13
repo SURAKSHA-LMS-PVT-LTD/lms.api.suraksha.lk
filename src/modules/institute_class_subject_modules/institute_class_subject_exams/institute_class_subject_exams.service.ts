@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
@@ -70,7 +70,7 @@ export class InstituteClassSubjectExamsService {
         throw new BadRequestException('Start time must be before end time');
       }
 
-      if (examDate < getCurrentSriLankaTime()) {
+      if (examDate < new Date()) {
         throw new BadRequestException('Exam date cannot be in the past');
       }
 
@@ -668,7 +668,7 @@ export class InstituteClassSubjectExamsService {
         .addSelect(['subject.id', 'subject.name', 'subject.code'])
         .leftJoin('exam.creator', 'creator')
         .addSelect(['creator.id', 'creator.firstName', 'creator.lastName', 'creator.nameWithInitials', 'creator.email', 'creator.imageUrl'])
-        .where('exam.scheduleDate >= :now', { now: getCurrentSriLankaTime() })
+        .where('exam.scheduleDate >= :now', { now: new Date() })
         .andWhere('exam.isActive = :isActive', { isActive: true })
         .andWhere('exam.status IN (:...statuses)', { statuses: ['scheduled', 'active'] });
 

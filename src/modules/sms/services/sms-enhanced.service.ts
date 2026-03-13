@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -433,7 +433,7 @@ export class SmsEnhancedService {
     try {
       // Record when API call was initiated
       await this.messageRepo.update(campaignId, {
-        sentAt: getCurrentSriLankaTime()
+        sentAt: new Date()
       });
 
       // Call SMS Lenz API
@@ -460,7 +460,7 @@ export class SmsEnhancedService {
         status: finalStatus,
         successfulSends: result.totalSent,
         failedSends: result.totalFailed,
-        completedAt: getCurrentSriLankaTime(),
+        completedAt: new Date(),
         deliveryReport: {
           delivered: result.totalSent,
           failed: result.totalFailed,
@@ -481,7 +481,7 @@ export class SmsEnhancedService {
         status: SmsMessageStatus.FAILED,
         errorMessage: error.message,
         failedSends: phoneNumbers.length,
-        completedAt: getCurrentSriLankaTime()
+        completedAt: new Date()
       });
     }
   }
@@ -587,7 +587,7 @@ export class SmsEnhancedService {
     // Update campaign status to APPROVED (admin approved, ready to send)
     campaign.status = SmsMessageStatus.APPROVED;
     campaign.approvedBy = adminId;
-    campaign.approvedAt = getCurrentSriLankaTime();
+    campaign.approvedAt = new Date();
     campaign.creditsUsed = totalCost;
     await this.messageRepo.save(campaign);
 
@@ -635,7 +635,7 @@ export class SmsEnhancedService {
     campaign.status = SmsMessageStatus.REJECTED;
     campaign.rejectionReason = rejectionReason;
     campaign.approvedBy = adminId;  // Track who rejected
-    campaign.approvedAt = getCurrentSriLankaTime();
+    campaign.approvedAt = new Date();
     await this.messageRepo.save(campaign);
 
 

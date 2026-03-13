@@ -1,11 +1,10 @@
-import { Entity, Column, PrimaryGeneratedColumn,  Index, AfterLoad, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+﻿import { Entity, Column, PrimaryGeneratedColumn,  Index, AfterLoad, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { UserType } from '../../user/enums/user-type.enum';
 import { Gender } from '../../user/enums/gender.enum';
 import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
 import { Province } from '../../user/enums/province.enum';
 import { District } from '../../user/enums/district.enum';
 import { Occupation } from '../../user/enums/occupation.enum';
-import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 
 export enum MediaType {
   IMAGE = 'image',
@@ -208,11 +207,11 @@ export class AdvertisementEntity {
 
   // Helper methods
   isExpired(): boolean {
-    return getCurrentSriLankaTime() > this.endDate;
+    return new Date() > this.endDate;
   }
 
   isCurrentlyActive(): boolean {
-    const now = getCurrentSriLankaTime();
+    const now = new Date();
     return this.isActive && 
            now >= this.startDate && 
            now <= this.endDate &&

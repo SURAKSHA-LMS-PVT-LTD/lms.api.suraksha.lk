@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { AdvertisementEntity, MediaType } from './entities/advertisement.entity';
@@ -7,7 +7,7 @@ import { Gender } from '../user/enums/gender.enum';
 import { SubscriptionPlan } from '../user/enums/subscription-plan.enum';
 import { AdvertisementResponseDto, AdvertisementListResponseDto, CreateAdvertisementDto } from './dto/advertisement.dto';
 import { ManualAdvertisementSendDto, BulkManualAdvertisementSendDto, ManualSendResponseDto, ManualSendTargetType } from './dto/manual-advertisement.dto';
-import { getCurrentSriLankaTime, getCurrentSriLankaDate, getCurrentSriLankaISO, formatSriLankaTime } from '../../common/utils/timezone.util';
+import { getCurrentSriLankaDate, getCurrentSriLankaISO, formatSriLankaTime } from '../../common/utils/timezone.util';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
@@ -69,7 +69,7 @@ export class AdvertisementService {
 
   async findActive(): Promise<AdvertisementEntity[]> {
     try {
-      const currentTime = getCurrentSriLankaTime();
+      const currentTime = new Date();
       return await this.advertisementRepository
         .createQueryBuilder('ad')
         .select([
@@ -579,7 +579,7 @@ export class AdvertisementService {
             parentTelegramId: user.telegramId || null,
             attendanceStatus: 'PRESENT' as 'PRESENT' | 'ABSENT',
             date: getCurrentSriLankaDate(),
-            time: formatSriLankaTime(getCurrentSriLankaTime()),
+            time: formatSriLankaTime(new Date()), // new Date() = real UTC; formatSriLankaTime applies Asia/Colombo correctly
             vehicleNumber: null,
             bookhireName: null,
             subscriptionPlan: user.subscriptionPlan || 'BASIC',

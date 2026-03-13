@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, Like, Brackets } from 'typeorm';
 import { OrganizationEntity, OrganizationType } from './entities/organization.entity';
@@ -641,7 +641,7 @@ export class OrganizationService {
       // Direct update - will throw if organization doesn't exist
       const result = await this.organizationRepository.update(
         { organizationId },
-        { instituteId, updatedAt: getCurrentSriLankaTime() }
+        { instituteId, updatedAt: new Date() }
       );
 
       if (result.affected === 0) {
@@ -948,7 +948,7 @@ export class OrganizationService {
     }
 
     // Create organization membership with auto-verification using raw SQL to avoid update constraint
-    const now = getCurrentSriLankaTime();
+    const now = new Date();
     await this.organizationUserRepository.query(`
       INSERT INTO org_organization_users 
         (organizationId, userId, role, isVerified, verifiedBy, verifiedAt, createdAt, updatedAt)
@@ -1226,7 +1226,7 @@ export class OrganizationService {
         instituteUserType: finalInstituteUserType as InstituteUserType,
         status: shouldAutoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
         verifiedBy: shouldAutoVerify ? requestingUserId : null,
-        verifiedAt: shouldAutoVerify ? getCurrentSriLankaTime() : null,
+        verifiedAt: shouldAutoVerify ? new Date() : null,
         createdAt: timestamp,
         updatedAt: timestamp
       });
@@ -1388,7 +1388,7 @@ export class OrganizationService {
           instituteUserType: finalInstituteUserType as InstituteUserType,
           status: shouldAutoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
           verifiedBy: shouldAutoVerify ? requestingUserId : null,
-          verifiedAt: shouldAutoVerify ? getCurrentSriLankaTime() : null,
+          verifiedAt: shouldAutoVerify ? new Date() : null,
           createdAt: timestamp,
           updatedAt: timestamp
         });

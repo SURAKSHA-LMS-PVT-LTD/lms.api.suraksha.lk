@@ -1,4 +1,4 @@
-import { 
+﻿import { 
   Injectable, 
   ConflictException, 
   NotFoundException, 
@@ -386,7 +386,7 @@ export class InstitueUserService {
 
     // Apply age filters if provided (all user types)
     if (query.minAge || query.maxAge) {
-      const currentDate = getCurrentSriLankaTime();
+      const currentDate = new Date();
       
       if (query.minAge) {
         const minAge = parseInt(query.minAge);
@@ -2015,7 +2015,7 @@ export class InstitueUserService {
           {
             status: InstituteUserStatus.ACTIVE,
             verifiedBy: safeVerifierId,
-            verifiedAt: getCurrentSriLankaTime()
+            verifiedAt: new Date() // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
           }
         );
 
@@ -2292,13 +2292,13 @@ export class InstitueUserService {
 
       // Filter by age range
       if (query.minAge) {
-        const minDate = getCurrentSriLankaTime();
+        const minDate = new Date();
         minDate.setFullYear(minDate.getFullYear() - parseInt(query.minAge));
         queryBuilder.andWhere('user.dateOfBirth <= :minDate', { minDate });
       }
 
       if (query.maxAge) {
-        const maxDate = getCurrentSriLankaTime();
+        const maxDate = new Date();
         maxDate.setFullYear(maxDate.getFullYear() - parseInt(query.maxAge));
         queryBuilder.andWhere('user.dateOfBirth >= :maxDate', { maxDate });
       }
@@ -3777,7 +3777,7 @@ export class InstitueUserService {
           imageUrl,
           isVerified: imageVerified === ImageVerificationStatus.VERIFIED,
           verifiedBy: imageVerifiedBy,
-          verifiedAt: imageVerified === ImageVerificationStatus.VERIFIED ? getCurrentSriLankaTime() : undefined
+          verifiedAt: imageVerified === ImageVerificationStatus.VERIFIED ? new Date() : undefined // real UTC
         } : undefined
       };
 

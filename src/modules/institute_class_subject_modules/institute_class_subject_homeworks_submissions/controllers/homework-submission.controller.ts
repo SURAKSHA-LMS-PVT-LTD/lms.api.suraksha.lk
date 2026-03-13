@@ -1,6 +1,5 @@
-import { ParseBigIntPipe } from '../../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseBigIntPipe } from '../../../../common/pipes/parse-bigint.pipe';
 import { Controller, Post, BadRequestException, Param, UseGuards, Request, HttpStatus, HttpCode, Body, UseFilters, Get, Patch, Query, ForbiddenException } from '@nestjs/common';
-import { getCurrentSriLankaTime } from '../../../../common/utils/timezone.util';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiConsumes, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../../auth/guards/flexible-access.guard';
@@ -106,7 +105,7 @@ export class HomeworkSubmissionController {
       }
 
       // Check if submission is within allowed time period
-      const now = getCurrentSriLankaTime();
+      const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       if (homework.startDate) {
@@ -129,7 +128,7 @@ export class HomeworkSubmissionController {
         homeworkId,
         studentId,
         fileUrl: body.fileUrl,
-        submissionDate: getCurrentSriLankaTime(),
+        submissionDate: new Date(),
         isActive: true
       });
 
@@ -280,7 +279,7 @@ export class HomeworkSubmissionController {
     return await this.homeworkSubmissionsService.reviewSubmission(submissionId, {
       ...reviewData,
       reviewerId: teacherId,
-      reviewDate: getCurrentSriLankaTime()
+      reviewDate: new Date()
     });
   }
 
@@ -359,7 +358,7 @@ export class HomeworkSubmissionController {
         data: {
           submissionId: updatedSubmission.id,
           correctionFileUrl: publicCorrectionUrl,
-          uploadDate: getCurrentSriLankaTime()
+          uploadDate: new Date()
         }
       };
     } catch (error) {
@@ -482,7 +481,7 @@ export class HomeworkSubmissionController {
           correctionDriveFileName: result.correctionDriveFileName || body.fileName,
           correctionDriveMimeType: result.correctionDriveMimeType || body.mimeType,
           correctionDriveViewUrl: `https://drive.google.com/file/d/${body.driveFileId}/view`,
-          uploadDate: getCurrentSriLankaTime()
+          uploadDate: new Date()
         }
       };
     } catch (error) {

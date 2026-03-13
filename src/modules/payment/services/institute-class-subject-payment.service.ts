@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-subject-payment.entity';
@@ -95,7 +95,7 @@ export class InstituteClassSubjectPaymentService {
     }
 
     // Create payment
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     const payment = this.paymentRepository.create({
       instituteId,
       classId,
@@ -246,7 +246,7 @@ export class InstituteClassSubjectPaymentService {
     }
 
     // Check if last date has passed
-    if (getCurrentSriLankaTime() > payment.lastDate) {
+    if (new Date() > payment.lastDate) {
       throw new BadRequestException({
         success: false,
         message: 'Payment submission deadline has passed',
@@ -297,7 +297,7 @@ export class InstituteClassSubjectPaymentService {
 
     // Create submission - ALWAYS defaults to PENDING status
     // IMPORTANT: Submissions can NEVER be auto-verified - they must be manually verified by humans
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     const submission = this.submissionRepository.create({
       paymentId,
       userId: user.s,
@@ -417,7 +417,7 @@ export class InstituteClassSubjectPaymentService {
     // Update submission
     submission.status = verifyDto.status;
     submission.verifiedBy = user.s;
-    submission.verifiedAt = getCurrentSriLankaTime();
+    submission.verifiedAt = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     submission.rejectionReason = verifyDto.rejectionReason;
     if (verifyDto.notes) {
       submission.notes = verifyDto.notes;
@@ -846,7 +846,7 @@ export class InstituteClassSubjectPaymentService {
         isRejected: submission.status === SubmissionStatus.REJECTED,
         canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
         paymentIsActive: submission.payment.isActive,
-        isOverdue: submission.payment.lastDate < getCurrentSriLankaTime(),
+        isOverdue: submission.payment.lastDate < new Date(),
       },
       
       // User actions available
@@ -980,7 +980,7 @@ export class InstituteClassSubjectPaymentService {
           isRejected: submission.status === SubmissionStatus.REJECTED,
           canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
           paymentIsActive: submission.payment.isActive,
-          isOverdue: submission.payment.lastDate < getCurrentSriLankaTime(),
+          isOverdue: submission.payment.lastDate < new Date(),
           timeline: [
             {
               status: 'Submitted',

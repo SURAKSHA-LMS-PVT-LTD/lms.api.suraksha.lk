@@ -50,7 +50,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { UserNotificationService } from './services/user-notification.service';
 import { UsersService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
-import { nowTimestamp, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
+import { nowTimestamp } from '../../common/utils/timezone.util';
 import { CreateUserComprehensiveDto } from './dto/create-user-comprehensive.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateImageUrlDto } from './dto/update-image-url.dto';
@@ -3121,7 +3121,7 @@ export class UsersController {
           userId: updatedUser.id,
           // ? Transform imageUrl to full URL
           imageUrl: updatedUser.imageUrl ? this.cloudStorageService.getFullUrl(updatedUser.imageUrl) : updatedUser.imageUrl,
-          uploadedAt: getCurrentSriLankaISO()
+          uploadedAt: new Date().toISOString()
         },
         performance: {
           uploadTime: `${uploadTime}ms`,
@@ -3258,7 +3258,7 @@ export class UsersController {
           userId: updatedUser.id,
           // ? Transform imageUrl to full URL
           imageUrl: updatedUser.imageUrl ? this.cloudStorageService.getFullUrl(updatedUser.imageUrl) : updatedUser.imageUrl,
-          updatedAt: getCurrentSriLankaISO()
+          updatedAt: new Date().toISOString()
         }
       };
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not, DataSource } from 'typeorm';
 import { PaymentEntity, PaymentStatus } from '../entities/payment.entity';
@@ -74,7 +74,7 @@ export class PaymentService {
     // No need to validate here as file is now a URL string
 
     // Create payment entity
-    const timestamp = getCurrentSriLankaTime();
+    const timestamp = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     const payment = this.paymentRepository.create({
       userId,
       paymentAmount: createPaymentDto.paymentAmount,
@@ -116,7 +116,7 @@ export class PaymentService {
     // 📧 Send payment submission email notification (fire-and-forget)
     try {
       const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User';
-      const submittedAt = formatSriLankaDateTime(getCurrentSriLankaTime(), { 
+      const submittedAt = formatSriLankaDateTime(new Date(), { // new Date() = real UTC; formatSriLankaDateTime applies Asia/Colombo correctly
         year: 'numeric', 
         month: 'short', 
         day: 'numeric', 
@@ -283,7 +283,7 @@ export class PaymentService {
       await manager.update(PaymentEntity, paymentId, {
         status: newStatus,
         verifiedBy: verifierId,
-        verifiedAt: getCurrentSriLankaTime(),
+        verifiedAt: new Date(), // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
         rejectionReason: verifyPaymentDto.rejectionReason,
         notes: verifyPaymentDto.notes || payment.notes,
       });
@@ -301,7 +301,7 @@ export class PaymentService {
         await manager.update(UserEntity, payment.userId, {
           subscriptionPlan: subscriptionPlan,
           paymentExpiresAt: expirationDate,
-          updatedAt: getCurrentSriLankaTime(),
+          updatedAt: new Date(), // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
         });
 
         // ✅ MANDATORY: Get updated user data after subscription update for cache refresh
@@ -329,7 +329,7 @@ export class PaymentService {
       // 📧 Send email notification based on payment status (fire-and-forget)
       try {
         const userName = `${payment.user.firstName || ''} ${payment.user.lastName || ''}`.trim() || 'User';
-        const verifiedAt = formatSriLankaDateTime(getCurrentSriLankaTime(), { 
+        const verifiedAt = formatSriLankaDateTime(new Date(), { // new Date() = real UTC; formatSriLankaDateTime applies Asia/Colombo correctly
           year: 'numeric', 
           month: 'short', 
           day: 'numeric', 
@@ -403,7 +403,7 @@ export class PaymentService {
     const hasPaidSubscription = user.subscriptionPlan !== 'FREE';
 
     return {
-      isPaid: hasPaidSubscription && (!user.paymentExpiresAt || user.paymentExpiresAt > getCurrentSriLankaTime()),
+      isPaid: hasPaidSubscription && (!user.paymentExpiresAt || user.paymentExpiresAt > new Date()),
       currentMonth,
       paymentExpiresAt: user.paymentExpiresAt,
       subscriptionPlan: user.subscriptionPlan,
@@ -494,7 +494,7 @@ export class PaymentService {
    * Get current payment month in YYYY-MM format
    */
   private getCurrentPaymentMonth(): string {
-    const nowDate = getCurrentSriLankaTime();
+    const nowDate = new Date();
     const year = nowDate.getFullYear();
     const month = String(nowDate.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;

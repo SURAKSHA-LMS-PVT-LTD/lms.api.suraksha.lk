@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, In } from 'typeorm';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
@@ -919,7 +919,7 @@ export class InstituteClassSubjectStudentsService {
         className: classSubject.class.name,
         enrollmentMethod: 'self_enrolled',
         verificationStatus: 'pending',
-        enrolledAt: getCurrentSriLankaTime(),
+        enrolledAt: new Date(),
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof ForbiddenException) {
@@ -1122,7 +1122,7 @@ export class InstituteClassSubjectStudentsService {
         enrollmentEnabled: updateDto.enrollmentEnabled,
         enrollmentKey: updateDto.enrollmentEnabled ? enrollmentKey : undefined,
         currentEnrollmentCount: enrollmentCount,
-        updatedAt: getCurrentSriLankaTime(),
+        updatedAt: new Date(),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {
@@ -1289,7 +1289,7 @@ export class InstituteClassSubjectStudentsService {
         studentId,
         verificationStatus: 'verified',
         actionBy: verifierId,
-        actionAt: getCurrentSriLankaTime(),
+        actionAt: new Date(),
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof BadRequestException) {
@@ -1352,7 +1352,7 @@ export class InstituteClassSubjectStudentsService {
         studentId,
         verificationStatus: 'rejected',
         actionBy: verifierId,
-        actionAt: getCurrentSriLankaTime(),
+        actionAt: new Date(),
         rejectionReason,
       };
     } catch (error) {

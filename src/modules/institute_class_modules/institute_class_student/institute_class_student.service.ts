@@ -1,7 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassStudentDto, BulkCreateInstituteClassStudentDto } from './dto/create-institute_class_student.dto';
 import { UpdateInstituteClassStudentDto } from './dto/update-institute_class_student.dto';
 import { ClassParentResponseDto, ClassParentQueryDto, PaginatedClassParentResponseDto } from './dto/class-parent-response.dto';
@@ -383,7 +383,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         isVerified: options?.skipVerification !== false,
         enrollmentMethod: 'teacher_assigned',
         verifiedBy: assignedBy,
-        verifiedAt: getCurrentSriLankaTime(),
+        verifiedAt: new Date(), // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -627,7 +627,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         {
           isVerified: true,
           verifiedBy,
-          verifiedAt: getCurrentSriLankaTime()
+          verifiedAt: new Date()
         }
       );
     } else {

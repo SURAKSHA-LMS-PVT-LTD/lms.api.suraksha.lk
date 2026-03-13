@@ -55,8 +55,8 @@ export class PackageUpgradeService {
       }
 
       // Calculate new expiration date
-      const currentExpiration = user.paymentExpiresAt || getCurrentSriLankaTime();
-      const now = getCurrentSriLankaTime();
+      const now = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
+      const currentExpiration = user.paymentExpiresAt || now;
       
       // If current expiration is in the future, extend from there, otherwise from now
       const baseDate = currentExpiration > now ? currentExpiration : now;
@@ -81,7 +81,7 @@ export class PackageUpgradeService {
         ...user,
         subscriptionPlan,
         paymentExpiresAt: newExpirationDate,
-        updatedAt: getCurrentSriLankaTime()
+        updatedAt: new Date() // real UTC
       };
 
       // Sync to DynamoDB
@@ -163,7 +163,7 @@ export class PackageUpgradeService {
       throw new NotFoundException(`User with ID ${userId} not found`);
     }
 
-    const now = getCurrentSriLankaTime();
+    const now = new Date(); // real UTC for correct comparison with DB-stored expiry
     const isExpired = user.paymentExpiresAt ? user.paymentExpiresAt <= now : false;
     const daysUntilExpiry = user.paymentExpiresAt 
       ? Math.ceil((user.paymentExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))

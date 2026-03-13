@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindManyOptions, FindOneOptions } from 'typeorm';
 import { InstituteClassExamEntity } from '../entities/institute-class-exam.entity';
 import { CreateExamDto } from '../dto/create-exam.dto';
 import { UpdateExamDto } from '../dto/update-exam.dto';
 import { ExamStatus, ExamType } from '../enums/exam.enum';
-import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class InstituteClassExamRepository {
@@ -65,7 +65,6 @@ export class InstituteClassExamRepository {
   }
 
   async findActiveExams(): Promise<InstituteClassExamEntity[]> {
-    const now = getCurrentSriLankaTime();
     return this.examRepository.find({
       where: [
         { status: ExamStatus.PUBLISHED },
@@ -76,7 +75,7 @@ export class InstituteClassExamRepository {
   }
 
   async findUpcomingExams(instituteId?: string): Promise<InstituteClassExamEntity[]> {
-    const now = getCurrentSriLankaTime();
+    const now = new Date(); // real UTC for correct comparison with DB-stored dates
     const query = this.examRepository.createQueryBuilder('exam')
       .where('exam.startDate > :now', { now })
       .andWhere('exam.status IN (:...statuses)', { 
@@ -120,7 +119,7 @@ export class InstituteClassExamRepository {
     await this.examRepository.update(id, { 
       isResultsPublished: true,
       status: ExamStatus.RESULTS_PUBLISHED,
-      resultsPublishedDate: getCurrentSriLankaTime(),
+      resultsPublishedDate: new Date(), // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     });
     return this.findOne(id);
   }

@@ -467,8 +467,8 @@ export class AttendanceDeviceService {
 
     // Check operating hours
     if (config?.operatingStartTime && config?.operatingEndTime) {
-      const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
-      const currentTime = new Date(now).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      // Get current time string in HH:MM format for Sri Lanka — single step, no re-parse
+      const currentTime = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Colombo', hour: '2-digit', minute: '2-digit' });
       if (currentTime < config.operatingStartTime || currentTime > config.operatingEndTime) {
         return { allowed: false, deviceId: device.id, instituteId: device.instituteId, eventId: null, statusOverride: null, error: `Device only operates ${config.operatingStartTime}–${config.operatingEndTime}` };
       }
