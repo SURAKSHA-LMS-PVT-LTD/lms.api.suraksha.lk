@@ -90,12 +90,13 @@ export class PaginatedUnverifiedUsersResponseDto {
  * DTO for approving user image
  */
 export class ApproveUserImageDto {
-  @ApiProperty({
-    description: 'User ID',
+  @ApiPropertyOptional({
+    description: 'User ID (taken from route param, not needed in body)',
     example: 123,
   })
+  @IsOptional()
   @IsNumber()
-  userId: number;
+  userId?: number;
 
   @ApiPropertyOptional({
     description: 'Specific user_images record ID to approve. If omitted the latest PENDING record is used.',
@@ -118,12 +119,13 @@ export class ApproveUserImageDto {
  * DTO for rejecting user image with email notification
  */
 export class RejectUserImageDto {
-  @ApiProperty({
-    description: 'User ID',
+  @ApiPropertyOptional({
+    description: 'User ID (taken from route param, not needed in body)',
     example: 123,
   })
+  @IsOptional()
   @IsNumber()
-  userId: number;
+  userId?: number;
 
   @ApiPropertyOptional({
     description: 'Specific user_images record ID to reject. If omitted the latest PENDING record is used.',
