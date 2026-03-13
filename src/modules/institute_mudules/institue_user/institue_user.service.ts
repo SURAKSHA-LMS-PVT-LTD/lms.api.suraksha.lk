@@ -3379,31 +3379,7 @@ export class InstitueUserService {
         throw new NotFoundException('Institute user relationship not found');
       }
 
-      if (!instituteUser.instituteUserImageUrl) {
-        throw new BadRequestException('No image found to verify');
-      }
-
-      // If rejecting the image, delete it from cloud storage
-      if (verifyImageDto.status === ImageVerificationStatus.REJECTED && instituteUser.instituteUserImageUrl) {
-        try {
-          await this.cloudStorageService.deleteFile(instituteUser.instituteUserImageUrl);
-        } catch (deleteError) {
-          // Continue with verification even if deletion fails
-        }
-      }
-
-      // Update image verification status
-      await this.instituteUserRepository.update(
-        { instituteId, userId },
-        {
-          imageVerificationStatus: verifyImageDto.status,
-          imageVerifiedBy: verifyImageDto.status === ImageVerificationStatus.VERIFIED ? verifierId : null,
-          // Clear image URL if rejected
-          instituteUserImageUrl: verifyImageDto.status === ImageVerificationStatus.REJECTED ? null : instituteUser.instituteUserImageUrl
-        }
-      );
-
-      // Mirror the decision into the user_images table (scope=INSTITUTE row for this user+institute)
+      // Find the pending image submission in user_images table
       const pendingImage = await this.userImageRepository.findOne({
         where: {
           userId,
@@ -3413,14 +3389,42 @@ export class InstitueUserService {
         },
         order: { createdAt: 'DESC' },
       });
-      if (pendingImage) {
-        await this.userImageRepository.update(pendingImage.id, {
-          status: verifyImageDto.status,
-          verifiedBy: verifierId,
-          verifiedAt: new Date(),
-          rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
-        });
+
+      if (!pendingImage) {
+        throw new BadRequestException('No pending image found to verify');
       }
+
+      // If rejecting, delete the submitted (pending) file from cloud storage
+      if (verifyImageDto.status === ImageVerificationStatus.REJECTED) {
+        try {
+          await this.cloudStorageService.deleteFile(pendingImage.imageUrl);
+        } catch (deleteError) {
+          // Continue with verification even if deletion fails
+        }
+      }
+
+      // institute_user update:
+      // VERIFIED → promote pending image URL as the active institute image
+      // REJECTED → do NOT touch institute_user at all; old approved image + status stays intact
+      if (verifyImageDto.status === ImageVerificationStatus.VERIFIED) {
+        await this.instituteUserRepository.update(
+          { instituteId, userId },
+          {
+            instituteUserImageUrl: pendingImage.imageUrl,
+            imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+            imageVerifiedBy: verifierId,
+          },
+        );
+      }
+      // (REJECTED: institute_user row unchanged — previous approved image remains active)
+
+      // Mirror the decision into the user_images table
+      await this.userImageRepository.update(pendingImage.id, {
+        status: verifyImageDto.status,
+        verifiedBy: verifierId,
+        verifiedAt: new Date(),
+        rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
+      });
 
       const statusMessage = verifyImageDto.status === ImageVerificationStatus.VERIFIED 
         ? 'approved' 
@@ -3445,10 +3449,9 @@ export class InstitueUserService {
    * Clears institute_user image fields (called when user deletes a pending image)
    */
   async clearInstituteUserImage(instituteId: string, userId: string): Promise<void> {
-    await this.instituteUserRepository.update(
-      { instituteId, userId },
-      { instituteUserImageUrl: null, imageVerificationStatus: ImageVerificationStatus.PENDING, imageVerifiedBy: null }
-    );
+    // User cancelled a pending submission — do NOT touch institute_user at all.
+    // The approved image URL and VERIFIED status on that row must remain intact.
+    // All pending-state tracking lives solely in the user_images table.
   }
 
   /**

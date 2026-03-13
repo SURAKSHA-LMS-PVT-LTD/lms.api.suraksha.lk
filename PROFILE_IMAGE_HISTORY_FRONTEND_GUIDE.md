@@ -291,7 +291,7 @@ For an institute-scoped image (visible only within that institute):
 }
 ```
 
-> After a successful POST, the user's `imageVerificationStatus` is set to `"PENDING"` and the image will appear in the history with `status: "PENDING"`. The `currentImageUrl` (from the approved `users.imageUrl`) does **not** change until an admin approves the new submission.
+> After a successful POST, a `user_images` row is inserted with `status: "PENDING"`. For **GLOBAL** scope, `users.imageVerificationStatus` is set to `"PENDING"`. For **INSTITUTE** scope, the `institute_user` row is **not changed at all** — `currentInstituteImageUrl` and `currentInstituteImageStatus` continue to show the last approved image until an admin approves the new submission.
 
 ### Rate limit
 Maximum **5 submissions per 15 minutes** per user. A `429 Too Many Requests` response is returned if exceeded.
@@ -341,22 +341,74 @@ Authorization: Bearer <jwt>
 
 | Top-level field | Description |
 |---|---|
-| `currentInstituteImageUrl` | The active verified institute image URL from `institute_user.instituteUserImageUrl`. `null` if not yet approved for this institute. |
-| `currentInstituteImageStatus` | The status from `institute_user.imageVerificationStatus`. |
+| `currentInstituteImageUrl` | The **approved** institute image from `institute_user.instituteUserImageUrl`. Only changes when an admin approves. `null` if never approved for this institute. |
+| `currentInstituteImageStatus` | The status tied to the approved image from `institute_user.imageVerificationStatus`. This is **not** updated by pending submissions — it only changes on approval. |
 
 > **Note:** `data[].submittedAt` (not `uploadedAt`) is used here for consistency with the admin-facing history API.
 
-### React example
+> **Important:** `currentInstituteImageUrl` / `currentInstituteImageStatus` always reflect the **last approved** image only. A pending submission does **not** change these fields. To check whether there is a pending submission, look at `data[0].status`. All PENDING / REJECTED state is tracked solely in the `data[]` array (the `user_images` table).
+
+### Displaying the institute image correctly
+
+Because the approved image and any in-flight submission are separate, the frontend needs to combine both:
 
 ```tsx
 useEffect(() => {
   api.get(`/api/users/${userId}/profile-image/institute/${instituteId}/history`)
     .then(res => {
       const { currentInstituteImageUrl, currentInstituteImageStatus, data } = res.data;
-      setCurrentInstituteImage({ url: currentInstituteImageUrl, status: currentInstituteImageStatus });
+
+      // Always show the approved image
+      setApprovedImage({ url: currentInstituteImageUrl, status: currentInstituteImageStatus });
+
+      // Check if the user has a pending submission on top of the approved image
+      const latestRecord = data[0];
+      if (latestRecord?.status === 'PENDING') {
+        setPendingSubmission(latestRecord);  // show "Under review" banner
+      } else if (latestRecord?.status === 'REJECTED') {
+        setRejectedRecord(latestRecord);    // show rejection reason + re-upload prompt
+      }
+
       setInstituteHistory(data);
     });
 }, [userId, instituteId]);
+```
+
+### React example — institute image section UI
+
+```tsx
+function InstituteImageSection({ approvedImage, pendingSubmission, rejectedRecord }) {
+  return (
+    <div>
+      {/* Always show last approved image */}
+      <div>
+        <h3>Current Institute Photo</h3>
+        {approvedImage.url
+          ? <img src={approvedImage.url} alt="Approved institute photo" />
+          : <p>No approved photo yet for this institute.</p>}
+      </div>
+
+      {/* Pending banner — shown alongside the approved image */}
+      {pendingSubmission && (
+        <div className="banner-amber">
+          A new photo is under review by the institute admin.
+          {/* Optionally show a preview of the pending image */}
+          <img src={pendingSubmission.imageUrl} alt="Pending submission preview" />
+          <button onClick={cancelPending}>Cancel submission</button>
+        </div>
+      )}
+
+      {/* Rejection banner */}
+      {!pendingSubmission && rejectedRecord && (
+        <div className="banner-red">
+          Your last submission was rejected.
+          {rejectedRecord.rejectionReason && <p>Reason: {rejectedRecord.rejectionReason}</p>}
+          <button onClick={openUploadDialog}>Re-upload photo</button>
+        </div>
+      )}
+    </div>
+  );
+}
 ```
 
 ---
@@ -520,6 +572,24 @@ export default function ReuploadPage() {
 
 ---
 
+## Institute image state rule (critical)
+
+The `institute_user` row (`currentInstituteImageUrl` / `currentInstituteImageStatus`) is **only ever written on approval**. It is never touched by submissions, rejections, or cancellations.
+
+| Event | `currentInstituteImageUrl` | `currentInstituteImageStatus` | Where state is tracked |
+|---|---|---|---|
+| User submits new image | unchanged | unchanged | `data[]` in user_images |
+| Admin **approves** | ← set to new URL | ← `VERIFIED` | Both |
+| Admin **rejects** | unchanged | unchanged | `data[]` in user_images |
+| User **cancels** pending | unchanged | unchanged | `data[]` removed |
+
+This means:
+- The approved image is **always safe to display** from `currentInstituteImageUrl`
+- Whether a submission is in-flight is determined by `data[0].status === "PENDING"`
+- Rejection reason is in `data[0].rejectionReason` when `data[0].status === "REJECTED"`
+
+---
+
 ## Full profile image upload flow (step by step)
 
 This applies to both GLOBAL and INSTITUTE scope submissions.
@@ -550,6 +620,8 @@ This applies to both GLOBAL and INSTITUTE scope submissions.
 
 ## Decision tree — which image to display
 
+### Global profile image
+
 ```
 Has currentImageUrl?
   ├─ YES → show currentImageUrl as the profile avatar
@@ -558,9 +630,25 @@ Has currentImageUrl?
 currentStatus?
   ├─ "PENDING"  → show "Under review" amber banner
   │               show pendingImageUrl (from image-status) as preview
-  ├─ "REJECTED" → show "Rejected" red banner + rejectionReason from history[0]
+  ├─ "REJECTED" → show "Rejected" red banner + rejectionReason from data[0]
   │               show re-upload button or link
   └─ "VERIFIED" → no banner needed
+```
+
+### Institute profile image
+
+```
+Has currentInstituteImageUrl?
+  ├─ YES → show it as the institute avatar (this is always the approved image)
+  └─ NO  → show placeholder
+
+data[0].status?  (most recent submission in user_images)
+  ├─ "PENDING"  → show amber "Under review" banner alongside the approved image
+  │               optionally show data[0].imageUrl as preview of what was submitted
+  │               show Cancel button
+  ├─ "REJECTED" → show red banner + data[0].rejectionReason
+  │               show Re-upload button
+  └─ "VERIFIED" (or no data) → no banner
 ```
 
 ---

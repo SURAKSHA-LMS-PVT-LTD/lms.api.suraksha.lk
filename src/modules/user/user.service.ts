@@ -2449,11 +2449,9 @@ export class UsersService {
       });
       await this.userImageRepository.save(imageRecord);
 
-      // If this is an institute-scoped image, also update the institute_user row
-      // so that institute admin APIs can find it immediately
-      if (scope === ImageScope.INSTITUTE && instituteId) {
-        await this.institueUserService.uploadInstituteUserImage(imageUrl, instituteId, userId, undefined, false);
-      }
+      // Institute-scoped image: the submission is tracked only in user_images.
+      // Do NOT touch institute_user row here — its imageVerificationStatus reflects
+      // the currently approved image state, not the pending submission state.
 
       // Update the user's verification status so the admin dashboard can find it,
       // but do NOT change user.imageUrl (keep the last approved image active)
