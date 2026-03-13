@@ -24,7 +24,7 @@ export class GenerateUploadUrlDto {
 }
 
 export class UploadUrlResponseDto {
-  @ApiProperty({ description: 'Signed URL for uploading file (use PUT request)' })
+  @ApiProperty({ description: 'S3 endpoint URL — use this as the POST action' })
   uploadUrl: string;
 
   @ApiProperty({ description: 'Relative path where file will be stored' })
@@ -36,8 +36,15 @@ export class UploadUrlResponseDto {
   @ApiProperty({ description: 'Maximum file size in bytes (10MB)' })
   maxFileSize: number;
 
-  @ApiProperty({ description: 'Required Content-Type header value' })
+  @ApiProperty({ description: 'Required Content-Type value' })
   contentType: string;
+
+  @ApiProperty({
+    description: 'Form fields that MUST be included in the multipart POST body (policy, signature, key, etc.)',
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
+  fields: Record<string, string>;
 
   @ApiProperty({ description: 'Upload instructions' })
   instructions: string;

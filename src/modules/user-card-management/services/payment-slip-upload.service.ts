@@ -25,6 +25,7 @@ export class PaymentSlipUploadService {
     expiresAt: Date;
     maxFileSize: number;
     contentType: string;
+    fields: Record<string, string>;
     instructions: string;
   }> {
     // Validate content type (only images)
@@ -71,7 +72,8 @@ export class PaymentSlipUploadService {
       expiresAt: uploadData.expiresAt,
       maxFileSize: maxFileSize,
       contentType: uploadData.contentType,
-      instructions: 'Use PUT request to upload file to the uploadUrl with Content-Type header',
+      fields: uploadData.fields ?? {},
+      instructions: 'POST multipart/form-data to uploadUrl: append all fields first, then append the file as the last field named "file"',
     };
   }
 
