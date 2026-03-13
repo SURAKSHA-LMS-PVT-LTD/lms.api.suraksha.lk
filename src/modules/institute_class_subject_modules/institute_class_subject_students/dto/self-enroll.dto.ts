@@ -29,12 +29,12 @@ export class SelfEnrollDto {
   @ApiProperty({
     description: 'Enrollment key for the subject',
     example: 'MATH10-ABC123',
-    minLength: 5,
+    minLength: 3,
     maxLength: 50
   })
   @IsString()
   @IsNotEmpty()
-  @Length(5, 50)
+  @Length(3, 50)
   enrollmentKey: string;
 }
 

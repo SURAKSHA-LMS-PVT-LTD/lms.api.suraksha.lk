@@ -1,13 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
-import { DynamoDBClient, QueryCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, QueryCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { QueryCommandInput, PutItemCommandInput, UpdateItemCommandInput, DeleteItemCommandInput } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { MarkAttendanceDto, BulkAttendanceDto, AttendanceStatus, MarkingMethod } from '../dto/attendance.dto';
 import { MarkAttendanceByCardDto, BulkCardAttendanceDto } from '../dto/card-attendance.dto';
 
 export interface AttendanceRecord {
+  id: string;        // Base64url-encoded PK~SK — used for deep-link lookup (no GSI needed)
   pk: string;
   sk: string;
   gsi_pk: string;
@@ -227,15 +228,19 @@ export class DynamoDBAttendanceService {
       sk: this.generateSortKey(attendance.date, attendance.studentId, attendance.classId, attendance.subjectId, timestamp),
       gsi_pk: this.generateGSIPartitionKey(attendance.instituteId, attendance.studentId),
       gsi_sk: this.generateGSISortKey(attendance.date, attendance.classId, attendance.subjectId, attendance.instituteId, timestamp),
-      studentId: attendance.studentId,
-      studentName: attendance.studentName,
-      instituteId: attendance.instituteId,
-      instituteName: attendance.instituteName,
-      date: attendance.date,
-      status: this.statusToNumber(attendance.status),
-      timestamp,
-      ttl
     };
+
+    // Generate stable ID from PK+SK — decodable back to keys for direct GetItem lookup
+    record.id = Buffer.from(`${record.pk}~${record.sk}`).toString('base64url');
+
+    record.studentId = attendance.studentId;
+    record.studentName = attendance.studentName;
+    record.instituteId = attendance.instituteId;
+    record.instituteName = attendance.instituteName;
+    record.date = attendance.date;
+    record.status = this.statusToNumber(attendance.status);
+    record.timestamp = timestamp;
+    record.ttl = ttl;
 
     // Add optional class fields
     if (attendance.classId) {
@@ -307,7 +312,7 @@ export class DynamoDBAttendanceService {
   }
 
   // Mark single attendance
-  async markAttendance(attendance: MarkAttendanceDto): Promise<MarkAttendanceDto> {
+  async markAttendance(attendance: MarkAttendanceDto): Promise<AttendanceRecord> {
     const record = this.attendanceToRecord(attendance);
     
     const params: PutItemCommandInput = {
@@ -321,9 +326,41 @@ export class DynamoDBAttendanceService {
       await this.retryWithBackoff(async () => {
         return await this.dynamoClient.send(new PutItemCommand(params));
       });
-      return attendance;
+      return record as AttendanceRecord;
     } catch (error) {
       this.handleDynamoDBError(error, 'mark attendance');
+    }
+  }
+
+  /**
+   * Retrieve a single attendance record by its encoded ID.
+   * The ID is a base64url-encoded string of "${pk}~${sk}", allowing direct
+   * GetItem lookup without a secondary index.
+   */
+  async getAttendanceById(id: string): Promise<AttendanceRecord | null> {
+    try {
+      const decoded = Buffer.from(id, 'base64url').toString('utf8');
+      const separatorIndex = decoded.indexOf('~');
+      if (separatorIndex === -1) return null;
+
+      const pk = decoded.substring(0, separatorIndex);
+      const sk = decoded.substring(separatorIndex + 1);
+
+      const result = await this.dynamoClient.send(
+        new GetItemCommand({
+          TableName: this.tableName,
+          Key: marshall({ pk, sk }),
+        }),
+      );
+
+      if (!result.Item) return null;
+      const item = unmarshall(result.Item) as any;
+      // Restore the id field (it's stored in the item but recompute for safety)
+      item.id = id;
+      return item as AttendanceRecord;
+    } catch (error) {
+      this.logger.error(`getAttendanceById failed: ${error.message}`);
+      return null;
     }
   }
 

@@ -1424,4 +1424,67 @@ export class AttendanceController {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attendance Detail — opened from notification deep-link
+  // ─────────────────────────────────────────────────────────────────────────
+
+  @Get('view')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get attendance record detail by ID',
+    description: `View detailed information about a single attendance event.
+The \`id\` is the encoded attendance record key delivered via push notification deep-links:
+  - Web: \`https://lms.suraksha.lk/attendance/view?id=<id>\`
+  - Mobile: \`suraksha://attendance/view?id=<id>\`
+
+Returns DynamoDB fields (date, status, location, timestamps) plus the student's profile image.
+**Auth**: JWT required.`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Attendance record detail',
+    schema: {
+      example: {
+        id: 'SXsxMjN…base64…',
+        studentId: '456',
+        studentName: 'K.A. Perera',
+        studentImageUrl: 'https://storage.googleapis.com/…',
+        instituteId: '123',
+        instituteName: 'Suraksha Academy',
+        classId: '789',
+        className: 'Grade 10 - A',
+        subjectId: null,
+        subjectName: null,
+        date: '2025-01-15',
+        status: 1,
+        timestamp: 1705329600000,
+        location: 'Suraksha Academy, Grade 10 - A',
+        markingMethod: 'QR_CODE',
+        userType: 'STUDENT',
+        calendarDayId: '101',
+        eventId: '202',
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Attendance record not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getAttendanceView(
+    @Query('id') id: string,
+  ): Promise<any> {
+    if (!id) {
+      throw new HttpException(
+        { success: false, message: 'Query parameter "id" is required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const detail = await this.attendanceService.getAttendanceDetail(id);
+    if (!detail) {
+      throw new HttpException(
+        { success: false, message: 'Attendance record not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return detail;
+  }
+
 }

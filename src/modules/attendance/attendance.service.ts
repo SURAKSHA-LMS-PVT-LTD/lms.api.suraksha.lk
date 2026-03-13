@@ -642,6 +642,54 @@ export class AttendanceService {
     }
   }
 
+  /**
+   * Retrieve full details of a single attendance record by its encoded ID.
+   * The ID is passed via notification deep-link: attendance/view?id=<id>
+   * Returns DynamoDB record data + student profile image (no cross-joins).
+   */
+  async getAttendanceDetail(id: string): Promise<any> {
+    const record = await this.dynamoAttendanceService.getAttendanceById(id);
+    if (!record) {
+      return null;
+    }
+
+    // Fetch student profile image — single lookup by userId, no joins
+    let studentImageUrl: string | null = null;
+    try {
+      const user = await this.userRepository.findOne({
+        where: { id: record.studentId },
+        select: ['id', 'imageUrl', 'nameWithInitials', 'firstName', 'lastName'],
+      });
+      if (user?.imageUrl) {
+        studentImageUrl = this.CloudStorageService.getFullUrl(user.imageUrl);
+      }
+    } catch (_) {
+      // Image fetch is best-effort — do not fail the whole response
+    }
+
+    return {
+      id: record.id,
+      studentId: record.studentId,
+      studentName: record.studentName,
+      studentImageUrl,
+      instituteId: record.instituteId,
+      instituteName: record.instituteName,
+      classId: record.classId || null,
+      className: record.className || null,
+      subjectId: record.subjectId || null,
+      subjectName: record.subjectName || null,
+      date: record.date,
+      status: record.status,
+      timestamp: record.timestamp,
+      location: record.location || null,
+      remarks: record.remarks || null,
+      markingMethod: record.markingMethod || null,
+      userType: record.userType || null,
+      calendarDayId: record.calendarDayId || null,
+      eventId: record.eventId || null,
+    };
+  }
+
   async getStudentAttendance(getStudentAttendanceDto: GetStudentAttendanceDto, user?: any): Promise<StudentAttendanceResponseDto> {
     const { studentId, startDate, endDate, page = 1, limit = 20, status } = getStudentAttendanceDto;
     
@@ -1494,6 +1542,7 @@ export class AttendanceService {
         parentTelegramId: data.parentTelegramId,
         parentUserId: data.parentUserId,
         instituteId: markAttendanceDto.instituteId,
+        attendanceId: attendanceResult?.id || undefined,
         attendanceStatus: (markAttendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: markAttendanceDto.date,
         time: getCurrentSriLankaISO(),
@@ -1558,6 +1607,7 @@ export class AttendanceService {
     isAdsFromDB: boolean;
     studentData: any;  // Complete student data with user profile
     instituteId: string;  // Institute ID for ad targeting
+    attendanceId?: string; // Encoded DynamoDB record ID for deep-link
   }): Promise<void> {
     try {
       const {
@@ -1571,7 +1621,8 @@ export class AttendanceService {
         attendanceDto,
         isAdsFromDB,
         studentData,
-        instituteId
+        instituteId,
+        attendanceId,
       } = params;
 
       // Check if we have at least one contact method
@@ -1618,6 +1669,7 @@ export class AttendanceService {
         parentTelegramId,
         parentUserId,
         instituteId,
+        attendanceId: attendanceId || undefined,
         attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
         date: attendanceDto.date,
         time: formatSriLankaTime(now()),
@@ -2316,7 +2368,8 @@ export class AttendanceService {
         attendanceDto,
         isAdsFromDB,
         studentData,
-        instituteId: markAttendanceDto.instituteId
+        instituteId: markAttendanceDto.instituteId,
+        attendanceId: result?.id || undefined,
       }).catch(error => {
         this.logger.error(`Notification failed for user ${studentId}: ${error.message}`);
       });

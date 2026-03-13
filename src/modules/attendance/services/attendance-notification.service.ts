@@ -22,6 +22,7 @@ export interface AttendanceNotificationData {
   parentTelegramId?: string;
   parentUserId?: string;       // ✅ Parent user ID for push notifications
   instituteId?: string;        // ✅ Institute ID for push notification inbox
+  attendanceId?: string;       // ✅ Encoded attendance record ID for deep-link
   attendanceStatus: 'PRESENT' | 'ABSENT';
   attendanceType?: 'INSTITUTE' | 'CLASS' | 'SUBJECT' | 'TRANSPORT';  // ✅ Type of attendance (with all levels)
   date: string;
@@ -1133,7 +1134,16 @@ export class AttendanceNotificationService {
     if (data.subjectName) dataPayload.subjectName = data.subjectName;
     if (data.bookhireName) dataPayload.bookhireName = data.bookhireName;
     if (data.vehicleNumber) dataPayload.vehicleNumber = data.vehicleNumber;
-    
+
+    // Add attendance deep-link ID for mobile/web navigation
+    if (data.attendanceId) {
+      const webBase = process.env.WEB_APP_URL || 'https://lms.suraksha.lk';
+      const mobileScheme = process.env.MOBILE_APP_SCHEME || 'suraksha';
+      dataPayload.attendanceId = data.attendanceId;
+      dataPayload.actionUrl = `${webBase}/attendance/view?id=${data.attendanceId}`;
+      dataPayload.deepLink = `${mobileScheme}://attendance/view?id=${data.attendanceId}`;
+    }
+
     // Add advertisement data if available and ads are enabled
     let imageUrl: string | undefined;
     
