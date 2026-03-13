@@ -62,10 +62,12 @@ export class StructuredLecturesService {
     return this.findAll();
   }
 
-  async getLecturesBySubjectAndGrade(subjectId: string, grade: number, activeFilter: boolean) {
-    // Optimize: Select only necessary fields
+  async getLecturesBySubjectAndGrade(subjectId: string, grade?: number, activeFilter?: boolean) {
+    const where: any = { subjectId };
+    if (grade !== undefined) where.grade = grade;
+    if (activeFilter !== undefined) where.isActive = activeFilter;
     return this.lectureRepository.find({
-      where: { subjectId, grade, isActive: activeFilter },
+      where,
       select: [
         'id',
         'instituteId',
@@ -248,8 +250,9 @@ export class StructuredLecturesService {
     const timestamp = now();
     const lecture = this.lectureRepository.create({ 
       ...rest,
-      thumbnailUrl: coverImageUrl, // Map coverImageUrl ? thumbnailUrl
-      videoUrl: lectureLink, // Map lectureLink ? videoUrl
+      classId: rest.classId || null,   // null = institute-wide; set = class-restricted
+      thumbnailUrl: coverImageUrl,      // Map coverImageUrl → thumbnailUrl
+      videoUrl: lectureLink,            // Map lectureLink → videoUrl
       attachments,
       createdBy: userId,
       updatedBy: userId,
@@ -297,11 +300,11 @@ export class StructuredLecturesService {
     return this.transformEntityToDto(entity);
   }
 
-  async getLecturesBySubjectAndGradeAsDto(subjectId: string, grade: number, activeFilter: boolean): Promise<LectureListResponseDto> {
-    // Fetch all fields to avoid timestamp deserialization issues
-    const entities = await this.lectureRepository.find({
-      where: { subjectId, grade, isActive: activeFilter }
-    });
+  async getLecturesBySubjectAndGradeAsDto(subjectId: string, grade?: number, activeFilter?: boolean): Promise<LectureListResponseDto> {
+    const where: any = { subjectId };
+    if (grade !== undefined) where.grade = grade;
+    if (activeFilter !== undefined) where.isActive = activeFilter;
+    const entities = await this.lectureRepository.find({ where });
 
     return {
       lectures: entities.map(entity => this.transformEntityToDto(entity)),

@@ -618,8 +618,10 @@ POST /admin/users/student/STU-20260123-001/profile-image
   /**
    * ✅ Get Unverified Users
    * GET /admin/users/unverified
+   * GET /admin/users/unverified-images  (alias for frontend compatibility)
    */
   @Get('unverified')
+  @Get('unverified-images')
   @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @ApiOperation({
     summary: 'Get users with pending/unverified profile images',

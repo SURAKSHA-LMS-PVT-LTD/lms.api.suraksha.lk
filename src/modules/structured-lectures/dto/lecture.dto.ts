@@ -83,10 +83,13 @@ export class CreateLectureDto {
   @IsNotEmpty()
   instituteId: string;
 
-  @ApiProperty({ description: 'Class ID this lecture belongs to', example: '1000' })
+  @ApiPropertyOptional({
+    description: 'Class ID this lecture belongs to. Omit for institute-wide lectures (visible to all classes in the institute for this subject+grade).',
+    example: '1000'
+  })
   @IsString()
-  @IsNotEmpty()
-  classId: string;
+  @IsOptional()
+  classId?: string;
 
   @ApiProperty({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_001' })
   @IsString()

@@ -39,7 +39,7 @@ export class StructuredLectureEntity {
   @Column({ type: 'longtext', nullable: true })
   content?: string;
 
-  @Column({ type: 'varchar', length: 36, nullable: false })
+  @Column({ name: 'subject_id', type: 'varchar', length: 36, nullable: false })
   subjectId: string;
 
   @Column({ type: 'int', nullable: false })

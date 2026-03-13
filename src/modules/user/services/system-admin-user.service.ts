@@ -1653,6 +1653,7 @@ export class SystemAdminUserService {
 
     // Find the image record to approve — by explicit imageId or the latest PENDING submission
     let imageRecord: UserImageEntity | null = null;
+    let isLegacyApproval = false;
     if (dto.imageId) {
       imageRecord = await this.userImageRepository.findOne({
         where: { id: dto.imageId.toString(), userId: dto.userId.toString() },
@@ -1666,18 +1667,25 @@ export class SystemAdminUserService {
         order: { createdAt: 'DESC' },
       });
       if (!imageRecord) {
-        throw new BadRequestException('No pending image found for this user');
+        // Legacy path: imageVerificationStatus set before user_images table existed
+        if (user.imageUrl && user.imageVerificationStatus === ImageVerificationStatus.PENDING) {
+          isLegacyApproval = true;
+        } else {
+          throw new BadRequestException('No pending image found for this user');
+        }
       }
     }
 
     const approvedAt = new Date();
 
-    // Mark the image record as verified
-    await this.userImageRepository.update(imageRecord.id, {
-      status: ImageVerificationStatus.VERIFIED,
-      verifiedBy: adminId,
-      verifiedAt: approvedAt,
-    });
+    // Mark the image record as verified (skip for legacy — no row exists)
+    if (!isLegacyApproval) {
+      await this.userImageRepository.update(imageRecord.id, {
+        status: ImageVerificationStatus.VERIFIED,
+        verifiedBy: adminId,
+        verifiedAt: approvedAt,
+      });
+    }
 
     // ✅ Generate card ID if not exists + set ACTIVE status + 2-year expiry
     let cardGenerated = false;
@@ -1701,8 +1709,9 @@ export class SystemAdminUserService {
     }
 
     // Promote the approved image to user.imageUrl and update verification metadata
+    const approvedImagePath = isLegacyApproval ? user.imageUrl : imageRecord!.imageUrl;
     await this.userRepository.update(dto.userId.toString(), {
-      imageUrl: imageRecord.imageUrl,
+      imageUrl: approvedImagePath,
       imageVerificationStatus: ImageVerificationStatus.VERIFIED,
       imageVerifiedBy: adminId,
       imageVerifiedAt: approvedAt,
@@ -1716,7 +1725,7 @@ export class SystemAdminUserService {
     });
 
     // Send approval email with ID card for students
-    const approvedImageUrl = imageRecord.imageUrl;
+    const approvedImageUrl = approvedImagePath;
     if (user.email) {
       try {
         if (student && approvedImageUrl && user.cardId) {
@@ -1766,13 +1775,13 @@ export class SystemAdminUserService {
       }
     }
 
-    this.logger.log(`Image ${imageRecord.id} approved for user ${dto.userId} by admin ${adminId}`);
+    this.logger.log(`Image ${isLegacyApproval ? '(legacy)' : imageRecord!.id} approved for user ${dto.userId} by admin ${adminId}`);
 
     return {
       success: true,
       message: 'User image approved successfully',
       userId: user.id,
-      imageId: imageRecord.id,
+      imageId: isLegacyApproval ? null : imageRecord!.id,
       status: ImageVerificationStatus.VERIFIED,
       approvedBy: adminId,
       approvedAt,
@@ -1802,6 +1811,7 @@ export class SystemAdminUserService {
 
     // Find the image record to reject — by explicit imageId or the latest PENDING submission
     let imageRecord: UserImageEntity | null = null;
+    let isLegacyRejection = false;
     if (dto.imageId) {
       imageRecord = await this.userImageRepository.findOne({
         where: { id: dto.imageId.toString(), userId: userId.toString() },
@@ -1815,30 +1825,39 @@ export class SystemAdminUserService {
         order: { createdAt: 'DESC' },
       });
       if (!imageRecord) {
-        throw new BadRequestException('No pending image found for this user');
+        // Legacy path: imageVerificationStatus set before user_images table existed
+        if (user.imageUrl && user.imageVerificationStatus === ImageVerificationStatus.PENDING) {
+          isLegacyRejection = true;
+        } else {
+          throw new BadRequestException('No pending image found for this user');
+        }
       }
     }
 
     const rejectedAt = new Date();
 
     // Delete the rejected image file from cloud storage (save space; DB record is kept)
+    const imageUrlToDelete = isLegacyRejection ? user.imageUrl : imageRecord!.imageUrl;
     try {
-      const imagePath = this.extractPathFromUrl(imageRecord.imageUrl) ?? imageRecord.imageUrl;
+      const imagePath = this.extractPathFromUrl(imageUrlToDelete) ?? imageUrlToDelete;
       await this.cloudStorageService.deleteFile(imagePath);
       this.logger.log(`Deleted rejected image: ${imagePath}`);
     } catch (deleteError) {
       this.logger.warn(`Failed to delete rejected image: ${deleteError.message}`);
     }
 
-    // Mark the image record as rejected
-    await this.userImageRepository.update(imageRecord.id, {
-      status: ImageVerificationStatus.REJECTED,
-      rejectionReason,
-      verifiedBy: adminId,
-      verifiedAt: rejectedAt,
-    });
+    // Mark the image record as rejected (skip for legacy — no row exists)
+    if (!isLegacyRejection) {
+      await this.userImageRepository.update(imageRecord!.id, {
+        status: ImageVerificationStatus.REJECTED,
+        rejectionReason,
+        verifiedBy: adminId,
+        verifiedAt: rejectedAt,
+      });
+    }
 
-    // Update the user's status fields for backward compat — but do NOT touch user.imageUrl
+    // Update the user's status fields for backward compat — also clear imageUrl for legacy rejections
+    // (legacy imageUrl IS the pending image, unlike new flow where imageUrl = last approved)
     await this.userRepository.update(userId.toString(), {
       imageVerificationStatus: ImageVerificationStatus.REJECTED,
       imageVerifiedBy: adminId,
@@ -1894,13 +1913,13 @@ export class SystemAdminUserService {
       }
     }
 
-    this.logger.log(`Image ${imageRecord.id} rejected for user ${userId} by admin ${adminId}. Reason: ${rejectionReason}`);
+    this.logger.log(`Image ${isLegacyRejection ? '(legacy)' : imageRecord!.id} rejected for user ${userId} by admin ${adminId}. Reason: ${rejectionReason}`);
 
     return {
       success: true,
       message: 'User image rejected successfully. User notified via email.',
       userId: user.id,
-      imageId: imageRecord.id,
+      imageId: isLegacyRejection ? null : imageRecord!.id,
       rejectionReason,
       uploadUrl: frontendUploadUrl,
       expiresAt: expiresAt.toISOString(),
