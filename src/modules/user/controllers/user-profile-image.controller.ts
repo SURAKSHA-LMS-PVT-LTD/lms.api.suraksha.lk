@@ -1,5 +1,5 @@
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
-import { Controller, Post, Get, Body, BadRequestException, Param, UseGuards, Request, Req, HttpStatus, HttpCode, UseFilters } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, BadRequestException, Param, UseGuards, Request, Req, HttpStatus, HttpCode, UseFilters } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiConsumes, ApiProperty } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -467,5 +467,50 @@ export class UserProfileImageController {
       success: true,
       data: history,
     };
+  }
+
+  /** GET /users/:id/profile-image/institute/:instituteId/history
+   * All institute-scoped image submissions for a user in a specific institute.
+   */
+  @Get(':id/profile-image/institute/:instituteId/history')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true, global: [] })
+  @ApiOperation({ summary: 'Institute image history for a user', description: 'Returns all past image submissions scoped to the specified institute.' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Institute image history retrieved successfully' })
+  async getInstituteImageHistory(
+    @Param('id', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+  ): Promise<any> {
+    const records = await this.userService.getInstituteImageHistory(userId, instituteId);
+    const history = records.map(r => ({
+      imageId: r.id,
+      imageUrl: this.cloudStorageService.getFullUrl(r.imageUrl),
+      status: r.status,
+      rejectionReason: r.rejectionReason ?? null,
+      verifiedBy: r.verifiedBy ?? null,
+      verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+      submittedAt: r.createdAt.toISOString(),
+    }));
+    return { success: true, data: history };
+  }
+
+  /** DELETE /users/:id/profile-image/institute/:instituteId
+   * Deletes the PENDING institute-scoped image. Only allowed while status is PENDING.
+   */
+  @Delete(':id/profile-image/institute/:instituteId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true, global: [] })
+  @ApiOperation({ summary: 'Delete pending institute image', description: 'Removes the pending institute-scoped image submission. Only works while status is PENDING.' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Pending institute image deleted successfully' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'No pending image found or image already verified/rejected' })
+  async deleteInstituteProfileImage(
+    @Param('id', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+  ): Promise<any> {
+    return this.userService.deleteInstituteProfileImage(userId, instituteId);
   }
 }

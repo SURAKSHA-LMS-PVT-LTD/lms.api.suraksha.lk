@@ -271,3 +271,32 @@ export class UserUploadUrlResponseDto {
   @ApiProperty({ description: 'Instructions' })
   instructions: string;
 }
+
+/** Counts of user profile image submissions by verification status */
+export class ImageStatsResponseDto {
+  @ApiProperty() pending: number;
+  @ApiProperty() verified: number;
+  @ApiProperty() rejected: number;
+  @ApiProperty({ description: 'Distinct users who have ever submitted an image' }) totalUsers: number;
+}
+
+/** One entry in a user's image submission history */
+export class ImageHistoryItemDto {
+  @ApiProperty() imageId: string;
+  @ApiProperty() imageUrl: string;
+  @ApiProperty({ enum: ImageVerificationStatus }) status: ImageVerificationStatus;
+  @ApiPropertyOptional({ nullable: true }) rejectionReason: string | null;
+  @ApiPropertyOptional({ nullable: true }) verifiedBy: string | null;
+  @ApiPropertyOptional({ nullable: true }) verifiedAt: string | null;
+  @ApiProperty() submittedAt: string;
+}
+
+/** Full image history for one user */
+export class UserImageHistoryResponseDto {
+  @ApiProperty() userId: string;
+  @ApiProperty() nameWithInitials: string;
+  @ApiProperty({ nullable: true }) currentImageUrl: string | null;
+  @ApiProperty({ enum: ImageVerificationStatus }) currentStatus: ImageVerificationStatus;
+  @ApiProperty({ type: [ImageHistoryItemDto] }) history: ImageHistoryItemDto[];
+  @ApiProperty() totalSubmissions: number;
+}

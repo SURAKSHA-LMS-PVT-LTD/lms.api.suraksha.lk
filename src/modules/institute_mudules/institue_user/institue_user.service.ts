@@ -55,6 +55,7 @@ import { ParentEntity } from '../../parent/entities/parent.entity';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { UserImageEntity, ImageScope } from '../../user/entities/user-image.entity';
 
 // Enums & Utils
 import { UserType } from '../../user/enums/user-type.enum';
@@ -116,6 +117,9 @@ export class InstitueUserService {
     
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
+
+    @InjectRepository(UserImageEntity)
+    private readonly userImageRepository: Repository<UserImageEntity>,
     
     private readonly cloudStorageService: CloudStorageService,
     // ✅ CACHING SERVICES
@@ -3399,6 +3403,25 @@ export class InstitueUserService {
         }
       );
 
+      // Mirror the decision into the user_images table (scope=INSTITUTE row for this user+institute)
+      const pendingImage = await this.userImageRepository.findOne({
+        where: {
+          userId,
+          instituteId,
+          scope: ImageScope.INSTITUTE,
+          status: ImageVerificationStatus.PENDING,
+        },
+        order: { createdAt: 'DESC' },
+      });
+      if (pendingImage) {
+        await this.userImageRepository.update(pendingImage.id, {
+          status: verifyImageDto.status,
+          verifiedBy: verifierId,
+          verifiedAt: new Date(),
+          rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
+        });
+      }
+
       const statusMessage = verifyImageDto.status === ImageVerificationStatus.VERIFIED 
         ? 'approved' 
         : verifyImageDto.status === ImageVerificationStatus.REJECTED 
@@ -3416,6 +3439,16 @@ export class InstitueUserService {
       }
       throw new InternalServerErrorException(`Failed to verify institute user image: ${error.message}`);
     }
+  }
+
+  /**
+   * Clears institute_user image fields (called when user deletes a pending image)
+   */
+  async clearInstituteUserImage(instituteId: string, userId: string): Promise<void> {
+    await this.instituteUserRepository.update(
+      { instituteId, userId },
+      { instituteUserImageUrl: null, imageVerificationStatus: ImageVerificationStatus.PENDING, imageVerifiedBy: null }
+    );
   }
 
   /**

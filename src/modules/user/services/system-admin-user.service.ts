@@ -1637,6 +1637,86 @@ export class SystemAdminUserService {
     };
   }
 
+  /** Overall counts of profile image submissions by status */
+  async getImageStats(): Promise<any> {
+    const rows: Array<{ status: string; cnt: string }> = await this.userImageRepository
+      .createQueryBuilder('ui')
+      .select('ui.status', 'status')
+      .addSelect('COUNT(*)', 'cnt')
+      .groupBy('ui.status')
+      .getRawMany();
+    const map: Record<string, number> = {};
+    for (const r of rows) map[r.status] = Number(r.cnt);
+    const totalResult = await this.userImageRepository
+      .createQueryBuilder('ui')
+      .select('COUNT(DISTINCT ui.userId)', 'total')
+      .getRawOne();
+    return {
+      pending: map[ImageVerificationStatus.PENDING] ?? 0,
+      verified: map[ImageVerificationStatus.VERIFIED] ?? 0,
+      rejected: map[ImageVerificationStatus.REJECTED] ?? 0,
+      totalUsers: Number(totalResult?.total ?? 0),
+    };
+  }
+
+  /** Full profile image submission history for one user */
+  async getUserImageHistory(userId: string): Promise<any> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'nameWithInitials', 'imageUrl', 'imageVerificationStatus'],
+    });
+    if (!user) throw new NotFoundException(`User ${userId} not found`);
+
+    const records = await this.userImageRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Legacy users: image is only stored on users.imageUrl (no user_images rows)
+    if (records.length === 0 && user.imageUrl) {
+      const legacyStatus = user.imageVerificationStatus ?? ImageVerificationStatus.PENDING;
+      return {
+        userId: user.id,
+        nameWithInitials: user.nameWithInitials,
+        currentImageUrl: this.cloudStorageService.getFullUrl(user.imageUrl),
+        currentStatus: legacyStatus,
+        history: [{
+          imageId: null,
+          imageUrl: this.cloudStorageService.getFullUrl(user.imageUrl),
+          status: legacyStatus,
+          rejectionReason: null,
+          verifiedBy: null,
+          verifiedAt: null,
+          submittedAt: null,
+        }],
+        totalSubmissions: 1,
+        isLegacy: true,
+      };
+    }
+
+    const history = records.map(r => ({
+      imageId: r.id,
+      imageUrl: this.cloudStorageService.getFullUrl(r.imageUrl),
+      status: r.status,
+      rejectionReason: r.rejectionReason ?? null,
+      verifiedBy: r.verifiedBy ?? null,
+      verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+      submittedAt: r.createdAt.toISOString(),
+    }));
+    const current = records.find(r => r.status === ImageVerificationStatus.VERIFIED) ?? records[0] ?? null;
+    return {
+      userId: user.id,
+      nameWithInitials: user.nameWithInitials,
+      currentImageUrl: current
+        ? this.cloudStorageService.getFullUrl(current.imageUrl)
+        : (user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null),
+      currentStatus: current?.status ?? user.imageVerificationStatus ?? ImageVerificationStatus.PENDING,
+      history,
+      totalSubmissions: records.length,
+      isLegacy: false,
+    };
+  }
+
   /**
    * ✅ Approve User Image
    * Marks the user_images record as VERIFIED, copies its URL to user.imageUrl,

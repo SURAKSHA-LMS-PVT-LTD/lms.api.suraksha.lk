@@ -2449,6 +2449,12 @@ export class UsersService {
       });
       await this.userImageRepository.save(imageRecord);
 
+      // If this is an institute-scoped image, also update the institute_user row
+      // so that institute admin APIs can find it immediately
+      if (scope === ImageScope.INSTITUTE && instituteId) {
+        await this.institueUserService.uploadInstituteUserImage(imageUrl, instituteId, userId, undefined, false);
+      }
+
       // Update the user's verification status so the admin dashboard can find it,
       // but do NOT change user.imageUrl (keep the last approved image active)
       await this.userRepository.update(userId, {
@@ -2480,6 +2486,47 @@ export class UsersService {
       where: { userId },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  /**
+   * Returns institute-scoped image history for a user (all submissions for that institute).
+   */
+  async getInstituteImageHistory(userId: string, instituteId: string): Promise<UserImageEntity[]> {
+    return this.userImageRepository.find({
+      where: { userId, instituteId, scope: ImageScope.INSTITUTE },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Deletes the PENDING institute-scoped image for a user.
+   * Also clears the institute_user row so the admin dashboard no longer shows it.
+   * Throws if the current submission is not PENDING (can't delete verified/rejected).
+   */
+  async deleteInstituteProfileImage(userId: string, instituteId: string): Promise<{ success: boolean; message: string }> {
+    const pending = await this.userImageRepository.findOne({
+      where: { userId, instituteId, scope: ImageScope.INSTITUTE, status: ImageVerificationStatus.PENDING },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!pending) {
+      throw new BadRequestException('No pending institute image found. Only PENDING images can be deleted.');
+    }
+
+    // Remove from cloud storage
+    try {
+      await this.cloudStorageService.deleteFile(pending.imageUrl);
+    } catch (_) {
+      // Proceed even if cloud deletion fails
+    }
+
+    // Remove the user_images record
+    await this.userImageRepository.delete(pending.id);
+
+    // Clear the institute_user row back to no-image state
+    await this.institueUserService.clearInstituteUserImage(instituteId, userId);
+
+    return { success: true, message: 'Pending institute image deleted successfully' };
   }
 
   async updateIdUrl(userId: string, idUrl: string): Promise<UserResponseDto> {

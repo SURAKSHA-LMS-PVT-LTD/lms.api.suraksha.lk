@@ -52,6 +52,8 @@ import {
   ApproveUserImageResponseDto,
   RejectUserImageDto,
   RejectUserImageResponseDto,
+  ImageStatsResponseDto,
+  UserImageHistoryResponseDto,
 } from '../dto/image-verification.dto';
 
 @ApiTags('System Admin - User Management')
@@ -697,6 +699,25 @@ POST /admin/users/student/STU-20260123-001/profile-image
       { ...dto, userId },
       req.user.id
     );
+  }
+
+  /** GET /admin/users/image-stats — overall profile image verification counts */
+  @Get('image-stats')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @ApiOperation({ summary: 'Profile image verification statistics', description: 'Counts of pending / verified / rejected user profile image submissions' })
+  @ApiResponse({ status: HttpStatus.OK, type: ImageStatsResponseDto })
+  async getImageStats(): Promise<ImageStatsResponseDto> {
+    return this.systemAdminUserService.getImageStats();
+  }
+
+  /** GET /admin/users/:userId/image-history — full submission history for one user */
+  @Get(':userId/image-history')
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @ApiOperation({ summary: 'User profile image submission history', description: 'All past image submissions for a user with their verification outcomes' })
+  @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
+  @ApiResponse({ status: HttpStatus.OK, type: UserImageHistoryResponseDto })
+  async getUserImageHistory(@Param('userId') userId: string): Promise<UserImageHistoryResponseDto> {
+    return this.systemAdminUserService.getUserImageHistory(userId);
   }
 
   // ==========================================

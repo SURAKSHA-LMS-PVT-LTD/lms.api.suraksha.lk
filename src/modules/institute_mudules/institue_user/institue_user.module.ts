@@ -9,6 +9,7 @@ import { ParentEntity } from '../../parent/entities/parent.entity';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { UserImageEntity } from '../../user/entities/user-image.entity';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { CommonModule } from '../../../common/common.module';
 import { CacheModule } from '../../../common/modules/cache.module';
@@ -23,7 +24,8 @@ import { UsersModule } from '../../user/user.module';
       ParentEntity,
       InstituteEntity,
       InstituteClassStudentEntity,
-      InstituteClassSubjectStudent
+      InstituteClassSubjectStudent,
+      UserImageEntity,
     ]),
     CommonModule,
     CacheModule,
