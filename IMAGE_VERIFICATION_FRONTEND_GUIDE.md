@@ -145,7 +145,105 @@ Reject user's image, delete from cloud, send email with 7-day re-upload link.
 
 ---
 
-### **2. Public Re-upload Endpoint** (No Auth Required)
+### **2. Institute Admin Endpoints** (Protected — institute admin or teacher JWT)
+
+> ⚠️ **Frontend note**: Do NOT call `/admin/users/unverified-images` from institute admin views.  
+> That route requires SUPERADMIN and will return **403/404**.  
+> Use the `/institute-users/...` endpoints below instead.
+
+---
+
+#### **GET /institute-users/institute/:instituteId/users/unverified-with-images**
+Get paginated list of institute users who have uploaded images pending verification.
+
+**Headers:**
+```json
+{
+  "Authorization": "Bearer <institute_admin_jwt_token>"
+}
+```
+
+**Query Parameters:**
+```typescript
+{
+  page?: number;   // Default: 1
+  limit?: number;  // Default: 20
+}
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "userId": "456",
+      "nameWithInitials": "K.A. Perera",
+      "email": "k.perera@example.com",
+      "phoneNumber": "077XXXXXXX",
+      "instituteUserImageUrl": "https://storage.googleapis.com/...",
+      "imageVerificationStatus": "PENDING",
+      "instituteUserType": "STUDENT",
+      "userIdByInstitute": "STU2024001"
+    }
+  ],
+  "total": 12,
+  "page": 1,
+  "limit": 20
+}
+```
+
+---
+
+#### **GET /institute-users/institute/:instituteId/users/unverified-with-images/count**
+Get the count of unverified images — use this for dashboard badges.
+
+**Response:**
+```json
+{
+  "count": 12,
+  "message": "Unverified users count retrieved successfully"
+}
+```
+
+---
+
+#### **POST /institute-users/institute/:instituteId/users/:userId/verify-image**
+Approve or reject an institute user's profile image.
+
+**Body:**
+```json
+{
+  "status": "VERIFIED",        // or "REJECTED"
+  "rejectionReason": null      // Required when status is REJECTED
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Image verification status updated successfully",
+  "status": "VERIFIED"
+}
+```
+
+---
+
+#### **GET /institute-users/institute/:instituteId/users/image-verification**
+Full paginated list with all verification states (for an admin dashboard filter).
+
+**Query Parameters:**
+```typescript
+{
+  page?: number;
+  limit?: number;
+  status?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+}
+```
+
+---
+
+### **3. Public Re-upload Endpoint** (No Auth Required)
 
 #### **POST /users/profile/image/reupload**
 Allows users to re-upload profile image using token from rejection email.
@@ -917,8 +1015,8 @@ vercel deploy --prod
 - User notification preferences
 
 ### **Integration with Existing Features**
-- **Institute Admin**: Already has `/institute-users/institute/:id/users/:id/verify-image`
-- **System Admin**: New global verification at `/admin/users/unverified`
+- **Institute Admin**: use `/institute-users/institute/:instituteId/users/unverified-with-images` — NOT the system admin `/admin/users/unverified-images` route
+- **System Admin**: global verification at `/admin/users/unverified` (requires SUPERADMIN JWT)
 - **Two-tier approval**: Institute Admin → System Admin hierarchy
 
 ### **Mobile Considerations**

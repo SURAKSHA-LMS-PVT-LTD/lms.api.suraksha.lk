@@ -386,10 +386,10 @@ export class InstituteClassSubjectExamsController {
 
   @Delete(':id')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
-  @ApiOperation({ 
-    summary: 'Delete exam', 
-    description: 'Permanently deletes an exam' 
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiOperation({
+    summary: 'Delete exam',
+    description: 'Permanently deletes an exam. Accessible by SUPERADMIN, Institute Admin, or Teacher.'
   })
   @ApiResponse({ 
     status: HttpStatus.NO_CONTENT, 

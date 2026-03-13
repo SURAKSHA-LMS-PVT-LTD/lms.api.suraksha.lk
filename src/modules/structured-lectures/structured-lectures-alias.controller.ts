@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpException, HttpStatus, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Delete, Param, Body, HttpException, HttpStatus, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { StructuredLecturesService } from './structured-lectures.service';
 import { CreateLectureDto, LectureResponseDto } from './dto/lecture.dto';
@@ -11,6 +11,7 @@ import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorat
 /**
  * Alias controller that serves the same endpoints at /structured-lectures
  * (without the /api prefix) for frontend compatibility.
+ * Also provides /lectures alias for delete operations.
  */
 @ApiTags('Structured Lectures')
 @Controller('structured-lectures')
@@ -47,6 +48,30 @@ export class StructuredLecturesAliasController {
       }
       throw new HttpException(
         { success: false, message: error.message || 'Failed to create lecture' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+  })
+  @ApiOperation({ summary: 'Delete a lecture (soft delete)' })
+  async deleteLecture(
+    @Param('id') id: string,
+    @Req() request: JwtRequest,
+  ) {
+    try {
+      const userId = request.user.s;
+      return await this.lecturesService.deleteLecture(id, userId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to delete lecture' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
