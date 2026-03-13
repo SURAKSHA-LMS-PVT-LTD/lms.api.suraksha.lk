@@ -1550,23 +1550,35 @@ export class SystemAdminUserService {
 
   /**
    * ✅ Get Users with Pending/Unverified Images
-   * System Admin can review images that need verification
+   * System Admin can review images that need verification.
+   *
+   * Queries BOTH sources so that legacy users (whose imageVerificationStatus
+   * was set before the user_images table existed) are also visible:
+   *   1. user_images table  — new submissions (post-migration)
+   *   2. users table        — legacy rows where imageVerificationStatus matches
+   *                           but no user_images record was created
    */
   async getUnverifiedUsers(query: any): Promise<any> {
     const { page = 1, limit = 20, status = ImageVerificationStatus.PENDING } = query;
-    const skip = (page - 1) * limit;
 
-    // Query the user_images table so the admin sees the actual submitted image URLs
-    const [images, total] = await this.userImageRepository
+    // --- Source 1: user_images rows ---
+    const allImages = await this.userImageRepository
       .createQueryBuilder('ui')
       .where('ui.status = :status', { status })
       .orderBy('ui.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+      .getMany();
 
-    // Batch-load user metadata
-    const userIds = [...new Set(images.map(img => img.userId))];
+    // --- Source 2: legacy users table rows (no user_images record) ---
+    const trackedUserIds = new Set(allImages.map(img => img.userId));
+    const legacyUsers = await this.userRepository
+      .createQueryBuilder('u')
+      .where('u.imageVerificationStatus = :status', { status })
+      .andWhere('u.imageUrl IS NOT NULL')
+      .getMany();
+    const legacyRows = legacyUsers.filter(u => !trackedUserIds.has(u.id));
+
+    // --- Batch-load user metadata for user_images rows ---
+    const userIds = [...new Set(allImages.map(img => img.userId))];
     const users = userIds.length
       ? await this.userRepository.find({
           where: { id: userIds as any },
@@ -1575,23 +1587,49 @@ export class SystemAdminUserService {
       : [];
     const userMap = new Map(users.map(u => [u.id, u]));
 
+    const imageRecords = allImages.map(img => {
+      const user = userMap.get(img.userId);
+      return {
+        imageId: img.id,
+        userId: img.userId,
+        nameWithInitials: user?.nameWithInitials ?? null,
+        email: user?.email ? this.maskEmail(user.email) : null,
+        phoneNumber: user?.phoneNumber ? this.maskPhone(user.phoneNumber) : null,
+        imageUrl: this.cloudStorageService.getFullUrl(img.imageUrl),
+        imageVerificationStatus: img.status,
+        scope: img.scope,
+        instituteId: img.instituteId ?? null,
+        imageUploadedAt: img.createdAt,
+        userType: user?.userType ?? null,
+        isLegacy: false,
+      };
+    });
+
+    const legacyRecords = legacyRows.map(u => ({
+      imageId: null,
+      userId: u.id,
+      nameWithInitials: u.nameWithInitials,
+      email: u.email ? this.maskEmail(u.email) : null,
+      phoneNumber: u.phoneNumber ? this.maskPhone(u.phoneNumber) : null,
+      imageUrl: this.cloudStorageService.getFullUrl(u.imageUrl),
+      imageVerificationStatus: u.imageVerificationStatus,
+      scope: null,
+      instituteId: null,
+      imageUploadedAt: u.updatedAt,
+      userType: u.userType,
+      isLegacy: true,
+    }));
+
+    // Merge, sort newest-first, paginate in memory
+    const all = [...imageRecords, ...legacyRecords].sort(
+      (a, b) => new Date(b.imageUploadedAt).getTime() - new Date(a.imageUploadedAt).getTime()
+    );
+    const total = all.length;
+    const skip = (page - 1) * limit;
+    const paginated = all.slice(skip, skip + Number(limit));
+
     return {
-      users: images.map(img => {
-        const user = userMap.get(img.userId);
-        return {
-          imageId: img.id,
-          userId: img.userId,
-          nameWithInitials: user?.nameWithInitials ?? null,
-          email: user?.email ? this.maskEmail(user.email) : null,
-          phoneNumber: user?.phoneNumber ? this.maskPhone(user.phoneNumber) : null,
-          imageUrl: this.cloudStorageService.getFullUrl(img.imageUrl),
-          imageVerificationStatus: img.status,
-          scope: img.scope,
-          instituteId: img.instituteId ?? null,
-          imageUploadedAt: img.createdAt,
-          userType: user?.userType ?? null,
-        };
-      }),
+      users: paginated,
       total,
       page,
       limit,

@@ -103,11 +103,30 @@ export class UserProfileImageController {
     if (!user) {
       throw new BadRequestException('User not found');
     }
+
+    // Also return the URL of the image currently under review (from user_images table)
+    let pendingImageUrl: string | null = null;
+    let pendingImageId: string | null = null;
+    if ((user as any).imageVerificationStatus === 'PENDING') {
+      const history = await this.userService.getUserImageHistory(userId);
+      const pending = history.find(r => r.status === 'PENDING');
+      if (pending) {
+        pendingImageUrl = this.cloudStorageService.getFullUrl(pending.imageUrl);
+        pendingImageId = pending.id;
+      }
+    }
+
     return {
       success: true,
       data: {
         userId,
-        imageUrl: (user as any).imageUrl ?? null,
+        // Current approved image (null until an image has been approved)
+        imageUrl: (user as any).imageUrl
+          ? this.cloudStorageService.getFullUrl((user as any).imageUrl)
+          : null,
+        // Image currently under review (PENDING submission)
+        pendingImageUrl,
+        pendingImageId,
         imageVerificationStatus: (user as any).imageVerificationStatus ?? null,
       },
     };
