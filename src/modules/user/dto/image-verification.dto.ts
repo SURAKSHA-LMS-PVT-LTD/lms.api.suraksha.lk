@@ -98,6 +98,14 @@ export class ApproveUserImageDto {
   userId: number;
 
   @ApiPropertyOptional({
+    description: 'Specific user_images record ID to approve. If omitted the latest PENDING record is used.',
+    example: 7,
+  })
+  @IsOptional()
+  @IsNumber()
+  imageId?: number;
+
+  @ApiPropertyOptional({
     description: 'Optional note from admin',
     example: 'Image quality good, approved',
   })
@@ -116,6 +124,14 @@ export class RejectUserImageDto {
   })
   @IsNumber()
   userId: number;
+
+  @ApiPropertyOptional({
+    description: 'Specific user_images record ID to reject. If omitted the latest PENDING record is used.',
+    example: 7,
+  })
+  @IsOptional()
+  @IsNumber()
+  imageId?: number;
 
   @ApiProperty({
     description: 'Reason for rejection (sent to user via email)',

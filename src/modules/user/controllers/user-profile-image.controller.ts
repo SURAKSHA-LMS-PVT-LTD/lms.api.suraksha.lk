@@ -8,8 +8,9 @@ import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.deco
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { UsersService } from '../user.service';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
-import { IsUrl, IsString } from 'class-validator';
+import { IsUrl, IsString, IsOptional, IsEnum } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { ImageScope } from '../entities/user-image.entity';
 
 /** Encode spaces (and other illegal characters) in the path portion of a URL so
  *  that @IsUrl() accepts filenames with spaces like 'Screenshot 2025-03-29.png'. */
@@ -26,6 +27,25 @@ class UpdateImageUrlDto {
   @Transform(({ value }) => encodeUrlSpaces(value))
   @IsUrl({}, { message: 'Image URL must be a valid URL' })
   imageUrl: string;
+
+  @ApiProperty({
+    description: 'Image scope: GLOBAL (visible everywhere) or INSTITUTE (tied to a specific institute)',
+    enum: ImageScope,
+    required: false,
+    default: ImageScope.GLOBAL,
+  })
+  @IsOptional()
+  @IsEnum(ImageScope)
+  scope?: ImageScope;
+
+  @ApiProperty({
+    description: 'Institute ID — required when scope is INSTITUTE',
+    required: false,
+    example: '42',
+  })
+  @IsOptional()
+  @IsString()
+  instituteId?: string;
 }
 
 class UpdateIdDocumentUrlDto {
@@ -148,7 +168,7 @@ export class UserProfileImageController {
     }
     
     // Store relative path in database
-    await this.userService.updateImageUrl(userId, relativePath);
+    await this.userService.updateImageUrl(userId, relativePath, dto.scope, dto.instituteId);
 
     // Generate full URL for API response
     const fullPublicUrl = this.cloudStorageService.getPublicUrl(relativePath);
@@ -410,22 +430,19 @@ export class UserProfileImageController {
       throw new BadRequestException('User not found');
     }
 
-    const u = user as any;
-    const rawUrl: string | null = u.imageUrl ?? null;
-    const fullUrl = rawUrl ? this.cloudStorageService.getFullUrl(rawUrl) : null;
+    const records = await this.userService.getUserImageHistory(userId);
 
-    // Build a single-entry array so the frontend can treat it as a list
-    const history = rawUrl
-      ? [
-          {
-            imageUrl: fullUrl,
-            status: u.imageVerificationStatus ?? null,
-            rejectionReason: u.imageRejectionReason ?? null,
-            verifiedAt: u.imageVerifiedAt ?? null,
-            verifiedBy: u.imageVerifiedBy ?? null,
-          },
-        ]
-      : [];
+    const history = records.map(record => ({
+      imageId: record.id,
+      imageUrl: this.cloudStorageService.getFullUrl(record.imageUrl),
+      scope: record.scope,
+      instituteId: record.instituteId ?? null,
+      status: record.status,
+      rejectionReason: record.rejectionReason ?? null,
+      verifiedAt: record.verifiedAt ?? null,
+      verifiedBy: record.verifiedBy ?? null,
+      uploadedAt: record.createdAt,
+    }));
 
     return {
       success: true,

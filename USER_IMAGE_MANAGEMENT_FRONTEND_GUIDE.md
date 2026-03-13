@@ -1,936 +1,492 @@
-# User Image Management – Frontend Guide
+# User Image Management � Frontend Integration Guide
 
-Complete frontend implementation guide for all user-facing image operations:
-- Global profile image (upload, change, delete-on-rejection, status polling)
-- Institute-level image (upload and status per institute)
-- ID document upload
-
----
-
-## Table of Contents
-
-1. [Overview – Two Image Tiers](#1-overview--two-image-tiers)
-2. [Image Verification Status Reference](#2-image-verification-status-reference)
-3. [Upload Flow (3 Steps for Any Image)](#3-upload-flow-3-steps-for-any-image)
-4. [Global Profile Image – Full Lifecycle](#4-global-profile-image--full-lifecycle)
-   - 4.1 [First Upload](#41-first-upload)
-   - 4.2 [Polling Verification Status](#42-polling-verification-status)
-   - 4.3 [Changing the Image](#43-changing-the-image)
-   - 4.4 [Re-Upload After Rejection](#44-re-upload-after-rejection)
-5. [Institute-Level User Image – Full Lifecycle](#5-institute-level-user-image--full-lifecycle)
-   - 5.1 [Upload Institute Image](#51-upload-institute-image)
-   - 5.2 [Get All Uploaded Images & Status](#52-get-all-uploaded-images--status)
-   - 5.3 [Change Institute Image](#53-change-institute-image)
-6. [ID Document Upload](#6-id-document-upload)
-7. [Displaying the Correct Image](#7-displaying-the-correct-image)
-8. [Complete API Reference (User Endpoints)](#8-complete-api-reference-user-endpoints)
-9. [TypeScript / React Implementation](#9-typescript--react-implementation)
-10. [Error Reference](#10-error-reference)
+> **Database migration:** `1751000000000-CreateUserImagesTable` � ? executed  
+> **New table:** `user_images`  
+> API base: `/users` (user endpoints) and `/admin/users` (admin endpoints)
 
 ---
 
-## 1. Overview – Two Image Tiers
+## Overview of the New Flow
 
-Every user can have **two independent image slots**:
-
-| Tier | DB Column | Who Reviews | Visibility |
-|------|-----------|-------------|------------|
-| **Global profile image** | `users.image_url` + `users.image_verification_status` | **System Admin** | Shown everywhere across all institutes once VERIFIED |
-| **Institute-level image** | `institute_user.institute_user_image_url` + `institute_user.image_verification_status` | **Institute Admin** of each institute | Used only within that institute (e.g., ID card) |
-
-**Display priority (for a given institute context):**  
-If the institute-level image is `VERIFIED` → show it.  
-Otherwise → fall back to the global `VERIFIED` profile image.
+| Step | Before (old) | After (new) |
+|------|-------------|-------------|
+| User uploads image | `user.imageUrl` set immediately to new image | Only a `user_images` record created (PENDING). `user.imageUrl` **unchanged**. |
+| Admin approves | Just changed `imageVerificationStatus` | `user_images` ? VERIFIED, **then** `user.imageUrl` updated to approved image |
+| Admin rejects | Deleted cloud file + `user.imageUrl` set to null (lost previous approved image) | `user_images` ? REJECTED + file deleted. `user.imageUrl` **not touched** (previous approved image preserved) |
+| History | Fake single-entry array from user fields | Real list from `user_images` table � full history with all submissions |
 
 ---
 
-## 2. Image Verification Status Reference
+## Part 1 � User-Side API
 
+### 1.1 Upload a Profile Image
+
+**Step 1** � Get a signed upload URL (existing endpoint, unchanged):
 ```
-PENDING  → Image uploaded, awaiting admin review. Not yet publicly visible.
-VERIFIED → Admin approved. Image is active and displayed.
-REJECTED → Admin rejected. Image deleted from storage. User must re-upload.
-```
-
-All status values are `string` literals — use the constants below in your code:
-
-```typescript
-const IMAGE_STATUS = {
-  PENDING:  'PENDING',
-  VERIFIED: 'VERIFIED',
-  REJECTED: 'REJECTED',
-} as const;
-
-type ImageVerificationStatus = typeof IMAGE_STATUS[keyof typeof IMAGE_STATUS];
+POST /upload/generate-signed-url
 ```
 
----
+**Step 2** � Upload the file directly to the signed URL (PUT to cloud storage).
 
-## 3. Upload Flow (3 Steps for Any Image)
-
-Every image upload (profile, institute, ID doc) follows the **same 3-step pattern**:
+**Step 3** � Submit the image for admin review:
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  STEP 1 – Get a signed upload URL (10-minute TTL)                  │
-│    GET /upload/get-signed-url?folder=...&fileName=...              │
-│    or POST /upload/generate-signed-url  { folder, fileName, ... }  │
-│                                                                    │
-│  STEP 2 – Upload the file directly to cloud storage (AWS S3)       │
-│    POST {uploadUrl}  multipart/form-data: spread all "fields"      │
-│    from step 1 response first, then append the file last           │
-│                                                                    │
-│  STEP 3 – Verify & publish the file                                │
-│    POST /upload/verify-and-publish  { relativePath }               │
-│    → returns publicUrl                                             │
-│                                                                    │
-│  STEP 4 (image-specific) – Register the URL with the backend       │
-│    POST /users/:id/profile-image       (global profile)            │
-│    POST /institute-users/…/upload-image (institute image)          │
-│    POST /users/:id/upload-id-document  (ID document)              │
-└────────────────────────────────────────────────────────────────────┘
+POST /users/:id/profile-image
+Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
-### Supported Folders
-
-| Image Type | `folder` Value |
-|------------|----------------|
-| Global profile image | `profile-images` |
-| Institute user image | `institute-user-images` |
-| Student images | `student-images` |
-| ID document | `id-documents` |
-
-### File Constraints
-
-| Folder | Allowed Extensions | Max Size |
-|--------|--------------------|----------|
-| `profile-images` | `.jpg .jpeg .png .webp` | 5 MB |
-| `institute-user-images` | `.jpg .jpeg .png .webp` | 5 MB |
-| `id-documents` | `.jpg .jpeg .png .pdf` | 10 MB |
-
-> **Security**: Double extensions (e.g. `file.pdf.jpg`) are always rejected by the backend.
-
----
-
-## 4. Global Profile Image – Full Lifecycle
-
-### 4.1 First Upload
-
-#### Step 1 – Get Signed URL
-
-```typescript
-// GET method (simplest)
-const params = new URLSearchParams({
-  folder:      'profile-images',
-  fileName:    'my-photo.jpg',
-  contentType: 'image/jpeg',
-  fileSize:    String(file.size),
-});
-
-const res = await fetch(`/upload/get-signed-url?${params}`, {
-  headers: { Authorization: `Bearer ${accessToken}` },
-});
-
-const { uploadUrl, relativePath, publicUrl, fields } = await res.json();
-// uploadUrl      → S3 bucket endpoint for multipart POST upload
-// relativePath   → e.g. "profile-images/abc123-my-photo.jpg"
-// publicUrl      → future public URL (file not public yet)
-// fields         → signed policy fields required by S3 (include in FormData)
-```
-
-**Response shape:**
+**Request body:**
 ```json
 {
-  "uploadUrl":    "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com",
-  "relativePath": "profile-images/abc123-my-photo.jpg",
-  "publicUrl":    "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/profile-images/abc123-my-photo.jpg",
-  "fields": {
-    "key":                          "profile-images/abc123-my-photo.jpg",
-    "Content-Type":                 "image/jpeg",
-    "x-amz-server-side-encryption": "AES256",
-    "Policy":                       "eyJleH...",
-    "X-Amz-Signature":              "abc123..."
-  },
-  "expiresIn":    600
+  "imageUrl": "https://storage.suraksha.lk/profile-images/user-123-photo.jpg",
+  "scope": "GLOBAL",
+  "instituteId": null
 }
 ```
 
-#### Step 2 – Upload File to Cloud (AWS S3 multipart POST)
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `imageUrl` | string (URL) | ? | Public URL returned by the signed-URL upload step |
+| `scope` | `"GLOBAL"` \| `"INSTITUTE"` | ? default: `GLOBAL` | Whether this image is for global profile or institute-specific |
+| `instituteId` | string \| null | ? | Required when `scope = "INSTITUTE"` |
 
-```typescript
-// Build FormData — ALL policy fields must come BEFORE the file
-const formData = new FormData();
-Object.entries(fields as Record<string, string>).forEach(([key, value]) => {
-  formData.append(key, value);
-});
-formData.append('file', file); // file MUST be the last field
-
-const uploadRes = await fetch(uploadUrl, { method: 'POST', body: formData });
-if (!uploadRes.ok) throw new Error('File upload to storage failed');
-```
-
-#### Step 3 – Verify & Publish
-
-```typescript
-const verifyRes = await fetch('/upload/verify-and-publish', {
-  method:  'POST',
-  headers: {
-    Authorization:  `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({ relativePath }),
-});
-
-const { publicUrl } = await verifyRes.json();
-```
-
-#### Step 4 – Register URL as Profile Image
-
-```http
-POST /users/{userId}/profile-image
-Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/profile-images/abc123-my-photo.jpg"
-}
-```
-
-**Success Response `200`:**
+**Success response (200):**
 ```json
 {
   "success": true,
   "message": "Profile image updated successfully",
   "data": {
-    "userId": "123",
-    "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/profile-images/abc123-my-photo.jpg"
+    "userId": "42",
+    "imageUrl": "https://storage.suraksha.lk/profile-images/user-123-photo.jpg"
   }
 }
 ```
 
-> After this call, `image_verification_status` is automatically set to `PENDING`.  
-> The image is **not yet visible on the profile** until a System Admin approves it.
+> ?? **Important UX note:** After uploading, the user's active profile image (`user.imageUrl`) does **not** change yet. Show a "Pending verification" badge � do NOT immediately display the new photo as the active profile image.
 
 ---
 
-### 4.2 Polling Verification Status
-
-There is no dedicated "get my image status" endpoint — the status is returned as part of the user profile response (whichever endpoint your app uses for `GET /users/:id` or `GET /auth/me`).
-
-**Fields to read from the user object:**
-
-```typescript
-interface UserProfile {
-  imageUrl:                  string | null;   // null if rejected (image deleted)
-  imageVerificationStatus:   'PENDING' | 'VERIFIED' | 'REJECTED' | null;
-  imageVerifiedAt:           string | null;   // ISO timestamp
-  imageRejectionReason:      string | null;   // set when REJECTED
-}
-```
-
-**Suggested polling pattern (React):**
-```typescript
-useEffect(() => {
-  if (user?.imageVerificationStatus !== 'PENDING') return;
-
-  const id = setInterval(async () => {
-    const fresh = await fetchCurrentUser(); // your auth/profile endpoint
-    if (fresh.imageVerificationStatus !== 'PENDING') {
-      setUser(fresh);
-      clearInterval(id);
-    }
-  }, 30_000); // poll every 30 s
-
-  return () => clearInterval(id);
-}, [user?.imageVerificationStatus]);
-```
-
----
-
-### 4.3 Changing the Image
-
-Simply repeat the **same 4-step flow** from §4.1 with the new image file.
-
-The backend:
-1. Replaces the existing `image_url` in the database with the new relative path.
-2. Sets `image_verification_status = PENDING`.
-3. The previously VERIFIED image is **no longer shown** until the new one is approved.
-
-> **Note:** There is no hard limit enforced via this endpoint itself. Any business constraints (e.g., max 3 changes) are recorded in a separate history table and are not checked here.
-
----
-
-### 4.4 Re-Upload After Rejection
-
-When an admin rejects an image, the user receives an **email** containing a special re-upload link valid for up to 7 days:
+### 1.2 Get Current Image Status
 
 ```
-https://lms.suraksha.lk/profile/image/upload?token={uploadToken}
+GET /users/profile/image-status
+Authorization: Bearer <token>
 ```
 
-The frontend at that URL must **extract the token from the query string** and call a **public endpoint** (no JWT required):
-
-#### Re-upload Endpoint
-
-```http
-POST /users/profile/image/reupload?token={uploadToken}
-Content-Type: application/json
-
-{
-  "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/profile-images/new-photo.jpg"
-}
-```
-
-> **No `Authorization` header is needed** — the token itself authenticates the request.  
-> Rate limit: 10 requests/hour.
-
-**The token contains:**
-- `userId` — who is re-uploading
-- `exp` — expiry timestamp
-- `purpose: 'profile-image-reupload'`
-
-The backend validates the HMAC-SHA256 signature before accepting.
-
-**Success Response `200`:**
+**Response:**
 ```json
 {
   "success": true,
-  "message": "Profile image re-uploaded successfully. Pending admin review.",
-  "userId": "123"
-}
-```
-
-**Frontend flow for the re-upload page:**
-
-```typescript
-// On page load
-const token = new URLSearchParams(window.location.search).get('token');
-
-// Still does the 3-step upload first, then:
-const res = await fetch(`/users/profile/image/reupload?token=${token}`, {
-  method:  'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body:    JSON.stringify({ imageUrl: publicUrl }),
-});
-```
-
----
-
-## 5. Institute-Level User Image – Full Lifecycle
-
-Every institute maintains its own separate image slot for each enrolled user.  
-This image is used on institute-issued ID cards and internal dashboards.
-
-### 5.1 Upload Institute Image
-
-Follow the 3-step upload (§3) with `folder = 'institute-user-images'`, then:
-
-```http
-POST /institute-users/institute/{instituteId}/users/{userId}/upload-image
-Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/institute-user-images/abc123.jpg"
-}
-```
-
-> The `imageUrl` must be a full public URL returned from `/upload/verify-and-publish`.
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "message": "Institute user image uploaded successfully",
-  "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/institute-user-images/abc123.jpg",
-  "userId": "42",
-  "instituteId": "7"
-}
-```
-
-After upload, `image_verification_status` is set to `PENDING`.
-
----
-
-### 5.2 Get All Uploaded Images & Status
-
-To see **your own** institute-level image status (and all other institute data), call the endpoint your app uses to load the institute user profile. The image fields are included inline:
-
-**Fields returned in any institute user response:**
-
-```typescript
-interface InstituteUserData {
-  // Institute-specific image
-  instituteUserImageUrl:   string | null;  // full public URL (or null)
-  imageVerificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
-  imageVerifiedBy:         string | null;  // admin user ID
-
-  // Global user image (fallback)
-  userImageUrl:            string | null;
-
-  // Which image is actually displayed
-  // Logic: use instituteUserImageUrl if VERIFIED, else userImageUrl
-  displayImageUrl:         string | null;  // computed by backend before returning
-}
-```
-
-> **To list all images you have uploaded across institutes:**  
-> Call your app's "my institutes" endpoint for each institute and read the `instituteUserImageUrl` + `imageVerificationStatus` fields.
-
----
-
-### 5.3 Change Institute Image
-
-To replace an existing institute-level image, simply repeat the upload (§5.1) with the new image. The endpoint overwrites the previous `institute_user_image_url` and resets the status to `PENDING`.
-
-> **On rejection:** The backend deletes the file from cloud storage and nulls `institute_user_image_url`. The user must upload a new image to resume verification.
-
----
-
-## 6. ID Document Upload
-
-Works exactly like the global profile image but stores in `id-documents` folder and updates `users.id_url`. There is **no admin verification workflow** for ID documents — once uploaded, the URL is immediately saved.
-
-#### Endpoint
-
-```http
-POST /users/{userId}/upload-id-document
-Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "idUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/id-documents/user-42-id.pdf"
-}
-```
-
-**Success Response `200`:**
-```json
-{
-  "success": true,
-  "message": "ID document updated successfully",
   "data": {
     "userId": "42",
-    "idUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/id-documents/user-42-id.pdf"
+    "imageUrl": "https://storage.suraksha.lk/profile-images/user-42-approved.jpg",
+    "imageVerificationStatus": "VERIFIED"
   }
 }
 ```
 
-Rate limit: 5 requests per 15 minutes.
+`imageVerificationStatus` values:
+
+| Value | Meaning |
+|-------|---------|
+| `PENDING` | A new image was submitted; awaiting admin review. `imageUrl` = last approved image (or null if none). |
+| `VERIFIED` | Latest submission was approved. `imageUrl` = the approved image. |
+| `REJECTED` | Latest submission was rejected. `imageUrl` = still the previous approved image (if any). |
+| `null` | No image ever submitted. |
 
 ---
 
-## 7. Displaying the Correct Image
+### 1.3 Get Image Submission History
 
-```typescript
-function resolveDisplayImage(user: {
-  userImageUrl: string | null;
-  userImageStatus: string | null;
-  instituteUserImageUrl: string | null;
-  instituteImageStatus: string | null;
-}): string | null {
-  // Prefer institute-level image if it is verified
-  if (
-    user.instituteUserImageUrl &&
-    user.instituteImageStatus === 'VERIFIED'
-  ) {
-    return user.instituteUserImageUrl;
-  }
-
-  // Fall back to global profile image if verified
-  if (
-    user.userImageUrl &&
-    user.userImageStatus === 'VERIFIED'
-  ) {
-    return user.userImageUrl;
-  }
-
-  // No verified image available
-  return null;
-}
+```
+GET /users/profile/image-history
+Authorization: Bearer <token>
 ```
 
-**Status badge helper:**
+Returns **all** past image submissions for the authenticated user, newest first.
 
-```typescript
-function getImageStatusBadge(status: string | null) {
-  switch (status) {
-    case 'PENDING':  return { label: 'Awaiting Review', color: 'orange' };
-    case 'VERIFIED': return { label: 'Approved',        color: 'green'  };
-    case 'REJECTED': return { label: 'Rejected',        color: 'red'    };
-    default:         return { label: 'No Image',        color: 'grey'   };
-  }
-}
-```
-
----
-
-## 8. Complete API Reference (User Endpoints)
-
-### Upload Infrastructure
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/upload/get-signed-url` | JWT or API Key | Get signed upload URL (query params) |
-| `POST` | `/upload/generate-signed-url` | JWT or API Key | Get signed upload URL (JSON body) |
-| `POST` | `/upload/verify-and-publish` | JWT | Make uploaded file public, get final URL |
-
-**`GET /upload/get-signed-url` Query Parameters:**
-
-| Param | Required | Description |
-|-------|----------|-------------|
-| `folder` | ✅ | `profile-images` / `institute-user-images` / `id-documents` etc. |
-| `fileName` | ✅ | Original filename (backend appends UUID) |
-| `contentType` | ✅ | MIME type, e.g. `image/jpeg` |
-| `fileSize` | ✅ | File size in bytes (validated server-side) |
-
-**`POST /upload/generate-signed-url` JSON body:**
-
+**Response:**
 ```json
 {
-  "folder":      "profile-images",
-  "fileName":    "photo.jpg",
-  "contentType": "image/jpeg",
-  "fileSize":    2097152
-}
-```
-
----
-
-### Global Profile Image
-
-| Method | Endpoint | Auth | Rate Limit | Description |
-|--------|----------|------|------------|-------------|
-| `POST` | `/users/:id/profile-image` | JWT | 5/15 min | Set/change global profile image |
-| `POST` | `/users/:userId/upload-id-document` | JWT | 5/15 min | Upload ID document |
-| `POST` | `/users/profile/image/reupload?token=` | **None** | 10/hour | Re-upload after admin rejection |
-
-**`POST /users/:id/profile-image` Request Body:**
-```json
-{ "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/profile-images/..." }
-```
-
-**`POST /users/:userId/upload-id-document` Request Body:**
-```json
-{ "idUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/id-documents/..." }
-```
-
-**`POST /users/profile/image/reupload` Request Body:**
-```json
-{ "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/profile-images/..." }
-```
-
----
-
-### Institute-Level Image
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/institute-users/institute/:instituteId/users/:userId/upload-image` | JWT | Upload/replace institute-specific image |
-
-**Request Body:**
-```json
-{ "imageUrl": "https://suraksha-lms-main-bucket.s3.us-east-1.amazonaws.com/institute-user-images/..." }
-```
-
----
-
-## 9. TypeScript / React Implementation
-
-### Complete Profile Image Upload Component
-
-```tsx
-import React, { useRef, useState } from 'react';
-
-const API_BASE = process.env.REACT_APP_API_URL;
-
-interface UploadState {
-  status: 'idle' | 'uploading' | 'pending_review' | 'verified' | 'rejected';
-  imageUrl: string | null;
-  error: string | null;
-}
-
-// ──────────────────────────────────────────────
-// Core upload helper (reusable for all image types)
-// ──────────────────────────────────────────────
-async function uploadImageToCloud(
-  file: File,
-  folder: string,
-  token: string
-): Promise<{ publicUrl: string; relativePath: string }> {
-  // Step 1: Get signed URL
-  const params = new URLSearchParams({
-    folder,
-    fileName:    file.name,
-    contentType: file.type,
-    fileSize:    String(file.size),
-  });
-
-  const signedRes = await fetch(`${API_BASE}/upload/get-signed-url?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!signedRes.ok) {
-    const err = await signedRes.json();
-    throw new Error(err.message || 'Failed to get upload URL');
-  }
-
-  const { uploadUrl, relativePath, fields } = await signedRes.json();
-
-  // Step 2: Upload to cloud (AWS S3 — multipart POST with signed policy fields)
-  const formData = new FormData();
-  // All policy fields MUST be added first, file MUST be last
-  Object.entries(fields as Record<string, string>).forEach(([key, value]) => {
-    formData.append(key, value);
-  });
-  formData.append('file', file);
-
-  const putRes = await fetch(uploadUrl, { method: 'POST', body: formData });
-  if (!putRes.ok) throw new Error('File upload to storage failed');
-
-  // Step 3: Verify & publish
-  const verifyRes = await fetch(`${API_BASE}/upload/verify-and-publish`, {
-    method:  'POST',
-    headers: {
-      Authorization:  `Bearer ${token}`,
-      'Content-Type': 'application/json',
+  "success": true,
+  "data": [
+    {
+      "imageId": "7",
+      "imageUrl": "https://storage.suraksha.lk/profile-images/user-42-v2.jpg",
+      "scope": "GLOBAL",
+      "instituteId": null,
+      "status": "PENDING",
+      "rejectionReason": null,
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "uploadedAt": "2026-03-13T08:00:00.000Z"
     },
-    body: JSON.stringify({ relativePath }),
-  });
+    {
+      "imageId": "5",
+      "imageUrl": "https://storage.suraksha.lk/profile-images/user-42-v1b.jpg",
+      "scope": "GLOBAL",
+      "instituteId": null,
+      "status": "REJECTED",
+      "rejectionReason": "Photo is blurry. Please upload a clear, well-lit photo.",
+      "verifiedAt": "2026-02-15T10:00:00.000Z",
+      "verifiedBy": "1",
+      "uploadedAt": "2026-02-14T12:00:00.000Z"
+    },
+    {
+      "imageId": "3",
+      "imageUrl": "https://storage.suraksha.lk/profile-images/user-42-v1.jpg",
+      "scope": "GLOBAL",
+      "instituteId": null,
+      "status": "VERIFIED",
+      "rejectionReason": null,
+      "verifiedAt": "2026-01-10T14:30:00.000Z",
+      "verifiedBy": "1",
+      "uploadedAt": "2026-01-09T10:00:00.000Z"
+    }
+  ]
+}
+```
 
-  if (!verifyRes.ok) {
-    const err = await verifyRes.json();
-    throw new Error(err.message || 'Failed to verify upload');
-  }
+> **Note on rejected entries:** The `imageUrl` field in a REJECTED record will return a broken URL (the cloud file is deleted on rejection to save storage). Do not attempt to display it. Only render images from VERIFIED or PENDING records.
 
-  const { publicUrl } = await verifyRes.json();
-  return { publicUrl, relativePath };
+**Recommended UX for history:**
+- Show a timeline / list with status badges (? VERIFIED, ? PENDING, ? REJECTED)
+- If the latest entry is `REJECTED`, prominently show `rejectionReason` with an "Upload new image" button
+- The currently active profile photo is `user.imageUrl` from the status endpoint (always the last approved image)
+
+---
+
+## Part 2 � Admin-Side API
+
+### 2.1 List Pending / All Image Submissions
+
+```
+GET /admin/users/unverified-images?status=PENDING&page=1&limit=20
+Authorization: Bearer <admin-token>
+```
+
+Query parameters:
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `status` | `PENDING` | Filter: `PENDING` \| `VERIFIED` \| `REJECTED` |
+| `page` | `1` | Page number |
+| `limit` | `20` | Per page (max 100) |
+
+**Response:**
+```json
+{
+  "users": [
+    {
+      "imageId": "7",
+      "userId": "42",
+      "nameWithInitials": "K.A. Perera",
+      "email": "k***@gmail.com",
+      "phoneNumber": "+94 7** *** 890",
+      "imageUrl": "https://storage.suraksha.lk/profile-images/user-42-v2.jpg",
+      "imageVerificationStatus": "PENDING",
+      "scope": "GLOBAL",
+      "instituteId": null,
+      "imageUploadedAt": "2026-03-13T08:00:00.000Z",
+      "userType": "STUDENT"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20,
+  "totalPages": 1
+}
+```
+
+> **Key change from old API:** Each row now includes `imageId` � the specific `user_images` record ID. Save this and pass it to approve/reject calls for precision (especially when a user has multiple PENDING submissions).
+
+---
+
+### 2.2 Approve an Image
+
+```
+POST /admin/users/:userId/approve-image
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+```
+
+**Request body:**
+```json
+{
+  "userId": 42,
+  "imageId": 7,
+  "note": "Clear photo, approved"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `userId` | ? | User's ID (also in URL param) |
+| `imageId` | ? | Specific `user_images` record to approve. If omitted ? **latest PENDING** record used |
+| `note` | ? | Internal admin note (not sent to user) |
+
+**Success response (200):**
+```json
+{
+  "success": true,
+  "message": "User image approved successfully",
+  "userId": "42",
+  "imageId": "7",
+  "status": "VERIFIED",
+  "approvedBy": "1",
+  "approvedAt": "2026-03-13T09:00:00.000Z",
+  "cardGenerated": true,
+  "cardId": "LMS-2026-000042"
+}
+```
+
+**What happens server-side:**
+1. `user_images` record ? `status = VERIFIED`, `verified_by`, `verified_at` set
+2. `users.image_url` = the approved image path (first time `imageUrl` actually changes)
+3. `users.image_verification_status` = `VERIFIED`
+4. If the user has no card ID ? card is auto-generated (2-year expiry)
+5. Email sent: ID card email for students, generic approval for others
+
+---
+
+### 2.3 Reject an Image
+
+```
+POST /admin/users/:userId/reject-image
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+```
+
+**Request body:**
+```json
+{
+  "userId": 42,
+  "imageId": 7,
+  "rejectionReason": "Photo is blurry. Please upload a clear, well-lit photo.",
+  "urlValidityDays": 7
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `userId` | ? | User's ID |
+| `imageId` | ? | Specific record to reject. If omitted ? **latest PENDING** record used |
+| `rejectionReason` | ? | Shown to the user in the rejection email |
+| `userEmail` | ? | Override email for notification |
+| `urlValidityDays` | ? default `7` | Days the re-upload link is valid (1�30) |
+
+**Success response (200):**
+```json
+{
+  "success": true,
+  "message": "User image rejected successfully. User notified via email.",
+  "userId": "42",
+  "imageId": "7",
+  "rejectionReason": "Photo is blurry...",
+  "uploadUrl": "https://lms.suraksha.lk/profile/image/upload?token=...",
+  "expiresAt": "2026-03-20T09:00:00.000Z",
+  "emailSent": true,
+  "uploadToken": "..."
+}
+```
+
+**What happens server-side:**
+1. `user_images` record ? `status = REJECTED`, `rejection_reason` stored (DB record kept forever)
+2. Cloud file deleted to save storage
+3. `users.image_verification_status` = `REJECTED`, `image_rejection_reason` stored (backward compat)
+4. `users.image_url` **NOT changed** � previous approved image remains active
+5. Rejection email sent with timed re-upload link
+
+---
+
+## Part 3 � State Diagram
+
+```
+User has no image
+        �
+        ?
+[Upload new image]
+        � POST /users/:id/profile-image
+        ?
+ user_images record created (PENDING)
+ user.imageUrl   ? UNCHANGED
+        �
+   +--------------+
+   ?              ?
+[Admin APPROVES] [Admin REJECTS]
+   �                �
+   � user_images ? VERIFIED    user_images ? REJECTED
+   � user.imageUrl = new image  cloud file deleted
+   � card generated if new      user.imageUrl UNCHANGED
+   � approval email sent        rejection email + re-upload link
+   ?                �
+Active image updated �
+                     ?
+           User sees rejection reason
+           + "Upload new image" button
+                     �
+                     +---- [Upload new image] ---? (loop back)
+```
+
+---
+
+## Part 4 � Recommended UI Components
+
+### User Profile Page � Image Section
+
+```
++---------------------------------------------+
+�  [Current Active Photo]                     �
+�  Status: ? VERIFIED  (approved Jan 10)     �
+�                                             �
+�  ? New photo pending review  (submitted today)
+�                                             �
+�  [Upload New Photo]                         �
++---------------------------------------------+
+```
+
+Logic:
+- Display `user.imageUrl` as the active photo (from `/users/profile/image-status`)
+- Check `/users/profile/image-history` � if latest entry is PENDING, show "pending review" note
+- If latest entry is REJECTED, show rejection reason + "Upload New Photo" call to action
+
+### Image History Tab / Modal
+
+```
++--------------------------------------------------------------------+
+� Submitted   � Thumbnail    � Status     � Notes                    �
++-------------+--------------+------------+--------------------------�
+� 13 Mar 2026 � [thumbnail]  � ? PENDING  � Awaiting review          �
+� 14 Feb 2026 � [� deleted] � ? REJECTED � "Photo is blurry..."     �
+� 09 Jan 2026 � [thumbnail]  � ? VERIFIED � Approved 10 Jan 2026     �
++--------------------------------------------------------------------+
+```
+
+> Do **not** render image thumbnails for REJECTED entries (the file has been deleted from cloud storage). Use a placeholder like "? Deleted" instead.
+
+### Admin Review Panel
+
+```
++-------------------------------------------------------+
+�  K.A. Perera  �  STUDENT  �  Submitted: 13 Mar 2026  �
+�  imageId: 7   �  scope: GLOBAL                        �
+�                                                       �
+�  [Submitted photo � full size]                        �
+�                                                       �
+�  [? Approve]    [? Reject]                           �
+�                                                       �
+�  On reject: show rejectionReason text area            �
++-------------------------------------------------------+
+```
+
+Always pass `imageId` from the list response when calling approve/reject.
+
+---
+
+## Part 5 � TypeScript Interfaces
+
+```typescript
+// Status from /users/profile/image-status
+interface ProfileImageStatus {
+  userId: string;
+  imageUrl: string | null;           // currently active (approved) image
+  imageVerificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
 }
 
-// ──────────────────────────────────────────────
-// Global Profile Image Upload Component
-// ──────────────────────────────────────────────
-export function ProfileImageUpload({
-  userId,
-  token,
-  currentStatus,
-  currentImageUrl,
-}: {
-  userId:          string;
-  token:           string;
-  currentStatus:   string | null;
-  currentImageUrl: string | null;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState<UploadState>({
-    status:   (currentStatus as any) ?? 'idle',
-    imageUrl: currentImageUrl,
-    error:    null,
-  });
-  const [uploading, setUploading] = useState(false);
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Client-side validation
-    const MAX_SIZE_MB = 5;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setState(s => ({ ...s, error: `File must be under ${MAX_SIZE_MB} MB` }));
-      return;
-    }
-
-    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!allowed.includes(file.type)) {
-      setState(s => ({ ...s, error: 'Only JPEG, PNG, and WebP are allowed' }));
-      return;
-    }
-
-    setUploading(true);
-    setState(s => ({ ...s, error: null }));
-
-    try {
-      // Upload to cloud
-      const { publicUrl } = await uploadImageToCloud(file, 'profile-images', token);
-
-      // Register with backend
-      const regRes = await fetch(`${API_BASE}/users/${userId}/profile-image`, {
-        method:  'POST',
-        headers: {
-          Authorization:  `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageUrl: publicUrl }),
-      });
-
-      if (!regRes.ok) {
-        const err = await regRes.json();
-        throw new Error(err.message || 'Failed to save profile image');
-      }
-
-      setState({ status: 'pending_review', imageUrl: publicUrl, error: null });
-    } catch (err: any) {
-      setState(s => ({ ...s, error: err.message }));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div>
-      {state.imageUrl && (
-        <img
-          src={state.imageUrl}
-          alt="Profile"
-          style={{ width: 120, height: 120, borderRadius: '50%', objectFit: 'cover' }}
-        />
-      )}
-
-      {/* Status badge */}
-      {state.status === 'pending_review' && (
-        <span style={{ color: 'orange' }}>⏳ Awaiting admin review</span>
-      )}
-      {state.status === 'VERIFIED' && (
-        <span style={{ color: 'green' }}>✅ Approved</span>
-      )}
-      {state.status === 'REJECTED' && (
-        <span style={{ color: 'red' }}>
-          ❌ Rejected — check your email to re-upload
-        </span>
-      )}
-
-      {state.error && <p style={{ color: 'red' }}>{state.error}</p>}
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".jpg,.jpeg,.png,.webp"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-
-      <button
-        onClick={() => fileRef.current?.click()}
-        disabled={uploading}
-      >
-        {uploading ? 'Uploading…' : state.imageUrl ? 'Change Image' : 'Upload Image'}
-      </button>
-    </div>
-  );
+// Entry from /users/profile/image-history
+interface ImageHistoryEntry {
+  imageId: string;
+  imageUrl: string;                  // WARNING: may be a dead URL if status = REJECTED
+  scope: 'GLOBAL' | 'INSTITUTE';
+  instituteId: string | null;
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  rejectionReason: string | null;
+  verifiedAt: string | null;         // ISO 8601
+  verifiedBy: string | null;
+  uploadedAt: string;                // ISO 8601
 }
 
-// ──────────────────────────────────────────────
-// Institute Image Upload Component
-// ──────────────────────────────────────────────
-export function InstituteImageUpload({
-  userId,
-  instituteId,
-  token,
-  currentImageUrl,
-  currentStatus,
-}: {
-  userId:          string;
-  instituteId:     string;
-  token:           string;
-  currentImageUrl: string | null;
-  currentStatus:   string | null;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState(currentImageUrl);
-  const [status, setStatus]   = useState(currentStatus);
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    setError(null);
-
-    try {
-      const { publicUrl } = await uploadImageToCloud(
-        file,
-        'institute-user-images',
-        token
-      );
-
-      const endpoint =
-        `${API_BASE}/institute-users/institute/${instituteId}/users/${userId}/upload-image`;
-
-      const res = await fetch(endpoint, {
-        method:  'POST',
-        headers: {
-          Authorization:  `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageUrl: publicUrl }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to save institute image');
-      }
-
-      setImageUrl(publicUrl);
-      setStatus('PENDING');
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div>
-      {imageUrl && (
-        <img
-          src={imageUrl}
-          alt="Institute Profile"
-          style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8 }}
-        />
-      )}
-
-      {status === 'PENDING'  && <span style={{ color: 'orange' }}>⏳ Pending review</span>}
-      {status === 'VERIFIED' && <span style={{ color: 'green' }}>✅ Approved</span>}
-      {status === 'REJECTED' && <span style={{ color: 'red' }}>❌ Rejected — upload a new image</span>}
-
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".jpg,.jpeg,.png,.webp"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-
-      <button onClick={() => fileRef.current?.click()} disabled={uploading}>
-        {uploading ? 'Uploading…' : imageUrl ? 'Change Image' : 'Upload Image'}
-      </button>
-    </div>
-  );
+// Upload request body � POST /users/:id/profile-image
+interface UploadProfileImageDto {
+  imageUrl: string;                  // full public URL from signed-URL upload
+  scope?: 'GLOBAL' | 'INSTITUTE';   // default: GLOBAL
+  instituteId?: string;              // required if scope = INSTITUTE
 }
 
-// ──────────────────────────────────────────────
-// Re-upload page (called from rejection email link)
-// ──────────────────────────────────────────────
-export function ReuploadProfileImage({ token: uploadToken }: { token: string }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
-  const [message, setMessage] = useState('');
+// Admin list item � GET /admin/users/unverified-images
+interface AdminImageListItem {
+  imageId: string;
+  userId: string;
+  nameWithInitials: string | null;
+  email: string | null;
+  phoneNumber: string | null;
+  imageUrl: string;
+  imageVerificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  scope: 'GLOBAL' | 'INSTITUTE';
+  instituteId: string | null;
+  imageUploadedAt: string;
+  userType: string | null;
+}
 
-  // Note: we need a JWT for the upload/verify steps only;
-  // the reupload registration endpoint accepts the uploadToken instead.
+// Admin approve request � POST /admin/users/:userId/approve-image
+interface ApproveImageDto {
+  userId: number;
+  imageId?: number;   // omit to auto-select latest PENDING
+  note?: string;
+}
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setStatus('uploading');
-
-    try {
-      // Step 1–3: Use API key or fallback approach for getting signed URL
-      // Since this page has no JWT, use the public upload endpoint
-      const params = new URLSearchParams({
-        folder:      'profile-images',
-        fileName:    file.name,
-        contentType: file.type,
-        fileSize:    String(file.size),
-      });
-
-      const signedRes = await fetch(
-        `${API_BASE}/public/upload/get-signed-url?${params}`,
-        {
-          // Public endpoint — API key sent via header or no auth required
-          // depending on your setup
-        }
-      );
-
-      if (!signedRes.ok) throw new Error('Could not get upload URL');
-
-      const { uploadUrl, relativePath } = await signedRes.json();
-
-      await fetch(uploadUrl, {
-        method:  'PUT',
-        body:    file,
-        headers: { 'Content-Type': file.type },
-      });
-
-      const verifyRes = await fetch(`${API_BASE}/public/upload/verify-and-publish`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ relativePath }),
-      });
-
-      const { publicUrl } = await verifyRes.json();
-
-      // Step 4: Register via token
-      const regRes = await fetch(
-        `${API_BASE}/users/profile/image/reupload?token=${uploadToken}`,
-        {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ imageUrl: publicUrl }),
-        }
-      );
-
-      if (!regRes.ok) {
-        const err = await regRes.json();
-        throw new Error(err.message || 'Re-upload failed');
-      }
-
-      setStatus('done');
-      setMessage('Image submitted for review. You will be notified once approved.');
-    } catch (err: any) {
-      setStatus('error');
-      setMessage(err.message);
-    }
-  }
-
-  return (
-    <div>
-      <h2>Upload New Profile Image</h2>
-      {status === 'done'  && <p style={{ color: 'green' }}>{message}</p>}
-      {status === 'error' && <p style={{ color: 'red' }}>{message}</p>}
-
-      {status !== 'done' && (
-        <>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp"
-            style={{ display: 'none' }}
-            onChange={handleFile}
-          />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={status === 'uploading'}
-          >
-            {status === 'uploading' ? 'Uploading…' : 'Select Image'}
-          </button>
-        </>
-      )}
-    </div>
-  );
+// Admin reject request � POST /admin/users/:userId/reject-image
+interface RejectImageDto {
+  userId: number;
+  imageId?: number;   // omit to auto-select latest PENDING
+  rejectionReason: string;
+  userEmail?: string;
+  urlValidityDays?: number;  // 1-30, default 7
 }
 ```
 
 ---
 
-## 10. Error Reference
+## Part 6 � Migration & Database Summary
 
-| HTTP Status | Scenario | Resolution |
-|-------------|----------|------------|
-| `400 Bad Request` | `imageUrl` is not a valid URL | Pass the full `https://` URL returned by `/upload/verify-and-publish` |
-| `400 Bad Request` | Image file not found in storage | Upload via signed URL first, then call verify-and-publish before registering |
-| `400 Bad Request` | Double extension in filename (`file.pdf.jpg`) | Rename file to single extension |
-| `401 Unauthorized` | Missing or expired JWT | Refresh access token and retry |
-| `403 Forbidden` | JWT userId does not match param | Only upload to your own user ID |
-| `404 Not Found` | User or institute-user record not found | Verify `userId` / `instituteId` are correct |
-| `429 Too Many Requests` | Rate limit exceeded | Profile: 5 per 15 min. Re-upload: 10 per hour. Wait and retry. |
-| `400` on reupload | `token` expired (> 7 days) | Contact admin to issue a new rejection + re-upload link |
-| GCS `403` on PUT | Signed URL expired (10-min window) | Re-request a new signed URL and upload again |
+Migration `1751000000000-CreateUserImagesTable` executed on **13 Mar 2026**.
+
+```sql
+CREATE TABLE user_images (
+  id               BIGINT                            NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id          BIGINT                            NOT NULL,
+  image_url        VARCHAR(500)                      NOT NULL,
+  scope            ENUM('GLOBAL','INSTITUTE')        NOT NULL DEFAULT 'GLOBAL',
+  institute_id     BIGINT                            NULL,
+  status           ENUM('PENDING','VERIFIED','REJECTED') NOT NULL DEFAULT 'PENDING',
+  rejection_reason TEXT                              NULL,
+  verified_by      BIGINT                            NULL,
+  verified_at      TIMESTAMP                         NULL,
+  created_at       TIMESTAMP                         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       TIMESTAMP                         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user_images_user_id     (user_id),
+  INDEX idx_user_images_user_status (user_id, status)
+);
+```
+
+**Backward compatibility:** The `users` table columns (`image_url`, `image_verification_status`, `image_verified_by`, `image_verified_at`, `image_rejection_reason`) are **kept and still updated** � existing code reading from the user profile continues to work without changes.
 
 ---
 
-*Last updated: 2026 — Based on codebase analysis of `user-profile-image.controller.ts`, `institue_user.service.ts`, `upload.controller.ts`, and related entities.*
+## Part 7 � Common Edge Cases
+
+### User submits multiple images before one is approved
+Multiple PENDING rows can exist. The admin list shows all of them. The admin approves or rejects each by `imageId`. Only the approved one promotes to `user.imageUrl`.
+
+### User has a VERIFIED image and submits a new one
+`user.imageUrl` keeps pointing to the old verified image. The user sees their current active photo with a "new photo pending review" banner. If the new submission is rejected, the old verified image remains active � the user is never left without an active photo.
+
+### Admin rejects when no previous approved image exists
+`user.imageUrl` stays null. The user sees no profile photo and a rejection message with the re-upload link.
+
+### Rejected image thumbnail
+The cloud file is deleted on rejection. The history endpoint returns the original `image_url` string but the file no longer exists. Always check `status === 'REJECTED'` and skip rendering the image � show a placeholder instead.
+
+### Institute-scoped images
+Pass `scope: "INSTITUTE"` and `instituteId` on upload. The record is stored with those values. On approval, `user.imageUrl` (global) is still updated. Frontend can filter history by `scope + instituteId` if a per-institute image view is needed.

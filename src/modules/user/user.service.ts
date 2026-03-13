@@ -42,6 +42,7 @@ import { maskPhoneNumber, maskEmail } from '../../common/utils/phone-mask.util';
 import { UserManagementService } from '../../common/services/cache-user-management.service';
 import { now, getCurrentSriLankaISO } from '../../common/utils/timezone.util';
 import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
+import { UserImageEntity, ImageScope } from './entities/user-image.entity';
 
 @Injectable()
 export class UsersService {
@@ -72,6 +73,8 @@ export class UsersService {
     private readonly cloudStorageService: CloudStorageService,
     @Inject(forwardRef(() => 'UserOtpService'))
     private readonly userOtpService: any,
+    @InjectRepository(UserImageEntity)
+    private readonly userImageRepository: Repository<UserImageEntity>,
   ) {}
 
   /**
@@ -2416,40 +2419,67 @@ export class UsersService {
     }
   }
 
-  async updateImageUrl(userId: string, imageUrl: string): Promise<UserResponseDto> {
+  /**
+   * Submit a profile image for admin review.
+   *
+   * Creates a `user_images` record (status = PENDING) and marks the user's
+   * `imageVerificationStatus` as PENDING so the admin dashboard notices it.
+   * `user.imageUrl` is NOT changed — it keeps pointing to the last approved image
+   * until an admin explicitly approves the new submission.
+   */
+  async updateImageUrl(
+    userId: string,
+    imageUrl: string,
+    scope: ImageScope = ImageScope.GLOBAL,
+    instituteId?: string,
+  ): Promise<UserResponseDto> {
     try {
-      
-      // Check if user exists
       const user = await this.userRepository.findOne({ where: { id: userId } });
       if (!user) {
         throw new ResourceNotFoundException('User', userId);
       }
 
-      // Update the image URL and set status to PENDING for verification
-      await this.userRepository.update(userId, { 
+      // Insert history record — this is the source of truth for the new submission
+      const imageRecord = this.userImageRepository.create({
+        userId,
         imageUrl,
-        imageVerificationStatus: ImageVerificationStatus.PENDING,
-        imageVerifiedBy: null,
-        imageVerifiedAt: null,
-        imageRejectionReason: null
+        scope,
+        instituteId: instituteId ?? null,
+        status: ImageVerificationStatus.PENDING,
       });
-      
-      // 🚀 ULTRA-OPTIMIZED: Build updated user from existing data instead of SELECT query
+      await this.userImageRepository.save(imageRecord);
+
+      // Update the user's verification status so the admin dashboard can find it,
+      // but do NOT change user.imageUrl (keep the last approved image active)
+      await this.userRepository.update(userId, {
+        imageVerificationStatus: ImageVerificationStatus.PENDING,
+        updatedAt: new Date(),
+      });
+
       const updatedUser = {
         ...user,
-        imageUrl,
         imageVerificationStatus: ImageVerificationStatus.PENDING,
-        updatedAt: now()
+        updatedAt: now(),
       } as unknown as UserResponseDto;
-      
+
       return new UserResponseDto(updatedUser);
     } catch (error) {
-      this.logger.error(`Failed to update image URL for user ${userId}: ${error.message}`, error.stack);
+      this.logger.error(`Failed to submit image for review for user ${userId}: ${error.message}`, error.stack);
       if (error instanceof ResourceNotFoundException) {
         throw error;
       }
-      throw new BusinessLogicException('Failed to update user image URL');
+      throw new BusinessLogicException('Failed to submit profile image for review');
     }
+  }
+
+  /**
+   * Returns the full image submission history for a user, ordered newest first.
+   */
+  async getUserImageHistory(userId: string): Promise<UserImageEntity[]> {
+    return this.userImageRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async updateIdUrl(userId: string, idUrl: string): Promise<UserResponseDto> {

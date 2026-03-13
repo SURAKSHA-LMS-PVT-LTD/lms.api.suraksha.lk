@@ -11,6 +11,7 @@ import { UserOtpService } from './services/user-otp.service';
 import { UserFcmTokenController } from './controllers/user-fcm-token.controller';
 import { UserProfileImageController } from './controllers/user-profile-image.controller';
 import { SystemAdminUserController } from './controllers/system-admin-user.controller';
+import { UserImageEntity } from './entities/user-image.entity';
 import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
 import { AuthModule } from '../../auth/auth.module';
 import { InstitueUserModule } from '../institute_mudules/institue_user/institue_user.module';
@@ -45,7 +46,8 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
       ParentEntity,
       InstituteClassStudentEntity,
       InstituteClassSubjectStudent,
-      InstituteClassEntity
+      InstituteClassEntity,
+      UserImageEntity,
     ]),
     CacheModule,
     SmsModule, // Add SMS module for welcome notifications

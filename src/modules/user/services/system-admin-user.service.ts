@@ -50,6 +50,7 @@ import { AsyncEmailService } from '../../../common/services/async-email.service'
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 import { now } from '../../../common/utils/timezone.util';
+import { UserImageEntity } from '../entities/user-image.entity';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -77,6 +78,8 @@ export class SystemAdminUserService {
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
     private readonly cloudStorageService: CloudStorageService,
+    @InjectRepository(UserImageEntity)
+    private readonly userImageRepository: Repository<UserImageEntity>,
   ) {}
 
   /**
@@ -1553,41 +1556,42 @@ export class SystemAdminUserService {
     const { page = 1, limit = 20, status = ImageVerificationStatus.PENDING } = query;
     const skip = (page - 1) * limit;
 
-    const queryBuilder = this.userRepository
-      .createQueryBuilder('user')
-      .select([
-        'user.id',
-        'user.nameWithInitials',
-        'user.email',
-        'user.phoneNumber',
-        'user.imageUrl',
-        'user.imageVerificationStatus',
-        'user.userType',
-        'user.updatedAt',
-      ])
-      .where('user.imageUrl IS NOT NULL')
-      .orderBy('user.updatedAt', 'DESC')
+    // Query the user_images table so the admin sees the actual submitted image URLs
+    const [images, total] = await this.userImageRepository
+      .createQueryBuilder('ui')
+      .where('ui.status = :status', { status })
+      .orderBy('ui.createdAt', 'DESC')
       .skip(skip)
-      .take(limit);
+      .take(limit)
+      .getManyAndCount();
 
-    // Filter by verification status
-    if (status) {
-      queryBuilder.andWhere('user.imageVerificationStatus = :status', { status });
-    }
-
-    const [users, total] = await queryBuilder.getManyAndCount();
+    // Batch-load user metadata
+    const userIds = [...new Set(images.map(img => img.userId))];
+    const users = userIds.length
+      ? await this.userRepository.find({
+          where: { id: userIds as any },
+          select: ['id', 'nameWithInitials', 'email', 'phoneNumber', 'userType', 'updatedAt'],
+        })
+      : [];
+    const userMap = new Map(users.map(u => [u.id, u]));
 
     return {
-      users: users.map(user => ({
-        userId: user.id,
-        nameWithInitials: user.nameWithInitials,
-        email: this.maskEmail(user.email),
-        phoneNumber: this.maskPhone(user.phoneNumber),
-        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
-        imageVerificationStatus: user.imageVerificationStatus || ImageVerificationStatus.PENDING,
-        imageUploadedAt: user.updatedAt,
-        userType: user.userType,
-      })),
+      users: images.map(img => {
+        const user = userMap.get(img.userId);
+        return {
+          imageId: img.id,
+          userId: img.userId,
+          nameWithInitials: user?.nameWithInitials ?? null,
+          email: user?.email ? this.maskEmail(user.email) : null,
+          phoneNumber: user?.phoneNumber ? this.maskPhone(user.phoneNumber) : null,
+          imageUrl: this.cloudStorageService.getFullUrl(img.imageUrl),
+          imageVerificationStatus: img.status,
+          scope: img.scope,
+          instituteId: img.instituteId ?? null,
+          imageUploadedAt: img.createdAt,
+          userType: user?.userType ?? null,
+        };
+      }),
       total,
       page,
       limit,
@@ -1597,7 +1601,8 @@ export class SystemAdminUserService {
 
   /**
    * ✅ Approve User Image
-   * Marks image as verified and sends confirmation email
+   * Marks the user_images record as VERIFIED, copies its URL to user.imageUrl,
+   * generates a card if needed, and sends a confirmation email.
    */
   async approveUserImage(dto: any, adminId: string): Promise<any> {
     const user = await this.userRepository.findOne({
@@ -1608,11 +1613,33 @@ export class SystemAdminUserService {
       throw new NotFoundException(`User with ID ${dto.userId} not found`);
     }
 
-    if (!user.imageUrl) {
-      throw new BadRequestException('User has no image to approve');
+    // Find the image record to approve — by explicit imageId or the latest PENDING submission
+    let imageRecord: UserImageEntity | null = null;
+    if (dto.imageId) {
+      imageRecord = await this.userImageRepository.findOne({
+        where: { id: dto.imageId.toString(), userId: dto.userId.toString() },
+      });
+      if (!imageRecord) {
+        throw new NotFoundException(`Image record ${dto.imageId} not found for user ${dto.userId}`);
+      }
+    } else {
+      imageRecord = await this.userImageRepository.findOne({
+        where: { userId: dto.userId.toString(), status: ImageVerificationStatus.PENDING },
+        order: { createdAt: 'DESC' },
+      });
+      if (!imageRecord) {
+        throw new BadRequestException('No pending image found for this user');
+      }
     }
 
     const approvedAt = new Date();
+
+    // Mark the image record as verified
+    await this.userImageRepository.update(imageRecord.id, {
+      status: ImageVerificationStatus.VERIFIED,
+      verifiedBy: adminId,
+      verifiedAt: approvedAt,
+    });
 
     // ✅ Generate card ID if not exists + set ACTIVE status + 2-year expiry
     let cardGenerated = false;
@@ -1635,13 +1662,14 @@ export class SystemAdminUserService {
       this.logger.log(`Generated card ID ${generatedCardId} for user ${dto.userId}`);
     }
 
-    // Update user with approval metadata
+    // Promote the approved image to user.imageUrl and update verification metadata
     await this.userRepository.update(dto.userId.toString(), {
+      imageUrl: imageRecord.imageUrl,
       imageVerificationStatus: ImageVerificationStatus.VERIFIED,
       imageVerifiedBy: adminId,
       imageVerifiedAt: approvedAt,
-      imageRejectionReason: null, // Clear any previous rejection reason
-      updatedAt: now()
+      imageRejectionReason: null,
+      updatedAt: new Date(),
     });
 
     // ✅ Check if user is a student to determine email type
@@ -1650,15 +1678,15 @@ export class SystemAdminUserService {
     });
 
     // Send approval email with ID card for students
+    const approvedImageUrl = imageRecord.imageUrl;
     if (user.email) {
       try {
-        // ✅ Student with image + cardId → send ID card email only (no welcome message)
-        if (student && user.imageUrl && user.cardId) {
-          let photoUrl = user.imageUrl;
+        if (student && approvedImageUrl && user.cardId) {
+          let photoUrl = approvedImageUrl;
           try {
-            photoUrl = this.cloudStorageService.getFullUrl(user.imageUrl);
+            photoUrl = this.cloudStorageService.getFullUrl(approvedImageUrl);
           } catch (e) {
-            // Use raw imageUrl if getFullUrl fails
+            // Use raw path if getFullUrl fails
           }
 
           this.asyncEmailService.sendTemplateEmailAsync({
@@ -1681,7 +1709,6 @@ export class SystemAdminUserService {
 
           this.logger.log(`ID card email sent to user ${dto.userId}`);
         } else {
-          // Generic approval email for non-students or users without cards
           this.asyncEmailService.sendTemplateEmailAsync({
             templateType: 'generic',
             toEmails: [user.email],
@@ -1701,12 +1728,13 @@ export class SystemAdminUserService {
       }
     }
 
-    this.logger.log(`Image approved for user ${dto.userId} by admin ${adminId}`);
+    this.logger.log(`Image ${imageRecord.id} approved for user ${dto.userId} by admin ${adminId}`);
 
     return {
       success: true,
       message: 'User image approved successfully',
       userId: user.id,
+      imageId: imageRecord.id,
       status: ImageVerificationStatus.VERIFIED,
       approvedBy: adminId,
       approvedAt,
@@ -1717,7 +1745,11 @@ export class SystemAdminUserService {
 
   /**
    * ✅ Reject User Image with Email & Signed Upload URL
-   * Deletes rejected image, generates new upload URL (7-day validity), sends email
+   *
+   * - Updates the user_images record to REJECTED (keeps DB history)
+   * - Deletes the cloud file to free storage space
+   * - Does NOT change user.imageUrl — the previous approved image remains active
+   * - Sends rejection email with a signed re-upload link
    */
   async rejectUserImage(dto: any, adminId: string): Promise<any> {
     const { userId, rejectionReason, userEmail, urlValidityDays = 7 } = dto;
@@ -1730,33 +1762,57 @@ export class SystemAdminUserService {
       throw new NotFoundException(`User with ID ${userId} not found`);
     }
 
-    // Delete the rejected image from cloud storage
-    if (user.imageUrl) {
-      try {
-        const imagePath = this.extractPathFromUrl(user.imageUrl);
-        if (imagePath) {
-          await this.cloudStorageService.deleteFile(imagePath);
-          this.logger.log(`Deleted rejected image: ${imagePath}`);
-        }
-      } catch (deleteError) {
-        this.logger.warn(`Failed to delete rejected image: ${deleteError.message}`);
+    // Find the image record to reject — by explicit imageId or the latest PENDING submission
+    let imageRecord: UserImageEntity | null = null;
+    if (dto.imageId) {
+      imageRecord = await this.userImageRepository.findOne({
+        where: { id: dto.imageId.toString(), userId: userId.toString() },
+      });
+      if (!imageRecord) {
+        throw new NotFoundException(`Image record ${dto.imageId} not found for user ${userId}`);
+      }
+    } else {
+      imageRecord = await this.userImageRepository.findOne({
+        where: { userId: userId.toString(), status: ImageVerificationStatus.PENDING },
+        order: { createdAt: 'DESC' },
+      });
+      if (!imageRecord) {
+        throw new BadRequestException('No pending image found for this user');
       }
     }
 
-    // Clear image URL from user record and set rejection status
+    const rejectedAt = new Date();
+
+    // Delete the rejected image file from cloud storage (save space; DB record is kept)
+    try {
+      const imagePath = this.extractPathFromUrl(imageRecord.imageUrl) ?? imageRecord.imageUrl;
+      await this.cloudStorageService.deleteFile(imagePath);
+      this.logger.log(`Deleted rejected image: ${imagePath}`);
+    } catch (deleteError) {
+      this.logger.warn(`Failed to delete rejected image: ${deleteError.message}`);
+    }
+
+    // Mark the image record as rejected
+    await this.userImageRepository.update(imageRecord.id, {
+      status: ImageVerificationStatus.REJECTED,
+      rejectionReason,
+      verifiedBy: adminId,
+      verifiedAt: rejectedAt,
+    });
+
+    // Update the user's status fields for backward compat — but do NOT touch user.imageUrl
     await this.userRepository.update(userId.toString(), {
-      imageUrl: null,
       imageVerificationStatus: ImageVerificationStatus.REJECTED,
       imageVerifiedBy: adminId,
-      imageVerifiedAt: new Date(),
+      imageVerifiedAt: rejectedAt,
       imageRejectionReason: rejectionReason,
-      updatedAt: now()
+      updatedAt: new Date(),
     });
 
     // Generate cryptographically signed upload token (HMAC-SHA256)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + urlValidityDays);
-    
+
     const tokenPayload = JSON.stringify({
       userId,
       purpose: 'profile-image-reupload',
@@ -1770,12 +1826,6 @@ export class SystemAdminUserService {
     const signature = crypto.createHmac('sha256', tokenSecret).update(tokenPayload).digest('base64url');
     const uploadToken = `${Buffer.from(tokenPayload).toString('base64url')}.${signature}`;
 
-    // Generate signed upload URL (7-day TTL)
-    const timestamp = Date.now();
-    const fileName = `profile-reupload-${userId}-${timestamp}.jpg`;
-    const relativePath = `profile-images/${userId}/${fileName}`;
-    
-    // Construct frontend upload URL
     const frontendBaseUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
     const frontendUploadUrl = `${frontendBaseUrl}/profile/image/upload?token=${uploadToken}`;
 
@@ -1806,12 +1856,13 @@ export class SystemAdminUserService {
       }
     }
 
-    this.logger.log(`Image rejected for user ${userId} by admin ${adminId}. Reason: ${rejectionReason}`);
+    this.logger.log(`Image ${imageRecord.id} rejected for user ${userId} by admin ${adminId}. Reason: ${rejectionReason}`);
 
     return {
       success: true,
       message: 'User image rejected successfully. User notified via email.',
       userId: user.id,
+      imageId: imageRecord.id,
       rejectionReason,
       uploadUrl: frontendUploadUrl,
       expiresAt: expiresAt.toISOString(),
