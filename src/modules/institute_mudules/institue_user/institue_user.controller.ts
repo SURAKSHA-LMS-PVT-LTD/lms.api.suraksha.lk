@@ -942,14 +942,13 @@ export class InstitueUserController {
   @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
-
   async verifyInstituteUserImage(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() verifyImageDto: VerifyInstituteUserImageDto
-    // @CurrentUser() user: UserEntity, // Add when auth is implemented
+    @Body() verifyImageDto: VerifyInstituteUserImageDto,
+    @Req() req: JwtRequest,
   ): Promise<{ success: boolean; message: string; status: ImageVerificationStatus }> {
-    const verifierId = '1'; // Get from authenticated user
+    const verifierId = req.user.s;
     return this.institueUserService.verifyInstituteUserImage(instituteId, userId, verifyImageDto, verifierId);
   }
 

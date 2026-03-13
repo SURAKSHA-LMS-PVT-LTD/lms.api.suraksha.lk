@@ -3493,6 +3493,7 @@ export class InstitueUserService {
 
       const data = instituteUsers.map(iu => ({
         ...new SecureUserResponseDto(iu.user),
+        userId: iu.userId,
         instituteUserImageUrl: iu.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(iu.instituteUserImageUrl) : null,
         instituteCardId: iu.instituteCardId,
         imageVerificationStatus: iu.imageVerificationStatus,
@@ -3548,6 +3549,7 @@ export class InstitueUserService {
 
       const data = instituteUsers.map(iu => ({
         ...new SecureUserResponseDto(iu.user),
+        userId: iu.userId,
         instituteUserImageUrl: iu.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(iu.instituteUserImageUrl) : null,
         instituteCardId: iu.instituteCardId,
         imageVerificationStatus: iu.imageVerificationStatus,
