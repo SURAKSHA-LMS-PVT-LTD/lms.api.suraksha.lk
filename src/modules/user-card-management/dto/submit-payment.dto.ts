@@ -5,7 +5,6 @@ import { CardPaymentType } from '../enums/payment-type.enum';
 export class SubmitPaymentDto {
   @ApiProperty({ description: 'Payment submission URL (slip image/receipt)' })
   @IsNotEmpty()
-  @IsUrl()
   submissionUrl: string;
 
   @ApiProperty({ description: 'Payment type', enum: CardPaymentType })
