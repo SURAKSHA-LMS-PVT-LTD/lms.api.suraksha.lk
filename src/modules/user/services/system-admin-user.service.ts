@@ -50,7 +50,7 @@ import { AsyncEmailService } from '../../../common/services/async-email.service'
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 import { now } from '../../../common/utils/timezone.util';
-import { UserImageEntity } from '../entities/user-image.entity';
+import { UserImageEntity, ImageScope } from '../entities/user-image.entity';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -1790,16 +1790,40 @@ export class SystemAdminUserService {
       this.logger.log(`Generated card ID ${generatedCardId} for user ${dto.userId}`);
     }
 
-    // Promote the approved image to user.imageUrl and update verification metadata
+    // Promote the approved image — for INSTITUTE-scoped images update the institute_user row;
+    // for GLOBAL images (or legacy) update user.imageUrl directly.
     const approvedImagePath = isLegacyApproval ? user.imageUrl : imageRecord!.imageUrl;
-    await this.userRepository.update(dto.userId.toString(), {
-      imageUrl: approvedImagePath,
-      imageVerificationStatus: ImageVerificationStatus.VERIFIED,
-      imageVerifiedBy: adminId,
-      imageVerifiedAt: approvedAt,
-      imageRejectionReason: null,
-      updatedAt: new Date(),
-    });
+    const isInstituteScope = !isLegacyApproval && imageRecord!.scope === ImageScope.INSTITUTE;
+
+    if (isInstituteScope && imageRecord!.instituteId) {
+      // Update the institute_user row instead of user.imageUrl
+      await this.instituteUserRepository.update(
+        { instituteId: imageRecord!.instituteId, userId: dto.userId.toString() },
+        {
+          instituteUserImageUrl: approvedImagePath,
+          imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+          imageVerifiedBy: adminId,
+        },
+      );
+      // Only sync the verification status on the user row (do NOT overwrite user.imageUrl)
+      await this.userRepository.update(dto.userId.toString(), {
+        imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+        imageVerifiedBy: adminId,
+        imageVerifiedAt: approvedAt,
+        imageRejectionReason: null,
+        updatedAt: new Date(),
+      });
+    } else {
+      // GLOBAL scope or legacy: promote to user.imageUrl
+      await this.userRepository.update(dto.userId.toString(), {
+        imageUrl: approvedImagePath,
+        imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+        imageVerifiedBy: adminId,
+        imageVerifiedAt: approvedAt,
+        imageRejectionReason: null,
+        updatedAt: new Date(),
+      });
+    }
 
     // ✅ Check if user is a student to determine email type
     const student = await this.studentRepository.findOne({

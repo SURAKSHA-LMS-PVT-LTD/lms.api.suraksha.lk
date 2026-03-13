@@ -3426,6 +3426,12 @@ export class InstitueUserService {
         rejectionReason: verifyImageDto.status === ImageVerificationStatus.REJECTED ? (verifyImageDto.rejectionReason ?? null) : null,
       });
 
+      // Sync the user-level verification status so the admin dashboard reflects the result
+      await this.userRepository.update(userId, {
+        imageVerificationStatus: verifyImageDto.status,
+        updatedAt: new Date(),
+      });
+
       const statusMessage = verifyImageDto.status === ImageVerificationStatus.VERIFIED 
         ? 'approved' 
         : verifyImageDto.status === ImageVerificationStatus.REJECTED 
