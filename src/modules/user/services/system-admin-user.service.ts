@@ -1697,20 +1697,22 @@ export class SystemAdminUserService {
     const history = records.map(r => ({
       imageId: r.id,
       imageUrl: this.cloudStorageService.getFullUrl(r.imageUrl),
+      scope: r.scope,
+      instituteId: r.instituteId ?? null,
       status: r.status,
       rejectionReason: r.rejectionReason ?? null,
       verifiedBy: r.verifiedBy ?? null,
       verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
       submittedAt: r.createdAt.toISOString(),
     }));
-    const current = records.find(r => r.status === ImageVerificationStatus.VERIFIED) ?? records[0] ?? null;
+    // Use users.imageUrl + users.imageVerificationStatus as the authoritative current state.
+    // Do NOT use records.find(VERIFIED) — that might pick an INSTITUTE-scoped image
+    // or a stale VERIFIED entry when a newer PENDING submission exists.
     return {
       userId: user.id,
       nameWithInitials: user.nameWithInitials,
-      currentImageUrl: current
-        ? this.cloudStorageService.getFullUrl(current.imageUrl)
-        : (user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null),
-      currentStatus: current?.status ?? user.imageVerificationStatus ?? ImageVerificationStatus.PENDING,
+      currentImageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+      currentStatus: user.imageVerificationStatus ?? ImageVerificationStatus.PENDING,
       history,
       totalSubmissions: records.length,
       isLegacy: false,

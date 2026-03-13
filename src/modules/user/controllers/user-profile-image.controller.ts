@@ -451,6 +451,32 @@ export class UserProfileImageController {
 
     const records = await this.userService.getUserImageHistory(userId);
 
+    const currentImageUrl = (user as any).imageUrl
+      ? this.cloudStorageService.getFullUrl((user as any).imageUrl)
+      : null;
+    const currentStatus = (user as any).imageVerificationStatus ?? null;
+
+    // Legacy users: image only stored on users.imageUrl, no user_images rows yet
+    if (records.length === 0 && (user as any).imageUrl) {
+      const legacyStatus = currentStatus ?? 'PENDING';
+      return {
+        success: true,
+        currentImageUrl,
+        currentStatus: legacyStatus,
+        data: [{
+          imageId: null,
+          imageUrl: currentImageUrl,
+          scope: 'GLOBAL',
+          instituteId: null,
+          status: legacyStatus,
+          rejectionReason: null,
+          verifiedAt: null,
+          verifiedBy: null,
+          uploadedAt: null,
+        }],
+      };
+    }
+
     const history = records.map(record => ({
       imageId: record.id,
       imageUrl: this.cloudStorageService.getFullUrl(record.imageUrl),
@@ -458,13 +484,15 @@ export class UserProfileImageController {
       instituteId: record.instituteId ?? null,
       status: record.status,
       rejectionReason: record.rejectionReason ?? null,
-      verifiedAt: record.verifiedAt ?? null,
+      verifiedAt: record.verifiedAt ? record.verifiedAt.toISOString() : null,
       verifiedBy: record.verifiedBy ?? null,
-      uploadedAt: record.createdAt,
+      uploadedAt: record.createdAt ? record.createdAt.toISOString() : null,
     }));
 
     return {
       success: true,
+      currentImageUrl,
+      currentStatus,
       data: history,
     };
   }
@@ -483,7 +511,8 @@ export class UserProfileImageController {
     @Param('id', ParseBigIntPipe) userId: string,
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
   ): Promise<any> {
-    const records = await this.userService.getInstituteImageHistory(userId, instituteId);
+    const { currentInstituteImageUrl, currentInstituteImageStatus, records } =
+      await this.userService.getInstituteImageHistory(userId, instituteId);
     const history = records.map(r => ({
       imageId: r.id,
       imageUrl: this.cloudStorageService.getFullUrl(r.imageUrl),
@@ -493,7 +522,12 @@ export class UserProfileImageController {
       verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
       submittedAt: r.createdAt.toISOString(),
     }));
-    return { success: true, data: history };
+    return {
+      success: true,
+      currentInstituteImageUrl,
+      currentInstituteImageStatus,
+      data: history,
+    };
   }
 
   /** DELETE /users/:id/profile-image/institute/:instituteId

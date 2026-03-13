@@ -2489,13 +2489,30 @@ export class UsersService {
   }
 
   /**
-   * Returns institute-scoped image history for a user (all submissions for that institute).
+   * Returns institute-scoped image history for a user in a specific institute,
+   * plus the current verified institute image from the institute_user row.
    */
-  async getInstituteImageHistory(userId: string, instituteId: string): Promise<UserImageEntity[]> {
-    return this.userImageRepository.find({
-      where: { userId, instituteId, scope: ImageScope.INSTITUTE },
-      order: { createdAt: 'DESC' },
-    });
+  async getInstituteImageHistory(
+    userId: string,
+    instituteId: string,
+  ): Promise<{ currentInstituteImageUrl: string | null; currentInstituteImageStatus: string | null; records: UserImageEntity[] }> {
+    const [records, instituteUser] = await Promise.all([
+      this.userImageRepository.find({
+        where: { userId, instituteId, scope: ImageScope.INSTITUTE },
+        order: { createdAt: 'DESC' },
+      }),
+      this.instituteUserRepository.findOne({
+        where: { userId, instituteId },
+        select: ['instituteUserImageUrl', 'imageVerificationStatus'],
+      }),
+    ]);
+    return {
+      currentInstituteImageUrl: instituteUser?.instituteUserImageUrl
+        ? this.cloudStorageService.getFullUrl(instituteUser.instituteUserImageUrl)
+        : null,
+      currentInstituteImageStatus: instituteUser?.imageVerificationStatus ?? null,
+      records,
+    };
   }
 
   /**
