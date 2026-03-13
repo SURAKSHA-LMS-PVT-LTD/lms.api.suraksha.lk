@@ -15,6 +15,7 @@ import {
   GetObjectCommand,
   ListObjectsV2Command
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 
 // AWS SDK v2 will be dynamically imported when needed (legacy support)
@@ -582,14 +583,12 @@ export class CloudStorageService implements OnModuleInit {
   }
 
   /**
-   * 🔐 Generate AWS S3 signed upload URL using POST with presigned policy
-   * 
-   * AWS S3 supports TWO methods for presigned uploads:
-   * 1. PUT with getSignedUrlPromise - ❌ NO Conditions support
-   * 2. POST with createPresignedPost - ✅ FULL Conditions support (including content-length-range)
-   * 
-   * We use POST method to enforce file size limits directly in the signature,
-   * just like GCS x-goog-content-length-range header!
+   * 🔐 Generate AWS S3 presigned PUT URL for direct client uploads
+   *
+   * Uses a standard presigned PUT URL so the frontend can upload with a simple
+   * HTTP PUT request and a Content-Type header — no multipart form data required.
+   * Server-side encryption (AES256) is baked into the signed request.
+   * File size and content-type are validated by verifyAndMakePublicS3 after upload.
    */
   private async generateAwsSignedUploadUrl(
     relativePath: string,
@@ -602,14 +601,14 @@ export class CloudStorageService implements OnModuleInit {
     expiresAt: Date;
     maxFileSize?: number;
     contentType: string;
-    fields?: any; // For POST uploads
+    fields?: any;
   }> {
     if (!this.s3Client) {
       this.logger.error('❌ AWS S3 client is not initialized. Check server logs for initialization errors.');
       throw new InternalServerErrorException('AWS S3 client not initialized. Please check AWS credentials and ensure @aws-sdk/client-s3 is installed.');
     }
 
-    // 🔒 SECURITY 6: Restrict to specific content types only (whitelist approach)
+    // 🔒 SECURITY: Restrict to specific content types only (whitelist approach)
     const folder = relativePath.split('/')[0];
     const allowedContentTypes = this.getAllowedContentTypesForFolder(folder);
     if (!allowedContentTypes.includes(contentType)) {
@@ -618,61 +617,27 @@ export class CloudStorageService implements OnModuleInit {
       );
     }
 
-    // Build conditions array for presigned POST
-    const conditions: any[] = [
-      // 🔒 SECURITY 1: Strict content type match (prevent MIME type spoofing)
-      ['eq', '$Content-Type', contentType],
-      // 🔒 SECURITY 2: Exact key match (prevent path traversal)
-      ['eq', '$key', relativePath],
-      // 🔒 SECURITY 3: Enforce server-side encryption
-      ['eq', '$x-amz-server-side-encryption', 'AES256'],
-    ];
-
-    // 🔒 SECURITY 5: File size constraint (prevent storage abuse)
-    if (maxFileSize) {
-      conditions.push(['content-length-range', 0, maxFileSize]);
-    }
-
-    // Build fields for presigned POST
-    // ⚠️ IMPORTANT: Every field here becomes an ["eq", "$field", "value"] condition in the policy.
-    // The frontend MUST send these EXACT values in the form data, otherwise S3 returns 403.
-    // Only include fields that are security-critical. Metadata like upload-timestamp is NOT
-    // included here because the frontend cannot reproduce the server's timestamp exactly.
-    const fields: Record<string, string> = {
-      key: relativePath,
-      'Content-Type': contentType,
-      // 🔒 SECURITY: Add server-side encryption
-      'x-amz-server-side-encryption': 'AES256',
-    };
-
-    // NOTE: x-amz-meta-upload-timestamp and x-amz-meta-original-filename are intentionally
-    // NOT added to Conditions. Any field listed in Conditions (even starts-with) MUST be
-    // present in the multipart POST or S3 returns 403. These metadata fields are optional —
-    // the frontend may include them or omit them freely without affecting the policy.
-
     try {
-      // Generate presigned POST using AWS SDK v3
-      const presignedPost = await createPresignedPost(this.s3Client, {
+      const command = new PutObjectCommand({
         Bucket: this.s3BucketName,
         Key: relativePath,
-        Conditions: conditions,
-        Fields: fields,
-        Expires: expiresIn,
+        ContentType: contentType,
+        ServerSideEncryption: 'AES256',
       });
 
+      const uploadUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
       return {
-        uploadUrl: presignedPost.url,
+        uploadUrl,
         relativePath,
         expiresAt,
         maxFileSize,
         contentType,
-        fields: presignedPost.fields // POST form fields (Policy, X-Amz-Signature, etc.)
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to create presigned POST: ${error.message}`, error.stack);
-      throw new InternalServerErrorException(`Failed to generate presigned POST: ${error.message}`);
+      this.logger.error(`❌ Failed to create presigned PUT URL: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Failed to generate presigned PUT URL: ${error.message}`);
     }
   }
 
