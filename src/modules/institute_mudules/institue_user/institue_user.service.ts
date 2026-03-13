@@ -3414,9 +3414,19 @@ export class InstitueUserService {
         }
       }
 
-      // institute_user update:
-      // VERIFIED → promote pending image URL as the active institute image
-      // REJECTED → clear the image URL (file deleted above); old status updated
+      // institute_user update rules:
+      //
+      // VERIFIED → set instituteUserImageUrl to the newly approved image + mark VERIFIED.
+      //            This is the ONLY time institute_user is updated.
+      //
+      // REJECTED new-flow → do NOT touch institute_user at all.
+      //            The previously approved image URL and VERIFIED status stay intact so
+      //            other users still see the last approved photo while a new submission
+      //            is pending or after a rejection.
+      //
+      // REJECTED legacy → the URL on institute_user IS the pending image (now deleted);
+      //            clear it and record REJECTED so the user is no longer shown as having
+      //            an image.
       if (verifyImageDto.status === ImageVerificationStatus.VERIFIED) {
         await this.instituteUserRepository.update(
           { instituteId, userId },
@@ -3426,7 +3436,8 @@ export class InstitueUserService {
             imageVerifiedBy: verifierId,
           },
         );
-      } else if (verifyImageDto.status === ImageVerificationStatus.REJECTED) {
+      } else if (verifyImageDto.status === ImageVerificationStatus.REJECTED && isLegacy) {
+        // Legacy only — clear the URL (it was the pending image itself, now deleted)
         await this.instituteUserRepository.update(
           { instituteId, userId },
           {
@@ -3436,6 +3447,7 @@ export class InstitueUserService {
           },
         );
       }
+      // New-flow REJECTED: institute_user untouched — previous approved image remains visible.
 
       // Mirror the decision into the user_images table (skip for legacy — no row exists)
       if (!isLegacy) {
