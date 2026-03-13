@@ -83,14 +83,6 @@ export class CreateLectureDto {
   @IsNotEmpty()
   instituteId: string;
 
-  @ApiPropertyOptional({
-    description: 'Class ID this lecture belongs to. Omit for institute-wide lectures (visible to all classes in the institute for this subject+grade).',
-    example: '1000'
-  })
-  @IsString()
-  @IsOptional()
-  classId?: string;
-
   @ApiProperty({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_001' })
   @IsString()
   @IsNotEmpty()
@@ -174,11 +166,6 @@ export class UpdateLectureDto {
   @IsOptional()
   instituteId?: string;
 
-  @ApiPropertyOptional({ description: 'Class ID this lecture belongs to', example: '1000' })
-  @IsString()
-  @IsOptional()
-  classId?: string;
-
   @ApiPropertyOptional({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_002' })
   @IsString()
   @IsOptional()
@@ -253,9 +240,6 @@ export class LectureResponseDto {
 
   @ApiProperty({ description: 'Institute ID this lecture belongs to', example: '101' })
   instituteId: string;
-
-  @ApiProperty({ description: 'Class ID this lecture belongs to', example: '1000' })
-  classId: string;
 
   @ApiProperty({ description: 'Subject ID this lecture belongs to', example: 'SUBJ_MATH_001' })
   subjectId: string;
@@ -332,11 +316,6 @@ export class LectureQueryDto {
   @IsString()
   @IsOptional()
   instituteId?: string;
-
-  @ApiPropertyOptional({ description: 'Filter by class ID', example: '1000' })
-  @IsString()
-  @IsOptional()
-  classId?: string;
 
   @ApiPropertyOptional({ description: 'Filter by subject ID', example: 'SUBJ_MATH_001' })
   @IsString()

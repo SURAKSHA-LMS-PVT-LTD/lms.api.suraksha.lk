@@ -1,36 +1,35 @@
-# Structured Lectures - Admin Frontend Guide
+# Structured Lectures — Admin Frontend Guide
 
-For institute admins, teachers, and superadmins managing lecture content.
+For institute admins, teachers, and superadmins managing structured lecture content.
 
 ---
 
-## Lecture scopes — The key concept
+## How lectures are organised
 
-Every lecture belongs to either:
+Lectures exist at the **institute level**, scoped to a **subject** and optionally a **grade**. There is no per-class segmentation — every student in the institute who studies a subject sees the same lectures for that subject.
 
-| Scope | How to create | Who can see it |
-|---|---|---|
-| **Institute-wide** | Omit `classId` (or send `null`) | All students in the institute with that subject+grade |
-| **Class-restricted** | Include `classId` | Only students in that specific class |
-
-This lets admins create a shared library for all classes **and** override with class-specific content.
+```
+Institute 109
+  └── Subject: Mathematics (SUBJ_MATH_001)
+        ├── Grade 9  → Lectures 1-8
+        └── Grade 10 → Lectures 1-12
+```
 
 ---
 
 ## Authentication
 
-All endpoints require:
 ```
 Authorization: Bearer <admin-jwt-token>
 ```
 
-Roles allowed for write operations: `SUPERADMIN`, `instituteAdmin`, `teacher`
+Write operations require role: `SUPERADMIN`, `instituteAdmin`, or `teacher`.
 
 ---
 
-## Step 1 — Upload files first (if needed)
+## Step 1 — Upload files first (when needed)
 
-Before creating a lecture with a video, cover image, or documents, upload files to GCS.
+Before attaching videos, cover images, or documents, upload them to GCS.
 
 ### Get a signed upload URL
 
@@ -62,7 +61,7 @@ Content-Type: application/pdf
 <binary file data>
 ```
 
-Use the `publicUrl` from the response as `lectureLink`, `coverImageUrl`, or inside `documents[].documentUrl` when creating/updating the lecture.
+Use the returned `publicUrl` as `lectureLink`, `coverImageUrl`, or inside `documents[].documentUrl`.
 
 ---
 
@@ -79,18 +78,17 @@ Content-Type: application/json
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `instituteId` | string | **Yes** | Institute the lecture belongs to |
-| `classId` | number | No | Omit or null → institute-wide |
 | `subjectId` | string | **Yes** | Subject UUID |
-| `grade` | number | **Yes** | 1–13 |
+| `grade` | number | **Yes** | Grade level 1–13 |
 | `title` | string | **Yes** | Lecture title |
 | `description` | string | No | Full description |
-| `lessonNumber` | number | No | Grouping number (e.g. 1, 2, 3) |
-| `lectureNumber` | number | No | Order within lesson |
-| `provider` | string | No | e.g. "YouTube", "Vimeo", "GCS" |
-| `lectureLink` | string | No | Video URL (YouTube link, GCS `publicUrl`) |
+| `lessonNumber` | number | No | Lesson grouping (e.g. 1, 2, 3) |
+| `lectureNumber` | number | No | Order within the lesson |
+| `provider` | string | No | Instructor or platform name |
+| `lectureLink` | string | No | Video URL (YouTube link, GCS publicUrl, etc.) |
 | `coverImageUrl` | string | No | Thumbnail URL from signed upload |
 | `documents` | array | No | See documents format below |
-| `isActive` | boolean | No | Default: true |
+| `isActive` | boolean | No | Default: `true` |
 
 ### Documents format
 
@@ -104,40 +102,26 @@ Content-Type: application/json
 ]
 ```
 
-### Example — institute-wide lecture
+### Example request
 
 ```json
 {
   "instituteId": "109",
-  "subjectId": "SUBJ_TAMIL_001",
+  "subjectId": "SUBJ_MATH_001",
   "grade": 10,
-  "title": "Tamil Grammar — Nouns",
-  "description": "Introduction to Tamil noun forms",
+  "title": "Introduction to Algebra",
+  "description": "Covers variables, equations, and expressions",
   "lessonNumber": 1,
   "lectureNumber": 1,
-  "provider": "YouTube",
+  "provider": "Dr. Smith",
   "lectureLink": "https://youtube.com/watch?v=abc123",
-  "coverImageUrl": "https://storage.googleapis.com/bucket/covers/tamil-nouns.jpg",
+  "coverImageUrl": "https://storage.googleapis.com/bucket/covers/algebra.jpg",
   "documents": [
     {
-      "documentUrl": "https://storage.googleapis.com/bucket/docs/nouns.pdf",
-      "documentName": "Noun Reference Sheet"
+      "documentUrl": "https://storage.googleapis.com/bucket/docs/algebra-notes.pdf",
+      "documentName": "Algebra Notes"
     }
   ]
-}
-```
-
-### Example — class-restricted lecture
-
-```json
-{
-  "instituteId": "109",
-  "classId": 450,
-  "subjectId": "SUBJ_TAMIL_001",
-  "grade": 10,
-  "title": "Tamil Grammar — Class 10A Extra Practice",
-  "lessonNumber": 1,
-  "lectureNumber": 2
 }
 ```
 
@@ -145,29 +129,31 @@ Content-Type: application/json
 
 ```json
 {
-  "_id": "550e8400-e29b-41d4-a716-446655440000",
-  "instituteId": "109",
-  "classId": null,
-  "subjectId": "SUBJ_TAMIL_001",
-  "grade": 10,
-  "title": "Tamil Grammar — Nouns",
-  "description": "Introduction to Tamil noun forms",
-  "lessonNumber": 1,
-  "lectureNumber": 1,
-  "provider": "YouTube",
-  "lectureLink": "https://youtube.com/watch?v=abc123",
-  "coverImageUrl": "https://storage.googleapis.com/...",
-  "documents": [...],
-  "isActive": true,
-  "createdAt": "2026-07-01T08:00:00.000Z",
-  "updatedAt": "2026-07-01T08:00:00.000Z",
-  "createdBy": 42
+  "success": true,
+  "message": "Structured lecture created successfully",
+  "data": {
+    "_id": "550e8400-e29b-41d4-a716-446655440000",
+    "instituteId": "109",
+    "subjectId": "SUBJ_MATH_001",
+    "grade": 10,
+    "title": "Introduction to Algebra",
+    "lessonNumber": 1,
+    "lectureNumber": 1,
+    "provider": "Dr. Smith",
+    "lectureLink": "https://youtube.com/watch?v=abc123",
+    "coverImageUrl": "https://storage.googleapis.com/...",
+    "documents": [...],
+    "isActive": true,
+    "createdAt": "2026-07-01T08:00:00.000Z",
+    "updatedAt": "2026-07-01T08:00:00.000Z",
+    "createdBy": "user-uuid"
+  }
 }
 ```
 
 ---
 
-## 3. List / search lectures
+## 3. List / search / filter lectures
 
 ```
 GET /api/structured-lectures
@@ -178,21 +164,20 @@ Authorization: Bearer <token>
 
 | Param | Type | Notes |
 |---|---|---|
-| `instituteId` | string | Filter by institute |
-| `classId` | number | Filter by class |
+| `instituteId` | string | **Recommended** — filter by institute |
 | `subjectId` | string | Filter by subject |
 | `grade` | number | Filter by grade |
-| `isActive` | boolean | `true` / `false` (non-superadmin always forced to `true`) |
+| `isActive` | boolean | `true` / `false` (non-SUPERADMIN always gets `true`) |
 | `search` | string | Full-text search on title |
 | `page` | number | Default: 1 |
 | `limit` | number | Default: 20 |
-| `sortBy` | string | Field to sort by (e.g. `lessonNumber`, `createdAt`) |
+| `sortBy` | string | `createdAt` \| `updatedAt` \| `title` |
 | `sortOrder` | `ASC` \| `DESC` | Default: DESC |
 
 ### Example
 
 ```
-GET /api/structured-lectures?instituteId=109&subjectId=SUBJ_TAMIL_001&grade=10&page=1&limit=20&sortBy=lessonNumber&sortOrder=ASC
+GET /api/structured-lectures?instituteId=109&subjectId=SUBJ_MATH_001&grade=10&page=1&limit=20&sortBy=createdAt&sortOrder=ASC
 ```
 
 ### Response
@@ -200,8 +185,8 @@ GET /api/structured-lectures?instituteId=109&subjectId=SUBJ_TAMIL_001&grade=10&p
 ```json
 {
   "lectures": [ ...LectureResponseDto array... ],
-  "total": 45,
-  "totalPages": 3,
+  "total": 12,
+  "totalPages": 1,
   "currentPage": 1,
   "limit": 20
 }
@@ -209,28 +194,35 @@ GET /api/structured-lectures?instituteId=109&subjectId=SUBJ_TAMIL_001&grade=10&p
 
 ---
 
-## 4. Get a single lecture
+## 4. Get lectures by institute + subject (student-facing endpoint)
+
+Also available to admins — this is what students call:
+
+```
+GET /api/structured-lectures/institute/:instituteId/subject/:subjectId?grade=10
+Authorization: Bearer <token>
+```
+
+---
+
+## 5. Get a single lecture
 
 ```
 GET /api/structured-lectures/:id
 Authorization: Bearer <token>
 ```
 
-Response: single `LectureResponseDto`
-
 ---
 
-## 5. Update a lecture
+## 6. Update a lecture
 
-Only provided fields are updated (partial update).
+Send only the fields that changed:
 
 ```
 PUT /api/structured-lectures/:id
 Authorization: Bearer <token>
 Content-Type: application/json
 ```
-
-All fields are optional. Send only what changes:
 
 ```json
 {
@@ -240,70 +232,53 @@ All fields are optional. Send only what changes:
 }
 ```
 
-To add/replace documents, send the full new documents array:
+To replace documents, send the full new array:
 
 ```json
-{
-  "documents": [
-    { "documentUrl": "https://...", "documentName": "Revised Notes" }
-  ]
-}
+{ "documents": [{ "documentUrl": "https://...", "documentName": "Revised Notes" }] }
 ```
 
-Response: updated `LectureResponseDto`
+Response: `{ "success": true, "message": "Lecture updated successfully", "data": LectureResponseDto }`
 
 ---
 
-## 6. Soft-delete a lecture (hide from students)
+## 7. Soft-delete a lecture (hide from students)
 
-Sets `isActive = false`. Lecture is preserved in the database but hidden.
+Sets `isActive = false`. Preserved in DB, invisible to students.
 
 ```
 DELETE /api/structured-lectures/:id
 Authorization: Bearer <token>
 ```
 
-Response: `{ "message": "Lecture deleted successfully" }`
+Response: `{ "success": true }`
 
-To restore it: `PUT /api/structured-lectures/:id` with `{ "isActive": true }`
+**To restore:** `PUT /api/structured-lectures/:id` with `{ "isActive": true }`
 
 ---
 
-## 7. Permanently delete a lecture — SUPERADMIN only
+## 8. Permanently delete — SUPERADMIN only
 
-Removes the record entirely. Irreversible.
+Irreversible. Use with caution.
 
 ```
 DELETE /api/structured-lectures/:id/permanent
 Authorization: Bearer <superadmin-token>
 ```
 
-Response: `{ "message": "Lecture permanently deleted" }`
-
 ---
 
-## 8. Statistics
+## 9. Statistics
 
 ```
-GET /api/structured-lectures/statistics/:subjectId
+GET /api/structured-lectures/statistics/:subjectId?grade=10
 Authorization: Bearer <token>
 ```
-
-Query params:
-  `grade` — number, optional
-
-Example:
-  `GET /api/structured-lectures/statistics/SUBJ_TAMIL_001?grade=10`
 
 Response:
 ```json
 {
-  "totalLectures": 12,
-  "activeLectures": 10,
-  "inactiveLectures": 2,
-  "lecturesByGrade": {
-    "10": 12
-  }
+  "total": 12
 }
 ```
 
@@ -316,7 +291,6 @@ const BASE = '/api/structured-lectures';
 
 interface CreateLecturePayload {
   instituteId: string;
-  classId?: number;
   subjectId: string;
   grade: number;
   title: string;
@@ -359,11 +333,10 @@ async function softDeleteLecture(id: string, token: string) {
   return res.json();
 }
 
-async function restoreLecture(id: string, token: string) {
-  return updateLecture(id, { isActive: true }, token);
-}
+const restoreLecture = (id: string, token: string) =>
+  updateLecture(id, { isActive: true }, token);
 
-// Upload helper — get signed URL then PUT file
+// Upload helper — get signed URL then PUT file to GCS
 async function uploadLectureFile(file: File, token: string): Promise<string> {
   const signedRes = await fetch('/api/signed-urls/lecture', {
     method: 'POST',
@@ -372,7 +345,7 @@ async function uploadLectureFile(file: File, token: string): Promise<string> {
   });
   const { signedUrl, publicUrl } = await signedRes.json();
   await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-  return publicUrl; // use this in createLecture payload
+  return publicUrl; // use in createLecture / updateLecture payload
 }
 ```
 
@@ -380,42 +353,56 @@ async function uploadLectureFile(file: File, token: string): Promise<string> {
 
 ## Admin UI workflow
 
-### Create lecture flow
+### Create lecture
 
-1. Admin fills form — institute, subject, grade, title, etc.
-2. If uploading a video file or PDF: call `uploadLectureFile()` for each file and collect the returned `publicUrl` values
-3. Call `createLecture()` with the collected URLs
-4. Show the lecture in the list
+1. Admin selects institute, subject, grade
+2. Fills title, description, lesson/lecture numbers
+3. If uploading files: call `uploadLectureFile()` per file → collect `publicUrl` values
+4. Call `createLecture()` — lecture is immediately visible to all students in that institute for that subject+grade
 
-### Edit flow
+### Edit lecture
 
-1. Fetch lecture with `GET /api/structured-lectures/:id`
-2. Pre-fill form fields
+1. Fetch with `GET /api/structured-lectures/:id`
+2. Pre-fill form
 3. On file change: upload new file → replace URL in form state
 4. On save: call `updateLecture()` with only changed fields
 
-### Toggle visibility
+### Hide / restore
 
-- "Hide" button → `softDeleteLecture(id)` → refresh list (lecture disappears from student view)
-- "Restore" button → `restoreLecture(id)` → refresh list
+- Hide: `softDeleteLecture(id)` → students can no longer see it
+- Restore: `restoreLecture(id)` → students see it again
 
-### Manage class vs institute-wide
+### Key design point
 
-When the admin selects "All classes" in the class picker → send `classId: null` (omit the field)  
-When the admin selects a specific class → send `classId: <classId>`
+> There is **no class selection** when creating a lecture. One lecture created for `institute 109 / Mathematics / Grade 10` is seen by **all Grade 10 Maths students** across every class in that institute.
 
 ---
 
-## Pending database migrations
+## Database schema (for reference)
 
-These migrations must run before the endpoints work in production:
+```
+structured_lectures
+  id              UUID PK
+  institute_id    BIGINT (FK → institutes)
+  subjectId       VARCHAR(36)
+  grade           INT
+  title           VARCHAR(255)
+  description     TEXT
+  videoUrl        VARCHAR(500)   ← maps to lectureLink in responses
+  thumbnailUrl    VARCHAR(500)   ← maps to coverImageUrl in responses
+  attachments     JSON           ← maps to documents[] in responses
+  lessonNumber    INT
+  lectureNumber   INT
+  provider        VARCHAR(255)
+  isActive        BOOLEAN
+  createdBy       VARCHAR(36)
+  updatedBy       VARCHAR(36)
+  createdAt       DATETIME
+  updatedAt       DATETIME
 
-| Migration file | Purpose |
-|---|---|
-| `1751200000000-AddBankTransferPaymentType` | Adds `BANK_TRANSFER` to `card_payments.payment_type` ENUM |
-| `1751300000000-SafeAddClassIdToStructuredLectures` | Adds `class_id` column + indexes to `structured_lectures` table |
-
-Run with:
-```bash
-npm run migration:run
+Indexes:
+  idx_lecture_institute_subject        (institute_id, subjectId)
+  idx_lecture_institute_subject_grade  (institute_id, subjectId, grade)
+  idx_lecture_subject_grade            (subjectId, grade)
+  idx_lecture_active                   (isActive)
 ```

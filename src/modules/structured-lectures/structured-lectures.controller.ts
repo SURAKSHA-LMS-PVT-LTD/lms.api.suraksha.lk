@@ -130,7 +130,7 @@ export class StructuredLecturesController {
     }
   }
 
-  @Get('class/:classId/subject/:subjectId')
+  @Get('institute/:instituteId/subject/:subjectId')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
@@ -140,10 +140,10 @@ export class StructuredLecturesController {
     parent: true
   })
   @ApiOperation({ 
-    summary: 'Get lectures by class ID and subject ID',
-    description: 'Retrieve all lectures for a specific class and subject. This is the primary endpoint for institute-class-subject level access. Accessible by SUPERADMIN, Institute Admin, Teacher, or Student.'
+    summary: 'Get lectures by institute ID and subject ID',
+    description: 'Retrieve all structured lectures for a subject within an institute. All classes in the institute studying this subject see the same lectures. Accessible by all authenticated roles.'
   })
-  @ApiParam({ name: 'classId', description: 'Class ID to filter lectures' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'subjectId', description: 'Subject ID to filter lectures' })
   @ApiQuery({ name: 'grade', required: false, description: 'Optional grade level filter (1-13)' })
   @ApiQuery({ name: 'isActive', required: false, description: 'Filter by active status (default: true for non-admin users)' })
@@ -152,9 +152,8 @@ export class StructuredLecturesController {
     description: 'Lectures retrieved successfully',
     type: LectureListResponseDto
   })
-  @ApiResponse({ status: 404, description: 'No lectures found for the class and subject' })
-  async getLecturesByClassAndSubject(
-    @Param('classId') classId: string,
+  async getLecturesByInstituteAndSubject(
+    @Param('instituteId') instituteId: string,
     @Param('subjectId') subjectId: string,
     @Req() request: JwtRequest,
     @Query('grade') grade?: number,
@@ -167,7 +166,7 @@ export class StructuredLecturesController {
         activeFilter = true;
       }
 
-      return await this.lecturesService.getLecturesByClassAndSubjectAsDto(classId, subjectId, grade, activeFilter);
+      return await this.lecturesService.getLecturesByInstituteAndSubjectAsDto(instituteId, subjectId, grade, activeFilter);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -176,7 +175,7 @@ export class StructuredLecturesController {
       throw new HttpException(
         {
           success: false,
-          message: error.message || 'Failed to retrieve lectures for class and subject',
+          message: error.message || 'Failed to retrieve lectures for institute and subject',
         },
         HttpStatus.INTERNAL_SERVER_ERROR
       );
@@ -209,7 +208,8 @@ export class StructuredLecturesController {
     @Param('subjectId') subjectId: string,
     @Param('grade') grade: number,
     @Req() request: JwtRequest,
-    @Query('isActive') isActive?: boolean
+    @Query('isActive') isActive?: boolean,
+    @Query('instituteId') instituteId?: string
   ) {
     try {
       // Validate grade range
@@ -229,7 +229,7 @@ export class StructuredLecturesController {
         activeFilter = true;
       }
 
-      return await this.lecturesService.getLecturesBySubjectAndGrade(subjectId, grade, activeFilter);
+      return await this.lecturesService.getLecturesBySubjectAndGrade(subjectId, grade, activeFilter, instituteId);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -267,7 +267,8 @@ export class StructuredLecturesController {
     @Param('subjectId') subjectId: string,
     @Req() request: JwtRequest,
     @Query('grade') grade?: number,
-    @Query('isActive') isActive?: boolean
+    @Query('isActive') isActive?: boolean,
+    @Query('instituteId') instituteId?: string
   ) {
     try {
       if (grade !== undefined && (grade < 1 || grade > 13)) {
@@ -282,7 +283,7 @@ export class StructuredLecturesController {
         activeFilter = true;
       }
 
-      return await this.lecturesService.getLecturesBySubjectAndGrade(subjectId, grade, activeFilter);
+      return await this.lecturesService.getLecturesBySubjectAndGrade(subjectId, grade, activeFilter, instituteId);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;

@@ -30,7 +30,7 @@ export class SafeAddClassIdToStructuredLectures1751300000000 implements Migratio
     if (classSubjectIndex.length === 0) {
       await queryRunner.query(`
         CREATE INDEX \`idx_lecture_class_subject\`
-        ON \`structured_lectures\` (\`class_id\`, \`subject_id\`)
+        ON \`structured_lectures\` (\`class_id\`, \`subjectId\`)
       `);
     }
 
@@ -45,7 +45,7 @@ export class SafeAddClassIdToStructuredLectures1751300000000 implements Migratio
     if (instituteClassSubjectIndex.length === 0) {
       await queryRunner.query(`
         CREATE INDEX \`idx_lecture_institute_class_subject\`
-        ON \`structured_lectures\` (\`institute_id\`, \`class_id\`, \`subject_id\`)
+        ON \`structured_lectures\` (\`institute_id\`, \`class_id\`, \`subjectId\`)
       `);
     }
   }

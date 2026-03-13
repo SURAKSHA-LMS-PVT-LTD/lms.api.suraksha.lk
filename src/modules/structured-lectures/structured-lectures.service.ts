@@ -62,8 +62,9 @@ export class StructuredLecturesService {
     return this.findAll();
   }
 
-  async getLecturesBySubjectAndGrade(subjectId: string, grade?: number, activeFilter?: boolean) {
+  async getLecturesBySubjectAndGrade(subjectId: string, grade?: number, activeFilter?: boolean, instituteId?: string) {
     const where: any = { subjectId };
+    if (instituteId !== undefined) where.instituteId = instituteId;
     if (grade !== undefined) where.grade = grade;
     if (activeFilter !== undefined) where.isActive = activeFilter;
     return this.lectureRepository.find({
@@ -71,7 +72,6 @@ export class StructuredLecturesService {
       select: [
         'id',
         'instituteId',
-        'classId',
         'title',
         'description',
         'subjectId',
@@ -118,16 +118,9 @@ export class StructuredLecturesService {
     // Transform attachments array to DocumentInfoDto with full URLs
     const documents = (entity.attachments || []).map((attachment: any) => {
       if (typeof attachment === 'string') {
-        // If attachment is a URL string (already full URL from signed upload)
-        return {
-          documentUrl: attachment,
-        };
+        return { documentUrl: attachment };
       } else if (attachment && typeof attachment === 'object') {
-        // If attachment is already an object with documentUrl (already full URL from signed upload)
-        return {
-          ...attachment,
-          documentUrl: attachment.documentUrl,
-        };
+        return { ...attachment, documentUrl: attachment.documentUrl };
       }
       return attachment;
     });
@@ -135,16 +128,15 @@ export class StructuredLecturesService {
     return {
       _id: entity.id,
       instituteId: entity.instituteId,
-      classId: entity.classId,
       title: entity.title,
       description: entity.description || '',
       subjectId: entity.subjectId,
       grade: entity.grade,
-      lessonNumber: 1, // Default value, entity doesn't have this field
-      lectureNumber: 1, // Default value, entity doesn't have this field
-      provider: undefined, // Entity doesn't have this field
+      lessonNumber: 1,
+      lectureNumber: 1,
+      provider: undefined,
       lectureLink: entity.videoUrl,
-      coverImageUrl: entity.thumbnailUrl, // Already full URL from signed upload
+      coverImageUrl: entity.thumbnailUrl,
       documents,
       isActive: entity.isActive,
       createdBy: entity.createdBy,
@@ -162,7 +154,6 @@ export class StructuredLecturesService {
       .select([
         'lecture.id',
         'lecture.instituteId',
-        'lecture.classId',
         'lecture.title',
         'lecture.description',
         'lecture.subjectId',
@@ -179,11 +170,6 @@ export class StructuredLecturesService {
     // Filter by instituteId (important for multi-tenant)
     if (queryDto.instituteId) {
       queryBuilder.andWhere('lecture.instituteId = :instituteId', { instituteId: queryDto.instituteId });
-    }
-
-    // Filter by classId for class-level lectures
-    if (queryDto.classId) {
-      queryBuilder.andWhere('lecture.classId = :classId', { classId: queryDto.classId });
     }
 
     if (queryDto.subjectId) {
@@ -242,17 +228,14 @@ export class StructuredLecturesService {
         documentDescription: doc.documentDescription,
       }));
     } else if (documentUrls && documentUrls.length > 0) {
-      attachments = documentUrls.map((url: string) => ({
-        documentUrl: url,
-      }));
+      attachments = documentUrls.map((url: string) => ({ documentUrl: url }));
     }
     
     const timestamp = now();
     const lecture = this.lectureRepository.create({ 
       ...rest,
-      classId: rest.classId || null,   // null = institute-wide; set = class-restricted
-      thumbnailUrl: coverImageUrl,      // Map coverImageUrl → thumbnailUrl
-      videoUrl: lectureLink,            // Map lectureLink → videoUrl
+      thumbnailUrl: coverImageUrl,
+      videoUrl: lectureLink,
       attachments,
       createdBy: userId,
       updatedBy: userId,
@@ -300,8 +283,9 @@ export class StructuredLecturesService {
     return this.transformEntityToDto(entity);
   }
 
-  async getLecturesBySubjectAndGradeAsDto(subjectId: string, grade?: number, activeFilter?: boolean): Promise<LectureListResponseDto> {
+  async getLecturesBySubjectAndGradeAsDto(subjectId: string, grade?: number, activeFilter?: boolean, instituteId?: string): Promise<LectureListResponseDto> {
     const where: any = { subjectId };
+    if (instituteId !== undefined) where.instituteId = instituteId;
     if (grade !== undefined) where.grade = grade;
     if (activeFilter !== undefined) where.isActive = activeFilter;
     const entities = await this.lectureRepository.find({ where });
@@ -316,20 +300,19 @@ export class StructuredLecturesService {
   }
 
   /**
-   * Get lectures by class and subject - Primary method for institute-class-subject level access
-   * Optimized query with proper indexing on (classId, subjectId)
+   * Get lectures by institute and subject - primary method for student access
+   * All classes in the institute studying this subject see the same lectures
    */
-  async getLecturesByClassAndSubjectAsDto(
-    classId: string, 
-    subjectId: string, 
-    grade?: number, 
+  async getLecturesByInstituteAndSubjectAsDto(
+    instituteId: string,
+    subjectId: string,
+    grade?: number,
     activeFilter?: boolean
   ): Promise<LectureListResponseDto> {
     const queryBuilder = this.lectureRepository.createQueryBuilder('lecture')
       .select([
         'lecture.id',
         'lecture.instituteId',
-        'lecture.classId',
         'lecture.title',
         'lecture.description',
         'lecture.subjectId',
@@ -342,7 +325,7 @@ export class StructuredLecturesService {
         'lecture.createdAt',
         'lecture.updatedAt'
       ])
-      .where('lecture.classId = :classId', { classId })
+      .where('lecture.instituteId = :instituteId', { instituteId })
       .andWhere('lecture.subjectId = :subjectId', { subjectId });
 
     if (grade !== undefined) {
@@ -353,8 +336,7 @@ export class StructuredLecturesService {
       queryBuilder.andWhere('lecture.isActive = :isActive', { isActive: activeFilter });
     }
 
-    queryBuilder.orderBy('lecture.grade', 'ASC')
-      .addOrderBy('lecture.createdAt', 'DESC');
+    queryBuilder.orderBy('lecture.grade', 'ASC').addOrderBy('lecture.createdAt', 'DESC');
 
     const entities = await queryBuilder.getMany();
 
