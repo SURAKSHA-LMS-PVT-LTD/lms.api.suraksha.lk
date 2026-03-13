@@ -339,7 +339,13 @@ export class InstituteClassSubjectStudentsService {
         'enrollment.subjectId',
         'enrollment.studentId',
         'enrollment.enrollmentDate',
-        'enrollment.isActive'
+        'enrollment.isActive',
+        'enrollment.enrollmentMethod',
+        'enrollment.verificationStatus',
+        'enrollment.verifiedAt',
+        'enrollment.rejectionReason',
+        'enrollment.createdAt',
+        'enrollment.updatedAt'
       ])
       .leftJoin('enrollment.student', 'student')
       .addSelect([
@@ -452,6 +458,13 @@ export class InstituteClassSubjectStudentsService {
           enrollment.class_id as "classId", 
           enrollment.subject_id as "subjectId",
           
+          -- Enrollment status fields
+          enrollment.verification_status as "verificationStatus",
+          enrollment.verified_at as "verifiedAt",
+          enrollment.rejection_reason as "rejectionReason",
+          enrollment.enrollment_method as "enrollmentMethod",
+          enrollment.created_at as "enrolledAt",
+
           -- Get teacher and class status from institute_class_subjects (LEFT JOIN to include enrollments without teacher assignment)
           ics.teacher_id as "teacherId",
           ics.is_active as "classSubjectActive",
@@ -514,6 +527,11 @@ export class InstituteClassSubjectStudentsService {
         instituteId: row.instituteId,
         classId: row.classId,
         subjectId: row.subjectId,
+        enrollmentMethod: row.enrollmentMethod,
+        verificationStatus: row.verificationStatus,
+        verifiedAt: row.verifiedAt ?? null,
+        rejectionReason: row.rejectionReason ?? null,
+        enrolledAt: row.enrolledAt ?? null,
         teacherId: row.teacherId,
         classSubjectActive: Boolean(row.classSubjectActive),
         
