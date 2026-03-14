@@ -675,6 +675,22 @@ export class SystemAdminUserService {
 
     const savedUser = await queryRunner.manager.save(userEntity);
 
+    // Create user_images row for system-admin-assigned image (GLOBAL, VERIFIED)
+    if (data.imageUrl) {
+      await queryRunner.manager.save(
+        queryRunner.manager.create(UserImageEntity, {
+          userId: savedUser.id,
+          imageUrl: data.imageUrl,
+          scope: ImageScope.GLOBAL,
+          status: ImageVerificationStatus.VERIFIED,
+          verifiedBy: adminUserId,
+          verifiedAt: now(),
+          createdAt: now(),
+          updatedAt: now(),
+        }),
+      );
+    }
+
     // Create student record
     const studentEntity = queryRunner.manager.create(StudentEntity, {
       userId: savedUser.id,
@@ -847,6 +863,23 @@ export class SystemAdminUserService {
           updatedAt: now()
         });
         await queryRunner.manager.save(instituteUser);
+
+        // Create user_images row for institute-scoped image (auto-verified by system admin)
+        if (enrollment.instituteUserImageUrl && autoActivate) {
+          await queryRunner.manager.save(
+            queryRunner.manager.create(UserImageEntity, {
+              userId: studentUserId,
+              imageUrl: enrollment.instituteUserImageUrl,
+              scope: ImageScope.INSTITUTE,
+              instituteId: institute.id,
+              status: ImageVerificationStatus.VERIFIED,
+              verifiedBy: adminUserId,
+              verifiedAt: now(),
+              createdAt: now(),
+              updatedAt: now(),
+            }),
+          );
+        }
       } else {
         // Update existing institute user with new data if provided
         const updates: Partial<InstituteUserEntity> = { updatedAt: now() };
@@ -1038,8 +1071,8 @@ export class SystemAdminUserService {
       const firstLoginUrl = `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`;
       
       if (user.email) {
-        // ✅ Student with imageUrl AND cardId → send ID card email only (no welcome)
-        if (role === 'student' && user.imageUrl && user.cardId) {
+        // ✅ Student with VERIFIED imageUrl AND cardId → send ID card email only (no welcome)
+        if (role === 'student' && user.imageUrl && user.cardId && user.imageVerificationStatus === ImageVerificationStatus.VERIFIED) {
           let photoUrl = user.imageUrl;
           try {
             photoUrl = this.cloudStorageService.getFullUrl(user.imageUrl);

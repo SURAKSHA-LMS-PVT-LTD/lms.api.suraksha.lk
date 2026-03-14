@@ -4,6 +4,7 @@ import { Card } from './entities/card.entity';
 import { UserIdCardOrder } from './entities/user-id-card-order.entity';
 import { CardPayment } from './entities/card-payment.entity';
 import { UserEntity } from '../user/entities/user.entity';
+import { UserImageEntity } from '../user/entities/user-image.entity';
 import { CardService } from './services/card.service';
 import { CardOrderService } from './services/card-order.service';
 import { CardPaymentService } from './services/card-payment.service';
@@ -19,6 +20,7 @@ import { AdminCardOrderController } from './controllers/admin-card-order.control
       UserIdCardOrder,
       CardPayment,
       UserEntity,
+      UserImageEntity,
     ]),
   ],
   controllers: [

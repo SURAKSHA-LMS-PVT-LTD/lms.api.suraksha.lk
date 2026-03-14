@@ -11,6 +11,7 @@ import { UserOtpService } from './services/user-otp.service';
 import { UserFcmTokenController } from './controllers/user-fcm-token.controller';
 import { UserProfileImageController } from './controllers/user-profile-image.controller';
 import { SystemAdminUserController } from './controllers/system-admin-user.controller';
+import { InstituteAdminUserController } from './controllers/institute-admin-user.controller';
 import { UserImageEntity } from './entities/user-image.entity';
 import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
 import { AuthModule } from '../../auth/auth.module';
@@ -31,6 +32,7 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
 import { UserRoleValidationService } from './services/user-role-validation.service';
 import { UserNotificationService } from './services/user-notification.service';
 import { SystemAdminUserService } from './services/system-admin-user.service';
+import { InstituteAdminUserService } from './services/institute-admin-user.service';
 import { SmslenzProvider } from '../sms/providers/smslenz.provider';
 
 @Module({
@@ -55,7 +57,7 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
     forwardRef(() => AuthModule), // Use forwardRef to avoid circular dependency
     forwardRef(() => InstitueUserModule), // Add institute user module
   ],
-  controllers: [UsersController, UserFcmTokenController, UserProfileImageController, SystemAdminUserController],
+  controllers: [UsersController, UserFcmTokenController, UserProfileImageController, SystemAdminUserController, InstituteAdminUserController],
   providers: [
     UsersService, 
     UserFcmTokenService, 
@@ -67,12 +69,13 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
     UserRoleValidationService, 
     UserNotificationService,
     SystemAdminUserService,
+    InstituteAdminUserService,
     SmslenzProvider,
     {
       provide: 'UserOtpService',
       useExisting: UserOtpService,
     },
   ],
-  exports: [UsersService, UserFcmTokenService, UserOtpService, UserRoleValidationService, SystemAdminUserService, TypeOrmModule], // Export services and TypeOrmModule for repository access
+  exports: [UsersService, UserFcmTokenService, UserOtpService, UserRoleValidationService, SystemAdminUserService, InstituteAdminUserService, TypeOrmModule], // Export services and TypeOrmModule for repository access
 })
 export class UsersModule {}

@@ -4,6 +4,7 @@ import { Repository, DataSource, In } from 'typeorm';
 import { UserIdCardOrder } from '../entities/user-id-card-order.entity';
 import { Card } from '../entities/card.entity';
 import { UserEntity } from '../../user/entities/user.entity';
+import { UserImageEntity, ImageScope } from '../../user/entities/user-image.entity';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderStatusDto } from '../dto/update-order-status.dto';
 import { UpdateCardStatusDto } from '../dto/update-card-status.dto';
@@ -13,6 +14,7 @@ import { OrderStatus } from '../enums/order-status.enum';
 import { CardStatus } from '../enums/card-status.enum';
 import { CardType } from '../enums/card-type.enum';
 import { now } from '../../../common/utils/timezone.util';
+import { ImageVerificationStatus } from '../../institute_mudules/institue_user/enums/image-verification-status.enum';
 
 @Injectable()
 export class CardOrderService {
@@ -23,6 +25,8 @@ export class CardOrderService {
     private readonly cardRepository: Repository<Card>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(UserImageEntity)
+    private readonly userImageRepository: Repository<UserImageEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -33,6 +37,36 @@ export class CardOrderService {
   };
 
   async createOrder(userId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto> {
+    // ── Image verification gate ──────────────────────────────────────────────
+    // A verified profile image is required before a physical ID card can be ordered.
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'imageUrl', 'imageVerificationStatus'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check for a verified image: either the user.imageUrl is set (VERIFIED global)
+    // or at least one user_images record is VERIFIED.
+    const hasVerifiedImage =
+      user.imageUrl && user.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
+
+    if (!hasVerifiedImage) {
+      // Allow if any verified image exists in user_images table
+      const verifiedImage = await this.userImageRepository.findOne({
+        where: { userId, status: ImageVerificationStatus.VERIFIED },
+      });
+      if (!verifiedImage) {
+        throw new BadRequestException(
+          'A verified profile image is required before ordering an ID card. ' +
+          'Please upload an image and wait for system admin approval.',
+        );
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
