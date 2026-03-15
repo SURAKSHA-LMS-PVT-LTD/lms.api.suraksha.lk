@@ -168,11 +168,11 @@ export class UserResponseDto {
 
     if (partial) {
       if ('phoneNumber' in partial) {
-        this.phoneNumber = maskPhoneNumber(partial.phoneNumber);
+        this.phoneNumber = partial.phoneNumber;
       }
 
       if ('email' in partial) {
-        this.email = maskEmail(partial.email);
+        this.email = partial.email;
       }
     }
   }
