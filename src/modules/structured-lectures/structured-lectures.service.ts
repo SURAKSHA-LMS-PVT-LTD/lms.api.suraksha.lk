@@ -5,12 +5,14 @@ import { StructuredLectureEntity } from './entities/structured-lecture.entity';
 import { LectureResponseDto, LectureListResponseDto, CreateLectureDto, UpdateLectureDto, LectureQueryDto } from './dto/lecture.dto';
 import { now } from '../../common/utils/timezone.util';
 import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
+import { CloudStorageService } from '../../common/services/cloud-storage.service';
 
 @Injectable()
 export class StructuredLecturesService {
   constructor(
     @InjectRepository(StructuredLectureEntity)
     private readonly lectureRepository: Repository<StructuredLectureEntity>,
+    private readonly cloudStorageService: CloudStorageService,
     ) {}
 
   async findAll() {
@@ -142,6 +144,24 @@ export class StructuredLecturesService {
   }
 
   async permanentlyDeleteLecture(id: string) {
+    // Fetch lecture first to get cover image path for cleanup
+    const lecture = await this.lectureRepository.findOne({ where: { id } });
+    if (lecture?.thumbnailUrl) {
+      const url = lecture.thumbnailUrl;
+      // Only delete if it's a relative path in our own storage (not an external URL)
+      const isOwnStorage = !url.startsWith('http://') && !url.startsWith('https://');
+      if (isOwnStorage) {
+        await this.cloudStorageService.deleteFile(url).catch(() => {});
+      } else {
+        // Also try to extract relative path from full URL (e.g. our own GCS/S3 base URL)
+        try {
+          const relativePath = this.cloudStorageService.extractRelativePath(url);
+          if (relativePath && relativePath.startsWith('lecture-covers/')) {
+            await this.cloudStorageService.deleteFile(relativePath).catch(() => {});
+          }
+        } catch (_) {}
+      }
+    }
     await this.lectureRepository.delete(id);
     return { success: true };
   }

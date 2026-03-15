@@ -100,6 +100,22 @@ export class AdminCardOrderController {
     return this.cardService.remove(cardId);
   }
 
+  // ========== User Card Lookup ==========
+
+  @Get('users/:userId/card')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({ summary: '[Admin] Get all card orders for a specific user' })
+  @ApiResponse({ status: 200, description: 'User card orders retrieved successfully', type: PaginatedOrdersResponseDto })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getUserCardOrders(
+    @Param('userId') userId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ): Promise<PaginatedOrdersResponseDto> {
+    return this.orderService.getAllOrders(page, limit, { userId });
+  }
+
   // ========== Order Management ==========
 
   @Get('card-orders')

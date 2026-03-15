@@ -1347,7 +1347,8 @@ export class CloudStorageService implements OnModuleInit {
       'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 10) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024
+      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 10) * 1024 * 1024,
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
@@ -1448,7 +1449,13 @@ export class CloudStorageService implements OnModuleInit {
         'image/jpg',
         'image/png',
         'image/webp'
-      ]
+      ],
+      'lecture-covers': [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+      ],
     };
 
     return allowedTypes[folder] || ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];

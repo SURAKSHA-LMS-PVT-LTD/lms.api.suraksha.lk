@@ -251,10 +251,12 @@ export class BookhireController {
   @ApiOperation({ summary: 'Get available approved bookhires for student enrollment' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number', type: Number })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page', type: Number })
+  @ApiQuery({ name: 'instituteId', required: false, description: 'Filter by institute (reserved for future use)', type: String })
   @ApiResponse({ status: 200, description: 'List of available bookhires', type: BookhireListResponseDto })
   async getAvailableBookhires(
     @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10
+    @Query('limit') limit: number = 10,
+    @Query('instituteId') _instituteId?: string,
   ): Promise<BookhireListResponseDto> {
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 10));

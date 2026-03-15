@@ -20,6 +20,82 @@ export class StructuredLecturesController {
     private readonly cloudStorageService: CloudStorageService
   ) {}
 
+  // ─── Cover image signed URL endpoints ───────────────────────────────────────
+
+  @Post('upload/cover-image/signed-url')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Get a presigned URL to upload a lecture cover image directly to storage' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['fileName', 'contentType'],
+      properties: {
+        fileName: { type: 'string', example: 'cover.jpg' },
+        contentType: { type: 'string', example: 'image/jpeg' },
+      }
+    }
+  })
+  async getLectureCoverSignedUrl(
+    @Body('fileName') fileName: string,
+    @Body('contentType') contentType: string,
+  ) {
+    try {
+      if (!fileName || !contentType) {
+        throw new HttpException({ success: false, message: 'fileName and contentType are required' }, HttpStatus.BAD_REQUEST);
+      }
+      const result = await this.cloudStorageService.generateSignedUploadUrl(
+        'lecture-covers',
+        fileName,
+        contentType,
+        600, // 10 min
+        10 * 1024 * 1024 // 10 MB
+      );
+      return { success: true, ...result };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message || 'Failed to generate signed URL' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post('upload/cover-image/verify')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Verify and publish an uploaded lecture cover image, returns the public URL' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['relativePath'],
+      properties: { relativePath: { type: 'string', example: 'lecture-covers/cover-uuid.jpg' } }
+    }
+  })
+  async verifyLectureCoverUpload(@Body('relativePath') relativePath: string) {
+    try {
+      if (!relativePath) {
+        throw new HttpException({ success: false, message: 'relativePath is required' }, HttpStatus.BAD_REQUEST);
+      }
+      // Security: only allow lecture-covers folder
+      if (!relativePath.startsWith('lecture-covers/')) {
+        throw new HttpException({ success: false, message: 'Invalid path' }, HttpStatus.BAD_REQUEST);
+      }
+      const publicUrl = await this.cloudStorageService.verifyAndMakePublic(relativePath);
+      return { success: true, publicUrl };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message || 'Failed to verify upload' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  // ─── CRUD endpoints ──────────────────────────────────────────────────────────
+
   @Post()
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({

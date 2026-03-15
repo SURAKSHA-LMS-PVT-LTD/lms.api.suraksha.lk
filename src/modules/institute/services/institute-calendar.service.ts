@@ -311,6 +311,15 @@ export class InstituteCalendarService {
    * ✅ FIXED BUG-004: Now accepts optional filters for academicYear, dayType, isAttendanceExpected
    * ✅ FIXED PERF-004: Added pagination with skip/take
    */
+  async getCalendarDayByIdForInstitute(
+    instituteId: string,
+    calendarDayId: string,
+  ): Promise<InstituteCalendarDayEntity | null> {
+    return this.calendarDayRepo.findOne({
+      where: { id: calendarDayId as any, instituteId },
+    });
+  }
+
   async getCalendarDays(
     instituteId: string,
     startDate?: Date,

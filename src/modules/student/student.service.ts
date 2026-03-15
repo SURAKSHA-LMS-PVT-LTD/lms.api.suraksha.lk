@@ -550,7 +550,7 @@ export class StudentsService {
   }
 
   async findAll(query: QueryStudentDto): Promise<PaginatedStudentResponseDto> {
-    const { search , bloodGroup, isActive, page, limit, sortBy, sortOrder } = query;
+    const { search , bloodGroup, isActive, instituteId, page, limit, sortBy, sortOrder } = query;
 
     const queryBuilder = this.studentRepository.createQueryBuilder('student')
       .select([
@@ -596,6 +596,17 @@ export class StudentsService {
         'guardianUser.firstName',
         'guardianUser.lastName'
       ]);
+
+    // Apply institute filter via institute_user join
+    if (instituteId) {
+      queryBuilder
+        .innerJoin(
+          'institute_user',
+          'iu',
+          'iu.user_id = student.user_id AND iu.institute_id = :instituteId',
+          { instituteId },
+        );
+    }
 
     // Apply filters
     if (search) {

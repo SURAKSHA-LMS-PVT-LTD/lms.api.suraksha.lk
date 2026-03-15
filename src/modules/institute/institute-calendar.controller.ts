@@ -248,6 +248,30 @@ export class InstituteCalendarController {
   // ═══════════════════════════════════════════════════════════════════
 
   /**
+   * Get a single Calendar Day by ID - with its events
+   */
+  @Get('days/:calendarDayId')
+  @ApiOperation({ summary: 'Get a specific calendar day by ID with its events' })
+  @ApiParam({ name: 'calendarDayId', description: 'Calendar day ID' })
+  @ApiResponse({ status: 200, description: 'Calendar day retrieved' })
+  @ApiResponse({ status: 404, description: 'Calendar day not found' })
+  async getCalendarDayById(
+    @Param('instituteId') instituteId: string,
+    @Param('calendarDayId') calendarDayId: string,
+  ) {
+    try {
+      const day = await this.calendarService.getCalendarDayByIdForInstitute(instituteId, calendarDayId);
+      if (!day) {
+        return { success: false, message: `Calendar day ${calendarDayId} not found.`, data: null };
+      }
+      const events = await this.calendarService.getEventsForDay(calendarDayId);
+      return { success: true, data: { ...day, events } };
+    } catch (error) {
+      this.handleError(error, `Failed to get calendar day ${calendarDayId}`);
+    }
+  }
+
+  /**
    * Get Calendar Days - Query with filters + pagination
    * ✅ BUG-004 FIX: All filter params now passed to service
    * ✅ BUG-006 FIX: Date strings created with +05:30 offset (avoids UTC shift)
