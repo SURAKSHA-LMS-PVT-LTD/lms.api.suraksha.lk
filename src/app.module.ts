@@ -104,6 +104,8 @@ import { AppService } from './app.service';
           UserOtpEntity, // OTP verification entity
           PasswordResetTokenEntity, UserFirstLoginLogEntity
         ],
+        migrations: [__dirname + '/migrations/*.{ts,js}'],
+        migrationsRun: true, // Auto-run pending migrations on startup
         synchronize: false, // ⚠️ DISABLED - Prevents auto schema sync to avoid foreign key constraint issues
         logging: false, // Disabled for performance
         // SSL configuration moved to extra section for MySQL 8.x compatibility
