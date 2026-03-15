@@ -40,7 +40,7 @@ import { RequestFilterMiddleware } from './middleware/request-filter.middleware'
         return {
           secret: jwtSecret,
           signOptions: {
-            expiresIn: configService.get<string>('JWT_EXPIRATION') || '15m',
+            expiresIn: (configService.get<string>('JWT_EXPIRATION') || '15m') as any,
             issuer: 'LaaS-API',
             audience: 'LaaS-Users'
           },

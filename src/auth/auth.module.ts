@@ -79,7 +79,7 @@ import { InstantSmsModule } from '../modules/sms/instant-sms.module';
 
         return {
           secret: jwtSecret,
-          signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') || '15m' },
+          signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') || '15m') as any },
         };
       },
     }),

@@ -1323,7 +1323,7 @@ export class AuthService {
 
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
-      expiresIn: refreshExpiresIn
+      expiresIn: refreshExpiresIn as any
     });
 
     // Calculate expiry date
@@ -1630,7 +1630,7 @@ export class AuthService {
 
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
-      expiresIn: refreshExpiresIn
+      expiresIn: refreshExpiresIn as any
     });
 
     // Calculate expiry date

@@ -79,7 +79,7 @@ export class InstituteTokenService {
 
     // Generate token with shorter expiry for security
     return this.jwtService.sign(payload, {
-      expiresIn: this.configService.get<string>('INSTITUTE_TOKEN_EXPIRES_IN') || '8h'
+      expiresIn: (this.configService.get<string>('INSTITUTE_TOKEN_EXPIRES_IN') || '8h') as any
     });
   }
 
