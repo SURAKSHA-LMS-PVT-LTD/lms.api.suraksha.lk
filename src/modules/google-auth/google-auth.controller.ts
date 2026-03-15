@@ -14,6 +14,7 @@ import { GoogleAuthService } from './google-auth.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GoogleTokenResponseDto } from './dto/google-token-response.dto';
 import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Google OAuth 2.0')
 @Controller('auth/google')
@@ -67,6 +68,7 @@ export class GoogleAuthController {
   }
 
   @Get('callback')
+  @Public()
   @ApiOperation({ 
     summary: 'Google OAuth 2.0 callback handler',
     description: `
