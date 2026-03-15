@@ -121,6 +121,23 @@ export class GoogleAuthController {
     @Query('error') error: string,
     @Res() res: Response
   ): Promise<void> {
+    // Extract return URL from state if possible
+    let returnUrl = '/homework/upload';
+    try {
+      if (state) {
+        // State might be a base64 encoded JSON string with signature appended
+        // e.g., eyJ1c2VySWQiOiIyIiwicmV0dXJuVXJsIjoiL3Byb2ZpbGUifQ.signature
+        const statePayload = state.split('.')[0];
+        const decodedState = Buffer.from(statePayload, 'base64').toString('utf8');
+        const stateObj = JSON.parse(decodedState);
+        if (stateObj.returnUrl) {
+          returnUrl = stateObj.returnUrl;
+        }
+      }
+    } catch (e) {
+      // Ignore parsing errors, fallback to default
+    }
+
     // Handle user denial
     if (error) {
       const errorMessage = error === 'access_denied' 
@@ -129,7 +146,7 @@ export class GoogleAuthController {
       
       // Redirect to frontend with error
       const frontendUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
-      res.redirect(`${frontendUrl}/homework/upload?error=${encodeURIComponent(errorMessage)}`);
+      res.redirect(`${frontendUrl}${returnUrl}?error=${encodeURIComponent(errorMessage)}`);
       return;
     }
 
@@ -151,14 +168,17 @@ export class GoogleAuthController {
         secure: isProduction,
         sameSite: isProduction ? 'strict' : 'lax',
         maxAge: (tokenData.expires_in || 3600) * 1000, // Convert seconds to ms
-        path: '/homework',
+        path: '/',
       });
 
-      // Redirect to frontend without token in URL
-      res.redirect(`${frontendUrl}/homework/upload?google_auth=success`);
+      const redirectUrl = returnUrl !== '/homework/upload'
+        ? `${frontendUrl}${returnUrl}?google_auth=success`
+        : `${frontendUrl}/profile?google_auth=success`;
+
+      res.redirect(redirectUrl);
     } catch (error) {
       const frontendUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
-      res.redirect(`${frontendUrl}/homework/upload?error=${encodeURIComponent('Failed to authenticate with Google')}`);
+      res.redirect(`${frontendUrl}${returnUrl}?error=${encodeURIComponent('Failed to authenticate with Google')}`);
     }
   }
 
