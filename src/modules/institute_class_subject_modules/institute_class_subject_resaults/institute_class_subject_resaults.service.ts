@@ -7,15 +7,21 @@ import { CreateBulkResultsDto } from './dto/create-bulk-results.dto';
 import { UpdateInstituteClassSubjectResaultDto } from './dto/update-institute_class_subject_resault.dto';
 import { QueryInstituteClassSubjectResaultDto } from './dto/query-institute_class_subject_resault.dto';
 import { InstituteClassSubjectResaultResponseDto } from './dto/institute_class_subject_resault-response.dto';
+import { StudentExamMarkDto } from './dto/student-exam-mark.dto';
 import { InstituteClassSubjectResault } from './entities/institute_class_subject_resault.entity';
+import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { InstituteAccessValidator } from '../../../common/helpers/institute-access-validator.helper';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 @Injectable()
 export class InstituteClassSubjectResaultsService {
   constructor(
     @InjectRepository(InstituteClassSubjectResault)
     private readonly resultRepository: Repository<InstituteClassSubjectResault>,
+    @InjectRepository(InstituteClassSubjectStudent)
+    private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   async create(createDto: CreateInstituteClassSubjectResaultDto): Promise<InstituteClassSubjectResaultResponseDto> {
@@ -249,26 +255,49 @@ export class InstituteClassSubjectResaultsService {
         throw new BadRequestException('Results array cannot be empty');
       }
 
-      // Create individual result objects from bulk structure
-      const timestamp = now();
-      const entities = bulkDto.results.map((studentResult) => {
-        return this.resultRepository.create({
-          instituteId: bulkDto.instituteId,
-          classId: bulkDto.classId,
-          subjectId: bulkDto.subjectId,
-          examId: bulkDto.examId,
-          studentId: studentResult.studentId,
-          score: studentResult.score,
-          grade: studentResult.grade,
-          remarks: studentResult.remarks,
-          isActive: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-      });
+      // Load existing results for this (institute, class, subject, exam) in one query
+      const whereClause: Record<string, string> = {
+        instituteId: bulkDto.instituteId,
+        classId: bulkDto.classId,
+        subjectId: bulkDto.subjectId,
+      };
+      if (bulkDto.examId) {
+        whereClause.examId = bulkDto.examId;
+      }
+      const existingResults = await this.resultRepository.find({ where: whereClause as any });
+      const existingByStudentId = new Map(existingResults.map(r => [r.studentId, r]));
 
-      // Bulk insert in a single query instead of N individual inserts
-      const savedResults = await this.resultRepository.save(entities);
+      // Separate into updates (existing rows) and inserts (new rows)
+      const timestamp = now();
+      const toSave: InstituteClassSubjectResault[] = [];
+
+      for (const studentResult of bulkDto.results) {
+        const existing = existingByStudentId.get(studentResult.studentId);
+        if (existing) {
+          // Update existing record instead of inserting a duplicate
+          existing.score = studentResult.score;
+          existing.grade = studentResult.grade;
+          existing.remarks = studentResult.remarks;
+          existing.updatedAt = timestamp;
+          toSave.push(existing);
+        } else {
+          toSave.push(this.resultRepository.create({
+            instituteId: bulkDto.instituteId,
+            classId: bulkDto.classId,
+            subjectId: bulkDto.subjectId,
+            examId: bulkDto.examId,
+            studentId: studentResult.studentId,
+            score: studentResult.score,
+            grade: studentResult.grade,
+            remarks: studentResult.remarks,
+            isActive: true,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }));
+        }
+      }
+
+      const savedResults = await this.resultRepository.save(toSave);
 
       // ✅ OPTIMIZED: Load student and exam details in bulk to eliminate N+1 queries
       const resultIds = savedResults.map(result => result.id);
@@ -291,17 +320,56 @@ export class InstituteClassSubjectResaultsService {
         .where('result.id IN (:...ids)', { ids: resultIds })
         .getMany();
 
-      const responseData = resultsWithDetails.map(result => 
+      return resultsWithDetails.map(result =>
         InstituteClassSubjectResaultResponseDto.fromEntity(result)
       );
-
-      return responseData;
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
       }
       throw new BadRequestException(`Failed to create bulk results: ${error.message}`);
     }
+  }
+
+  async getStudentsWithExamMarks(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    examId: string,
+  ): Promise<StudentExamMarkDto[]> {
+    // 1. Get all active students enrolled in this subject in one query
+    const enrollments = await this.subjectStudentRepository
+      .createQueryBuilder('ss')
+      .leftJoin('ss.student', 'user')
+      .addSelect(['user.id', 'user.firstName', 'user.lastName', 'user.imageUrl'])
+      .where('ss.instituteId = :instituteId', { instituteId })
+      .andWhere('ss.classId = :classId', { classId })
+      .andWhere('ss.subjectId = :subjectId', { subjectId })
+      .andWhere('ss.isActive = true')
+      .getMany();
+
+    // 2. Get all results for this exam in one query, keyed by studentId
+    const results = await this.resultRepository.find({
+      where: { instituteId, classId, subjectId, examId } as any,
+    });
+    const resultsByStudentId = new Map(results.map(r => [r.studentId, r]));
+
+    // 3. Combine: every enrolled student gets their marks (or null if not yet graded)
+    return enrollments.map((ss) => {
+      const result = resultsByStudentId.get(ss.studentId);
+      return {
+        userId: ss.studentId,
+        firstName: ss.student?.firstName ?? null,
+        lastName: ss.student?.lastName ?? null,
+        imageUrl: ss.student?.imageUrl
+          ? this.cloudStorageService.getFullUrl(ss.student.imageUrl)
+          : null,
+        instituteId: ss.instituteId,
+        examId,
+        score: result?.score ?? '0',
+        grade: result?.grade ?? null,
+      };
+    });
   }
 
   async findAllRaw(page: number = 1, limit: number = 100): Promise<{ data: any[]; total: number }> {

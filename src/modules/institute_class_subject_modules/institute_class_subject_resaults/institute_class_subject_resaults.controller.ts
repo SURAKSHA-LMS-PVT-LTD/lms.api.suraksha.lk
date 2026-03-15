@@ -11,6 +11,7 @@ import { CreateBulkResultsDto } from './dto/create-bulk-results.dto';
 import { UpdateInstituteClassSubjectResaultDto } from './dto/update-institute_class_subject_resault.dto';
 import { QueryInstituteClassSubjectResaultDto } from './dto/query-institute_class_subject_resault.dto';
 import { InstituteClassSubjectResaultResponseDto } from './dto/institute_class_subject_resault-response.dto';
+import { StudentExamMarkDto } from './dto/student-exam-mark.dto';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { Type } from 'class-transformer';
 import { IsArray, ValidateNested } from 'class-validator';
@@ -67,6 +68,28 @@ export class InstituteClassSubjectResaultsController {
     @Query('limit') limit?: number
   ): Promise<PaginatedResponseDto<InstituteClassSubjectResaultResponseDto>> {
     return await this.resultsService.findByExamId(examId, { page, limit });
+  }
+
+  @Get('students-with-marks')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true, requireSubject: true } })
+  @ApiOperation({ summary: 'Get all enrolled students of a class-subject with their marks for a specific exam' })
+  @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID' })
+  @ApiQuery({ name: 'classId', required: true, description: 'Class ID' })
+  @ApiQuery({ name: 'subjectId', required: true, description: 'Subject ID' })
+  @ApiQuery({ name: 'examId', required: true, description: 'Exam ID' })
+  @ApiResponse({ status: 200, description: 'List of students with their exam marks', type: [StudentExamMarkDto] })
+  @ApiResponse({ status: 400, description: 'Missing required query parameters' })
+  async getStudentsWithExamMarks(
+    @Query('instituteId') instituteId: string,
+    @Query('classId') classId: string,
+    @Query('subjectId') subjectId: string,
+    @Query('examId') examId: string,
+  ): Promise<StudentExamMarkDto[]> {
+    if (!instituteId || !classId || !subjectId || !examId) {
+      throw new BadRequestException('instituteId, classId, subjectId, and examId are all required');
+    }
+    return this.resultsService.getStudentsWithExamMarks(instituteId, classId, subjectId, examId);
   }
 
   @Get(':id')
