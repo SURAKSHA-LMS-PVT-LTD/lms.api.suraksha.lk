@@ -2,18 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNumber, IsOptional, IsArray, ValidateNested, IsBoolean, IsIn, Min, Max, IsUrl, IsNotEmpty, ValidateIf, Validate, ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
-@ValidatorConstraint({ name: 'documentNameRequired', async: false })
-export class DocumentNameRequiredConstraint implements ValidatorConstraintInterface {
-  validate(value: any, args: ValidationArguments) {
-    const object = args.object as any;
-    return !!(object.documentName || object.name);
-  }
-
-  defaultMessage(args: ValidationArguments) {
-    return 'Either documentName or name must be provided';
-  }
-}
-
 @ValidatorConstraint({ name: 'documentUrlRequired', async: false })
 export class DocumentUrlRequiredConstraint implements ValidatorConstraintInterface {
   validate(value: any, args: ValidationArguments) {
@@ -111,10 +99,6 @@ export class DocumentInfoDto {
   @IsString()
   @IsOptional()
   source?: string;
-
-  // Validate that at least one name field is provided
-  @Validate(DocumentNameRequiredConstraint)
-  _validateName?: any;
 
   // Validate that at least one URL or Drive ID is provided
   @Validate(DocumentUrlRequiredConstraint)

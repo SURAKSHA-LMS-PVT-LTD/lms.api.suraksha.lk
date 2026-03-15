@@ -104,44 +104,42 @@ export class UserDriveAccessController {
     
     FLOW:
     1. Frontend calls GET /drive-access/connect → gets authUrl
-    2. Frontend does window.location.href = authUrl
+    2. Frontend does window.location.href = authUrl (web) or Linking.openURL(authUrl) (mobile)
     3. User grants consent on Google (one-time)
     4. Google redirects to /drive-access/callback
-    5. Backend stores encrypted refresh token, redirects to frontend
+    5. Backend stores encrypted refresh token, redirects to frontend/app
     6. From now on, user can upload directly to Drive without re-authenticating
+
+    PLATFORM PARAM:
+    - platform=web  (default) → redirects to https://lms.suraksha.lk after consent
+    - platform=mobile         → redirects to lk.suraksha.lms://drive-callback after consent
     `,
   })
-  @ApiQuery({ name: 'returnUrl', required: false, description: 'Frontend URL to redirect to after connection', example: '/homework/upload' })
+  @ApiQuery({ name: 'returnUrl', required: false, description: 'Web-only: relative path to redirect to after connection (default: /profile?tab=apps)', example: '/profile?tab=apps' })
+  @ApiQuery({ name: 'platform', required: false, description: 'web (default) or mobile', example: 'mobile' })
   @ApiResponse({ status: 200, type: DriveAuthUrlDto })
   async initiateConnection(
     @Request() req: JwtRequest,
     @Query('returnUrl') returnUrl?: string,
+    @Query('platform') platform?: string,
   ): Promise<DriveAuthUrlDto> {
     const userId = JwtRequestHelper.getUserId(req.user);
 
-    // Validate returnUrl is a relative path (prevent open redirect)
-    const safeReturnUrl = (returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//')) 
-      ? returnUrl 
-      : '/homework';
+    const resolvedPlatform = platform === 'mobile' ? 'mobile' : 'web';
 
-    const stateData = JSON.stringify({ userId, returnUrl: safeReturnUrl });
-    const statePayload = Buffer.from(stateData).toString('base64url');
-    // Sign state with HMAC to prevent forgery
-    const stateSecret = process.env.JWT_SECRET || '';
-    const hmac = crypto.createHmac('sha256', stateSecret).update(statePayload).digest('base64url');
-    const state = `${statePayload}.${hmac}`;
+    // For web: validate returnUrl is a safe relative path; default to /profile?tab=apps
+    const safeReturnUrl = (returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//'))
+      ? returnUrl
+      : '/profile?tab=apps';
 
-    const result = this.driveService.generateAuthUrl(userId, state);
-    return { authUrl: result.authUrl, state: result.state };
-  }
-
+    const stateData = JSON.stringify({ userId, returnUrl: safeReturnUrl, platform: resolvedPlatform });
   @Get('callback')
   @Public() // OAuth callback must be public - Google redirects here without JWT token
   @ApiOperation({
     summary: 'Google OAuth2 callback (internal — do not call directly)',
-    description: 'Google redirects here after consent. Exchanges code for tokens, stores securely, redirects to frontend.',
+    description: 'Google redirects here after consent. Exchanges code for tokens, stores securely, redirects to frontend or mobile app.',
   })
-  @ApiResponse({ status: 302, description: 'Redirects to frontend with success/error' })
+  @ApiResponse({ status: 302, description: 'Redirects to frontend (web) or deep-link (mobile) with success/error' })
   async handleOAuthCallback(
     @Query('code') code: string,
     @Query('state') state: string,
@@ -149,8 +147,20 @@ export class UserDriveAccessController {
     @Req() req: any,
     @Res() res: Response,
   ): Promise<void> {
-    const frontendUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
-    let returnUrl = '/homework';
+    const webFrontendUrl = process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
+    const mobileScheme = 'lk.suraksha.lms'; // deep-link scheme for the mobile app
+    let returnUrl = '/profile?tab=apps';
+    let platform = 'web';
+
+    const buildRedirect = (success: boolean, params: Record<string, string>) => {
+      const qs = new URLSearchParams(params).toString();
+      if (platform === 'mobile') {
+        // Deep-link: lk.suraksha.lms://drive-callback?drive_connected=true&...
+        return `${mobileScheme}://drive-callback?${qs}`;
+      }
+      // Web: absolute https URL — use the stored relative returnUrl
+      return `${webFrontendUrl}${returnUrl}?${qs}`;
+    };
 
     try {
       let userId: string;
@@ -168,10 +178,11 @@ export class UserDriveAccessController {
         }
         const stateData = JSON.parse(Buffer.from(statePayload, 'base64url').toString('utf-8'));
         userId = stateData.userId;
-        returnUrl = stateData.returnUrl || '/homework';
-        // Validate returnUrl is a safe relative path
+        platform = stateData.platform === 'mobile' ? 'mobile' : 'web';
+        returnUrl = stateData.returnUrl || '/profile?tab=apps';
+        // Validate returnUrl is a safe relative path (web only)
         if (!returnUrl.startsWith('/') || returnUrl.startsWith('//')) {
-          returnUrl = '/homework';
+          returnUrl = '/profile?tab=apps';
         }
       } catch (stateErr) {
         if (stateErr instanceof BadRequestException) throw stateErr;
@@ -182,7 +193,7 @@ export class UserDriveAccessController {
         const errorMessage = error === 'access_denied'
           ? 'Google Drive access was denied'
           : `Google OAuth error: ${error}`;
-        res.redirect(`${frontendUrl}${returnUrl}?drive_connected=false&error=${encodeURIComponent(errorMessage)}`);
+        res.redirect(buildRedirect(false, { drive_connected: 'false', error: errorMessage }));
         return;
       }
 
@@ -194,13 +205,15 @@ export class UserDriveAccessController {
         code, userId, req.ip, req.headers['user-agent'],
       );
 
-      res.redirect(
-        `${frontendUrl}${returnUrl}?drive_connected=true&google_email=${encodeURIComponent(result.googleEmail || '')}`,
-      );
+      res.redirect(buildRedirect(true, {
+        drive_connected: 'true',
+        google_email: result.googleEmail || '',
+      }));
     } catch (err) {
-      res.redirect(
-        `${frontendUrl}${returnUrl}?drive_connected=false&error=${encodeURIComponent(err.message || 'Failed to connect Google Drive')}`,
-      );
+      res.redirect(buildRedirect(false, {
+        drive_connected: 'false',
+        error: err.message || 'Failed to connect Google Drive',
+      }));
     }
   }
 

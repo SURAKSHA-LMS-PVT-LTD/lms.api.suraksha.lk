@@ -10,6 +10,7 @@ import { ISubjectStats, ISubjectCategoryStats } from './interfaces/subject.inter
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { JwtPayload } from '../../common/interfaces/jwt-request.interface';
 import { UserType } from '../user/enums/user-type.enum';
+import { ROLE_BITMASKS } from '../../auth/interfaces/enhanced-jwt-payload.interface';
 import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
@@ -290,12 +291,10 @@ export class SubjectService {
     }
 
     // Check if user has institute admin access to this specific institute
-    // Role bitmask for Institute Admin (IA) = 2 in JwtPayload format
-    // Note: This is different from EnhancedJwtPayload where IA = 8
-    const INSTITUTE_ADMIN_BITMASK = 2;
-    
+    // Role bitmask for Institute Admin (IA) = 8 per ROLE_BITMASKS
     const hasAccessToInstitute = user.i.some(
-      entry => entry.i === subject.instituteId && (entry.r & INSTITUTE_ADMIN_BITMASK) !== 0
+      // String() coercion guards against number vs string mismatch in JWT values
+      entry => String(entry.i) === String(subject.instituteId) && (entry.r & ROLE_BITMASKS.IA) !== 0
     );
 
     if (!hasAccessToInstitute) {
