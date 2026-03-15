@@ -163,8 +163,6 @@ export class StructuredLecturesService {
         'lecture.attachments',
         'lecture.isActive',
         'lecture.createdBy',
-        'lecture.createdAt',
-        'lecture.updatedAt'
       ]);
 
     // Filter by instituteId (important for multi-tenant)
@@ -191,8 +189,8 @@ export class StructuredLecturesService {
       );
     }
 
-    const validLectureSortFields = ['createdAt', 'updatedAt', 'title', 'grade', 'isActive', 'startDate', 'endDate'] as const;
-    const sortBy = sanitizeSortField(queryDto.sortBy, validLectureSortFields, 'createdAt');
+    const validLectureSortFields = ['title', 'grade', 'isActive'] as const;
+    const sortBy = sanitizeSortField(queryDto.sortBy, validLectureSortFields, 'grade');
     const sortOrder = sanitizeSortOrder(queryDto.sortOrder);
     queryBuilder.orderBy(`lecture.${sortBy}`, sortOrder);
 
@@ -322,8 +320,6 @@ export class StructuredLecturesService {
         'lecture.attachments',
         'lecture.isActive',
         'lecture.createdBy',
-        'lecture.createdAt',
-        'lecture.updatedAt'
       ])
       .where('lecture.instituteId = :instituteId', { instituteId })
       .andWhere('lecture.subjectId = :subjectId', { subjectId });
@@ -336,7 +332,7 @@ export class StructuredLecturesService {
       queryBuilder.andWhere('lecture.isActive = :isActive', { isActive: activeFilter });
     }
 
-    queryBuilder.orderBy('lecture.grade', 'ASC').addOrderBy('lecture.createdAt', 'DESC');
+    queryBuilder.orderBy('lecture.grade', 'ASC').addOrderBy('lecture.isActive', 'DESC');
 
     const entities = await queryBuilder.getMany();
 

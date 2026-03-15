@@ -133,6 +133,7 @@ export class InstituteClassSubjectHomeworksService {
           'homework.startDate',
           'homework.endDate',
           'homework.referenceLink',
+          'homework.isActive',
           'homework.createdAt',
           'homework.updatedAt'
         ])
@@ -264,6 +265,7 @@ export class InstituteClassSubjectHomeworksService {
           startDate: homework.startDate,
           endDate: homework.endDate,
           referenceLink: homework.referenceLink,
+          isActive: homework.isActive,
           teacher: homework.teacher ? {
             id: homework.teacher.id,
             nameWithInitials: homework.teacher.nameWithInitials || null,
@@ -395,6 +397,7 @@ export class InstituteClassSubjectHomeworksService {
           'homework.startDate',
           'homework.endDate',
           'homework.referenceLink',
+          'homework.isActive',
           'homework.createdAt',
           'homework.updatedAt'
         ])
@@ -473,6 +476,7 @@ export class InstituteClassSubjectHomeworksService {
         startDate: homework.startDate,
         endDate: homework.endDate,
         referenceLink: homework.referenceLink,
+        isActive: homework.isActive,
         teacher: homework.teacher ? {
           id: homework.teacher.id,
           nameWithInitials: homework.teacher.nameWithInitials || null,
