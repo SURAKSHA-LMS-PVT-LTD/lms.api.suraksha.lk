@@ -76,6 +76,11 @@ export class AttendanceNotificationService {
     private readonly dataSource: DataSource,
   ) {}
 
+  /** True when Firebase Admin SDK is initialised and push can be sent */
+  isPushReady(): boolean {
+    return this.fcmNotificationService.isReady();
+  }
+
   /**
    * Get notification channels based on subscription plan
    */
@@ -1127,7 +1132,7 @@ export class AttendanceNotificationService {
       time: data.time,
       attendanceType: attendanceType,
     };
-    
+
     // Add optional fields
     if (data.instituteName) dataPayload.instituteName = data.instituteName;
     if (data.className) dataPayload.className = data.className;
@@ -1135,13 +1140,19 @@ export class AttendanceNotificationService {
     if (data.bookhireName) dataPayload.bookhireName = data.bookhireName;
     if (data.vehicleNumber) dataPayload.vehicleNumber = data.vehicleNumber;
 
-    // Add attendance deep-link ID for mobile/web navigation
+    // Always include a navigation URL so tapping the notification opens the right screen.
+    // Prefer a specific record deep-link; fall back to the notifications inbox.
+    const webBase = process.env.WEB_APP_URL || 'https://lms.suraksha.lk';
+    const mobileScheme = process.env.MOBILE_APP_SCHEME || 'suraksha';
     if (data.attendanceId) {
-      const webBase = process.env.WEB_APP_URL || 'https://lms.suraksha.lk';
-      const mobileScheme = process.env.MOBILE_APP_SCHEME || 'suraksha';
       dataPayload.attendanceId = data.attendanceId;
       dataPayload.actionUrl = `${webBase}/attendance/view?id=${data.attendanceId}`;
-      dataPayload.deepLink = `${mobileScheme}://attendance/view?id=${data.attendanceId}`;
+      dataPayload.deepLink   = `${mobileScheme}://attendance/view?id=${data.attendanceId}`;
+    } else {
+      // Bulk or card attendance without a specific record ID — open the parent’s
+      // notification inbox which lists all recent attendance updates.
+      dataPayload.actionUrl = `${webBase}/notifications`;
+      dataPayload.deepLink  = `${mobileScheme}://notifications`;
     }
 
     // Add advertisement data if available and ads are enabled

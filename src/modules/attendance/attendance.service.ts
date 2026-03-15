@@ -1583,9 +1583,11 @@ export class AttendanceService {
     const hasWhatsApp = !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
     const hasTelegram = !!process.env.TELEGRAM_BOT_TOKEN;
     const hasEmail = !!(process.env.EMAIL_SERVER_URL || process.env.EMAIL_API_URL);
-    
+    // Also allow when only FCM push is configured (Firebase Admin SDK initialised)
+    const hasFcm = this.attendanceNotificationService.isPushReady();
+
     // We need at least one notification channel configured
-    return hasWhatsApp || hasTelegram || hasEmail;
+    return hasWhatsApp || hasTelegram || hasEmail || hasFcm;
   }
 
   /**

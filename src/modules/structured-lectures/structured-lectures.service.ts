@@ -87,9 +87,42 @@ export class StructuredLecturesService {
     });
   }
 
-  async getLectureStatistics(subjectId: string, grade: number) {
-    const total = await this.lectureRepository.count({ where: { subjectId, grade } });
-    return { total };
+  async getLectureStatistics(subjectId: string, grade?: number) {
+    const where: any = { subjectId };
+    if (grade !== undefined) where.grade = grade;
+
+    const [total, active] = await Promise.all([
+      this.lectureRepository.count({ where }),
+      this.lectureRepository.count({ where: { ...where, isActive: true } }),
+    ]);
+
+    // Grade breakdown (only when not already scoped to a single grade)
+    let gradeBreakdown: { grade: number; total: number; active: number }[] = [];
+    if (grade === undefined) {
+      const rows = await this.lectureRepository
+        .createQueryBuilder('l')
+        .select('l.grade', 'grade')
+        .addSelect('COUNT(*)', 'total')
+        .addSelect('SUM(CASE WHEN l.isActive = 1 THEN 1 ELSE 0 END)', 'active')
+        .where('l.subjectId = :subjectId', { subjectId })
+        .groupBy('l.grade')
+        .orderBy('l.grade', 'ASC')
+        .getRawMany();
+      gradeBreakdown = rows.map(r => ({
+        grade: Number(r.grade),
+        total: Number(r.total),
+        active: Number(r.active),
+      }));
+    }
+
+    return {
+      subjectId,
+      grade: grade ?? 'all',
+      total,
+      active,
+      inactive: total - active,
+      grades: gradeBreakdown,
+    };
   }
 
   async getLectureById(id: string) {

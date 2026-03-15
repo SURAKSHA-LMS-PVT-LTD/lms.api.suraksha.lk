@@ -382,13 +382,17 @@ export class DynamoDBAttendanceService {
     for (let i = 0; i < attendances.length; i += BATCH_SIZE) {
       const batch = attendances.slice(i, i + BATCH_SIZE);
       
-      // Convert to DynamoDB records
-      const writeRequests = batch.map(attendance => ({
+      // Generate DynamoDB records first so each record's .id (base64url PK~SK) is
+      // captured before any timestamp changes — required for push-notification deep-links.
+      const batchPairs: Array<{ dto: MarkAttendanceDto; record: AttendanceRecord }> =
+        batch.map(dto => ({ dto, record: this.attendanceToRecord(dto) }));
+
+      const writeRequests = batchPairs.map(({ record }) => ({
         PutRequest: {
-          Item: marshall(this.attendanceToRecord(attendance), { removeUndefinedValues: true })
+          Item: marshall(record, { removeUndefinedValues: true })
         }
       }));
-      
+
       try {
         const response = await this.retryWithBackoff(async () => {
           return await this.dynamoClient.send(new BatchWriteItemCommand({
@@ -397,41 +401,46 @@ export class DynamoDBAttendanceService {
             }
           }));
         });
-        
+
         // ✅ FIXED BUG-005: Handle unprocessed items correctly
         // DynamoDB doesn't guarantee WHICH items fail, so we identify them by key comparison
         if (response.UnprocessedItems && response.UnprocessedItems[this.tableName]?.length > 0) {
           const unprocessedKeys = new Set(
             response.UnprocessedItems[this.tableName].map(item => {
-              const record = unmarshall(item.PutRequest.Item);
-              return `${record.studentId}#${record.date}`;
+              const rec = unmarshall(item.PutRequest.Item);
+              return `${rec.studentId}#${rec.date}`;
             })
           );
           this.logger.warn(`${unprocessedKeys.size} items were not processed in batch`);
 
-          for (const attendance of batch) {
-            const key = `${attendance.studentId}#${attendance.date}`;
+          for (const { dto, record } of batchPairs) {
+            const key = `${dto.studentId}#${dto.date}`;
             if (unprocessedKeys.has(key)) {
               failed.push({
-                attendance,
+                attendance: dto,
                 error: 'Item not processed in batch - capacity exceeded'
               });
             } else {
-              successful.push(attendance);
+              // Attach generated record id to the DTO so callers can build deep-links
+              (dto as any).id = record.id;
+              successful.push(dto);
             }
           }
         } else {
-          // All items processed successfully
-          successful.push(...batch);
+          // All items processed successfully — attach ids and collect
+          for (const { dto, record } of batchPairs) {
+            (dto as any).id = record.id;
+          }
+          successful.push(...batchPairs.map(p => p.dto));
         }
         
       } catch (error) {
-        this.logger.error(`Batch write failed for items ${i} to ${i + batch.length}:`, error);
-        
+        this.logger.error(`Batch write failed for items ${i} to ${i + batchPairs.length}:`, error);
+
         // Mark all items in failed batch as failed
-        batch.forEach(attendance => {
+        batchPairs.forEach(({ dto }) => {
           failed.push({
-            attendance,
+            attendance: dto,
             error: error.message || 'Batch write failed'
           });
         });

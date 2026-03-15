@@ -64,6 +64,9 @@ export class StructuredLectureEntity {
   @Column({ type: 'varchar', length: 36, nullable: true })
   createdBy?: string;
 
+  @Column({ name: 'updated_by', type: 'varchar', length: 36, nullable: true })
+  updatedBy?: string;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
