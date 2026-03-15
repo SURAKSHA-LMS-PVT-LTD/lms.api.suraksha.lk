@@ -171,13 +171,14 @@ export class StructuredLecturesService {
 
   // DTO transformation methods
   private transformEntityToDto(entity: StructuredLectureEntity): LectureResponseDto {
-    // Transform attachments array to DocumentInfoDto with full URLs
+    // Transform attachments array to DocumentInfoDto with full URLs.
+    // Drive URLs (https://drive.google.com/...) are returned as-is by getFullUrl.
     const documents = (entity.attachments || []).map((attachment: any) => {
       if (typeof attachment === 'string') {
         return { documentUrl: this.cloudStorageService.getFullUrl(attachment) };
       } else if (attachment && typeof attachment === 'object') {
         return {
-          ...attachment,
+          ...attachment, // preserves driveFileId, driveWebViewLink, source
           documentUrl: this.cloudStorageService.getFullUrl(attachment.documentUrl),
         };
       }
@@ -284,11 +285,34 @@ export class StructuredLecturesService {
     let attachments = [];
     
     if (documents && documents.length > 0) {
-      attachments = documents.map((doc: any) => ({
-        documentName: doc.name || doc.documentName,
-        documentUrl: doc.url || doc.documentUrl,
-        documentDescription: doc.documentDescription,
-      }));
+      attachments = documents.map((doc: any) => {
+        const name = doc.name || doc.documentName;
+        if (doc.driveFileId) {
+          return {
+            documentName: name,
+            documentDescription: doc.documentDescription,
+            driveFileId: doc.driveFileId,
+            driveWebViewLink: doc.driveWebViewLink || `https://drive.google.com/file/d/${doc.driveFileId}/view`,
+            documentUrl: doc.driveWebViewLink || `https://drive.google.com/file/d/${doc.driveFileId}/view`,
+            source: 'GOOGLE_DRIVE',
+          };
+        }
+        if (doc.externalUrl) {
+          return {
+            documentName: name || doc.linkTitle || doc.externalUrl,
+            documentDescription: doc.documentDescription,
+            externalUrl: doc.externalUrl,
+            linkTitle: doc.linkTitle,
+            documentUrl: doc.externalUrl,
+            source: 'EXTERNAL_URL',
+          };
+        }
+        return {
+          documentName: name,
+          documentUrl: doc.url || doc.documentUrl,
+          documentDescription: doc.documentDescription,
+        };
+      });
     } else if (documentUrls && documentUrls.length > 0) {
       attachments = documentUrls.map((url: string) => ({ documentUrl: url }));
     }
@@ -328,11 +352,34 @@ export class StructuredLecturesService {
     
     // Handle documents if provided
     if (documents && documents.length > 0) {
-      updateData.attachments = documents.map((doc: any) => ({
-        documentName: doc.name || doc.documentName,
-        documentUrl: doc.url || doc.documentUrl,
-        documentDescription: doc.documentDescription,
-      }));
+      updateData.attachments = documents.map((doc: any) => {
+        const name = doc.name || doc.documentName;
+        if (doc.driveFileId) {
+          return {
+            documentName: name,
+            documentDescription: doc.documentDescription,
+            driveFileId: doc.driveFileId,
+            driveWebViewLink: doc.driveWebViewLink || `https://drive.google.com/file/d/${doc.driveFileId}/view`,
+            documentUrl: doc.driveWebViewLink || `https://drive.google.com/file/d/${doc.driveFileId}/view`,
+            source: 'GOOGLE_DRIVE',
+          };
+        }
+        if (doc.externalUrl) {
+          return {
+            documentName: name || doc.linkTitle || doc.externalUrl,
+            documentDescription: doc.documentDescription,
+            externalUrl: doc.externalUrl,
+            linkTitle: doc.linkTitle,
+            documentUrl: doc.externalUrl,
+            source: 'EXTERNAL_URL',
+          };
+        }
+        return {
+          documentName: name,
+          documentUrl: doc.url || doc.documentUrl,
+          documentDescription: doc.documentDescription,
+        };
+      });
     } else if (documentUrls && documentUrls.length > 0) {
       updateData.attachments = documentUrls.map((url: string) => ({
         documentUrl: url,

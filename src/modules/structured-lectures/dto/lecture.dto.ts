@@ -18,11 +18,12 @@ export class DocumentNameRequiredConstraint implements ValidatorConstraintInterf
 export class DocumentUrlRequiredConstraint implements ValidatorConstraintInterface {
   validate(value: any, args: ValidationArguments) {
     const object = args.object as any;
-    return !!(object.documentUrl || object.url);
+    // Valid if any of: documentUrl, url, driveFileId, externalUrl
+    return !!(object.documentUrl || object.url || object.driveFileId || object.externalUrl);
   }
 
   defaultMessage(args: ValidationArguments) {
-    return 'Either documentUrl or url must be provided';
+    return 'One of documentUrl, url, driveFileId, or externalUrl must be provided';
   }
 }
 
@@ -68,11 +69,54 @@ export class DocumentInfoDto {
   @IsOptional()
   url?: string;
 
+  // Google Drive fields (for LECTURE_DOCUMENT uploads via /drive-access)
+  @ApiPropertyOptional({
+    description: 'Google Drive file ID — required when source is GOOGLE_DRIVE',
+    example: '1abc123def456ghi789',
+  })
+  @IsString()
+  @IsOptional()
+  driveFileId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Google Drive web view link (populated automatically from driveFileId)',
+    example: 'https://drive.google.com/file/d/1abc123/view',
+  })
+  @IsString()
+  @IsOptional()
+  driveWebViewLink?: string;
+
+  // Custom external URL fields (YouTube, Vimeo, website links, etc.)
+  @ApiPropertyOptional({
+    description: 'Any external URL — YouTube, Vimeo, Wikipedia, a website, etc.',
+    example: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  })
+  @IsString()
+  @IsOptional()
+  externalUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Display title for the external link (shown instead of the raw URL)',
+    example: 'Khan Academy — Introduction to Algebra',
+  })
+  @IsString()
+  @IsOptional()
+  linkTitle?: string;
+
+  @ApiPropertyOptional({
+    description: 'Source of the document',
+    example: 'EXTERNAL_URL',
+    enum: ['GOOGLE_DRIVE', 'EXTERNAL_URL'],
+  })
+  @IsString()
+  @IsOptional()
+  source?: string;
+
   // Validate that at least one name field is provided
   @Validate(DocumentNameRequiredConstraint)
   _validateName?: any;
 
-  // Validate that at least one URL field is provided
+  // Validate that at least one URL or Drive ID is provided
   @Validate(DocumentUrlRequiredConstraint)
   _validateUrl?: any;
 }
