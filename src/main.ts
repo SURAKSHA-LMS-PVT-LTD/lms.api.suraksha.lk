@@ -179,6 +179,10 @@ async function bootstrap() {
     // 🔒 SECURITY: Apply ClassSerializerInterceptor globally to honor @Exclude() decorators
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
+    // 🔒 SECURITY: Cap pagination limit to prevent unbounded queries (DoS protection)
+    const { PaginationLimitInterceptor } = await import('./common/interceptors/pagination-limit.interceptor');
+    app.useGlobalInterceptors(new PaginationLimitInterceptor());
+
     if (!isProduction) {
       console.log('✅ Global validation pipes configured');
     }

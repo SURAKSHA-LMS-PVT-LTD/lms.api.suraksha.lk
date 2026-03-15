@@ -1,5 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
 
+// Magic byte signatures for common file types
+const MAGIC_BYTES: Record<string, number[][]> = {
+  'image/jpeg': [[0xFF, 0xD8, 0xFF]],
+  'image/jpg': [[0xFF, 0xD8, 0xFF]],
+  'image/png': [[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]],
+  'image/gif': [[0x47, 0x49, 0x46, 0x38, 0x37, 0x61], [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]],
+  'image/webp': [[0x52, 0x49, 0x46, 0x46]],  // RIFF header
+  'application/pdf': [[0x25, 0x50, 0x44, 0x46]],  // %PDF
+};
+
 export interface FileValidationOptions {
   maxSize?: number; // in bytes
   allowedMimeTypes?: string[];
@@ -57,6 +67,29 @@ export class FileValidationUtil {
           `Invalid file extension. Allowed extensions: ${options.allowedExtensions.join(', ')}`
         );
       }
+    }
+
+    // Validate magic bytes if buffer is available
+    if (file.buffer && options.allowedMimeTypes) {
+      this.validateMagicBytes(file.buffer, file.mimetype);
+    }
+  }
+
+  /**
+   * Validate file content matches declared MIME type via magic bytes
+   */
+  static validateMagicBytes(buffer: Buffer, declaredMimeType: string): void {
+    const signatures = MAGIC_BYTES[declaredMimeType];
+    if (!signatures) return; // No signature to check for this type
+
+    const matches = signatures.some(sig =>
+      sig.every((byte, index) => buffer.length > index && buffer[index] === byte)
+    );
+
+    if (!matches) {
+      throw new BadRequestException(
+        'File content does not match declared file type. The file may be corrupted or misnamed.'
+      );
     }
   }
 

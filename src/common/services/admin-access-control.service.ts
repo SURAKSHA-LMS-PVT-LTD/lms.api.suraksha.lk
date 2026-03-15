@@ -192,10 +192,10 @@ export class AdminAccessControlService {
    */
   private validateOriginAccess(origin: string): { isValid: boolean; matchedOrigin?: string } {
     try {
-      // If no origins configured, allow all (for development/testing)
+      // If no origins configured, deny all in production for security
       if (this.config.allowedAdminOrigins.length === 0) {
-        this.logger.warn('⚠️ No admin origins configured - allowing all origins');
-        return { isValid: true, matchedOrigin: 'all-allowed' };
+        this.logger.warn('⚠️ No admin origins configured - denying all origins in production');
+        return { isValid: false };
       }
 
       // Normalize origin (remove trailing slash and convert to lowercase)

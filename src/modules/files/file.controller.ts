@@ -11,7 +11,27 @@ import { UserType } from '../user/enums/user-type.enum';
 @Controller('files')
 @UseGuards(AdvancedSecurityGuard)
 export class FileController {
+  private static readonly ALLOWED_FOLDERS = new Set([
+    'profile-images', 'student-images', 'institute-images', 'institute-user-images',
+    'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts',
+    'subject-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images',
+    'sms-payment-receipts', 'advertisement-images'
+  ]);
+
   constructor(private fileProxyService: FileProxyService) {}
+
+  private validateFolder(folder: string): void {
+    if (!FileController.ALLOWED_FOLDERS.has(folder)) {
+      throw new NotFoundException('File not found');
+    }
+  }
+
+  private validateFilename(filename: string): void {
+    // Block path traversal attempts
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+      throw new NotFoundException('File not found');
+    }
+  }
 
   @Get(':folder/:filename')
   @UseGuards(FlexibleAccessGuard)
@@ -28,6 +48,8 @@ export class FileController {
     @Param('filename') filename: string,
     @Res() res: Response
   ): Promise<void> {
+    this.validateFolder(folder);
+    this.validateFilename(filename);
     const filePath = `${folder}/${filename}`;
     await this.fileProxyService.serveFile(filePath, res);
   }
@@ -49,6 +71,9 @@ export class FileController {
     @Param('filename') filename: string,
     @Res() res: Response
   ): Promise<void> {
+    this.validateFolder(folder);
+    this.validateFilename(subfolder);
+    this.validateFilename(filename);
     const filePath = `${folder}/${subfolder}/${filename}`;
     await this.fileProxyService.serveFile(filePath, res);
   }

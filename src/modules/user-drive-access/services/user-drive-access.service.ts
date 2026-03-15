@@ -641,8 +641,12 @@ export class UserDriveAccessService {
   }
 
   private async findOrCreateFolder(accessToken: string, folderName: string, parentId: string | null): Promise<string> {
-    // Sanitize inputs to prevent Google Drive API query injection
-    const safeFolderName = folderName.replace(/'/g, "\\'");
+    // Sanitize folder name for Google Drive API query - escape single quotes and backslashes
+    const safeFolderName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    // Validate folder name doesn't contain dangerous characters
+    if (/[\x00-\x1f]/.test(folderName)) {
+      throw new BadRequestException('Invalid folder name');
+    }
     let query = `name='${safeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     if (parentId) {
       // Validate parentId is alphanumeric (Google Drive IDs are alphanumeric + dashes/underscores)
