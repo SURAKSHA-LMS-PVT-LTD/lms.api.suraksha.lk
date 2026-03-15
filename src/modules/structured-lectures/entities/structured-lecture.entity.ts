@@ -2,7 +2,6 @@ import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad, ManyToOne, Jo
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 
 @Entity('structured_lectures')
-@Index('idx_lecture_institute', ['instituteId'])
 @Index('idx_lecture_institute_subject', ['instituteId', 'subjectId'])
 @Index('idx_lecture_institute_subject_grade', ['instituteId', 'subjectId', 'grade'])
 @Index('idx_lecture_subject_grade', ['subjectId', 'grade'])
@@ -34,10 +33,10 @@ export class StructuredLectureEntity {
   @Column({ type: 'int', nullable: false })
   grade: number;
 
-  @Column({ name: 'lesson_number', type: 'int', nullable: true })
+  @Column({ type: 'int', nullable: true, default: 1 })
   lessonNumber?: number;
 
-  @Column({ name: 'lecture_number', type: 'int', nullable: true })
+  @Column({ type: 'int', nullable: true, default: 1 })
   lectureNumber?: number;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
@@ -73,13 +72,13 @@ export class StructuredLectureEntity {
   @Column({ type: 'varchar', length: 36, nullable: true })
   createdBy?: string;
 
-  @Column({ name: 'updated_by', type: 'varchar', length: 36, nullable: true })
+  @Column({ type: 'varchar', length: 36, nullable: true })
   updatedBy?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @CreateDateColumn({ type: 'datetime', precision: 6 })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @UpdateDateColumn({ type: 'datetime', precision: 6 })
   updatedAt: Date;
 
   // 🎯 Automatic URL transformation hook

@@ -78,6 +78,9 @@ export class StructuredLecturesService {
         'description',
         'subjectId',
         'grade',
+        'lessonNumber',
+        'lectureNumber',
+        'provider',
         'videoUrl',
         'thumbnailUrl',
         'attachments',
@@ -211,11 +214,16 @@ export class StructuredLecturesService {
         'lecture.description',
         'lecture.subjectId',
         'lecture.grade',
+        'lecture.lessonNumber',
+        'lecture.lectureNumber',
+        'lecture.provider',
         'lecture.videoUrl',
         'lecture.thumbnailUrl',
         'lecture.attachments',
         'lecture.isActive',
         'lecture.createdBy',
+        'lecture.createdAt',
+        'lecture.updatedAt',
       ]);
 
     // Filter by instituteId (important for multi-tenant)
