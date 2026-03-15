@@ -165,9 +165,9 @@ export class StructuredLecturesService {
       description: entity.description || '',
       subjectId: entity.subjectId,
       grade: entity.grade,
-      lessonNumber: 1,
-      lectureNumber: 1,
-      provider: undefined,
+      lessonNumber: entity.lessonNumber ?? 1,
+      lectureNumber: entity.lectureNumber ?? 1,
+      provider: entity.provider,
       lectureLink: entity.videoUrl,
       coverImageUrl: entity.thumbnailUrl,
       documents,
@@ -280,7 +280,7 @@ export class StructuredLecturesService {
 
   async updateLectureAsDto(id: string, lectureData: UpdateLectureDto, userId: string): Promise<LectureResponseDto> {
     // Map DTO fields to entity fields
-    const { documents, documentUrls, coverImageUrl, lectureLink, ...rest } = lectureData as any;
+    const { documents, documentUrls, coverImageUrl, lectureLink, lectureVideoUrl, ...rest } = lectureData as any;
     
     // Prepare update data
     const updateData: any = { ...rest, updatedBy: userId };
@@ -289,8 +289,10 @@ export class StructuredLecturesService {
     if (coverImageUrl !== undefined) {
       updateData.thumbnailUrl = coverImageUrl;
     }
-    if (lectureLink !== undefined) {
-      updateData.videoUrl = lectureLink;
+    // lectureLink and lectureVideoUrl are both aliases for videoUrl
+    const resolvedVideoUrl = lectureLink ?? lectureVideoUrl;
+    if (resolvedVideoUrl !== undefined) {
+      updateData.videoUrl = resolvedVideoUrl;
     }
     
     // Handle documents if provided

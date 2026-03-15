@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 
 @Entity('structured_lectures')
@@ -34,6 +34,15 @@ export class StructuredLectureEntity {
   @Column({ type: 'int', nullable: false })
   grade: number;
 
+  @Column({ name: 'lesson_number', type: 'int', nullable: true })
+  lessonNumber?: number;
+
+  @Column({ name: 'lecture_number', type: 'int', nullable: true })
+  lectureNumber?: number;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  provider?: string;
+
   @Column({ type: 'int', nullable: true })
   duration?: number;
 
@@ -67,10 +76,10 @@ export class StructuredLectureEntity {
   @Column({ name: 'updated_by', type: 'varchar', length: 36, nullable: true })
   updatedBy?: string;
 
-  @Column({ name: 'created_at', type: 'timestamp' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @Column({ name: 'updated_at', type: 'timestamp' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
   // 🎯 Automatic URL transformation hook
