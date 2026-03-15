@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 
 @Entity('structured_lectures')
@@ -80,17 +80,4 @@ export class StructuredLectureEntity {
 
   @UpdateDateColumn({ type: 'datetime', precision: 6 })
   updatedAt: Date;
-
-  // 🎯 Automatic URL transformation hook
-  @AfterLoad()
-  transformFileUrls() {
-    const baseUrl = process.env.GCS_BASE_URL || process.env.STORAGE_BASE_URL || '';
-    
-    // Transform thumbnailUrl (uploaded images)
-    if (this.thumbnailUrl && this.thumbnailUrl.startsWith('/') && baseUrl) {
-      this.thumbnailUrl = `${baseUrl}${this.thumbnailUrl}`;
-    }
-    
-    // ❌ DON'T transform videoUrl - keep external URLs (YouTube, Vimeo, etc.)
-  }
 }

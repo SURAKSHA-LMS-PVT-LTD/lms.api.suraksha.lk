@@ -174,9 +174,12 @@ export class StructuredLecturesService {
     // Transform attachments array to DocumentInfoDto with full URLs
     const documents = (entity.attachments || []).map((attachment: any) => {
       if (typeof attachment === 'string') {
-        return { documentUrl: attachment };
+        return { documentUrl: this.cloudStorageService.getFullUrl(attachment) };
       } else if (attachment && typeof attachment === 'object') {
-        return { ...attachment, documentUrl: attachment.documentUrl };
+        return {
+          ...attachment,
+          documentUrl: this.cloudStorageService.getFullUrl(attachment.documentUrl),
+        };
       }
       return attachment;
     });
@@ -192,7 +195,7 @@ export class StructuredLecturesService {
       lectureNumber: entity.lectureNumber ?? 1,
       provider: entity.provider,
       lectureLink: entity.videoUrl,
-      coverImageUrl: entity.thumbnailUrl,
+      coverImageUrl: this.cloudStorageService.getFullUrl(entity.thumbnailUrl),
       documents,
       isActive: entity.isActive,
       createdBy: entity.createdBy,
@@ -378,11 +381,16 @@ export class StructuredLecturesService {
         'lecture.description',
         'lecture.subjectId',
         'lecture.grade',
+        'lecture.lessonNumber',
+        'lecture.lectureNumber',
+        'lecture.provider',
         'lecture.videoUrl',
         'lecture.thumbnailUrl',
         'lecture.attachments',
         'lecture.isActive',
         'lecture.createdBy',
+        'lecture.createdAt',
+        'lecture.updatedAt',
       ])
       .where('lecture.instituteId = :instituteId', { instituteId })
       .andWhere('lecture.subjectId = :subjectId', { subjectId });
