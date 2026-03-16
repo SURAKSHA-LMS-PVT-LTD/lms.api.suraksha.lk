@@ -141,6 +141,93 @@ export class AttendanceService {
     }
   }
 
+  private async enrichAttendanceRecordsWithImages(records: any[], instituteId: string): Promise<any[]> {
+    if (!Array.isArray(records) || records.length === 0) {
+      return records;
+    }
+
+    const normalizedRecords = records.map((record) => {
+      const existingImage = (record as any).studentImageUrl || (record as any).imageUrl || null;
+      if (!existingImage) return record;
+
+      let fullImageUrl = existingImage;
+      if (!/^https?:\/\//i.test(existingImage)) {
+        try {
+          fullImageUrl = this.CloudStorageService.getFullUrl(existingImage);
+        } catch {
+          fullImageUrl = existingImage;
+        }
+      }
+
+      return {
+        ...record,
+        imageUrl: fullImageUrl,
+        studentImageUrl: fullImageUrl,
+      };
+    });
+
+    const userIds = [...new Set(
+      normalizedRecords
+        .filter(r => !((r as any).studentImageUrl || (r as any).imageUrl))
+        .map(r => String((r as any).studentId || (r as any).userId || '').trim())
+        .filter(Boolean)
+    )];
+
+    if (userIds.length === 0) {
+      return normalizedRecords;
+    }
+
+    const [instituteUsers, users] = await Promise.all([
+      this.instituteUserRepository.find({
+        where: { instituteId, userId: In(userIds) },
+        select: ['userId', 'instituteUserImageUrl', 'imageVerificationStatus'],
+      }),
+      this.userRepository.find({
+        where: { id: In(userIds) as any },
+        select: ['id', 'imageUrl'],
+      }),
+    ]);
+
+    const instituteImageByUserId = new Map(
+      instituteUsers.map(iu => [String(iu.userId), {
+        image: iu.instituteUserImageUrl || null,
+        verified: iu.imageVerificationStatus === ImageVerificationStatus.VERIFIED,
+      }])
+    );
+
+    const globalImageByUserId = new Map(
+      users.map(u => [String(u.id), u.imageUrl || null])
+    );
+
+    return normalizedRecords.map((record) => {
+      const rawUserId = String((record as any).studentId || (record as any).userId || '').trim();
+      if (!rawUserId) return record;
+
+      const existingImage = (record as any).studentImageUrl || (record as any).imageUrl || null;
+      const instituteMeta = instituteImageByUserId.get(rawUserId);
+      const preferredImage = instituteMeta?.verified && instituteMeta.image
+        ? instituteMeta.image
+        : (globalImageByUserId.get(rawUserId) || existingImage);
+
+      if (!preferredImage) return record;
+
+      let fullImageUrl = preferredImage;
+      if (!/^https?:\/\//i.test(preferredImage)) {
+        try {
+          fullImageUrl = this.CloudStorageService.getFullUrl(preferredImage);
+        } catch {
+          fullImageUrl = preferredImage;
+        }
+      }
+
+      return {
+        ...record,
+        imageUrl: fullImageUrl,
+        studentImageUrl: fullImageUrl,
+      };
+    });
+  }
+
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
@@ -306,7 +393,11 @@ export class AttendanceService {
         }
       }
 
-      // ✅ STEP 4: Mark attendance in DynamoDB (same for all user types)
+      // ✅ STEP 4: Resolve image once and persist it in DynamoDB for faster later reads
+      const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
+      markAttendanceDto.studentImageUrl = imageUrl || undefined;
+
+      // ✅ STEP 4.1: Mark attendance in DynamoDB (same for all user types)
       const result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
 
       // ✅ STEP 4.5: Sync to MySQL based on system-wide sync mode
@@ -327,10 +418,7 @@ export class AttendanceService {
         this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
       }
 
-      // ✅ STEP 6: Resolve image URL (works for ALL user types)
-      const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
-
-      // ✅ STEP 6.5: Fetch available events for this date so frontend can show event picker
+      // ✅ STEP 6: Fetch available events for this date so frontend can show event picker
       let availableEvents = [];
       try {
         const calendarDayId = (markAttendanceDto as any).calendarDayId;
@@ -386,7 +474,7 @@ export class AttendanceService {
           userId: In(userIds),
           instituteId: bulkAttendanceDto.instituteId,
         },
-        select: ['userId', 'instituteUserType', 'status'],
+        select: ['userId', 'instituteUserType', 'status', 'instituteUserImageUrl', 'imageVerificationStatus'],
       });
       const instituteUserMap = new Map(
         instituteUsers.map(iu => [iu.userId, iu])
@@ -443,14 +531,21 @@ export class AttendanceService {
           })
         : [];
 
-      // ✅ STEP 5: Build unified user map (userId -> { name, userType })
-      const userDataMap = new Map<string, { name: string; userType: AttendanceUserType }>();
+      // ✅ STEP 5: Build unified user map (userId -> { name, userType, imageUrl })
+      const userDataMap = new Map<string, { name: string; userType: AttendanceUserType; imageUrl?: string }>();
       
       for (const student of studentEntities) {
         if (student.user) {
+          const instituteUser = instituteUserMap.get(student.userId);
+          const resolvedImage = this.resolveImageUrl(
+            instituteUser as any,
+            student.user.imageUrl || null,
+            bulkAttendanceDto.instituteId
+          );
           userDataMap.set(student.userId, {
             name: student.user.nameWithInitials || `${student.user.firstName} ${student.user.lastName}`.trim(),
             userType: AttendanceUserType.STUDENT,
+            imageUrl: resolvedImage || undefined,
           });
         }
       }
@@ -463,9 +558,15 @@ export class AttendanceService {
           [InstituteUserType.ATTENDANCE_MARKER]: AttendanceUserType.ATTENDANCE_MARKER,
           [InstituteUserType.PARENT]: AttendanceUserType.PARENT,
         };
+        const resolvedImage = this.resolveImageUrl(
+          iu as any,
+          user.imageUrl || null,
+          bulkAttendanceDto.instituteId
+        );
         userDataMap.set(user.id.toString(), {
           name: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
           userType: iu ? (typeMap[iu.instituteUserType] || AttendanceUserType.STUDENT) : AttendanceUserType.NOT_ENROLLED,
+          imageUrl: resolvedImage || undefined,
         });
       }
 
@@ -487,6 +588,7 @@ export class AttendanceService {
         
         // Override with database name
         studentItem.studentName = userData.name;
+        (studentItem as any).studentImageUrl = userData.imageUrl;
         validatedStudents.push(studentItem);
       }
       
@@ -743,6 +845,9 @@ export class AttendanceService {
       attendanceId: `${record.instituteId}-${record.studentId}-${record.date}`,
       studentId: record.studentId,
       studentName: record.studentName,
+      studentImageUrl: record.studentImageUrl
+        ? this.CloudStorageService.getFullUrl(record.studentImageUrl)
+        : null,
       instituteName: record.instituteName,
       className: record.className,
       subjectName: record.subjectName,
@@ -1182,13 +1287,14 @@ export class AttendanceService {
     date?: string
   ): Promise<any> {
     const records = await this.dynamoAttendanceService.getAttendanceByEvent(instituteId, eventId, date);
+    const enriched = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
       message: 'Event attendance retrieved successfully',
       eventId,
       date: date || null,
-      totalRecords: records.length,
-      data: records,
+      totalRecords: enriched.length,
+      data: enriched,
     };
   }
 
@@ -1202,13 +1308,14 @@ export class AttendanceService {
     userType?: string
   ): Promise<any> {
     const records = await this.dynamoAttendanceService.getAttendanceByCalendarDay(instituteId, calendarDayId, userType);
+    const enrichedRecords = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
       message: 'Calendar day attendance retrieved successfully',
       calendarDayId,
       userType: userType || 'ALL',
-      totalRecords: records.length,
-      data: records,
+      totalRecords: enrichedRecords.length,
+      data: enrichedRecords,
     };
   }
 
@@ -1226,6 +1333,7 @@ export class AttendanceService {
     subjectId?: string
   ): Promise<any> {
     const records = await this.dynamoAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId, subjectId);
+    const enrichedRecords = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
       message: 'User type attendance retrieved successfully',
@@ -1234,8 +1342,8 @@ export class AttendanceService {
       eventId: eventId || null,
       classId: classId || null,
       subjectId: subjectId || null,
-      totalRecords: records.length,
-      data: records,
+      totalRecords: enrichedRecords.length,
+      data: enrichedRecords,
     };
   }
 
@@ -1253,13 +1361,14 @@ export class AttendanceService {
     const records = await this.dynamoAttendanceService.getStudentAttendanceByEvent(
       studentId, instituteId, eventId, startDate, endDate
     );
+    const enriched = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
       message: 'Student event attendance retrieved successfully',
       studentId,
       eventId,
-      totalRecords: records.length,
-      data: records,
+      totalRecords: enriched.length,
+      data: enriched,
     };
   }
 
@@ -1317,6 +1426,7 @@ export class AttendanceService {
     const totalPages = Math.ceil(totalRecords / limit);
     const startIndex = (page - 1) * limit;
     const paginatedRecords = filteredRecords.slice(startIndex, startIndex + limit);
+    const enrichedRecords = await this.enrichAttendanceRecordsWithImages(paginatedRecords, instituteId);
 
     return {
       success: true,
@@ -1329,7 +1439,7 @@ export class AttendanceService {
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1
       },
-      data: paginatedRecords,
+      data: enrichedRecords,
       summary: {
         totalPresent: summary.presentCount,
         totalAbsent: summary.absentCount,
@@ -1382,6 +1492,7 @@ export class AttendanceService {
     const totalPages = Math.ceil(totalRecords / limit);
     const startIndex = (page - 1) * limit;
     const paginatedRecords = filteredRecords.slice(startIndex, startIndex + limit);
+    const enrichedRecords = await this.enrichAttendanceRecordsWithImages(paginatedRecords, instituteId);
 
     return {
       success: true,
@@ -1394,7 +1505,7 @@ export class AttendanceService {
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1
       },
-      data: paginatedRecords,
+      data: enrichedRecords,
       summary: {
         totalPresent: summary.presentCount,
         totalAbsent: summary.absentCount,
@@ -1448,6 +1559,7 @@ export class AttendanceService {
     const totalPages = Math.ceil(totalRecords / limit);
     const startIndex = (page - 1) * limit;
     const paginatedRecords = filteredRecords.slice(startIndex, startIndex + limit);
+    const enrichedRecords = await this.enrichAttendanceRecordsWithImages(paginatedRecords, instituteId);
 
     return {
       success: true,
@@ -1460,7 +1572,7 @@ export class AttendanceService {
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1
       },
-      data: paginatedRecords,
+      data: enrichedRecords,
       summary: {
         totalPresent: summary.presentCount,
         totalAbsent: summary.absentCount,
@@ -2323,6 +2435,7 @@ export class AttendanceService {
     const attendanceDto: MarkAttendanceDto = {
       studentId: studentId,
       studentName: userName,
+      studentImageUrl: finalImageUrl ? this.CloudStorageService.getFullUrl(finalImageUrl) : undefined,
       instituteId: markAttendanceDto.instituteId,
       instituteName: markAttendanceDto.instituteName,
       classId: markAttendanceDto.classId || 'default',
@@ -2589,6 +2702,10 @@ export class AttendanceService {
         date: r.date,
         status: r.status,
         statusLabel: statusLabels[r.status as string] || String(r.status),
+        studentImageUrl: (() => {
+          const raw = (r as any).studentImageUrl || (r as any).imageUrl;
+          return raw ? this.CloudStorageService.getFullUrl(raw) : undefined;
+        })(),
         instituteId: iid,
         instituteName,
         instituteLogoUrl,

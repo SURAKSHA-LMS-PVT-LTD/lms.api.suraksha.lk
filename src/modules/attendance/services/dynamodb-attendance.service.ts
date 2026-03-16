@@ -15,6 +15,7 @@ export interface AttendanceRecord {
   gsi_sk: string;
   studentId: string;
   studentName: string;
+  studentImageUrl?: string;
   instituteId: string;
   instituteName: string;
   classId?: string;  // Optional - for class-specific attendance
@@ -235,6 +236,11 @@ export class DynamoDBAttendanceService {
 
     record.studentId = attendance.studentId;
     record.studentName = attendance.studentName;
+    if ((attendance as any).studentImageUrl) {
+      record.studentImageUrl = (attendance as any).studentImageUrl;
+    } else if ((attendance as any).imageUrl) {
+      record.studentImageUrl = (attendance as any).imageUrl;
+    }
     record.instituteId = attendance.instituteId;
     record.instituteName = attendance.instituteName;
     record.date = attendance.date;
@@ -293,6 +299,8 @@ export class DynamoDBAttendanceService {
     return {
       studentId: String(record.studentId), // Ensure string type for consistency
       studentName: record.studentName,
+      studentImageUrl: record.studentImageUrl || record.imageUrl || undefined,
+      imageUrl: record.studentImageUrl || record.imageUrl || undefined,
       instituteId: String(record.instituteId), // Ensure string type for consistency
       instituteName: record.instituteName,
       classId: record.classId ? String(record.classId) : undefined,  // Optional field, ensure string
@@ -457,6 +465,7 @@ export class DynamoDBAttendanceService {
     const attendances = bulkData.students.map(studentData => ({
       studentId: studentData.studentId,
       studentName: studentData.studentName,
+      studentImageUrl: (studentData as any).studentImageUrl || (studentData as any).imageUrl,
       instituteId: bulkData.instituteId,
       instituteName: bulkData.instituteName,
       classId: bulkData.classId,

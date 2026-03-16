@@ -40,6 +40,16 @@ export class MarkAttendanceDto {
   @IsOptional()
   studentName?: string;
 
+  @ApiPropertyOptional({ description: 'Resolved student image URL stored with the attendance record for faster reads' })
+  @IsString()
+  @IsOptional()
+  studentImageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Alias of studentImageUrl for backward compatibility' })
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
+
   @ApiProperty({ description: 'Institute ID (required)' })
   @IsString()
   @IsNotEmpty()
@@ -138,6 +148,16 @@ export class StudentAttendanceItem {
   @IsString()
   @IsOptional()
   studentName?: string;
+
+  @ApiPropertyOptional({ description: 'Resolved student image URL stored with the attendance record for faster reads' })
+  @IsString()
+  @IsOptional()
+  studentImageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Alias of studentImageUrl for backward compatibility' })
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
 
   @ApiProperty({ enum: AttendanceStatus, description: 'Attendance status' })
   @IsEnum(AttendanceStatus)
@@ -317,6 +337,7 @@ export class StudentAttendanceResponseDto {
     attendanceId: string;
     studentId: string;
     studentName: string;
+    studentImageUrl?: string;
     instituteName: string;
     className?: string;
     subjectName?: string;
@@ -382,6 +403,7 @@ export class MyAttendanceRecordDto {
   @ApiProperty() date: string;
   @ApiProperty() status: AttendanceStatus;
   @ApiPropertyOptional() statusLabel?: string;
+  @ApiPropertyOptional() studentImageUrl?: string;
   @ApiProperty() instituteId: string;
   @ApiProperty() instituteName: string;
   @ApiPropertyOptional() instituteLogoUrl?: string;
