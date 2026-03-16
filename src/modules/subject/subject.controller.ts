@@ -105,12 +105,10 @@ export class SubjectController {
       throw new BadRequestException('instituteId is required to access subjects');
     }
     
-    // Force limit to -1 to return all subjects regardless of query parameters
-    // If isActive not specified, default to true for backwards compatibility
-    // If explicitly set to false, return inactive subjects (for institute admin to activate)
+    // Force limit to -1 to return all subjects regardless of query parameters.
+    // Keep isActive as provided by caller: undefined returns both active and inactive.
     const modifiedQuery: QuerySubjectDto = {
       ...query,
-      isActive: query.isActive !== undefined ? query.isActive : true,
       limit: -1,
       page: 1
     };
@@ -149,11 +147,10 @@ export class SubjectController {
       throw new BadRequestException('instituteId is required to access subjects');
     }
     
-    // Create full query object with pagination set to get all records
-    // Default to only active subjects if not explicitly specified
+    // Create full query object with pagination set to get all records.
+    // Keep isActive as provided by caller: undefined returns both active and inactive.
     const fullQuery: QuerySubjectDto = {
       ...query,
-      isActive: query.isActive !== undefined ? query.isActive : true,
       limit: -1,
       page: 1
     };
@@ -310,8 +307,7 @@ export class SubjectController {
     if (!instituteId) {
       throw new BadRequestException('instituteId is required');
     }
-    // Update subject to set isActive = true, with user context for validation
-    return this.subjectService.update(id, { isActive: true }, request.user);
+    return this.subjectService.activate(id, request.user);
   }
 
   @Patch(':id/deactivate')

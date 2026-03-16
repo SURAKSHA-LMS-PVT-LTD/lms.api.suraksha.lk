@@ -248,7 +248,29 @@ export class SubjectService {
 
     await this.subjectRepository.update(id, { isActive: false });
 
-    return await this.findOne(id);
+    // Return updated data directly — avoids a second fetch that could fail
+    subject.isActive = false;
+    return this.mapToResponseDto(subject);
+  }
+
+  async activate(id: string, user?: JwtPayload): Promise<SubjectResponseDto> {
+    // findById finds the subject regardless of isActive status
+    const subject = await this.subjectRepository.findById(id);
+
+    if (!subject) {
+      throw new NotFoundException(`Subject with ID ${id} not found`);
+    }
+
+    // Validate institute access for non-SUPERADMIN users
+    if (user) {
+      this.validateInstituteAccess(subject, user, 'activate');
+    }
+
+    await this.subjectRepository.update(id, { isActive: true });
+
+    // Return updated data directly — avoids a second fetch that could fail
+    subject.isActive = true;
+    return this.mapToResponseDto(subject);
   }
 
   async getSubjectStats(instituteId: string): Promise<ISubjectStats> {
