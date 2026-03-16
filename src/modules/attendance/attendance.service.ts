@@ -118,7 +118,7 @@ export class AttendanceService {
 
   /**
    * 🖼️ RESOLVE IMAGE URL: Get the correct image for any user type
-   * Uses institute-specific image if verified, falls back to global user image
+   * Always prefers institute-specific image (if verified), falls back to global user image
    */
   private resolveImageUrl(
     instituteUser: InstituteUserEntity | null,
@@ -126,9 +126,7 @@ export class AttendanceService {
     instituteId: string
   ): string | null {
     try {
-      const requiresInstituteImage = this.instituteIdsRequiringCustomImages.has(instituteId);
-
-      if (requiresInstituteImage && instituteUser) {
+      if (instituteUser) {
         const isVerified = instituteUser.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
         const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl
           ? instituteUser.instituteUserImageUrl

@@ -1419,7 +1419,8 @@ pagination, status filter, and optional single-institute filter.\n\n
       // Extract children IDs from JWT if present (for parent accounts)
       const childrenIds = req.user?.c || [];
       return await this.attendanceService.getMyAttendance(String(userId), query, childrenIds);
-      );
+    } catch (error) {
+      throw error;
     }
   }
 
