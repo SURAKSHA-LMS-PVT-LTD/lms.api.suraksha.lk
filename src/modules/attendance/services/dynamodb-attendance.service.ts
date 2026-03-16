@@ -25,6 +25,7 @@ export interface AttendanceRecord {
   date: string;
   status: number; // 1=Present, 0=Absent
   location?: string;
+  address?: { latitude?: number; longitude?: number };
   remarks?: string;
   markingMethod?: string;
   userType?: string; // Institute user type: STUDENT, TEACHER, INSTITUTE_ADMIN, ATTENDANCE_MARKER, PARENT, NOT_ENROLLED
@@ -268,6 +269,12 @@ export class DynamoDBAttendanceService {
     if (attendance.location) {
       record.location = attendance.location;
     }
+    if ((attendance as any).latitude !== undefined) {
+      record.latitude = (attendance as any).latitude;
+    }
+    if ((attendance as any).longitude !== undefined) {
+      record.longitude = (attendance as any).longitude;
+    }
     if (attendance.remarks) {
       record.remarks = attendance.remarks;
     }
@@ -310,6 +317,8 @@ export class DynamoDBAttendanceService {
       date: record.date,
       status: this.numberToStatus(record.status),
       location: record.location,
+      latitude: record.latitude,
+      longitude: record.longitude,
       remarks: record.remarks,
       markingMethod: record.markingMethod,
       userType: record.userType || 'STUDENT',  // Default to STUDENT for backward compatibility
@@ -475,6 +484,8 @@ export class DynamoDBAttendanceService {
       date: dateForRecords,
       status: studentData.status,
       location: bulkData.location,
+      latitude: (bulkData as any).latitude,
+      longitude: (bulkData as any).longitude,
       remarks: studentData.remarks,
       markingMethod: bulkData.markingMethod,
       calendarDayId: (bulkData as any).calendarDayId,  // ✅ BUG-001 FIX: calendar linkage

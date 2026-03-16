@@ -1647,7 +1647,7 @@ export class AttendanceService {
         studentId: markAttendanceDto.studentId,
         studentName: data.student.user.nameWithInitials || `${data.student.user.firstName} ${data.student.user.lastName || ''}`.trim(),
         parentName: data.primaryParent ? 
-          `${data.primaryParent.firstName} ${data.primaryParent.lastName || ''}`.trim() : 
+          (data.primaryParent.nameWithInitials || `${data.primaryParent.firstName} ${data.primaryParent.lastName || ''}`.trim()) : 
           'Parent/Guardian',
         parentContact: data.parentContact,
         parentEmail: data.parentEmail,
@@ -2022,16 +2022,17 @@ export class AttendanceService {
           user: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            nameWithInitials: true
           }
         }
       });
 
-      // Build map of studentId -> fullName
+      // Build map of studentId -> nameWithInitials (fallback to full name)
       for (const student of students) {
         if (student.user) {
-          const fullName = `${student.user.firstName} ${student.user.lastName}`.trim();
-          studentNamesMap.set(student.userId, fullName);
+          const name = student.user.nameWithInitials || `${student.user.firstName} ${student.user.lastName}`.trim();
+          studentNamesMap.set(student.userId, name);
         }
       }
 
@@ -2079,6 +2080,7 @@ export class AttendanceService {
               id: true,
               firstName: true,
               lastName: true,
+              nameWithInitials: true,
               email: true,
               phoneNumber: true,
               telegramId: true
@@ -2090,6 +2092,7 @@ export class AttendanceService {
               id: true,
               firstName: true,
               lastName: true,
+              nameWithInitials: true,
               email: true,
               phoneNumber: true,
               telegramId: true
@@ -2101,6 +2104,7 @@ export class AttendanceService {
               id: true,
               firstName: true,
               lastName: true,
+              nameWithInitials: true,
               email: true,
               phoneNumber: true,
               telegramId: true

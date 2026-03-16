@@ -1,5 +1,5 @@
-import { IsString, IsOptional, IsNotEmpty, IsEnum, IsArray, ValidateNested, IsNumber, IsDateString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsNotEmpty, IsEnum, IsArray, ValidateNested, IsNumber, IsDateString, IsBoolean, IsObject } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum AttendanceStatus {
@@ -27,6 +27,18 @@ export enum MarkingMethod {
   RFID_NFC = 'rfid/nfc',
   MANUAL = 'manual',
   SYSTEM = 'system'
+}
+
+export class AddressDto {
+  @ApiPropertyOptional({ description: 'Latitude coordinate (decimal degrees)' })
+  @IsNumber()
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ description: 'Longitude coordinate (decimal degrees)' })
+  @IsNumber()
+  @IsOptional()
+  longitude?: number;
 }
 
 export class MarkAttendanceDto {
@@ -90,6 +102,12 @@ export class MarkAttendanceDto {
   @IsOptional()
   location?: string;
 
+  @ApiPropertyOptional({ description: 'Location coordinates: { latitude, longitude }', type: AddressDto })
+  @ValidateNested()
+  @Type(() => AddressDto)
+  @IsOptional()
+  address?: AddressDto;
+
   @ApiProperty({ enum: AttendanceStatus, description: 'Attendance status' })
   @IsEnum(AttendanceStatus)
   @IsNotEmpty()
@@ -99,11 +117,6 @@ export class MarkAttendanceDto {
   @IsString()
   @IsOptional()
   remarks?: string;
-
-  @ApiPropertyOptional({ description: 'Address/Location string (legacy)' })
-  @IsString()
-  @IsOptional()
-  address?: string;
 
   @ApiPropertyOptional({ enum: MarkingMethod, description: 'Method used to mark attendance' })
   @IsEnum(MarkingMethod)
@@ -205,6 +218,12 @@ export class BulkAttendanceDto {
   @IsString()
   @IsOptional()
   location?: string;
+
+  @ApiPropertyOptional({ description: 'Location coordinates: { latitude, longitude }', type: AddressDto })
+  @ValidateNested()
+  @Type(() => AddressDto)
+  @IsOptional()
+  address?: AddressDto;
 
   @ApiPropertyOptional({ description: 'Date in YYYY-MM-DD format. Defaults to today (Sri Lanka time) if not provided.' })
   @IsDateString()
@@ -341,7 +360,10 @@ export class StudentAttendanceResponseDto {
     instituteName: string;
     className?: string;
     subjectName?: string;
-    address: string;
+    address?: AddressDto;
+    location?: string;
+    latitude?: number;
+    longitude?: number;
     markedBy: string;
     markedAt: string;
     markingMethod: MarkingMethod;
@@ -397,6 +419,12 @@ export class MyAttendanceQueryDto {
   @IsOptional()
   @IsEnum(AttendanceStatus)
   status?: AttendanceStatus;
+
+  @ApiPropertyOptional({ description: 'Also include children/students attendance (parent role only)' })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  child?: boolean;
 }
 
 export class MyAttendanceRecordDto {
@@ -414,6 +442,10 @@ export class MyAttendanceRecordDto {
   @ApiPropertyOptional() markingMethod?: MarkingMethod;
   @ApiPropertyOptional() remarks?: string;
   @ApiPropertyOptional() userType?: string;
+  @ApiPropertyOptional() location?: string;
+  @ApiPropertyOptional({ type: AddressDto }) address?: AddressDto;
+  @ApiPropertyOptional() latitude?: number;
+  @ApiPropertyOptional() longitude?: number;
   @ApiProperty() timestamp: number;
   /** ISO datetime of when attendance was marked (derived from the stored epoch timestamp) */
   @ApiPropertyOptional() markedAt?: string;

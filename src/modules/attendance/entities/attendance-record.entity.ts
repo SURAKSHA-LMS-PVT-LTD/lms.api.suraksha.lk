@@ -182,6 +182,26 @@ export class AttendanceRecordEntity {
   location: string | null;
 
   @Column({
+    name: 'latitude',
+    type: 'decimal',
+    precision: 10,
+    scale: 8,
+    nullable: true,
+    comment: 'Latitude coordinate (decimal degrees)',
+  })
+  latitude: number | null;
+
+  @Column({
+    name: 'longitude',
+    type: 'decimal',
+    precision: 11,
+    scale: 8,
+    nullable: true,
+    comment: 'Longitude coordinate (decimal degrees)',
+  })
+  longitude: number | null;
+
+  @Column({
     name: 'remarks',
     type: 'text',
     nullable: true,
