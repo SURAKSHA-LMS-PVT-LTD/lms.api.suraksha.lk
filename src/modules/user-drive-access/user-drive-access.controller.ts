@@ -132,7 +132,20 @@ export class UserDriveAccessController {
       ? returnUrl
       : '/profile?tab=apps';
 
+    // Build state payload with user context
     const stateData = JSON.stringify({ userId, returnUrl: safeReturnUrl, platform: resolvedPlatform });
+    const statePayload = Buffer.from(stateData).toString('base64url');
+
+    // HMAC-sign the state to prevent forgery (verified in callback)
+    const stateSecret = process.env.JWT_SECRET || '';
+    const hmac = crypto.createHmac('sha256', stateSecret).update(statePayload).digest('base64url');
+    const state = `${statePayload}.${hmac}`;
+
+    // Generate the Google OAuth consent URL
+    const result = this.driveService.generateAuthUrl(userId, state);
+    return { authUrl: result.authUrl, state: result.state };
+  }
+
   @Get('callback')
   @Public() // OAuth callback must be public - Google redirects here without JWT token
   @ApiOperation({
