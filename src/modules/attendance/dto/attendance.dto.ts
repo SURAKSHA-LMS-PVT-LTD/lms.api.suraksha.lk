@@ -437,6 +437,8 @@ export class MyAttendanceRecordDto {
   @ApiProperty() date: string;
   @ApiProperty() status: AttendanceStatus;
   @ApiPropertyOptional() statusLabel?: string;
+  @ApiPropertyOptional() studentId?: string;  // ✅ NEW: Identifies which student (useful when children included)
+  @ApiPropertyOptional() studentName?: string;  // ✅ NEW: Enriched student name from users table
   @ApiPropertyOptional() studentImageUrl?: string;
   @ApiProperty() instituteId: string;
   @ApiProperty() instituteName: string;
@@ -482,6 +484,18 @@ export class MyAttendanceResponseDto {
   @ApiPropertyOptional({ description: 'Per-institute breakdown' }) byInstitute?: Record<string, {
     instituteName: string;
     instituteLogoUrl?: string;
+    totalPresent: number;
+    totalAbsent: number;
+    totalLate: number;
+    totalLeft: number;
+    totalLeftEarly: number;
+    totalLeftLately: number;
+    attendanceRate: number;
+  }>;
+  @ApiPropertyOptional({ description: 'Per-student breakdown (when child=true and children included)' }) byStudent?: Record<string, {
+    studentName: string;
+    studentImageUrl?: string;
+    totalRecords: number;
     totalPresent: number;
     totalAbsent: number;
     totalLate: number;

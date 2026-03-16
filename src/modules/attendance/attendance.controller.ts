@@ -1396,11 +1396,13 @@ export class AttendanceController {
   @ApiOperation({
     summary: 'Get my attendance history (self-service)',
     description: `Returns the calling user's own attendance records from DynamoDB across 
-    all institutes they belong to. Each record is enriched with live institute name, 
-    logo URL, and class name from the database. Supports date range filtering, 
-    pagination, status filter, and optional single-institute filter.\n\n
-    **Default date range**: last 30 days.\n
-    **Auth**: JWT only — no additional role required.`,
+all institutes they belong to. If user is a parent and \`child=true\` is passed, also includes 
+all children's attendance records. Each record is enriched with live institute name, 
+logo URL, and class name from the database. Supports date range filtering, 
+pagination, status filter, and optional single-institute filter.\n\n
+**Default date range**: last 30 days.\n
+**Auth**: JWT only — no additional role required.\n
+**Parent with children**: Pass \`child=true\` to include all children's attendance in one request.`,
   })
   @ApiResponse({ status: 200, description: 'Attendance history', type: MyAttendanceResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -1414,12 +1416,9 @@ export class AttendanceController {
       if (!userId) {
         throw new HttpException({ success: false, message: 'User ID not found in token' }, HttpStatus.UNAUTHORIZED);
       }
-      return await this.attendanceService.getMyAttendance(String(userId), query);
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        { success: false, message: error.message || 'Failed to retrieve attendance history' },
-        HttpStatus.INTERNAL_SERVER_ERROR
+      // Extract children IDs from JWT if present (for parent accounts)
+      const childrenIds = req.user?.c || [];
+      return await this.attendanceService.getMyAttendance(String(userId), query, childrenIds);
       );
     }
   }

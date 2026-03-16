@@ -755,18 +755,26 @@ export class AttendanceService {
       return null;
     }
 
-    // Fetch student profile image — single lookup by userId, no joins
+    // ✅ Use DynamoDB stored image URL first (snapshot at time of marking)
+    // Falls back to current users table image if missing (for legacy records)
     let studentImageUrl: string | null = null;
-    try {
-      const user = await this.userRepository.findOne({
-        where: { id: record.studentId },
-        select: ['id', 'imageUrl', 'nameWithInitials', 'firstName', 'lastName'],
-      });
-      if (user?.imageUrl) {
-        studentImageUrl = this.CloudStorageService.getFullUrl(user.imageUrl);
+    
+    if (record.studentImageUrl) {
+      // Image was already stored in DynamoDB when attendance was marked
+      studentImageUrl = this.CloudStorageService.getFullUrl(record.studentImageUrl);
+    } else {
+      // ✅ Optional: Enrich with current image from users table (handles legacy records)
+      try {
+        const user = await this.userRepository.findOne({
+          where: { id: record.studentId },
+          select: ['id', 'imageUrl'],
+        });
+        if (user?.imageUrl) {
+          studentImageUrl = this.CloudStorageService.getFullUrl(user.imageUrl);
+        }
+      } catch (_) {
+        // Image fetch is best-effort — do not fail the whole response
       }
-    } catch (_) {
-      // Image fetch is best-effort — do not fail the whole response
     }
 
     return {
@@ -1193,6 +1201,9 @@ export class AttendanceService {
       const startIndex = (page - 1) * limit;
       const paginatedRecords = records.slice(startIndex, startIndex + limit);
 
+      // ✅ Enrich records with images (uses DynamoDB image first, then institute/global images)
+      const enrichedRecords = await this.enrichAttendanceRecordsWithImages(paginatedRecords, '');
+
       const currentCardStatus = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
       const currentCardExpiry = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
 
@@ -1221,11 +1232,12 @@ export class AttendanceService {
           hasNextPage: page < totalPages,
           hasPrevPage: page > 1
         },
-        data: paginatedRecords.map(record => ({
+        data: enrichedRecords.map(record => ({
           attendanceId: `${record.instituteId}-${record.studentId}-${record.date}`,
           studentId: record.studentId,
           studentCardId: studentCardId,
           studentName: record.studentName,
+          studentImageUrl: record.studentImageUrl || record.imageUrl || null,
           instituteName: record.instituteName,
           className: record.className,
           subjectName: record.subjectName,
@@ -2615,8 +2627,14 @@ export class AttendanceService {
    *  4. Overwrite the DynamoDB-stored names with the live DB values.
    *  5. Paginate and return with summary + per-institute breakdown.
    */
-  async getMyAttendance(userId: string, query: MyAttendanceQueryDto): Promise<MyAttendanceResponseDto> {
-    const { page = 1, limit = 30, status, instituteId: filterInstituteId } = query;
+  async getMyAttendance(userId: string, query: MyAttendanceQueryDto, childrenIds: string[] = []): Promise<MyAttendanceResponseDto> {
+    const { page = 1, limit = 30, status, instituteId: filterInstituteId, child = false } = query;
+
+    // Determine which user IDs to fetch (self + optional children)
+    const userIdsToFetch = [userId];
+    if (child && childrenIds && childrenIds.length > 0) {
+      userIdsToFetch.push(...childrenIds);
+    }
 
     // Default date range: last 30 days → today
     const today = getCurrentSriLankaDate();
@@ -2624,12 +2642,15 @@ export class AttendanceService {
     const startDate = query.startDate || defaultStart;
     const endDate = query.endDate || today;
 
-    // 1. Fetch from DynamoDB via GSI (all institutes for this student)
-    let rawRecords = await this.dynamoAttendanceService.getStudentAttendanceAllInstitutes(
-      userId,
-      startDate,
-      endDate,
+    // 1. Fetch attendance for all user IDs (self + children) in parallel
+    const allRecordsByUserId = await Promise.all(
+      userIdsToFetch.map(uid =>
+        this.dynamoAttendanceService.getStudentAttendanceAllInstitutes(uid, startDate, endDate)
+      )
     );
+
+    // Flatten all records
+    let rawRecords = allRecordsByUserId.flat();
 
     // Optional: filter by a specific institute
     if (filterInstituteId) {
@@ -2644,18 +2665,12 @@ export class AttendanceService {
     // Sort newest first (DynamoDB GSI returns newest first already, but re-sort after filter)
     rawRecords.sort((a, b) => ((b as any).timestamp || 0) - ((a as any).timestamp || 0));
 
-    // 2. Collect unique IDs for enrichment
-    const uniqueInstituteIds = [...new Set(rawRecords.map(r => String(r.instituteId)).filter(Boolean))];
-    const uniqueClassIds     = [...new Set(rawRecords.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
+    // 2. Collect unique class IDs for enrichment
+    // Note: Institute + student names come from DynamoDB (stored at marking time, immutable)
+    const uniqueClassIds = [...new Set(rawRecords.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
 
-    // 3. Bulk-fetch from DB (in parallel)
-    const [institutes, classes] = await Promise.all([
-      uniqueInstituteIds.length
-        ? this.instituteRepository.find({
-            where: { id: In(uniqueInstituteIds) as any },
-            select: ['id', 'name', 'shortName', 'logoUrl'],
-          })
-        : Promise.resolve([]),
+    // 3. Bulk-fetch from DB (only classes, no institute query needed)
+    const [classes] = await Promise.all([
       uniqueClassIds.length
         ? this.classRepository.find({
             where: { id: In(uniqueClassIds) as any },
@@ -2665,36 +2680,45 @@ export class AttendanceService {
     ]);
 
     // 4. Build lookup maps
-    const instituteMap = new Map(institutes.map(i => [String(i.id), i]));
-    const classMap     = new Map(classes.map(c => [String(c.id), c]));
+    const classMap = new Map(classes.map(c => [String(c.id), c]));
 
     // 5. Enrich and build summary + per-institute breakdown
     const byInstitute: Record<string, { instituteName: string; instituteLogoUrl?: string; totalPresent: number; totalAbsent: number; totalLate: number; totalLeft: number; totalLeftEarly: number; totalLeftLately: number; attendanceRate: number }> = {};
+    const byStudent: Record<string, { studentName: string; studentImageUrl?: string; totalRecords: number; totalPresent: number; totalAbsent: number; totalLate: number; totalLeft: number; totalLeftEarly: number; totalLeftLately: number; attendanceRate: number }> = {};
     let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalLeft = 0, totalLeftEarly = 0, totalLeftLately = 0;
 
     const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
       const iid = String(r.instituteId);
       const cid = r.classId ? String(r.classId) : undefined;
-      const dbInstitute = instituteMap.get(iid);
-      const dbClass     = cid ? classMap.get(cid) : undefined;
+      const sid = String(r.studentId);
+      const dbClass = cid ? classMap.get(cid) : undefined;
 
-      const instituteName = dbInstitute?.name || r.instituteName || iid;
-      const className     = dbClass?.name     || r.className     || undefined;
-      const rawLogoUrl    = dbInstitute?.logoUrl;
-      const instituteLogoUrl = rawLogoUrl
-        ? this.CloudStorageService.getFullUrl(rawLogoUrl)
-        : undefined;
+      // ✅ All data from DynamoDB (stored at marking time, immutable)
+      const instituteName = r.instituteName || iid;
+      const className     = dbClass?.name   || r.className || undefined;
+      const studentName   = r.studentName;
+      // Note: instituteLogoUrl is not stored in DynamoDB, so not available without MySQL query
 
-      // Summary counters
+      // Summary counters - by institute
       if (!byInstitute[iid]) {
-        byInstitute[iid] = { instituteName, instituteLogoUrl, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+        byInstitute[iid] = { instituteName, instituteLogoUrl: undefined, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
       }
-      if (r.status === AttendanceStatus.PRESENT)       { totalPresent++;    byInstitute[iid].totalPresent++; }
-      else if (r.status === AttendanceStatus.ABSENT)   { totalAbsent++;     byInstitute[iid].totalAbsent++; }
-      else if (r.status === AttendanceStatus.LATE)     { totalLate++;       byInstitute[iid].totalLate++; }
-      else if (r.status === AttendanceStatus.LEFT)     { totalLeft++;       byInstitute[iid].totalLeft++; }
-      else if (r.status === AttendanceStatus.LEFT_EARLY)   { totalLeftEarly++;  byInstitute[iid].totalLeftEarly++; }
-      else if (r.status === AttendanceStatus.LEFT_LATELY)  { totalLeftLately++; byInstitute[iid].totalLeftLately++; }
+      
+      // Summary counters - by student (when children included)
+      if (child && childrenIds.includes(sid)) {
+        if (!byStudent[sid]) {
+          byStudent[sid] = { studentName, studentImageUrl: undefined, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+        }
+        byStudent[sid].totalRecords++;
+      }
+
+      // Status counters
+      if (r.status === AttendanceStatus.PRESENT)       { totalPresent++;    byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
+      else if (r.status === AttendanceStatus.ABSENT)   { totalAbsent++;     byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
+      else if (r.status === AttendanceStatus.LATE)     { totalLate++;       byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
+      else if (r.status === AttendanceStatus.LEFT)     { totalLeft++;       byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
+      else if (r.status === AttendanceStatus.LEFT_EARLY)   { totalLeftEarly++;  byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
+      else if (r.status === AttendanceStatus.LEFT_LATELY)  { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
 
       const statusLabels: Record<string, string> = {
         [AttendanceStatus.PRESENT]: 'Present',
@@ -2709,13 +2733,15 @@ export class AttendanceService {
         date: r.date,
         status: r.status,
         statusLabel: statusLabels[r.status as string] || String(r.status),
+        studentId: sid,  // ✅ Include student ID to identify who attendance belongs to
+        studentName,     // ✅ From DynamoDB (stored at marking time)
         studentImageUrl: (() => {
           const raw = (r as any).studentImageUrl || (r as any).imageUrl;
           return raw ? this.CloudStorageService.getFullUrl(raw) : undefined;
         })(),
         instituteId: iid,
         instituteName,
-        instituteLogoUrl,
+        instituteLogoUrl: undefined,  // ✅ Not stored in DynamoDB
         classId: cid,
         className,
         subjectId: r.subjectId,
@@ -2739,6 +2765,13 @@ export class AttendanceService {
       s.attendanceRate = denom > 0 ? parseFloat(((s.totalPresent / denom) * 100).toFixed(2)) : 0;
     }
 
+    // Compute per-student attendance rate (when children included)
+    for (const id of Object.keys(byStudent)) {
+      const s = byStudent[id];
+      const denom = s.totalPresent + s.totalAbsent;
+      s.attendanceRate = denom > 0 ? parseFloat(((s.totalPresent / denom) * 100).toFixed(2)) : 0;
+    }
+
     // 6. Paginate
     const totalRecords = enriched.length;
     const totalPages   = Math.ceil(totalRecords / limit);
@@ -2750,7 +2783,9 @@ export class AttendanceService {
 
     return {
       success: true,
-      message: 'Attendance history retrieved successfully',
+      message: child && childrenIds.length > 0 
+        ? `Attendance history retrieved successfully for you and ${childrenIds.length} child(ren)`
+        : 'Attendance history retrieved successfully',
       pagination: {
         currentPage: page,
         totalPages,
@@ -2762,6 +2797,7 @@ export class AttendanceService {
       data: paginated,
       summary: { totalPresent, totalAbsent, totalLate, totalLeft, totalLeftEarly, totalLeftLately, attendanceRate },
       byInstitute,
+      ...(child && childrenIds.length > 0 && { byStudent }),  // ✅ Include per-student breakdown when children data included
     };
   }
 }
