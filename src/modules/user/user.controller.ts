@@ -65,6 +65,7 @@ import { InstituteUserResponseDto } from '../institute_mudules/institue_user/dto
 import { UserInstitutesResponseDto } from '../institute_mudules/institue_user/dto/user-institutes-response.dto';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 import { UpdateTelegramIdDto } from './dto/update-telegram-id.dto';
+import { NoDataMasking } from '../../common/decorators/no-data-masking.decorator';
 
 /**
  * Enhanced User Management Controller
@@ -1122,6 +1123,7 @@ export class UsersController {
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get current user profile',
     description: `Retrieves the authenticated user's profile information.

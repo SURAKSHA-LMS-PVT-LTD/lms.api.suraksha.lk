@@ -48,6 +48,7 @@ import {
   RevokeAllSessionsResponseDto
 } from './dto/session-management.dto';
 import { getClientIp } from '../common/utils/ip-extractor.util';
+import { NoDataMasking } from '../common/decorators/no-data-masking.decorator';
 
 // =================== DTOs FOR PASSWORD RESET ===================
 
@@ -249,6 +250,7 @@ export class AuthController {
     }
   })
   @ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing JWT token' })
+  @NoDataMasking()
   async getCurrentUser(@Request() req: JwtRequest) {
     return await this.authService.getCurrentUserProfile(req.user.s);
   }
