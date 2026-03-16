@@ -28,7 +28,7 @@ import { AttendanceRecordEntity } from '../entities/attendance-record.entity';
 import { AttendanceSyncConfigService } from './attendance-sync-config.service';
 import { DynamoDBAttendanceService } from './dynamodb-attendance.service';
 import { SystemConfigService } from '../../../common/services/system-config.service';
-import { AttendanceSyncMode, AttendanceSyncStatus } from '../enums/attendance-sync-mode.enum';
+import { AttendanceSyncMode, AttendanceSyncStatus, AttendanceDbMode } from '../enums/attendance-sync-mode.enum';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { MarkAttendanceDto } from '../dto/attendance.dto';
 
@@ -221,6 +221,9 @@ export class AttendanceSyncSchedulerService {
   @Cron('0 */15 * * * *', { name: 'attendance-sync-cron' })
   async handleScheduledSync(): Promise<void> {
     try {
+      // Skip sync entirely in MySQL-only mode (no DynamoDB to sync from)
+      if (this.syncConfigService.isMysqlOnly()) return;
+
       // Check if sync is enabled and mode is BACKEND_SCHEDULE
       const enabled = await this.syncConfigService.isSyncEnabled();
       if (!enabled) return;

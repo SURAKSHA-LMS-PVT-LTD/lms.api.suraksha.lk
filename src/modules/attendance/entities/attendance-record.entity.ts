@@ -29,6 +29,7 @@ import {
 @Unique('UQ_dynamo_pk_sk', ['dynamoPk', 'dynamoSk'])
 @Index('IDX_institute_date', ['instituteId', 'date'])
 @Index('IDX_student_date', ['studentId', 'date'])
+@Index('IDX_student_institute_date', ['studentId', 'instituteId', 'date'])
 @Index('IDX_calendar_day', ['calendarDayId'])
 @Index('IDX_event', ['eventId'])
 @Index('IDX_sync_status', ['syncStatus'])

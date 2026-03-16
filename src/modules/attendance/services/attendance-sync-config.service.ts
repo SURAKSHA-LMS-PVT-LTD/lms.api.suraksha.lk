@@ -18,7 +18,7 @@
  */
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AttendanceSyncMode } from '../enums/attendance-sync-mode.enum';
+import { AttendanceSyncMode, AttendanceDbMode } from '../enums/attendance-sync-mode.enum';
 import { SystemConfigService } from '../../../common/services/system-config.service';
 
 /** Config group name in system_config table */
@@ -41,6 +41,7 @@ export class AttendanceSyncConfigService implements OnModuleInit {
   private envCron: string | null = null;
   private envBatchSize: number | null = null;
   private envEnabled: boolean | null = null;
+  private envDbMode: AttendanceDbMode = AttendanceDbMode.BOTH;
 
   constructor(
     private readonly configService: ConfigService,
@@ -58,6 +59,16 @@ export class AttendanceSyncConfigService implements OnModuleInit {
       );
     }
 
+    // ── Read ATTENDANCE_DB_MODE ──
+    const envDbMode = this.configService.get<string>('ATTENDANCE_DB_MODE');
+    if (envDbMode && Object.values(AttendanceDbMode).includes(envDbMode as AttendanceDbMode)) {
+      this.envDbMode = envDbMode as AttendanceDbMode;
+    } else if (envDbMode) {
+      this.logger.warn(
+        `⚠️ Invalid ATTENDANCE_DB_MODE="${envDbMode}". Valid: ${Object.values(AttendanceDbMode).join(', ')}. Defaulting to "both".`,
+      );
+    }
+
     const envCron = this.configService.get<string>('ATTENDANCE_SYNC_CRON');
     if (envCron) this.envCron = envCron;
 
@@ -70,8 +81,9 @@ export class AttendanceSyncConfigService implements OnModuleInit {
     }
 
     this.logger.log(
-      `🔄 Attendance sync config: ` +
-      `mode=${this.envSyncMode ?? '(from DB/default)'}, ` +
+      `🔄 Attendance config: ` +
+      `dbMode=${this.envDbMode}, ` +
+      `syncMode=${this.envSyncMode ?? '(from DB/default)'}, ` +
       `cron=${this.envCron ?? '(from DB/default)'}, ` +
       `batch=${this.envBatchSize ?? '(from DB/default)'}, ` +
       `enabled=${this.envEnabled ?? '(from DB/default)'}`,
@@ -119,6 +131,21 @@ export class AttendanceSyncConfigService implements OnModuleInit {
     }
 
     return AttendanceSyncMode.DYNAMO_FIRST;
+  }
+
+  /**
+   * Get the current database mode (both | only_mysql).
+   * Read from ENV at startup — not runtime-changeable.
+   */
+  getDbMode(): AttendanceDbMode {
+    return this.envDbMode;
+  }
+
+  /**
+   * Convenience check: is the system in MySQL-only mode?
+   */
+  isMysqlOnly(): boolean {
+    return this.envDbMode === AttendanceDbMode.MYSQL_ONLY;
   }
 
   /**

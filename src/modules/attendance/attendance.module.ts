@@ -10,6 +10,7 @@ import { DynamoDBAttendanceServiceV2 } from './services/dynamodb-attendance.serv
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
 import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
+import { MysqlAttendanceService } from './services/mysql-attendance.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { FcmNotificationService } from '../../common/services/fcm-notification.service';
 import { CacheModule } from '../../common/modules/cache.module';
@@ -55,6 +56,7 @@ import { InstituteClassEntity } from '../institute_mudules/institue_class/entiti
     AttendanceService,
     DynamoDBAttendanceService,
     DynamoDBAttendanceServiceV2,
+    MysqlAttendanceService,
     AttendanceNotificationService,
     AttendanceSyncConfigService,
     AttendanceSyncSchedulerService,
@@ -63,7 +65,7 @@ import { InstituteClassEntity } from '../institute_mudules/institue_class/entiti
     EnhancedEmailService,
     UserFcmTokenRepository
   ],
-  exports: [AttendanceService, DynamoDBAttendanceService, DynamoDBAttendanceServiceV2, AttendanceNotificationService]
+  exports: [AttendanceService, DynamoDBAttendanceService, DynamoDBAttendanceServiceV2, MysqlAttendanceService, AttendanceNotificationService]
 })
 export class AttendanceModule {}
 

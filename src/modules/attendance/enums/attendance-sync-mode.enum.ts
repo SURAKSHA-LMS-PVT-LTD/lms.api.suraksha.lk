@@ -1,7 +1,25 @@
 /**
+ * �️ ATTENDANCE DATABASE MODE
+ * 
+ * Controls which database(s) the attendance module uses.
+ * 
+ * ENV: ATTENDANCE_DB_MODE=both | only_mysql  (default: both)
+ * 
+ *   both       → DynamoDB primary + MySQL sync (current flow, uses ATTENDANCE_SYNC_MODE)
+ *   only_mysql → MySQL only, no DynamoDB at all (all reads/writes go to MySQL)
+ */
+export enum AttendanceDbMode {
+  /** Use both DynamoDB (primary) and MySQL (synced replica). Current/default flow. */
+  BOTH = 'both',
+  /** Use MySQL only. No DynamoDB reads or writes. */
+  MYSQL_ONLY = 'only_mysql',
+}
+
+/**
  * 🔄 ATTENDANCE SYNC MODE
  * 
  * Controls how attendance data flows from DynamoDB (primary) to MySQL (reporting/calendar).
+ * Only relevant when ATTENDANCE_DB_MODE=both.
  * 
  * Configurable via:
  *   1. ENV variable: ATTENDANCE_SYNC_MODE (highest priority)

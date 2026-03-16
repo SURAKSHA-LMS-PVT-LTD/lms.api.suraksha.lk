@@ -29,6 +29,7 @@ import { getCurrentSriLankaDate, getCurrentSriLankaISO, nowTimestamp, formatSriL
 import { AttendanceDeviceService } from '../attendance-device/services/attendance-device.service';
 import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
 import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
+import { MysqlAttendanceService } from './services/mysql-attendance.service';
 import { AttendanceSyncMode } from './enums/attendance-sync-mode.enum';
 
 @Injectable()
@@ -64,6 +65,7 @@ export class AttendanceService {
     private readonly attendanceDeviceService: AttendanceDeviceService,
     private readonly syncConfigService: AttendanceSyncConfigService,
     private readonly syncSchedulerService: AttendanceSyncSchedulerService,
+    private readonly mysqlAttendanceService: MysqlAttendanceService,
   ) {
     // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
@@ -397,20 +399,29 @@ export class AttendanceService {
       const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
       markAttendanceDto.studentImageUrl = imageUrl || undefined;
 
-      // ✅ STEP 4.1: Mark attendance in DynamoDB (same for all user types)
-      const result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
+      // ✅ STEP 4.1: Mark attendance based on database mode
+      const isMysqlOnly = this.syncConfigService.isMysqlOnly();
+      let result: any;
 
-      // ✅ STEP 4.5: Sync to MySQL based on system-wide sync mode
-      try {
-        const syncMode = this.syncConfigService.getSyncModeSync();
-        if (syncMode === AttendanceSyncMode.IMMEDIATE) {
-          await this.syncSchedulerService.syncFromDto(markAttendanceDto);
-        } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
-          this.syncSchedulerService.syncFromDtoAsync(markAttendanceDto);
+      if (isMysqlOnly) {
+        // MySQL-only mode: write directly to MySQL, no DynamoDB
+        result = await this.mysqlAttendanceService.markAttendance(markAttendanceDto);
+      } else {
+        // Both mode: write to DynamoDB first, then sync to MySQL
+        result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
+
+        // ✅ STEP 4.5: Sync to MySQL based on system-wide sync mode
+        try {
+          const syncMode = this.syncConfigService.getSyncModeSync();
+          if (syncMode === AttendanceSyncMode.IMMEDIATE) {
+            await this.syncSchedulerService.syncFromDto(markAttendanceDto);
+          } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
+            this.syncSchedulerService.syncFromDtoAsync(markAttendanceDto);
+          }
+          // BACKEND_SCHEDULE: no-op here — cron handles it
+        } catch (syncErr) {
+          this.logger.warn(`[${requestId}] MySQL sync skipped: ${syncErr.message}`);
         }
-        // BACKEND_SCHEDULE: no-op here — cron handles it
-      } catch (syncErr) {
-        this.logger.warn(`[${requestId}] MySQL sync skipped: ${syncErr.message}`);
       }
 
       // ✅ STEP 5: Send notifications ONLY for students (teachers/admins don't need parent notifications)
@@ -661,23 +672,32 @@ export class AttendanceService {
         }
       }
 
-      // ✅ STEP 9: Mark attendance in DynamoDB
-      const results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
+      // ✅ STEP 9: Mark attendance based on database mode
+      const isMysqlOnly = this.syncConfigService.isMysqlOnly();
+      let results: MarkAttendanceDto[];
 
-      // ✅ STEP 9.5: Sync bulk results to MySQL based on system-wide sync mode
-      try {
-        const syncMode = this.syncConfigService.getSyncModeSync();
-        if (syncMode === AttendanceSyncMode.IMMEDIATE || syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
-          for (const record of results) {
-            if (syncMode === AttendanceSyncMode.IMMEDIATE) {
-              await this.syncSchedulerService.syncFromDto(record);
-            } else {
-              this.syncSchedulerService.syncFromDtoAsync(record);
+      if (isMysqlOnly) {
+        // MySQL-only mode: write directly to MySQL, no DynamoDB
+        results = await this.mysqlAttendanceService.markBulkAttendance(bulkAttendanceDto);
+      } else {
+        // Both mode: write to DynamoDB first, then sync to MySQL
+        results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
+
+        // ✅ STEP 9.5: Sync bulk results to MySQL based on system-wide sync mode
+        try {
+          const syncMode = this.syncConfigService.getSyncModeSync();
+          if (syncMode === AttendanceSyncMode.IMMEDIATE || syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
+            for (const record of results) {
+              if (syncMode === AttendanceSyncMode.IMMEDIATE) {
+                await this.syncSchedulerService.syncFromDto(record);
+              } else {
+                this.syncSchedulerService.syncFromDtoAsync(record);
+              }
             }
           }
+        } catch (syncErr) {
+          this.logger.warn(`[${requestId}] Bulk MySQL sync error: ${syncErr.message}`);
         }
-      } catch (syncErr) {
-        this.logger.warn(`[${requestId}] Bulk MySQL sync error: ${syncErr.message}`);
       }
       
       // ✅ STEP 10: Send notifications ONLY for students (teachers/admins skip parent notifications)
@@ -750,7 +770,9 @@ export class AttendanceService {
    * Returns DynamoDB record data + student profile image (no cross-joins).
    */
   async getAttendanceDetail(id: string): Promise<any> {
-    const record = await this.dynamoAttendanceService.getAttendanceById(id);
+    const record = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getAttendanceById(id)
+      : await this.dynamoAttendanceService.getAttendanceById(id);
     if (!record) {
       return null;
     }
@@ -819,12 +841,19 @@ export class AttendanceService {
     
     // ✅ Get all attendance records for the student in the date range
     // ✅ FIXED BUG-003: Now passes instituteId from DTO instead of empty string
-    const allRecords = await this.dynamoAttendanceService.getStudentAttendance(
-      studentId,
-      getStudentAttendanceDto.instituteId,
-      startDate,
-      endDate
-    );
+    const allRecords = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getStudentAttendance(
+          studentId,
+          getStudentAttendanceDto.instituteId,
+          startDate,
+          endDate
+        )
+      : await this.dynamoAttendanceService.getStudentAttendance(
+          studentId,
+          getStudentAttendanceDto.instituteId,
+          startDate,
+          endDate
+        );
 
     // Filter by status if provided
     const filteredRecords = status 
@@ -1189,12 +1218,19 @@ export class AttendanceService {
       }
 
       // Get attendance for the actual student ID
-      const records = await this.dynamoAttendanceService.getStudentAttendance(
-        user.id.toString(),
-        '', // Institute ID needed
-        startDate,
-        endDate
-      );
+      const records = this.syncConfigService.isMysqlOnly()
+        ? await this.mysqlAttendanceService.getStudentAttendance(
+            user.id.toString(),
+            '', // Institute ID needed
+            startDate,
+            endDate
+          )
+        : await this.dynamoAttendanceService.getStudentAttendance(
+            user.id.toString(),
+            '', // Institute ID needed
+            startDate,
+            endDate
+          );
 
       const totalRecords = records.length;
       const totalPages = Math.ceil(totalRecords / limit);
@@ -1265,7 +1301,10 @@ export class AttendanceService {
     startDate?: string,
     endDate?: string
   ): Promise<any> {
-    const summary = await this.dynamoAttendanceService.getAttendanceSummary(
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const summary = await dbService.getAttendanceSummary(
       instituteId,
       classId,
       subjectId,
@@ -1281,7 +1320,9 @@ export class AttendanceService {
   }
 
   async getAttendanceByDate(instituteId: string, date: string): Promise<any> {
-    const records = await this.dynamoAttendanceService.getAttendanceByDate(instituteId, date);
+    const records = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getAttendanceByDate(instituteId, date)
+      : await this.dynamoAttendanceService.getAttendanceByDate(instituteId, date);
 
     return {
       success: true,
@@ -1301,7 +1342,9 @@ export class AttendanceService {
     eventId: string,
     date?: string
   ): Promise<any> {
-    const records = await this.dynamoAttendanceService.getAttendanceByEvent(instituteId, eventId, date);
+    const records = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getAttendanceByEvent(instituteId, eventId, date)
+      : await this.dynamoAttendanceService.getAttendanceByEvent(instituteId, eventId, date);
     const enriched = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
@@ -1322,7 +1365,9 @@ export class AttendanceService {
     calendarDayId: string,
     userType?: string
   ): Promise<any> {
-    const records = await this.dynamoAttendanceService.getAttendanceByCalendarDay(instituteId, calendarDayId, userType);
+    const records = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getAttendanceByCalendarDay(instituteId, calendarDayId, userType)
+      : await this.dynamoAttendanceService.getAttendanceByCalendarDay(instituteId, calendarDayId, userType);
     const enrichedRecords = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
@@ -1347,7 +1392,9 @@ export class AttendanceService {
     classId?: string,
     subjectId?: string
   ): Promise<any> {
-    const records = await this.dynamoAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId, subjectId);
+    const records = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId, subjectId)
+      : await this.dynamoAttendanceService.getAttendanceByUserType(instituteId, userType, date, eventId, classId, subjectId);
     const enrichedRecords = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
@@ -1373,9 +1420,11 @@ export class AttendanceService {
     startDate?: string,
     endDate?: string
   ): Promise<any> {
-    const records = await this.dynamoAttendanceService.getStudentAttendanceByEvent(
-      studentId, instituteId, eventId, startDate, endDate
-    );
+    const records = this.syncConfigService.isMysqlOnly()
+      ? await this.mysqlAttendanceService.getStudentAttendanceByEvent(studentId, instituteId, eventId, startDate, endDate)
+      : await this.dynamoAttendanceService.getStudentAttendanceByEvent(
+          studentId, instituteId, eventId, startDate, endDate
+        );
     const enriched = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
@@ -1413,7 +1462,10 @@ export class AttendanceService {
     const { instituteId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
     
     // Use the attendance summary method for institute-wide data
-    const summary = await this.dynamoAttendanceService.getAttendanceSummary(
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const summary = await dbService.getAttendanceSummary(
       instituteId,
       undefined, // classId
       undefined, // subjectId
@@ -1479,7 +1531,10 @@ export class AttendanceService {
   }): Promise<any> {
     const { instituteId, classId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
     
-    const summary = await this.dynamoAttendanceService.getAttendanceSummary(
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const summary = await dbService.getAttendanceSummary(
       instituteId,
       classId,
       undefined, // subjectId
@@ -1546,7 +1601,10 @@ export class AttendanceService {
   }): Promise<any> {
     const { instituteId, classId, subjectId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
     
-    const summary = await this.dynamoAttendanceService.getAttendanceSummary(
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const summary = await dbService.getAttendanceSummary(
       instituteId,
       classId, // Pass the actual classId instead of undefined
       subjectId,
@@ -2472,19 +2530,28 @@ export class AttendanceService {
       )
     };
 
-    // ✅ STEP 6: Mark attendance in DynamoDB
-    const result = await this.dynamoAttendanceService.markAttendance(attendanceDto);
+    // ✅ STEP 6: Mark attendance based on database mode
+    const isMysqlOnlyMode = this.syncConfigService.isMysqlOnly();
+    let result: any;
 
-    // ✅ STEP 6.5: Sync to MySQL based on system-wide sync mode
-    try {
-      const syncMode = this.syncConfigService.getSyncModeSync();
-      if (syncMode === AttendanceSyncMode.IMMEDIATE) {
-        await this.syncSchedulerService.syncFromDto(attendanceDto);
-      } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
-        this.syncSchedulerService.syncFromDtoAsync(attendanceDto);
+    if (isMysqlOnlyMode) {
+      // MySQL-only mode: write directly to MySQL, no DynamoDB
+      result = await this.mysqlAttendanceService.markAttendance(attendanceDto);
+    } else {
+      // Both mode: write to DynamoDB first, then sync to MySQL
+      result = await this.dynamoAttendanceService.markAttendance(attendanceDto);
+
+      // ✅ STEP 6.5: Sync to MySQL based on system-wide sync mode
+      try {
+        const syncMode = this.syncConfigService.getSyncModeSync();
+        if (syncMode === AttendanceSyncMode.IMMEDIATE) {
+          await this.syncSchedulerService.syncFromDto(attendanceDto);
+        } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
+          this.syncSchedulerService.syncFromDtoAsync(attendanceDto);
+        }
+      } catch (syncErr) {
+        this.logger.warn(`Card attendance MySQL sync skipped: ${syncErr.message}`);
       }
-    } catch (syncErr) {
-      this.logger.warn(`Card attendance MySQL sync skipped: ${syncErr.message}`);
     }
 
     // ✅ STEP 7: Send notifications ONLY for students (non-blocking)
@@ -2643,9 +2710,12 @@ export class AttendanceService {
     const endDate = query.endDate || today;
 
     // 1. Fetch attendance for all user IDs (self + children) in parallel
+    const isMysqlOnly = this.syncConfigService.isMysqlOnly();
     const allRecordsByUserId = await Promise.all(
       userIdsToFetch.map(uid =>
-        this.dynamoAttendanceService.getStudentAttendanceAllInstitutes(uid, startDate, endDate)
+        isMysqlOnly
+          ? this.mysqlAttendanceService.getStudentAttendanceAllInstitutes(uid, startDate, endDate)
+          : this.dynamoAttendanceService.getStudentAttendanceAllInstitutes(uid, startDate, endDate)
       )
     );
 
@@ -2665,27 +2735,51 @@ export class AttendanceService {
     // Sort newest first (DynamoDB GSI returns newest first already, but re-sort after filter)
     rawRecords.sort((a, b) => ((b as any).timestamp || 0) - ((a as any).timestamp || 0));
 
-    // 2. Collect unique class IDs for enrichment
-    // Note: Institute + student names come from DynamoDB (stored at marking time, immutable)
+    // 2. Collect unique IDs for enrichment
     const uniqueClassIds = [...new Set(rawRecords.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
+    const uniqueStudentIds = [...new Set(rawRecords.map(r => String(r.studentId)))];
+    const uniqueInstituteIds = [...new Set(rawRecords.map(r => String(r.instituteId)))];
 
-    // 3. Bulk-fetch from DB (only classes, no institute query needed)
-    const [classes] = await Promise.all([
+    // 3. Bulk-fetch from DB: classes, user profiles (for images), institutes (for logos)
+    const [classes, users, institutes] = await Promise.all([
       uniqueClassIds.length
         ? this.classRepository.find({
             where: { id: In(uniqueClassIds) as any },
             select: ['id', 'name'],
           })
         : Promise.resolve([]),
+      uniqueStudentIds.length
+        ? this.userRepository.find({
+            where: { id: In(uniqueStudentIds) as any },
+            select: ['id', 'imageUrl'],
+          })
+        : Promise.resolve([]),
+      uniqueInstituteIds.length
+        ? this.instituteRepository.find({
+            where: { id: In(uniqueInstituteIds) as any },
+            select: ['id', 'logoUrl'],
+          })
+        : Promise.resolve([]),
     ]);
 
     // 4. Build lookup maps
     const classMap = new Map(classes.map(c => [String(c.id), c]));
+    const userImageMap = new Map(users.map(u => [String(u.id), u.imageUrl]));
+    const instituteLogoMap = new Map(institutes.map(i => [String(i.id), i.logoUrl]));
 
     // 5. Enrich and build summary + per-institute breakdown
     const byInstitute: Record<string, { instituteName: string; instituteLogoUrl?: string; totalPresent: number; totalAbsent: number; totalLate: number; totalLeft: number; totalLeftEarly: number; totalLeftLately: number; attendanceRate: number }> = {};
     const byStudent: Record<string, { studentName: string; studentImageUrl?: string; totalRecords: number; totalPresent: number; totalAbsent: number; totalLate: number; totalLeft: number; totalLeftEarly: number; totalLeftLately: number; attendanceRate: number }> = {};
     let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalLeft = 0, totalLeftEarly = 0, totalLeftLately = 0;
+
+    const statusLabels: Record<string, string> = {
+      [AttendanceStatus.PRESENT]: 'Present',
+      [AttendanceStatus.ABSENT]:  'Absent',
+      [AttendanceStatus.LATE]:    'Late',
+      [AttendanceStatus.LEFT]:    'Left',
+      [AttendanceStatus.LEFT_EARLY]:   'Left Early',
+      [AttendanceStatus.LEFT_LATELY]:  'Left Lately',
+    };
 
     const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
       const iid = String(r.instituteId);
@@ -2693,21 +2787,28 @@ export class AttendanceService {
       const sid = String(r.studentId);
       const dbClass = cid ? classMap.get(cid) : undefined;
 
-      // ✅ All data from DynamoDB (stored at marking time, immutable)
       const instituteName = r.instituteName || iid;
       const className     = dbClass?.name   || r.className || undefined;
       const studentName   = r.studentName;
-      // Note: instituteLogoUrl is not stored in DynamoDB, so not available without MySQL query
+
+      // Resolve student image: prefer record-level (stored at marking), fall back to user profile
+      const rawStudentImg = (r as any).studentImageUrl || (r as any).imageUrl;
+      const studentImageRaw = rawStudentImg || userImageMap.get(sid);
+      const studentImageUrl = studentImageRaw ? this.CloudStorageService.getFullUrl(studentImageRaw) : undefined;
+
+      // Resolve institute logo from MySQL institute table
+      const rawLogo = instituteLogoMap.get(iid);
+      const instituteLogoUrl = rawLogo ? this.CloudStorageService.getFullUrl(rawLogo) : undefined;
 
       // Summary counters - by institute
       if (!byInstitute[iid]) {
-        byInstitute[iid] = { instituteName, instituteLogoUrl: undefined, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+        byInstitute[iid] = { instituteName, instituteLogoUrl, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
       }
       
       // Summary counters - by student (when children included)
       if (child && childrenIds.includes(sid)) {
         if (!byStudent[sid]) {
-          byStudent[sid] = { studentName, studentImageUrl: undefined, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+          byStudent[sid] = { studentName, studentImageUrl, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
         }
         byStudent[sid].totalRecords++;
       }
@@ -2720,28 +2821,16 @@ export class AttendanceService {
       else if (r.status === AttendanceStatus.LEFT_EARLY)   { totalLeftEarly++;  byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
       else if (r.status === AttendanceStatus.LEFT_LATELY)  { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
 
-      const statusLabels: Record<string, string> = {
-        [AttendanceStatus.PRESENT]: 'Present',
-        [AttendanceStatus.ABSENT]:  'Absent',
-        [AttendanceStatus.LATE]:    'Late',
-        [AttendanceStatus.LEFT]:    'Left',
-        [AttendanceStatus.LEFT_EARLY]:   'Left Early',
-        [AttendanceStatus.LEFT_LATELY]:  'Left Lately',
-      };
-
       return {
         date: r.date,
         status: r.status,
         statusLabel: statusLabels[r.status as string] || String(r.status),
-        studentId: sid,  // ✅ Include student ID to identify who attendance belongs to
-        studentName,     // ✅ From DynamoDB (stored at marking time)
-        studentImageUrl: (() => {
-          const raw = (r as any).studentImageUrl || (r as any).imageUrl;
-          return raw ? this.CloudStorageService.getFullUrl(raw) : undefined;
-        })(),
+        studentId: sid,
+        studentName,
+        studentImageUrl,
         instituteId: iid,
         instituteName,
-        instituteLogoUrl: undefined,  // ✅ Not stored in DynamoDB
+        instituteLogoUrl,
         classId: cid,
         className,
         subjectId: r.subjectId,
@@ -2750,9 +2839,9 @@ export class AttendanceService {
         remarks: r.remarks,
         userType: (r as any).userType,
         location: r.location,
-        address: (r as any).address,  // ✅ CONSOLIDATED: Include address object with lat/lng
-        latitude: (r as any).address?.latitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
-        longitude: (r as any).address?.longitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
+        address: (r as any).address,
+        latitude: (r as any).address?.latitude,
+        longitude: (r as any).address?.longitude,
         timestamp: (r as any).timestamp || 0,
         markedAt: (r as any).timestamp ? new Date((r as any).timestamp).toISOString() : r.date,
       } as MyAttendanceRecordDto;
