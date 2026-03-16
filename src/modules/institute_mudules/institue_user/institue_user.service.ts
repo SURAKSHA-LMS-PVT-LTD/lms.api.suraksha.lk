@@ -3284,21 +3284,52 @@ export class InstitueUserService {
         }
       }
 
-      // Update institute user entity with image URL
-      // If verifiedById is provided (admin uploaded), mark as VERIFIED
-      // Otherwise, mark as PENDING (user uploaded)
-      await this.instituteUserRepository.update(
-        { instituteId, userId },
-        {
-          instituteUserImageUrl: imageUrl,
-          imageVerificationStatus: verifiedById ? ImageVerificationStatus.VERIFIED : ImageVerificationStatus.PENDING,
-          imageVerifiedBy: verifiedById || null
-        }
-      );
+      if (verifiedById) {
+        // Admin explicitly marking as already-verified (special flow) → approve immediately
+        await this.instituteUserRepository.update(
+          { instituteId, userId },
+          {
+            instituteUserImageUrl: imageUrl,
+            imageVerificationStatus: ImageVerificationStatus.VERIFIED,
+            imageVerifiedBy: verifiedById,
+          }
+        );
+        // Record in history as VERIFIED
+        const imageRecord = this.userImageRepository.create({
+          userId,
+          imageUrl,
+          scope: ImageScope.INSTITUTE,
+          instituteId,
+          status: ImageVerificationStatus.VERIFIED,
+          verifiedBy: verifiedById,
+          verifiedAt: new Date(),
+        });
+        await this.userImageRepository.save(imageRecord);
+      } else {
+        // Admin uploaded for review → create pending submission.
+        // Do NOT overwrite instituteUserImageUrl so the last verified image stays live.
+        await this.instituteUserRepository.update(
+          { instituteId, userId },
+          {
+            imageVerificationStatus: ImageVerificationStatus.PENDING,
+            imageVerifiedBy: null,
+          }
+        );
+        const imageRecord = this.userImageRepository.create({
+          userId,
+          imageUrl,
+          scope: ImageScope.INSTITUTE,
+          instituteId,
+          status: ImageVerificationStatus.PENDING,
+        });
+        await this.userImageRepository.save(imageRecord);
+      }
 
       return {
         success: true,
-        message: 'Institute user image uploaded successfully',
+        message: verifiedById
+          ? 'Institute user image uploaded and verified successfully'
+          : 'Institute user image submitted for verification',
         imageUrl: this.cloudStorageService.getFullUrl(imageUrl),
         userId,
         instituteId

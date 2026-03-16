@@ -1,6 +1,6 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
 import { IsOptional, IsString, IsBoolean, IsInt, IsIn, Min, Max, IsEnum } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // Updated QuerySubjectDto with improved validation and institute/class filtering
@@ -34,6 +34,7 @@ export class QuerySubjectDto {
 
   @ApiPropertyOptional({ description: 'Filter by active status', type: Boolean })
   @IsOptional()
+  @Type(() => String)
   @Transform(({ value }) => {
     if (value === 'true' || value === true) return true;
     if (value === 'false' || value === false) return false;

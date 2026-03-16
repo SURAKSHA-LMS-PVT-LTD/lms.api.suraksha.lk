@@ -2005,9 +2005,11 @@ export class AttendanceService {
         city: studentData.user.city || null,
         province: studentData.user.province || null,
         district: studentData.user.district || null,
-        birthYear: studentData.user.birthYear || null,
+        birthYear: studentData.user.dateOfBirth
+          ? new Date(studentData.user.dateOfBirth).getFullYear()
+          : null,
         gender: studentData.user.gender || null,
-        occupation: studentData.user.occupation || null
+        occupation: null  // No occupation column on user entity
       };
 
       // Use sophisticated multi-factor matching service
@@ -2143,7 +2145,14 @@ export class AttendanceService {
             phoneNumber: true,
             subscriptionPlan: true,
             telegramId: true,
-            imageUrl: true
+            imageUrl: true,
+            // Required for advertisement targeting
+            userType: true,
+            dateOfBirth: true,
+            gender: true,
+            city: true,
+            district: true,
+            province: true,
           },
           father: {
             userId: true,

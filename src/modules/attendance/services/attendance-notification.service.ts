@@ -178,7 +178,7 @@ export class AttendanceNotificationService {
             'whatsapp': ['whatsapp'],
             'telegram': ['telegram'],
             'email': ['email'],
-            'push': ['push-mobile', 'push-web', 'mobile-push', 'web-push']
+            'push': ['push-mobile', 'push-web', 'mobile-push', 'web-push', 'push']
           };
           
           const possibleModes = modeMap[channel] || [channel];
