@@ -851,7 +851,10 @@ export class AttendanceService {
       instituteName: record.instituteName,
       className: record.className,
       subjectName: record.subjectName,
-      address: record.location || this.generateAddress(record.instituteName, record.className, record.subjectName),
+      address: (record as any).address,  // ✅ CONSOLIDATED: Include address object with lat/lng
+      location: record.location || this.generateAddress(record.instituteName, record.className, record.subjectName),
+      latitude: (record as any).address?.latitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
+      longitude: (record as any).address?.longitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
       markedBy: 'system',
       markedAt: (record as any).timestamp ? new Date((record as any).timestamp).toISOString() : record.date,
       markingMethod: record.markingMethod,
@@ -2720,6 +2723,10 @@ export class AttendanceService {
         markingMethod: r.markingMethod as any,
         remarks: r.remarks,
         userType: (r as any).userType,
+        location: r.location,
+        address: (r as any).address,  // ✅ CONSOLIDATED: Include address object with lat/lng
+        latitude: (r as any).address?.latitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
+        longitude: (r as any).address?.longitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
         timestamp: (r as any).timestamp || 0,
         markedAt: (r as any).timestamp ? new Date((r as any).timestamp).toISOString() : r.date,
       } as MyAttendanceRecordDto;

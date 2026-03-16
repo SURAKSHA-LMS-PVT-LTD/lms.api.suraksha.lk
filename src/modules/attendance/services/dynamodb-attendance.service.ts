@@ -25,7 +25,7 @@ export interface AttendanceRecord {
   date: string;
   status: number; // 1=Present, 0=Absent
   location?: string;
-  address?: { latitude?: number; longitude?: number };
+  address?: { latitude?: number; longitude?: number };  // ✅ Consolidated: lat/lng stored here only
   remarks?: string;
   markingMethod?: string;
   userType?: string; // Institute user type: STUDENT, TEACHER, INSTITUTE_ADMIN, ATTENDANCE_MARKER, PARENT, NOT_ENROLLED
@@ -269,12 +269,15 @@ export class DynamoDBAttendanceService {
     if (attendance.location) {
       record.location = attendance.location;
     }
-    if ((attendance as any).latitude !== undefined) {
-      record.latitude = (attendance as any).latitude;
+
+    // ✅ CONSOLIDATED: Store latitude/longitude in address object, not separately
+    if (attendance.address?.latitude !== undefined || attendance.address?.longitude !== undefined) {
+      record.address = {
+        latitude: attendance.address?.latitude,
+        longitude: attendance.address?.longitude
+      };
     }
-    if ((attendance as any).longitude !== undefined) {
-      record.longitude = (attendance as any).longitude;
-    }
+
     if (attendance.remarks) {
       record.remarks = attendance.remarks;
     }
@@ -302,7 +305,8 @@ export class DynamoDBAttendanceService {
 
   // Convert DynamoDB record to DTO
   // ✅ FIXED: Returns timestamp, calendarDayId, eventId for frontend update/delete operations
-  private recordToAttendance(record: any): MarkAttendanceDto & { userType?: string; timestamp?: number; calendarDayId?: string; eventId?: string } {
+  // ✅ CONSOLIDATED: Extracts latitude/longitude from address object for backward compatibility
+  private recordToAttendance(record: any): MarkAttendanceDto & { userType?: string; timestamp?: number; calendarDayId?: string; eventId?: string; latitude?: number; longitude?: number } {
     return {
       studentId: String(record.studentId), // Ensure string type for consistency
       studentName: record.studentName,
@@ -317,8 +321,10 @@ export class DynamoDBAttendanceService {
       date: record.date,
       status: this.numberToStatus(record.status),
       location: record.location,
-      latitude: record.latitude,
-      longitude: record.longitude,
+      address: record.address,  // Include address object as-is
+      // ✅ CONSOLIDATED: Extract latitude/longitude from address for backward compatibility
+      latitude: record.address?.latitude,
+      longitude: record.address?.longitude,
       remarks: record.remarks,
       markingMethod: record.markingMethod,
       userType: record.userType || 'STUDENT',  // Default to STUDENT for backward compatibility
@@ -469,6 +475,7 @@ export class DynamoDBAttendanceService {
 
   // Mark bulk attendance
   // ✅ FIXED BUG-001: Now accepts and propagates calendarDayId + eventId from the bulk DTO
+  // ✅ CONSOLIDATED: Uses address object for storing latitude/longitude
   async markBulkAttendance(bulkData: BulkAttendanceDto): Promise<MarkAttendanceDto[]> {
     const dateForRecords = bulkData.date || getCurrentSriLankaDate();
     const attendances = bulkData.students.map(studentData => ({
@@ -484,8 +491,7 @@ export class DynamoDBAttendanceService {
       date: dateForRecords,
       status: studentData.status,
       location: bulkData.location,
-      latitude: (bulkData as any).latitude,
-      longitude: (bulkData as any).longitude,
+      address: bulkData.address,  // ✅ CONSOLIDATED: Pass address object directly
       remarks: studentData.remarks,
       markingMethod: bulkData.markingMethod,
       calendarDayId: (bulkData as any).calendarDayId,  // ✅ BUG-001 FIX: calendar linkage

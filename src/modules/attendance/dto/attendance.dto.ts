@@ -108,6 +108,9 @@ export class MarkAttendanceDto {
   @IsOptional()
   address?: AddressDto;
 
+  // ⚠️ DEPRECATED: latitude and longitude are now stored inside address field
+  // For backward compatibility, these are extracted from address on response
+
   @ApiProperty({ enum: AttendanceStatus, description: 'Attendance status' })
   @IsEnum(AttendanceStatus)
   @IsNotEmpty()
@@ -224,6 +227,8 @@ export class BulkAttendanceDto {
   @Type(() => AddressDto)
   @IsOptional()
   address?: AddressDto;
+
+  // ⚠️ DEPRECATED: latitude and longitude are now stored inside address field
 
   @ApiPropertyOptional({ description: 'Date in YYYY-MM-DD format. Defaults to today (Sri Lanka time) if not provided.' })
   @IsDateString()
@@ -362,6 +367,7 @@ export class StudentAttendanceResponseDto {
     subjectName?: string;
     address?: AddressDto;
     location?: string;
+    // ⚠️ DEPRECATED: latitude and longitude extracted from address for backward compatibility
     latitude?: number;
     longitude?: number;
     markedBy: string;
@@ -444,6 +450,7 @@ export class MyAttendanceRecordDto {
   @ApiPropertyOptional() userType?: string;
   @ApiPropertyOptional() location?: string;
   @ApiPropertyOptional({ type: AddressDto }) address?: AddressDto;
+  // ⚠️ DEPRECATED: latitude and longitude extracted from address for backward compatibility
   @ApiPropertyOptional() latitude?: number;
   @ApiPropertyOptional() longitude?: number;
   @ApiProperty() timestamp: number;
