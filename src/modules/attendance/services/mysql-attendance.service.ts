@@ -642,24 +642,38 @@ export class MysqlAttendanceService {
     let records: any[] = [];
     if (includeRecords) {
       const recordsQb = qb.clone()
+        .select([
+          'ar.studentId AS studentId',
+          'ar.studentName AS studentName',
+          'ar.date AS date',
+          'ar.status AS status',
+          'ar.className AS className',
+          'ar.subjectName AS subjectName',
+          'ar.timestamp AS timestamp',
+          'ar.userType AS userType',
+          'ar.location AS location',
+          'ar.markingMethod AS markingMethod',
+          'ar.calendarDayId AS calendarDayId',
+          'ar.eventId AS eventId',
+        ])
         .orderBy('ar.timestamp', 'DESC')
         .take(maxItems);
-      const entities = await recordsQb.getMany();
-      records = entities.map(e => {
-        const raw = this.entityToDto(e);
+      const rawRows = await recordsQb.getRawMany();
+      records = rawRows.map(row => {
+        const statusValue = Number(row.status);
         return {
-          studentId: raw.studentId,
-          studentName: raw.studentName,
-          date: raw.date,
-          status: raw.status,
-          className: raw.className,
-          subjectName: raw.subjectName,
-          timestamp: raw.timestamp,
-          userType: (raw as any).userType,
-          location: raw.location,
-          markingMethod: raw.markingMethod,
-          calendarDayId: (raw as any).calendarDayId,
-          eventId: (raw as any).eventId,
+          studentId: row.studentId,
+          studentName: row.studentName,
+          date: row.date,
+          status: this.numberToStatus(isNaN(statusValue) ? 0 : statusValue),
+          className: row.className,
+          subjectName: row.subjectName,
+          timestamp: row.timestamp ? Number(row.timestamp) : undefined,
+          userType: row.userType,
+          location: row.location,
+          markingMethod: row.markingMethod,
+          calendarDayId: row.calendarDayId,
+          eventId: row.eventId,
         };
       });
     }
