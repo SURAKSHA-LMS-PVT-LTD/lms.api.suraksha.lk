@@ -295,13 +295,27 @@ export class AttendanceService {
         );
       }
 
+      const hasClassOrSubjectScope = Boolean(
+        (markAttendanceDto.classId && markAttendanceDto.classId !== 'default')
+        || (markAttendanceDto.subjectId && markAttendanceDto.subjectId !== 'default')
+      );
+
       // ============================================
       // STEP 3.5: MANDATORY Calendar Day + Event Linkage
       // ============================================
       // calendarDayId: Resolved from the DTO's date (which defaults to today if not provided).
-      // eventId: If frontend sends one (special event) → use it. Otherwise → auto-link to default REGULAR_CLASS event.
+      // eventId (institute-level only): If frontend sends one (special event) → use it.
+      // For class/subject scoped attendance, eventId is always ignored.
+      // For institute-level attendance without explicit eventId → auto-link to default REGULAR_CLASS event.
       // This ensures ALL attendance records are visible in the institute calendar section.
-      const originalFrontendEventId = markAttendanceDto.eventId || null; // Save before any modification
+      if (hasClassOrSubjectScope && markAttendanceDto.eventId) {
+        this.logger.warn(
+          `[${requestId}] Ignoring eventId=${markAttendanceDto.eventId} for class/subject scoped attendance`
+        );
+      }
+      const originalFrontendEventId = hasClassOrSubjectScope
+        ? null
+        : (markAttendanceDto.eventId || null); // Save before any modification
       {
         let calendarResolved = false;
 
@@ -315,8 +329,10 @@ export class AttendanceService {
             // ✅ calendarDayId is ALWAYS system-set (today → today's day record)
             (markAttendanceDto as any).calendarDayId = calendarDay.id;
 
-            // ✅ eventId: frontend sent special event → keep it. Otherwise → default REGULAR_CLASS event.
-            if (originalFrontendEventId) {
+            // ✅ eventId for class/subject scope is always disabled.
+            if (hasClassOrSubjectScope) {
+              (markAttendanceDto as any).eventId = null;
+            } else if (originalFrontendEventId) {
               (markAttendanceDto as any).eventId = originalFrontendEventId;
               this.logger.log(`[${requestId}] 🎯 Special event attendance: eventId=${originalFrontendEventId}, dayId=${calendarDay.id}`);
             } else if (defaultEventId) {
@@ -340,7 +356,9 @@ export class AttendanceService {
             );
             if (calendarDay) {
               (markAttendanceDto as any).calendarDayId = calendarDay.id;
-              if (originalFrontendEventId) {
+              if (hasClassOrSubjectScope) {
+                (markAttendanceDto as any).eventId = null;
+              } else if (originalFrontendEventId) {
                 (markAttendanceDto as any).eventId = originalFrontendEventId;
               } else if (defaultEventId) {
                 (markAttendanceDto as any).eventId = defaultEventId;
@@ -374,7 +392,7 @@ export class AttendanceService {
         // Device binding overrides the auto-assigned default REGULAR_CLASS event, but NOT a
         // frontend-supplied special event (the user explicitly chose that event).
         if (deviceValidation.eventId) {
-          if (!originalFrontendEventId) {
+          if (!hasClassOrSubjectScope && !originalFrontendEventId) {
             // No explicit frontend event → device binding overrides the auto-linked default event
             (markAttendanceDto as any).eventId = deviceValidation.eventId;
             this.logger.log(`[${requestId}] 🔧 Device binding overrides default event: eventId=${deviceValidation.eventId}`);
@@ -618,7 +636,16 @@ export class AttendanceService {
       // calendarDayId: Resolved from the DTO's date (defaults to today if not provided).
       // eventId: if bulk DTO has a special eventId → use it. Otherwise → default REGULAR_CLASS event.
       {
-        const frontendEventId = bulkAttendanceDto.eventId || null; // Special event from frontend (if any)
+        const hasClassOrSubjectScope = Boolean(
+          (bulkAttendanceDto.classId && bulkAttendanceDto.classId !== 'default')
+          || (bulkAttendanceDto.subjectId && bulkAttendanceDto.subjectId !== 'default')
+        );
+        if (hasClassOrSubjectScope && bulkAttendanceDto.eventId) {
+          this.logger.warn(
+            `[${requestId}] Ignoring bulk eventId=${bulkAttendanceDto.eventId} for class/subject scoped attendance`
+          );
+        }
+        const frontendEventId = hasClassOrSubjectScope ? null : (bulkAttendanceDto.eventId || null); // Special event from frontend (if any)
         let calendarResolved = false;
 
         try {
@@ -628,7 +655,10 @@ export class AttendanceService {
           );
           if (calendarDay) {
             (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
-            if (frontendEventId) {
+            if (hasClassOrSubjectScope) {
+              (bulkAttendanceDto as any).defaultEventId = null;
+              (bulkAttendanceDto as any).eventId = null;
+            } else if (frontendEventId) {
               (bulkAttendanceDto as any).defaultEventId = frontendEventId;
               this.logger.log(`[${requestId}] 🎯 Bulk special event attendance: eventId=${frontendEventId}, dayId=${calendarDay.id}`);
             } else if (defaultEventId) {
@@ -651,7 +681,12 @@ export class AttendanceService {
             );
             if (calendarDay) {
               (bulkAttendanceDto as any).calendarDayId = calendarDay.id;
-              (bulkAttendanceDto as any).defaultEventId = frontendEventId || defaultEventId;
+              if (hasClassOrSubjectScope) {
+                (bulkAttendanceDto as any).defaultEventId = null;
+                (bulkAttendanceDto as any).eventId = null;
+              } else {
+                (bulkAttendanceDto as any).defaultEventId = frontendEventId || defaultEventId;
+              }
               calendarResolved = true;
               this.logger.log(`[${requestId}] ✅ Bulk calendar day recovered after retry: dayId=${calendarDay.id}`);
             }

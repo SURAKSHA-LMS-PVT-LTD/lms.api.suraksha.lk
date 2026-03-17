@@ -1428,6 +1428,230 @@ pagination, status filter, and optional single-institute filter.\n\n
   // Attendance Detail — opened from notification deep-link
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // SCOPE-EXPLICIT MARK ENDPOINTS
+  // URL path params enforce the scope; they always override body values.
+  //
+  //  INSTITUTE level  → eventId auto-linked to default REGULAR_CLASS event
+  //  CLASS level      → eventId is always null  (class belongs to institute)
+  //  SUBJECT level    → eventId is always null  (subject belongs to class)
+  //
+  // Provided in three marking modes for each scope:
+  //   /mark                  plain MarkAttendanceDto
+  //   /mark-bulk             BulkAttendanceDto
+  //   /mark-by-card          MarkAttendanceByCardDto (QR / NFC global card)
+  //   /mark-bulk-by-card     BulkCardAttendanceDto
+  //   /mark-by-institute-card MarkAttendanceByInstituteCardDto
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private _markedBy(req: any): string {
+    return req.user?.s || req.user?.subject || req.user?.sub || req.user?.id;
+  }
+  private _err(e: any, msg?: string): never {
+    if (e instanceof HttpException) throw e;
+    throw new HttpException({ success: false, message: e?.message || msg || 'Internal error' },
+      e?.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  // ── INSTITUTE LEVEL ────────────────────────────────────────────────────
+
+  @Post('institute/:instituteId/mark')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Institute] Mark single attendance', description: 'Single attendance at institute scope (no class / subject). eventId auto-linked to default REGULAR_CLASS event. `instituteId` from URL overrides body.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  async markInstituteAttendance(@Param('instituteId') instituteId: string, @Body() body: MarkAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = undefined; body.subjectId = undefined;
+    try { return await this.attendanceService.markAttendance(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Institute] Mark bulk attendance', description: 'Bulk attendance at institute scope. eventId auto-linked to default REGULAR_CLASS event.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  async markInstituteAttendanceBulk(@Param('instituteId') instituteId: string, @Body() body: BulkAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = undefined; body.subjectId = undefined;
+    const max = parseInt(process.env.MAX_BULK_ATTENDANCE_SIZE || '100');
+    if (body.students.length > max) throw new HttpException({ success: false, message: `Max bulk size is ${max}` }, HttpStatus.BAD_REQUEST);
+    try { return await this.attendanceService.markBulkAttendance(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Institute] Mark attendance by card', description: 'Card single attendance at institute scope.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  async markInstituteByCard(@Param('instituteId') instituteId: string, @Body() body: MarkAttendanceByCardDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = undefined; body.subjectId = undefined;
+    try { return await this.attendanceService.markAttendanceByCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Institute] Mark bulk attendance by card', description: 'Card bulk attendance at institute scope.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  async markInstituteByCardBulk(@Param('instituteId') instituteId: string, @Body() body: BulkCardAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = undefined; body.subjectId = undefined;
+    try { return await this.attendanceService.markBulkAttendanceByCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Institute] Mark attendance by institute card', description: 'Institute-card attendance at institute scope.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  async markInstituteByInstituteCard(@Param('instituteId') instituteId: string, @Body() body: MarkAttendanceByInstituteCardDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = undefined; body.subjectId = undefined;
+    try { return await this.attendanceService.markAttendanceByInstituteCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  // ── CLASS LEVEL ────────────────────────────────────────────────────────
+
+  @Post('institute/:instituteId/class/:classId/mark')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Class] Mark single attendance', description: 'Single attendance locked to a class. eventId is always null — events are institute-level, not class-level.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  async markClassAttendance(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Body() body: MarkAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = undefined; delete (body as any).eventId;
+    try { return await this.attendanceService.markAttendance(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Class] Mark bulk attendance', description: 'Bulk attendance locked to a class. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  async markClassAttendanceBulk(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Body() body: BulkAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = undefined; delete (body as any).eventId;
+    const max = parseInt(process.env.MAX_BULK_ATTENDANCE_SIZE || '100');
+    if (body.students.length > max) throw new HttpException({ success: false, message: `Max bulk size is ${max}` }, HttpStatus.BAD_REQUEST);
+    try { return await this.attendanceService.markBulkAttendance(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Class] Mark attendance by card', description: 'Card single attendance locked to a class. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  async markClassByCard(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Body() body: MarkAttendanceByCardDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = undefined;
+    try { return await this.attendanceService.markAttendanceByCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Class] Mark bulk attendance by card', description: 'Card bulk attendance locked to a class. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  async markClassByCardBulk(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Body() body: BulkCardAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = undefined;
+    try { return await this.attendanceService.markBulkAttendanceByCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Class] Mark attendance by institute card', description: 'Institute-card attendance locked to a class. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  async markClassByInstituteCard(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Body() body: MarkAttendanceByInstituteCardDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = undefined;
+    try { return await this.attendanceService.markAttendanceByInstituteCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  // ── SUBJECT LEVEL ──────────────────────────────────────────────────────
+
+  @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Subject] Mark single attendance', description: 'Single attendance locked to a class + subject. eventId is always null — events are institute-level, not subject-level.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  async markSubjectAttendance(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Param('subjectId') subjectId: string, @Body() body: MarkAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = subjectId; delete (body as any).eventId;
+    try { return await this.attendanceService.markAttendance(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Subject] Mark bulk attendance', description: 'Bulk attendance locked to a class + subject. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  async markSubjectAttendanceBulk(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Param('subjectId') subjectId: string, @Body() body: BulkAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = subjectId; delete (body as any).eventId;
+    const max = parseInt(process.env.MAX_BULK_ATTENDANCE_SIZE || '100');
+    if (body.students.length > max) throw new HttpException({ success: false, message: `Max bulk size is ${max}` }, HttpStatus.BAD_REQUEST);
+    try { return await this.attendanceService.markBulkAttendance(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Subject] Mark attendance by card', description: 'Card single attendance locked to class + subject. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  async markSubjectByCard(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Param('subjectId') subjectId: string, @Body() body: MarkAttendanceByCardDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = subjectId;
+    try { return await this.attendanceService.markAttendanceByCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Subject] Mark bulk attendance by card', description: 'Card bulk attendance locked to class + subject. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  async markSubjectByCardBulk(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Param('subjectId') subjectId: string, @Body() body: BulkCardAttendanceDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = subjectId;
+    try { return await this.attendanceService.markBulkAttendanceByCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({ summary: '[Subject] Mark attendance by institute card', description: 'Institute-card attendance locked to class + subject. eventId is always null.' })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  async markSubjectByInstituteCard(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Param('subjectId') subjectId: string, @Body() body: MarkAttendanceByInstituteCardDto, @Req() req: any): Promise<any> {
+    body.instituteId = instituteId; body.classId = classId; body.subjectId = subjectId;
+    try { return await this.attendanceService.markAttendanceByInstituteCard(body, this._markedBy(req)); }
+    catch (e) { this._err(e); }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attendance Detail — opened from notification deep-link
+  // ─────────────────────────────────────────────────────────────────────────
+
   @Get('view')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
