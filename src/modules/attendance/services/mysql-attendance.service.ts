@@ -920,30 +920,32 @@ export class MysqlAttendanceService {
       qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
     }
 
+    // Use DATE_FORMAT to guarantee YYYY-MM-DD string regardless of driver date serialization
     const rows = await qb
-      .select('ar.date', 'date')
+      .select("DATE_FORMAT(ar.date, '%Y-%m-%d')", 'date')
       .addSelect('ar.status', 'status')
       .addSelect('COUNT(*)', 'cnt')
-      .groupBy('ar.date')
+      .groupBy("DATE_FORMAT(ar.date, '%Y-%m-%d')")
       .addGroupBy('ar.status')
-      .orderBy('ar.date', 'ASC')
+      .orderBy("DATE_FORMAT(ar.date, '%Y-%m-%d')", 'ASC')
       .getRawMany();
 
     const dayMap: Record<string, { presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }> = {};
     for (const row of rows) {
       const d: string = row.date;
+      if (!d) continue;
       if (!dayMap[d]) {
         dayMap[d] = { presentCount: 0, absentCount: 0, lateCount: 0, leftCount: 0, leftEarlyCount: 0, leftLatelyCount: 0, totalRecords: 0 };
       }
       const cnt = parseInt(row.cnt, 10);
       dayMap[d].totalRecords += cnt;
       switch (Number(row.status)) {
-        case 1: dayMap[d].presentCount = cnt; break;
-        case 0: dayMap[d].absentCount = cnt; break;
-        case 2: dayMap[d].lateCount = cnt; break;
-        case 3: dayMap[d].leftCount = cnt; break;
-        case 4: dayMap[d].leftEarlyCount = cnt; break;
-        case 5: dayMap[d].leftLatelyCount = cnt; break;
+        case 1: dayMap[d].presentCount += cnt; break;
+        case 0: dayMap[d].absentCount += cnt; break;
+        case 2: dayMap[d].lateCount += cnt; break;
+        case 3: dayMap[d].leftCount += cnt; break;
+        case 4: dayMap[d].leftEarlyCount += cnt; break;
+        case 5: dayMap[d].leftLatelyCount += cnt; break;
       }
     }
 
