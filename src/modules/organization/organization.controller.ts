@@ -19,7 +19,7 @@ import { OrganizationService } from './organization.service';
 import { 
   CreateOrganizationDto, 
   AssignInstituteDto,
-  VerifyUserDto,
+  OrgVerifyUserDto,
   AssignUserRoleDto,
   ChangeUserRoleDto,
   RemoveUserDto,
@@ -347,7 +347,7 @@ export class OrganizationController {
   @ApiResponse({ status: 200, description: 'Member verification status updated successfully' })
   async verifyUser(
     @Param('id') organizationId: string,
-    @Body() verifyDto: VerifyUserDto,
+    @Body() verifyDto: OrgVerifyUserDto,
     @Request() req,
   ) {
     const userId = req.user.s;

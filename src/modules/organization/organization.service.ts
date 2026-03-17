@@ -9,7 +9,7 @@ import { InstituteEntity } from '../institute/entities/institute.entity';
 import { UserType } from '../user/enums/user-type.enum';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
-import { CreateOrganizationDto, UpdateOrganizationDto, EnrollUserDto, VerifyUserDto, AssignInstituteDto, AssignUserRoleDto, ChangeUserRoleDto, RemoveUserDto, OrganizationAssignUserToInstituteDto, BulkAssignUsersToInstituteDto } from './dto/organization.dto';
+import { CreateOrganizationDto, UpdateOrganizationDto, EnrollUserDto, OrgVerifyUserDto, AssignInstituteDto, AssignUserRoleDto, ChangeUserRoleDto, RemoveUserDto, OrganizationAssignUserToInstituteDto, BulkAssignUsersToInstituteDto } from './dto/organization.dto';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
@@ -868,7 +868,7 @@ export class OrganizationService {
    */
   async verifyUser(
     organizationId: string,
-    verifyUserDto: VerifyUserDto,
+    verifyUserDto: OrgVerifyUserDto,
     requestingUserId?: string
   ) {
     const { userId, isVerified } = verifyUserDto;

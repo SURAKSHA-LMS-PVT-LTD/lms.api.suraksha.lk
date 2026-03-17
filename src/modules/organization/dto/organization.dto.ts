@@ -132,7 +132,7 @@ export class EnrollUserDto {
   enrollmentKey?: string;
 }
 
-export class VerifyUserDto {
+export class OrgVerifyUserDto {
   @ApiProperty({ example: '456', description: 'User ID to verify' })
   @IsString()
   @IsNotEmpty()
