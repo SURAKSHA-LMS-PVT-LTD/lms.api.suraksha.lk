@@ -1079,6 +1079,47 @@ export class DynamoDBAttendanceService {
   }
 
   /**
+   * Get daily attendance counts for a month, grouped by date.
+   */
+  async getDailyAttendanceCount(
+    instituteId: string,
+    year: number,
+    month: number,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<{ date: string; day: number; presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }[]> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const summary = await this.getAttendanceSummary(
+      instituteId, classId, subjectId, startDate, endDate, undefined, true,
+    );
+
+    const dayMap: Record<string, { presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }> = {};
+    for (const record of (summary.records || [])) {
+      const d: string = record.date;
+      if (!d) continue;
+      if (!dayMap[d]) {
+        dayMap[d] = { presentCount: 0, absentCount: 0, lateCount: 0, leftCount: 0, leftEarlyCount: 0, leftLatelyCount: 0, totalRecords: 0 };
+      }
+      dayMap[d].totalRecords++;
+      switch (Number(record.status)) {
+        case 1: dayMap[d].presentCount++; break;
+        case 0: dayMap[d].absentCount++; break;
+        case 2: dayMap[d].lateCount++; break;
+        case 3: dayMap[d].leftCount++; break;
+        case 4: dayMap[d].leftEarlyCount++; break;
+        case 5: dayMap[d].leftLatelyCount++; break;
+      }
+    }
+
+    return Object.entries(dayMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, counts]) => ({ date, day: parseInt(date.split('-')[2], 10), ...counts }));
+  }
+
+  /**
    * Get monthly attendance count grouped by status.
    * Delegates to getAttendanceSummary with computed month date range.
    */

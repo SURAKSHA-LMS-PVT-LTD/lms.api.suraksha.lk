@@ -1743,6 +1743,54 @@ export class AttendanceService {
     };
   }
 
+  async getInstituteDailyCount(instituteId: string, year: number, month: number): Promise<any> {
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const days = await dbService.getDailyAttendanceCount(instituteId, year, month);
+    return {
+      success: true,
+      message: 'Institute daily attendance count retrieved successfully',
+      instituteId,
+      year,
+      month,
+      days,
+    };
+  }
+
+  async getClassDailyCount(instituteId: string, classId: string, year: number, month: number): Promise<any> {
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const days = await dbService.getDailyAttendanceCount(instituteId, year, month, classId);
+    return {
+      success: true,
+      message: 'Class daily attendance count retrieved successfully',
+      instituteId,
+      classId,
+      year,
+      month,
+      days,
+    };
+  }
+
+  async getSubjectDailyCount(instituteId: string, classId: string, subjectId: string, year: number, month: number): Promise<any> {
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const days = await dbService.getDailyAttendanceCount(instituteId, year, month, classId, subjectId);
+    return {
+      success: true,
+      message: 'Subject daily attendance count retrieved successfully',
+      instituteId,
+      classId,
+      subjectId,
+      year,
+      month,
+      days,
+    };
+  }
+
   private scheduleAttendanceNotification(markAttendanceDto: MarkAttendanceDto, attendanceResult: any, studentData?: any): void {
     // Fire-and-forget notification - no blocking, no waiting
     this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));
