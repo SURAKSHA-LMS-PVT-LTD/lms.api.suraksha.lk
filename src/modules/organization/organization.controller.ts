@@ -19,6 +19,7 @@ import { OrganizationService } from './organization.service';
 import { 
   CreateOrganizationDto, 
   AssignInstituteDto,
+  VerifyUserDto,
   AssignUserRoleDto,
   ChangeUserRoleDto,
   RemoveUserDto,
@@ -229,6 +230,21 @@ export class OrganizationController {
     return this.organizationService.removeFromInstitute(organizationId, userId);
   }
 
+  @Delete(':id')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER],
+    anyInstituteRole: true
+  })
+  @ApiOperation({ summary: 'Delete organization (SUPERADMIN/ORG_MANAGER or PRESIDENT)' })
+  @ApiResponse({ status: 200, description: 'Organization deleted successfully' })
+  async deleteOrganization(
+    @Param('id') organizationId: string,
+    @Request() req,
+  ) {
+    return this.organizationService.deleteOrganization(organizationId, req.user);
+  }
+
   @Get('available-institutes')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER] })
@@ -321,6 +337,24 @@ export class OrganizationController {
     return this.organizationService.getUnverifiedMembers(organizationId, pagination, userId);
   }
 
+  @Put(':id/verify')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN, UserType.ORGANIZATION_MANAGER],
+    instituteAdmin: true
+  })
+  @ApiOperation({ summary: 'Verify or reject organization member (SUPERADMIN, ORG_MANAGER, or Institute Admin)' })
+  @ApiResponse({ status: 200, description: 'Member verification status updated successfully' })
+  async verifyUser(
+    @Param('id') organizationId: string,
+    @Body() verifyDto: VerifyUserDto,
+    @Request() req,
+  ) {
+    const userId = req.user.s;
+
+    return this.organizationService.verifyUser(organizationId, verifyDto, userId);
+  }
+
   @Post(':id/assign-role')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
@@ -401,6 +435,19 @@ export class OrganizationController {
     const userId = req.user.s;  // JWT v2: Extract user ID
     
     return this.organizationService.removeUserFromOrganization(organizationId, removeDto, userId);
+  }
+
+  @Delete(':id/leave')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @ApiOperation({ summary: 'Leave organization as current user' })
+  @ApiResponse({ status: 200, description: 'Left organization successfully' })
+  async leaveOrganization(
+    @Param('id') organizationId: string,
+    @Request() req,
+  ) {
+    const userId = req.user.s;
+    return this.organizationService.leaveOrganization(organizationId, userId);
   }
 
   @Post(':id/transfer-presidency')

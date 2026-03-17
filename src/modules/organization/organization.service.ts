@@ -862,6 +862,61 @@ export class OrganizationService {
   }
 
   /**
+   * Verify or reject an unverified organization member.
+   * - isVerified=true  -> approve membership
+   * - isVerified=false -> reject and remove membership row
+   */
+  async verifyUser(
+    organizationId: string,
+    verifyUserDto: VerifyUserDto,
+    requestingUserId?: string
+  ) {
+    const { userId, isVerified } = verifyUserDto;
+
+    const membership = await this.organizationUserRepository.findOne({
+      where: { organizationId, userId },
+      select: ['organizationId', 'userId', 'isVerified', 'role'],
+    });
+
+    if (!membership) {
+      throw new NotFoundException('User is not a member of this organization');
+    }
+
+    if (isVerified) {
+      await this.organizationUserRepository.update(
+        { organizationId, userId },
+        {
+          isVerified: true,
+          verifiedBy: requestingUserId || null,
+          verifiedAt: getCurrentSriLankaTime(),
+        }
+      );
+
+      return {
+        message: 'User verified successfully',
+        userId,
+        organizationId,
+        isVerified: true,
+        verifiedAt: getCurrentSriLankaISO(),
+      };
+    }
+
+    if (membership.role === OrganizationRole.PRESIDENT) {
+      throw new BadRequestException('Cannot reject PRESIDENT membership');
+    }
+
+    await this.organizationUserRepository.delete({ organizationId, userId });
+
+    return {
+      message: 'User verification rejected and membership removed',
+      userId,
+      organizationId,
+      isVerified: false,
+      removedAt: getCurrentSriLankaISO(),
+    };
+  }
+
+  /**
    * Assign role to user in organization
    * Uses exception handling for efficiency
    */
@@ -1082,6 +1137,76 @@ export class OrganizationService {
       }
       throw new BadRequestException('Failed to remove user from organization');
     }
+  }
+
+  /**
+   * Leave organization as the current authenticated user.
+   */
+  async leaveOrganization(organizationId: string, requestingUserId: string) {
+    return this.removeUserFromOrganization(
+      organizationId,
+      { userId: requestingUserId },
+      requestingUserId
+    );
+  }
+
+  /**
+   * Delete organization.
+   * Allowed for SUPERADMIN / ORGANIZATION_MANAGER or the current PRESIDENT of the organization.
+   */
+  async deleteOrganization(organizationId: string, user?: EnhancedJwtPayload) {
+    const organization = await this.organizationRepository.findOne({
+      where: { organizationId },
+      select: ['organizationId'],
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const userId = user?.s;
+    if (!userId) {
+      throw new ForbiddenException('Invalid user context');
+    }
+
+    const isGlobalAdmin = user.u === USER_TYPE_COMPACT.SUPERADMIN || user.u === USER_TYPE_COMPACT.ORGANIZATION_MANAGER;
+
+    if (!isGlobalAdmin) {
+      const membership = await this.organizationUserRepository.findOne({
+        where: { organizationId, userId },
+        select: ['role'],
+      });
+
+      if (!membership || membership.role !== OrganizationRole.PRESIDENT) {
+        throw new ForbiddenException('Only organization president or system organization admins can delete this organization');
+      }
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.createQueryBuilder()
+        .delete()
+        .from(OrganizationUserEntity)
+        .where('organizationId = :organizationId', { organizationId })
+        .execute();
+
+      await manager.createQueryBuilder()
+        .delete()
+        .from(CauseEntity)
+        .where('organizationId = :organizationId', { organizationId })
+        .execute();
+
+      await manager.createQueryBuilder()
+        .delete()
+        .from(OrganizationEntity)
+        .where('organizationId = :organizationId', { organizationId })
+        .execute();
+    });
+
+    return {
+      message: 'Organization deleted successfully',
+      organizationId,
+      deletedAt: getCurrentSriLankaISO(),
+    };
   }
 
   /**
