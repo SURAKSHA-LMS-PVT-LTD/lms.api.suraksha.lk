@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { InstituteCalendarService } from '../institute/services/institute-calendar.service';
@@ -30,6 +30,7 @@ import { AttendanceDeviceService } from '../attendance-device/services/attendanc
 import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
 import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
 import { MysqlAttendanceService } from './services/mysql-attendance.service';
+import { FcmNotificationService } from '../../common/services/fcm-notification.service';
 import { AttendanceSyncMode } from './enums/attendance-sync-mode.enum';
 
 @Injectable()
@@ -37,6 +38,7 @@ export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
   private readonly instituteIdsRequiringCustomImages: Set<string>;
   private readonly notificationsEnabled: boolean;
+  private readonly adsDeliveryEnabled: boolean;
 
   constructor(
     private readonly configService: ConfigService,
@@ -66,11 +68,14 @@ export class AttendanceService {
     private readonly syncConfigService: AttendanceSyncConfigService,
     private readonly syncSchedulerService: AttendanceSyncSchedulerService,
     private readonly mysqlAttendanceService: MysqlAttendanceService,
+    private readonly fcmNotificationService: FcmNotificationService,
+    private readonly dataSource: DataSource,
   ) {
     // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
     this.instituteIdsRequiringCustomImages = new Set(instituteIds);
     this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
+    this.adsDeliveryEnabled = this.configService.get('ENABLE_ADVERTISEMENT_DELIVERY', 'false') === 'true';
   }
 
   /**
@@ -283,9 +288,7 @@ export class AttendanceService {
       // Attach auto-detected userType to the DTO for DynamoDB storage
       markAttendanceDto.userType = userType;
 
-      if (!markAttendanceDto.date) {
-        markAttendanceDto.date = getCurrentSriLankaDate();
-      }
+      markAttendanceDto.date = getCurrentSriLankaDate();
 
       if (!markAttendanceDto.location) {
         markAttendanceDto.location = this.generateAddress(
@@ -427,12 +430,13 @@ export class AttendanceService {
         result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
 
         // ✅ STEP 4.5: Sync to MySQL based on system-wide sync mode
+        // Use the actual DynamoDB result (real pk/sk/timestamp) to avoid duplicate rows
         try {
           const syncMode = this.syncConfigService.getSyncModeSync();
           if (syncMode === AttendanceSyncMode.IMMEDIATE) {
-            await this.syncSchedulerService.syncFromDto(markAttendanceDto);
+            await this.syncSchedulerService.syncSingleRecord(result as any);
           } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
-            this.syncSchedulerService.syncFromDtoAsync(markAttendanceDto);
+            this.syncSchedulerService.syncSingleRecordAsync(result as any);
           }
           // BACKEND_SCHEDULE: no-op here — cron handles it
         } catch (syncErr) {
@@ -488,10 +492,7 @@ export class AttendanceService {
     const startTime = nowTimestamp();
     
     try {
-      // Default date to today (Sri Lanka time) if not provided
-      if (!bulkAttendanceDto.date) {
-        bulkAttendanceDto.date = getCurrentSriLankaDate();
-      }
+      bulkAttendanceDto.date = getCurrentSriLankaDate();
 
       const userIds = bulkAttendanceDto.students.map(s => s.studentId);
       
@@ -1821,7 +1822,7 @@ export class AttendanceService {
       // Get package config to check isAds flag
       const normalizedPlan = String(data.subscriptionPlan || 'FREE').toUpperCase();
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
-      const isAdsEnabled = packageConfig?.isAds === true;
+      const isAdsEnabled = this.adsDeliveryEnabled && packageConfig?.isAds === true;
       const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
       // Prepare ad data based on config
@@ -1886,6 +1887,15 @@ export class AttendanceService {
           1
         ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
       }
+
+      // ✅ Store matched advertisement ID on the attendance record for delivery tracking
+      if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && advertisementData.id !== 'default-fallback' && attendanceResult?.id) {
+        this.dynamoAttendanceService.patchAdvertisementId(attendanceResult.id, advertisementData.id)
+          .catch(err => this.logger.warn(`Failed to patch advertisementId: ${err.message}`));
+      }
+
+      // ✅ SELF-NOTIFICATION: Send notification to the student themselves
+      await this.sendSelfAttendanceNotification(markAttendanceDto, data.student?.user);
       
     } catch (error) {
       this.logger.warn(`Attendance notification failed (non-blocking): ${error.message}`);
@@ -1954,7 +1964,7 @@ export class AttendanceService {
       // Check if this subscription plan should receive ads
       const normalizedPlan = String(subscriptionPlan || 'FREE').toUpperCase();
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
-      const shouldReceiveAds = packageConfig?.isAds === true;
+      const shouldReceiveAds = this.adsDeliveryEnabled && packageConfig?.isAds === true;
       
       let advertisementData: any = null;
 
@@ -2017,6 +2027,15 @@ export class AttendanceService {
           1
         ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
       }
+
+      // ✅ Store matched advertisement ID on the attendance record for delivery tracking
+      if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && advertisementData.id !== 'default-fallback' && attendanceId) {
+        this.dynamoAttendanceService.patchAdvertisementId(attendanceId, advertisementData.id)
+          .catch(err => this.logger.warn(`Failed to patch advertisementId: ${err.message}`));
+      }
+
+      // ✅ SELF-NOTIFICATION: Send notification to the student themselves
+      await this.sendSelfAttendanceNotification(attendanceDto, studentData?.user);
       
       // CASCADE TO PARENTS FEATURE
       // If ad has cascadeToParents=true, send SAME ad to ALL parents (not just primary)
@@ -2229,6 +2248,71 @@ export class AttendanceService {
         matchReasons: ['Error occurred while fetching advertisement'],
         cascadeToParents: false  // Default ads don't cascade
       };
+    }
+  }
+
+  /**
+   * 🔔 SELF-NOTIFICATION: Send a push notification to the person whose attendance was marked.
+   * If "I" mark attendance and I am the student, I should also receive "Your attendance marked" notification.
+   * Fire-and-forget — never blocks the response.
+   */
+  private async sendSelfAttendanceNotification(
+    attendanceDto: MarkAttendanceDto,
+    userData?: any,
+  ): Promise<void> {
+    try {
+      if (!this.attendanceNotificationService.isPushReady()) return;
+      if (!userData?.id) return;
+
+      const userId = String(userData.id);
+      const statusLabel = attendanceDto.status === AttendanceStatus.PRESENT ? 'Present'
+        : attendanceDto.status === AttendanceStatus.ABSENT ? 'Absent'
+        : attendanceDto.status === AttendanceStatus.LATE ? 'Late'
+        : String(attendanceDto.status);
+
+      const locationParts = [
+        attendanceDto.instituteName,
+        attendanceDto.className,
+        attendanceDto.subjectName,
+      ].filter(Boolean);
+      const locationStr = locationParts.length > 0 ? ` at ${locationParts.join(' / ')}` : '';
+      const timeStr = formatSriLankaTime(now());
+
+      const title = `✅ Attendance Marked`;
+      const body = `Your attendance was marked as ${statusLabel}${locationStr} at ${timeStr} on ${attendanceDto.date}.`;
+
+      // Use FCM service directly for a lightweight push to the user's own device tokens
+      const tokens = await this.getUserFcmTokens(userId);
+      if (tokens.length === 0) return;
+
+      await this.fcmNotificationService.sendToMultipleDevices(
+        tokens,
+        { title, body },
+        {
+          type: 'SELF_ATTENDANCE',
+          studentId: attendanceDto.studentId,
+          instituteId: attendanceDto.instituteId,
+          status: attendanceDto.status,
+          date: attendanceDto.date,
+        },
+      );
+    } catch (error) {
+      this.logger.warn(`Self-notification failed (non-blocking): ${error.message}`);
+    }
+  }
+
+  /**
+   * Helper: Get FCM tokens for a user (lightweight query)
+   */
+  private async getUserFcmTokens(userId: string): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(
+        `SELECT token FROM user_fcm_tokens WHERE user_id = ? AND is_active = 1 LIMIT 10`,
+        [userId],
+      );
+      return (result || []).map((r: any) => r.token).filter(Boolean);
+    } catch {
+      return [];
     }
   }
 
@@ -2696,7 +2780,7 @@ export class AttendanceService {
       status: markAttendanceDto.status,
       markingMethod: markAttendanceDto.markingMethod,
       userType: detectedUserType,  // ✅ Auto-detected user type
-      date: markAttendanceDto.date || getCurrentSriLankaDate(),
+      date: getCurrentSriLankaDate(),
       location: markAttendanceDto.location || this.generateAddress(
         markAttendanceDto.instituteName,
         markAttendanceDto.className,

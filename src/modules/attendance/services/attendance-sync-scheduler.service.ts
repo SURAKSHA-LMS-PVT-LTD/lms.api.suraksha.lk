@@ -31,6 +31,7 @@ import { SystemConfigService } from '../../../common/services/system-config.serv
 import { AttendanceSyncMode, AttendanceSyncStatus, AttendanceDbMode } from '../enums/attendance-sync-mode.enum';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { MarkAttendanceDto } from '../dto/attendance.dto';
+import { timestampToSriLankaDate } from '../../../common/utils/timezone.util';
 
 /** DynamoDB record shape (v1 — the one markAttendance() uses) */
 interface DynamoRecord {
@@ -133,19 +134,23 @@ export class AttendanceSyncSchedulerService {
    */
   async syncFromDto(dto: MarkAttendanceDto): Promise<void> {
     try {
-      const ts = Date.now();
+      // Use the timestamp that was recorded when the attendance was written to DynamoDB.
+      // This MUST match the DynamoDB sort-key timestamp so MySQL upsert hits the same
+      // unique key and does not create a duplicate row.
+      const ts: number = (dto as any).timestamp ?? Date.now();
       const sanitizedInstituteId = String(dto.instituteId).replace(/[^a-zA-Z0-9_-]/g, '');
       const sanitizedStudentId = String(dto.studentId).replace(/[^a-zA-Z0-9_-]/g, '');
       const classVal = dto.classId ? String(dto.classId).replace(/[^a-zA-Z0-9_-]/g, '') : 'NONE';
       const subjectVal = dto.subjectId ? String(dto.subjectId).replace(/[^a-zA-Z0-9_-]/g, '') : 'NONE';
-      const safeDate = String(dto.date).replace(/[^0-9-]/g, '');
+      // Derive date from the timestamp — timestamp is the single source of truth
+      const safeDate = timestampToSriLankaDate(ts);
 
       const entity = new AttendanceRecordEntity();
       entity.dynamoPk = `I#${sanitizedInstituteId}`;
       entity.dynamoSk = `ATTENDANCE#${safeDate}#TS#${ts}#S#${sanitizedStudentId}#C#${classVal}#SUB#${subjectVal}`;
       entity.instituteId = dto.instituteId;
       entity.studentId = dto.studentId;
-      entity.date = dto.date;
+      entity.date = safeDate;
       entity.status = this.statusToNumber(dto.status);
       entity.timestamp = String(ts);
       entity.classId = dto.classId || null;
@@ -177,7 +182,7 @@ export class AttendanceSyncSchedulerService {
         )
         .execute();
 
-      this.logger.debug(`✅ Synced attendance to MySQL: ${dto.studentId}@${dto.instituteId} ${dto.date}`);
+      this.logger.debug(`✅ Synced attendance to MySQL: ${dto.studentId}@${dto.instituteId} ${safeDate}`);
     } catch (error) {
       this.logger.error(
         `Failed to sync attendance DTO to MySQL: ${dto.studentId}@${dto.instituteId}: ${error.message}`,
@@ -301,7 +306,11 @@ export class AttendanceSyncSchedulerService {
         // with pk/sk. We reconstruct the DynamoRecord from the DTO + known key format.
         const dynamoRecord: DynamoRecord = {
           pk: `I#${record.instituteId || instituteId}`,
-          sk: `ATTENDANCE#${record.date}#TS#${(record as any).timestamp || Date.now()}#S#${record.studentId}#C#${(record as any).classId || 'NONE'}#SUB#${(record as any).subjectId || 'NONE'}`,
+          sk: (() => {
+            const ts = (record as any).timestamp || Date.now();
+            const d = timestampToSriLankaDate(ts);
+            return `ATTENDANCE#${d}#TS#${ts}#S#${record.studentId}#C#${(record as any).classId || 'NONE'}#SUB#${(record as any).subjectId || 'NONE'}`;
+          })(),
           studentId: record.studentId,
           studentName: record.studentName,
           instituteId: record.instituteId || instituteId,
@@ -365,7 +374,10 @@ export class AttendanceSyncSchedulerService {
     entity.dynamoSk = record.sk;
     entity.instituteId = record.instituteId;
     entity.studentId = record.studentId;
-    entity.date = record.date;
+    // Derive date from timestamp — timestamp is single source of truth
+    entity.date = record.timestamp
+      ? timestampToSriLankaDate(record.timestamp)
+      : record.date;
     entity.status = record.status;
     entity.timestamp = String(record.timestamp);
     entity.classId = record.classId || null;

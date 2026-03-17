@@ -259,5 +259,81 @@ export class AdvertisementCacheService {
       };
     }
   }
+
+  /**
+   * Return currently cached advertisements for admin observability.
+   * Falls back to DB snapshot when cache is empty/disabled.
+   */
+  async getCurrentCachedAdvertisements(): Promise<{
+    source: 'cache' | 'database';
+    total: number;
+    advertisements: Array<{
+      id: string;
+      title: string;
+      priority: number;
+      currentSendings: number;
+      maxSendings: number;
+      endDate: Date;
+      isActive: boolean;
+    }>;
+  }> {
+    try {
+      if (!this.isCachingEnabled) {
+        const ads = await this.fetchFromDatabase();
+        return {
+          source: 'database',
+          total: ads.length,
+          advertisements: ads.map(ad => ({
+            id: ad.id,
+            title: ad.title,
+            priority: ad.priority,
+            currentSendings: ad.currentSendings,
+            maxSendings: ad.maxSendings,
+            endDate: ad.endDate,
+            isActive: ad.isActive,
+          })),
+        };
+      }
+
+      const cached = await this.cacheManager.get<AdvertisementEntity[]>(this.ADS_CACHE_KEY);
+      if (cached && Array.isArray(cached)) {
+        return {
+          source: 'cache',
+          total: cached.length,
+          advertisements: cached.map(ad => ({
+            id: ad.id,
+            title: ad.title,
+            priority: ad.priority,
+            currentSendings: ad.currentSendings,
+            maxSendings: ad.maxSendings,
+            endDate: ad.endDate,
+            isActive: ad.isActive,
+          })),
+        };
+      }
+
+      const ads = await this.fetchFromDatabase();
+      return {
+        source: 'database',
+        total: ads.length,
+        advertisements: ads.map(ad => ({
+          id: ad.id,
+          title: ad.title,
+          priority: ad.priority,
+          currentSendings: ad.currentSendings,
+          maxSendings: ad.maxSendings,
+          endDate: ad.endDate,
+          isActive: ad.isActive,
+        })),
+      };
+    } catch (error) {
+      this.logger.error('Failed to get current cached advertisements', error);
+      return {
+        source: 'database',
+        total: 0,
+        advertisements: [],
+      };
+    }
+  }
 }
 

@@ -205,6 +205,19 @@ export class AttendanceRecordEntity {
   deviceUid: string | null;
 
   // ══════════════════════════════════════════════════
+  // Advertisement Tracking (for delivery capability)
+  // ══════════════════════════════════════════════════
+
+  @Column({
+    name: 'advertisement_id',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+    comment: 'Advertisement ID associated with this attendance record (for delivery capability tracking)',
+  })
+  advertisementId: string | null;
+
+  // ══════════════════════════════════════════════════
   // Sync Tracking
   // ══════════════════════════════════════════════════
 

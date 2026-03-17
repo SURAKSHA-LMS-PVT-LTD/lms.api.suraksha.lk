@@ -28,7 +28,7 @@ import {
 } from '../dto/attendance.dto';
 import { AttendanceRecord } from './dynamodb-attendance.service';
 import { AttendanceSyncStatus } from '../enums/attendance-sync-mode.enum';
-import { getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
+import { timestampToSriLankaDate } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class MysqlAttendanceService {
@@ -222,6 +222,7 @@ export class MysqlAttendanceService {
       userType: entity.userType || 'STUDENT',
       calendarDayId: entity.calendarDayId || undefined,
       eventId: entity.eventId || undefined,
+      advertisementId: entity.advertisementId || undefined,
       timestamp: entity.timestamp ? Number(entity.timestamp) : undefined,
       id,
     } as any;
@@ -262,20 +263,24 @@ export class MysqlAttendanceService {
       userType: entity.userType || undefined,
       calendarDayId: entity.calendarDayId || undefined,
       eventId: entity.eventId || undefined,
+      advertisementId: entity.advertisementId || undefined,
       timestamp: entity.timestamp ? Number(entity.timestamp) : Date.now(),
     };
   }
 
   private dtoToEntity(dto: MarkAttendanceDto, timestamp: number): AttendanceRecordEntity {
+    const dateStr = timestampToSriLankaDate(timestamp);
     const pk = this.generatePk(dto.instituteId);
-    const sk = this.generateSk(dto.date, dto.studentId, dto.classId, dto.subjectId, timestamp);
+    const sk = this.generateSk(dateStr, dto.studentId, dto.classId, dto.subjectId, timestamp);
 
     const entity = new AttendanceRecordEntity();
     entity.dynamoPk = pk;
     entity.dynamoSk = sk;
     entity.instituteId = dto.instituteId;
     entity.studentId = dto.studentId;
-    entity.date = dto.date;
+    // Derive date from the write timestamp — timestamp is the single source of truth.
+    // This guarantees date column always matches the actual time of the mark.
+    entity.date = dateStr;
     entity.status = this.statusToNumber(dto.status);
     entity.timestamp = String(timestamp);
     entity.classId = dto.classId || null;
@@ -289,6 +294,7 @@ export class MysqlAttendanceService {
     entity.markingMethod = dto.markingMethod || null;
     entity.userType = (dto as any).userType || null;
     entity.deviceUid = (dto as any).deviceUid || null;
+    entity.advertisementId = (dto as any).advertisementId || null;
     entity.syncStatus = AttendanceSyncStatus.SYNCED;
     entity.syncError = null;
     entity.syncedAt = new Date();
@@ -330,7 +336,6 @@ export class MysqlAttendanceService {
    * Mark bulk attendance → batch INSERT into MySQL.
    */
   async markBulkAttendance(bulkData: BulkAttendanceDto): Promise<MarkAttendanceDto[]> {
-    const dateForRecords = bulkData.date || getCurrentSriLankaDate();
     const results: MarkAttendanceDto[] = [];
 
     const entities: AttendanceRecordEntity[] = [];
@@ -347,7 +352,6 @@ export class MysqlAttendanceService {
         className: bulkData.className,
         subjectId: bulkData.subjectId,
         subjectName: bulkData.subjectName,
-        date: dateForRecords,
         status: studentData.status,
         location: bulkData.location,
         address: bulkData.address,
@@ -359,7 +363,8 @@ export class MysqlAttendanceService {
       (dto as any).eventId = (bulkData as any).defaultEventId || (bulkData as any).eventId;
       (dto as any).userType = (bulkData as any).userTypeMap?.get(studentData.studentId) || undefined;
 
-      const timestamp = Date.now() + entities.length; // unique timestamp per record
+      // Offset by index to guarantee unique SK per student within the same bulk call
+      const timestamp = Date.now() + entities.length;
       const entity = this.dtoToEntity(dto, timestamp);
       entities.push(entity);
       entityDtoMap.push({ entity, dto });

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AdvertisementEntity } from '../entities/advertisement.entity';
 import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 import { AdvertisementMatchingService, UserProfile } from '../advertisement-matching.service';
@@ -58,6 +58,7 @@ export interface AttendanceWithAdvertisement {
 @Injectable()
 export class AdvertisementDeliveryService {
   private readonly logger = new Logger(AdvertisementDeliveryService.name);
+  private readonly adsDeliveryEnabled: boolean;
   private readonly isAdsFromDatabase: boolean;
   private readonly defaultAdTitle: string;
   private readonly defaultAdContent: string;
@@ -76,8 +77,10 @@ export class AdvertisementDeliveryService {
     private instituteUserRepository: Repository<InstituteUserEntity>,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
+    private readonly dataSource: DataSource,
   ) {
     // Load configuration from environment
+    this.adsDeliveryEnabled = process.env.ENABLE_ADVERTISEMENT_DELIVERY === 'true';
     this.isAdsFromDatabase = process.env.IS_ADS_FROM_DB === 'true';
     this.defaultAdTitle = process.env.DEFAULT_AD_TITLE || 'LaaS Platform';
     this.defaultAdContent = process.env.DEFAULT_AD_CONTENT || 'Quality Education Management System';
@@ -457,6 +460,7 @@ export class AdvertisementDeliveryService {
    * ✅ Uses isAds flag from notification-packages.config to respect plan settings
    */
   private isAdvertisementEnabled(subscriptionPlan: string): boolean {
+    if (!this.adsDeliveryEnabled) return false;
     const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[subscriptionPlan?.toUpperCase()];
     return packageConfig?.isAds !== false;
   }
@@ -567,6 +571,87 @@ export class AdvertisementDeliveryService {
         content: this.defaultAdContent,
         mediaUrl: this.defaultAdMediaUrl
       }
+    };
+  }
+
+  /**
+   * Get advertisement deliveries linked to attendance records for a specific user.
+   */
+  async getUserAdvertisementDeliveryHistory(params: {
+    userId: string;
+    instituteId?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+  }): Promise<{
+    totalDeliveries: number;
+    uniqueAdvertisements: number;
+    deliveries: Array<{
+      attendanceDate: string;
+      attendanceTimestamp: number;
+      instituteId: string;
+      advertisementId: string;
+      advertisementTitle: string | null;
+    }>;
+  }> {
+    const userId = String(params.userId || '').trim();
+    if (!userId) {
+      return { totalDeliveries: 0, uniqueAdvertisements: 0, deliveries: [] };
+    }
+
+    const limit = Math.max(1, Math.min(1000, Number(params.limit) || 200));
+
+    const conditions: string[] = [
+      'ar.student_id = ?',
+      'ar.advertisement_id IS NOT NULL',
+      "TRIM(ar.advertisement_id) <> ''",
+    ];
+    const queryParams: any[] = [userId];
+
+    if (params.instituteId) {
+      conditions.push('ar.institute_id = ?');
+      queryParams.push(params.instituteId);
+    }
+    if (params.startDate) {
+      conditions.push('ar.date >= ?');
+      queryParams.push(params.startDate);
+    }
+    if (params.endDate) {
+      conditions.push('ar.date <= ?');
+      queryParams.push(params.endDate);
+    }
+
+    queryParams.push(limit);
+
+    const rows = await this.dataSource.query(
+      `
+      SELECT
+        ar.date AS attendanceDate,
+        ar.timestamp AS attendanceTimestamp,
+        ar.institute_id AS instituteId,
+        ar.advertisement_id AS advertisementId,
+        ad.title AS advertisementTitle
+      FROM attendance_records ar
+      LEFT JOIN advertisements ad ON ad.id = ar.advertisement_id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ar.timestamp DESC
+      LIMIT ?
+      `,
+      queryParams,
+    );
+
+    const deliveries = (rows || []).map((row: any) => ({
+      attendanceDate: String(row.attendanceDate),
+      attendanceTimestamp: Number(row.attendanceTimestamp || 0),
+      instituteId: String(row.instituteId || ''),
+      advertisementId: String(row.advertisementId || ''),
+      advertisementTitle: row.advertisementTitle || null,
+    }));
+
+    return {
+      totalDeliveries: deliveries.length,
+      uniqueAdvertisements: new Set(deliveries.map(d => d.advertisementId)).size,
+      deliveries,
     };
   }
 }

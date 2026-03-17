@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
 import * as compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
-import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
+import { ensureTimezoneSet, formatSriLankaDateTime, logTimezoneInfo } from './common/utils/timezone.util';
 
 // ⚠️ CRITICAL: Set timezone to Sri Lanka BEFORE any date operations
 ensureTimezoneSet();
@@ -231,7 +231,8 @@ async function bootstrap() {
 
     await app.listen(port, '0.0.0.0');
 
-    console.log(`\n✅ SERVER RUNNING on :${port} | ENV: ${process.env.NODE_ENV || 'dev'}\n`);
+    console.log(`\n✅ SERVER RUNNING on :${port} | ENV: ${process.env.NODE_ENV || 'dev'}`);
+    console.log(`🕐 Started at: ${formatSriLankaDateTime(new Date(), { hour12: false })} (Asia/Colombo)\n`);
 
   } catch (error) {
     console.error('\n❌ FATAL ERROR DURING STARTUP:');

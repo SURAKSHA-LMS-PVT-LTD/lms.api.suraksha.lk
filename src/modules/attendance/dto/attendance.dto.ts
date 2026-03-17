@@ -92,9 +92,7 @@ export class MarkAttendanceDto {
   @IsOptional()
   subjectName?: string;
 
-  @ApiProperty({ description: 'Date in YYYY-MM-DD format' })
-  @IsDateString()
-  @IsNotEmpty()
+  /** @internal set by the server to today's Sri Lanka date — not accepted from client */
   date: string;
 
   @ApiPropertyOptional({ description: 'Location/Address' })
@@ -152,6 +150,13 @@ export class MarkAttendanceDto {
   @IsString()
   @IsOptional()
   deviceUid?: string;
+
+  @ApiPropertyOptional({
+    description: 'Advertisement ID (optional - for delivery capability tracking)',
+  })
+  @IsString()
+  @IsOptional()
+  advertisementId?: string;
 }
 
 export class StudentAttendanceItem {
@@ -228,11 +233,7 @@ export class BulkAttendanceDto {
   @IsOptional()
   address?: AddressDto;
 
-  // ⚠️ DEPRECATED: latitude and longitude are now stored inside address field
-
-  @ApiPropertyOptional({ description: 'Date in YYYY-MM-DD format. Defaults to today (Sri Lanka time) if not provided.' })
-  @IsDateString()
-  @IsOptional()
+  /** @internal set by the server to today's Sri Lanka date — not accepted from client */
   date?: string;
 
   @ApiPropertyOptional({ enum: MarkingMethod, description: 'Method used to mark attendance' })
@@ -247,6 +248,13 @@ export class BulkAttendanceDto {
   @IsString()
   @IsOptional()
   eventId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Advertisement ID (optional - for delivery capability tracking)',
+  })
+  @IsString()
+  @IsOptional()
+  advertisementId?: string;
 
   @ApiProperty({ type: [StudentAttendanceItem], description: 'Array of student attendance records' })
   @IsArray()
