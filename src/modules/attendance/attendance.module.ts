@@ -29,6 +29,7 @@ import { AttendanceDeviceModule } from '../attendance-device/attendance-device.m
 import { AttendanceRecordEntity } from './entities/attendance-record.entity';
 import { InstituteEntity } from '../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
+import { SubjectEntity } from '../subject/entities/subject.entity';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { InstituteClassEntity } from '../institute_mudules/institue_class/entiti
       AttendanceRecordEntity,
       InstituteEntity,
       InstituteClassEntity,
+      SubjectEntity,
     ])
   ],
   controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController],

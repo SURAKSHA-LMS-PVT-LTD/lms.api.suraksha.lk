@@ -70,28 +70,12 @@ export class AttendanceRecordEntity {
   instituteId: string;
 
   @Column({
-    name: 'institute_name',
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  instituteName: string | null;
-
-  @Column({
     name: 'student_id',
     type: 'varchar',
     length: 64,
     comment: 'Student who was marked (user ID or student ID)',
   })
   studentId: string;
-
-  @Column({
-    name: 'student_name',
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  studentName: string | null;
 
   @Column({
     name: 'date',
@@ -127,28 +111,12 @@ export class AttendanceRecordEntity {
   classId: string | null;
 
   @Column({
-    name: 'class_name',
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  className: string | null;
-
-  @Column({
     name: 'subject_id',
     type: 'varchar',
     length: 64,
     nullable: true,
   })
   subjectId: string | null;
-
-  @Column({
-    name: 'subject_name',
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  subjectName: string | null;
 
   // ══════════════════════════════════════════════════
   // Calendar Linkage (from Step 3.5 / 8.5)

@@ -15,8 +15,12 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { AttendanceRecordEntity } from '../entities/attendance-record.entity';
+import { UserEntity } from '../../user/entities/user.entity';
+import { InstituteEntity } from '../../institute/entities/institute.entity';
+import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
+import { SubjectEntity } from '../../subject/entities/subject.entity';
 import {
   MarkAttendanceDto,
   BulkAttendanceDto,
@@ -33,6 +37,14 @@ export class MysqlAttendanceService {
   constructor(
     @InjectRepository(AttendanceRecordEntity)
     private readonly repo: Repository<AttendanceRecordEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(InstituteEntity)
+    private readonly instituteRepo: Repository<InstituteEntity>,
+    @InjectRepository(InstituteClassEntity)
+    private readonly classRepo: Repository<InstituteClassEntity>,
+    @InjectRepository(SubjectEntity)
+    private readonly subjectRepo: Repository<SubjectEntity>,
   ) {}
 
   // ═══════════════════════════════════════════════════════════
@@ -87,10 +99,96 @@ export class MysqlAttendanceService {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // NAME RESOLUTION — batch-load names from normalised tables
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Batch-resolve names for a set of attendance entities.
+   *
+   * Strategy: 4 parallel PK-IN queries directly on the reference tables.
+   *   - The caller already holds the entities in memory; we must NOT
+   *     re-scan attendance_records.
+   *   - Each query hits the table's PRIMARY KEY index (range scan) → O(log n).
+   *   - Promise.all makes them concurrent: total latency ≈ max(4 query times),
+   *     not sum — effectively a single round-trip to the DB server.
+   *   - Sentinel value "default" filtered out before issuing queries so it
+   *     never leaks to the reference tables.
+   */
+  private async resolveNames(
+    entities: AttendanceRecordEntity[],
+  ): Promise<{
+    students:   Map<string, string | null>;
+    institutes: Map<string, string | null>;
+    classes:    Map<string, string | null>;
+    subjects:   Map<string, string | null>;
+  }> {
+    if (entities.length === 0) {
+      return { students: new Map(), institutes: new Map(), classes: new Map(), subjects: new Map() };
+    }
+
+    const studentIds   = [...new Set(entities.map(e => e.studentId).filter(Boolean))];
+    const instituteIds = [...new Set(entities.map(e => e.instituteId).filter(Boolean))];
+    const classIds     = [...new Set(entities.map(e => e.classId).filter(Boolean).filter(x => x !== 'default'))] as string[];
+    const subjectIds   = [...new Set(entities.map(e => e.subjectId).filter(Boolean).filter(x => x !== 'default'))] as string[];
+
+    // 4 parallel PK lookups — each is a PRIMARY KEY range scan, never a full scan
+    const [users, institutes, classes, subjects] = await Promise.all([
+      studentIds.length
+        ? this.userRepo.find({ where: { id: In(studentIds) }, select: ['id', 'nameWithInitials', 'firstName', 'lastName'] })
+        : [],
+      instituteIds.length
+        ? this.instituteRepo.find({ where: { id: In(instituteIds) }, select: ['id', 'name'] })
+        : [],
+      classIds.length
+        ? this.classRepo.find({ where: { id: In(classIds) }, select: ['id', 'name'] })
+        : [],
+      subjectIds.length
+        ? this.subjectRepo.find({ where: { id: In(subjectIds) }, select: ['id', 'name'] })
+        : [],
+    ]);
+
+    const students = new Map<string, string | null>();
+    for (const u of users) {
+      students.set(String(u.id),
+        u.nameWithInitials || [u.firstName, u.lastName].filter(Boolean).join(' ') || null);
+    }
+
+    return {
+      students,
+      institutes: new Map<string, string | null>(institutes.map(i => [String(i.id), i.name] as [string, string | null])),
+      classes:    new Map<string, string | null>(classes.map(c => [String(c.id), c.name] as [string, string | null])),
+      subjects:   new Map<string, string | null>(subjects.map(s => [String(s.id), s.name] as [string, string | null])),
+    };
+  }
+
+  /** Build NameMaps directly from a DTO (for write-path responses where names are already known). */
+  private nameMapsFromDto(dto: MarkAttendanceDto): {
+    students: Map<string, string | null>;
+    institutes: Map<string, string | null>;
+    classes: Map<string, string | null>;
+    subjects: Map<string, string | null>;
+  } {
+    return {
+      students: new Map([[dto.studentId, dto.studentName || null]]),
+      institutes: new Map([[dto.instituteId, dto.instituteName || null]]),
+      classes: dto.classId ? new Map([[dto.classId, dto.className || null]]) : new Map(),
+      subjects: dto.subjectId ? new Map([[dto.subjectId, dto.subjectName || null]]) : new Map(),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // ENTITY ↔ DTO CONVERSION
   // ═══════════════════════════════════════════════════════════
 
-  private entityToDto(entity: AttendanceRecordEntity): MarkAttendanceDto & {
+  private entityToDto(
+    entity: AttendanceRecordEntity,
+    names: {
+      students: Map<string, string | null>;
+      institutes: Map<string, string | null>;
+      classes: Map<string, string | null>;
+      subjects: Map<string, string | null>;
+    },
+  ): MarkAttendanceDto & {
     userType?: string;
     timestamp?: number;
     calendarDayId?: string;
@@ -102,15 +200,15 @@ export class MysqlAttendanceService {
     const id = this.generateId(entity.dynamoPk, entity.dynamoSk);
     return {
       studentId: entity.studentId,
-      studentName: entity.studentName,
+      studentName: names.students.get(entity.studentId) || null,
       studentImageUrl: undefined,
       imageUrl: undefined,
       instituteId: entity.instituteId,
-      instituteName: entity.instituteName,
+      instituteName: names.institutes.get(entity.instituteId) || null,
       classId: entity.classId || undefined,
-      className: entity.className || undefined,
+      className: entity.classId ? names.classes.get(entity.classId) || undefined : undefined,
       subjectId: entity.subjectId || undefined,
-      subjectName: entity.subjectName || undefined,
+      subjectName: entity.subjectId ? names.subjects.get(entity.subjectId) || undefined : undefined,
       date: entity.date,
       status: this.numberToStatus(entity.status),
       location: entity.location || undefined,
@@ -129,7 +227,15 @@ export class MysqlAttendanceService {
     } as any;
   }
 
-  private entityToRecord(entity: AttendanceRecordEntity): AttendanceRecord {
+  private entityToRecord(
+    entity: AttendanceRecordEntity,
+    names: {
+      students: Map<string, string | null>;
+      institutes: Map<string, string | null>;
+      classes: Map<string, string | null>;
+      subjects: Map<string, string | null>;
+    },
+  ): AttendanceRecord {
     const id = this.generateId(entity.dynamoPk, entity.dynamoSk);
     return {
       id,
@@ -138,13 +244,13 @@ export class MysqlAttendanceService {
       gsi_pk: '',
       gsi_sk: '',
       studentId: entity.studentId,
-      studentName: entity.studentName,
+      studentName: names.students.get(entity.studentId) || '',
       instituteId: entity.instituteId,
-      instituteName: entity.instituteName,
+      instituteName: names.institutes.get(entity.instituteId) || '',
       classId: entity.classId || undefined,
-      className: entity.className || undefined,
+      className: entity.classId ? names.classes.get(entity.classId) || undefined : undefined,
       subjectId: entity.subjectId || undefined,
-      subjectName: entity.subjectName || undefined,
+      subjectName: entity.subjectId ? names.subjects.get(entity.subjectId) || undefined : undefined,
       date: entity.date,
       status: entity.status,
       location: entity.location || undefined,
@@ -168,16 +274,12 @@ export class MysqlAttendanceService {
     entity.dynamoPk = pk;
     entity.dynamoSk = sk;
     entity.instituteId = dto.instituteId;
-    entity.instituteName = dto.instituteName || null;
     entity.studentId = dto.studentId;
-    entity.studentName = dto.studentName || null;
     entity.date = dto.date;
     entity.status = this.statusToNumber(dto.status);
     entity.timestamp = String(timestamp);
     entity.classId = dto.classId || null;
-    entity.className = dto.className || null;
     entity.subjectId = dto.subjectId || null;
-    entity.subjectName = dto.subjectName || null;
     entity.calendarDayId = (dto as any).calendarDayId || null;
     entity.eventId = (dto as any).eventId || null;
     entity.location = dto.location || null;
@@ -212,8 +314,8 @@ export class MysqlAttendanceService {
       .values(entity)
       .orUpdate(
         [
-          'status', 'student_name', 'institute_name', 'class_id', 'class_name',
-          'subject_id', 'subject_name', 'calendar_day_id', 'event_id',
+          'status', 'class_id',
+          'subject_id', 'calendar_day_id', 'event_id',
           'location', 'latitude', 'longitude', 'remarks', 'marking_method',
           'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
         ],
@@ -221,7 +323,7 @@ export class MysqlAttendanceService {
       )
       .execute();
 
-    return this.entityToRecord(entity);
+    return this.entityToRecord(entity, this.nameMapsFromDto(attendance));
   }
 
   /**
@@ -275,8 +377,8 @@ export class MysqlAttendanceService {
           .values(batch)
           .orUpdate(
             [
-              'status', 'student_name', 'institute_name', 'class_id', 'class_name',
-              'subject_id', 'subject_name', 'calendar_day_id', 'event_id',
+              'status', 'class_id',
+              'subject_id', 'calendar_day_id', 'event_id',
               'location', 'latitude', 'longitude', 'remarks', 'marking_method',
               'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
             ],
@@ -335,7 +437,8 @@ export class MysqlAttendanceService {
       throw new Error(`Attendance record not found for update: ${pk} / ${sk}`);
     }
 
-    return this.entityToDto(updated);
+    const names = await this.resolveNames([updated]);
+    return this.entityToDto(updated, names);
   }
 
   /**
@@ -381,7 +484,8 @@ export class MysqlAttendanceService {
       });
 
       if (!entity) return null;
-      return this.entityToRecord(entity);
+      const names = await this.resolveNames([entity]);
+      return this.entityToRecord(entity, names);
     } catch (error) {
       this.logger.error(`getAttendanceById failed: ${error.message}`);
       return null;
@@ -405,7 +509,9 @@ export class MysqlAttendanceService {
       order: { timestamp: 'DESC' },
     });
 
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -431,7 +537,9 @@ export class MysqlAttendanceService {
     }
 
     const entities = await qb.getMany();
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -453,7 +561,9 @@ export class MysqlAttendanceService {
     }
 
     const entities = await qb.getMany();
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -475,7 +585,9 @@ export class MysqlAttendanceService {
     }
 
     const entities = await qb.getMany();
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -500,7 +612,9 @@ export class MysqlAttendanceService {
     if (subjectId) qb.andWhere('ar.subjectId = :subjectId', { subjectId });
 
     const entities = await qb.getMany();
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -524,7 +638,9 @@ export class MysqlAttendanceService {
     }
 
     const entities = await qb.getMany();
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -544,7 +660,9 @@ export class MysqlAttendanceService {
     }
 
     const entities = await qb.getMany();
-    return entities.map(e => this.entityToDto(e));
+    if (!entities.length) return [];
+    const names = await this.resolveNames(entities);
+    return entities.map(e => this.entityToDto(e, names));
   }
 
   /**
@@ -581,52 +699,35 @@ export class MysqlAttendanceService {
       qb.andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });
     }
 
-    // Get summary using a separate count query for performance
-    const countQb = qb.clone();
-    const summaryResult = await countQb
+    // One combined aggregate: GROUP BY status + userType simultaneously — single DB round-trip
+    const combined = await qb.clone()
       .select('ar.status', 'status')
+      .addSelect('ar.userType', 'userType')
       .addSelect('COUNT(*)', 'cnt')
       .groupBy('ar.status')
+      .addGroupBy('ar.userType')
       .getRawMany();
 
     let presentCount = 0, absentCount = 0, lateCount = 0;
     let leftCount = 0, leftEarlyCount = 0, leftLatelyCount = 0;
     let totalRecords = 0;
+    const byUserType: Record<string, any> = {};
 
-    for (const row of summaryResult) {
+    for (const row of combined) {
       const cnt = parseInt(row.cnt, 10);
       totalRecords += cnt;
       switch (Number(row.status)) {
-        case 1: presentCount = cnt; break;
-        case 0: absentCount = cnt; break;
-        case 2: lateCount = cnt; break;
-        case 3: leftCount = cnt; break;
-        case 4: leftEarlyCount = cnt; break;
-        case 5: leftLatelyCount = cnt; break;
+        case 1: presentCount += cnt; break;
+        case 0: absentCount += cnt; break;
+        case 2: lateCount += cnt; break;
+        case 3: leftCount += cnt; break;
+        case 4: leftEarlyCount += cnt; break;
+        case 5: leftLatelyCount += cnt; break;
       }
-    }
-
-    const attendanceRate = totalRecords > 0
-      ? (presentCount / totalRecords) * 100
-      : 0;
-
-    // Per-userType breakdown
-    const userTypeQb = qb.clone();
-    const userTypeResult = await userTypeQb
-      .select('ar.userType', 'userType')
-      .addSelect('ar.status', 'status')
-      .addSelect('COUNT(*)', 'cnt')
-      .groupBy('ar.userType')
-      .addGroupBy('ar.status')
-      .getRawMany();
-
-    const byUserType: Record<string, any> = {};
-    for (const row of userTypeResult) {
       const uType = row.userType || 'STUDENT';
       if (!byUserType[uType]) {
         byUserType[uType] = { total: 0, present: 0, absent: 0, late: 0, left: 0, leftEarly: 0, leftLately: 0 };
       }
-      const cnt = parseInt(row.cnt, 10);
       byUserType[uType].total += cnt;
       switch (Number(row.status)) {
         case 1: byUserType[uType].present += cnt; break;
@@ -638,17 +739,20 @@ export class MysqlAttendanceService {
       }
     }
 
+    const attendanceRate = totalRecords > 0
+      ? (presentCount / totalRecords) * 100
+      : 0;
+
     // Optionally fetch records for the response
     let records: any[] = [];
     if (includeRecords) {
       const recordsQb = qb.clone()
         .select([
           'ar.studentId AS studentId',
-          'ar.studentName AS studentName',
           'ar.date AS date',
           'ar.status AS status',
-          'ar.className AS className',
-          'ar.subjectName AS subjectName',
+          'ar.classId AS classId',
+          'ar.subjectId AS subjectId',
           'ar.timestamp AS timestamp',
           'ar.userType AS userType',
           'ar.location AS location',
@@ -659,15 +763,37 @@ export class MysqlAttendanceService {
         .orderBy('ar.timestamp', 'DESC')
         .take(maxItems);
       const rawRows = await recordsQb.getRawMany();
+
+      // Batch-resolve names for the raw records
+      const studentIds = [...new Set(rawRows.map(r => r.studentId).filter(Boolean))];
+      const classIds = [...new Set(rawRows.map(r => r.classId).filter(Boolean))];
+      const subjectIds = [...new Set(rawRows.map(r => r.subjectId).filter(Boolean))];
+
+      const [users, classes, subjects] = await Promise.all([
+        studentIds.length
+          ? this.userRepo.find({ where: { id: In(studentIds) }, select: ['id', 'nameWithInitials', 'firstName', 'lastName'] })
+          : [],
+        classIds.length
+          ? this.classRepo.find({ where: { id: In(classIds) }, select: ['id', 'name'] })
+          : [],
+        subjectIds.length
+          ? this.subjectRepo.find({ where: { id: In(subjectIds) }, select: ['id', 'name'] })
+          : [],
+      ]);
+
+      const userMap = new Map<string, string | null>(users.map(u => [String(u.id), u.nameWithInitials || [u.firstName, u.lastName].filter(Boolean).join(' ') || null] as [string, string | null]));
+      const classMap = new Map<string, string | null>(classes.map(c => [String(c.id), c.name] as [string, string | null]));
+      const subjectMap = new Map<string, string | null>(subjects.map(s => [String(s.id), s.name] as [string, string | null]));
+
       records = rawRows.map(row => {
         const statusValue = Number(row.status);
         return {
           studentId: row.studentId,
-          studentName: row.studentName,
+          studentName: userMap.get(row.studentId) || null,
           date: row.date,
           status: this.numberToStatus(isNaN(statusValue) ? 0 : statusValue),
-          className: row.className,
-          subjectName: row.subjectName,
+          className: row.classId ? classMap.get(row.classId) || null : null,
+          subjectName: row.subjectId ? subjectMap.get(row.subjectId) || null : null,
           timestamp: row.timestamp ? Number(row.timestamp) : undefined,
           userType: row.userType,
           location: row.location,

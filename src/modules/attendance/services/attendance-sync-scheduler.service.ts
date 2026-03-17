@@ -94,8 +94,8 @@ export class AttendanceSyncSchedulerService {
         .values(entity)
         .orUpdate(
           [
-            'status', 'student_name', 'institute_name', 'class_id', 'class_name',
-            'subject_id', 'subject_name', 'calendar_day_id', 'event_id',
+            'status', 'class_id',
+            'subject_id', 'calendar_day_id', 'event_id',
             'location', 'remarks', 'marking_method', 'user_type', 'device_uid',
             'sync_status', 'sync_error', 'synced_at',
           ],
@@ -144,16 +144,12 @@ export class AttendanceSyncSchedulerService {
       entity.dynamoPk = `I#${sanitizedInstituteId}`;
       entity.dynamoSk = `ATTENDANCE#${safeDate}#TS#${ts}#S#${sanitizedStudentId}#C#${classVal}#SUB#${subjectVal}`;
       entity.instituteId = dto.instituteId;
-      entity.instituteName = dto.instituteName || null;
       entity.studentId = dto.studentId;
-      entity.studentName = dto.studentName || null;
       entity.date = dto.date;
       entity.status = this.statusToNumber(dto.status);
       entity.timestamp = String(ts);
       entity.classId = dto.classId || null;
-      entity.className = dto.className || null;
       entity.subjectId = dto.subjectId || null;
-      entity.subjectName = dto.subjectName || null;
       entity.calendarDayId = (dto as any).calendarDayId || null;
       entity.eventId = (dto as any).eventId || null;
       entity.location = dto.location || null;
@@ -172,8 +168,8 @@ export class AttendanceSyncSchedulerService {
         .values(entity)
         .orUpdate(
           [
-            'status', 'student_name', 'institute_name', 'class_id', 'class_name',
-            'subject_id', 'subject_name', 'calendar_day_id', 'event_id',
+            'status', 'class_id',
+            'subject_id', 'calendar_day_id', 'event_id',
             'location', 'remarks', 'marking_method', 'user_type', 'device_uid',
             'sync_status', 'sync_error', 'synced_at',
           ],
@@ -336,8 +332,8 @@ export class AttendanceSyncSchedulerService {
           .values(entities)
           .orUpdate(
             [
-              'status', 'student_name', 'institute_name', 'class_id', 'class_name',
-              'subject_id', 'subject_name', 'calendar_day_id', 'event_id',
+              'status', 'class_id',
+              'subject_id', 'calendar_day_id', 'event_id',
               'location', 'remarks', 'marking_method', 'user_type', 'device_uid',
               'sync_status', 'sync_error', 'synced_at',
             ],
@@ -368,16 +364,12 @@ export class AttendanceSyncSchedulerService {
     entity.dynamoPk = record.pk;
     entity.dynamoSk = record.sk;
     entity.instituteId = record.instituteId;
-    entity.instituteName = record.instituteName || null;
     entity.studentId = record.studentId;
-    entity.studentName = record.studentName || null;
     entity.date = record.date;
     entity.status = record.status;
     entity.timestamp = String(record.timestamp);
     entity.classId = record.classId || null;
-    entity.className = record.className || null;
     entity.subjectId = record.subjectId || null;
-    entity.subjectName = record.subjectName || null;
     entity.calendarDayId = record.calendarDayId || null;
     entity.eventId = record.eventId || null;
     entity.location = record.location || null;

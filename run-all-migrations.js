@@ -28,6 +28,8 @@ const MIGRATIONS = [
   '20250708_system_config_attendance_records.sql',
   '20260303_system_config_expand_all_groups.sql',
   '20260317_attendance_records_add_lat_lng.sql',
+  '20260317_attendance_records_normalize_names.sql',
+  '20260317_attendance_records_add_class_subject_indexes.sql',
 ];
 
 async function run() {
