@@ -53,6 +53,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { nowTimestamp } from '../../common/utils/timezone.util';
 import { CreateUserComprehensiveDto } from './dto/create-user-comprehensive.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpgradeUserTypeDto } from './dto/upgrade-user-type.dto';
 import { UpdateImageUrlDto } from './dto/update-image-url.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { AdvancedSearchUserDto } from './dto/advanced-search-user.dto';
@@ -1227,6 +1228,34 @@ export class UsersController {
     }
     
     return result;
+  }
+
+  /**
+   * Upgrade User Type
+   * 
+   * Allows users to upgrade from USER_WITHOUT_PARENT or USER_WITHOUT_STUDENT to USER
+   * by providing the missing parent or student data.
+   */
+  @Patch('upgrade-type')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Upgrade user type to USER',
+    description: `Upgrades the authenticated user's type to full USER by creating the missing record.
+    
+    **Allowed transitions:**
+    - USER_WITHOUT_PARENT → USER (creates parent record, provide parentData)
+    - USER_WITHOUT_STUDENT → USER (creates student record, provide studentData)`
+  })
+  @ApiBody({ type: UpgradeUserTypeDto })
+  @ApiResponse({ status: HttpStatus.OK, description: 'User type upgraded successfully', type: UserResponseDto })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid upgrade path or record already exists' })
+  async upgradeUserType(
+    @Body(new ValidationPipe({ transform: true, whitelist: true })) dto: UpgradeUserTypeDto,
+    @Request() req: JwtRequest
+  ): Promise<UserResponseDto> {
+    const user = req.user;
+    return await this.usersService.upgradeUserType(user.s, dto);
   }
 
   /**

@@ -9,6 +9,7 @@ import * as path from 'path';
 import { UserData, StudentData, ParentData, ComprehensiveUserData, ComprehensiveUserResponse, InstituteParentInfo } from './interfaces/user-data.interfaces';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpgradeUserTypeDto } from './dto/upgrade-user-type.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { PaginatedUserResponseDto } from './dto/paginated-user-response.dto';
@@ -1572,6 +1573,105 @@ export class UsersService {
       where: { nic },
       select: ['id', 'email', 'firstName', 'lastName', 'nameWithInitials', 'nic', 'isActive', 'userType', 'imageUrl']
     });
+  }
+
+  /**
+   * Upgrade user type to USER by creating missing student or parent record.
+   * 
+   * Allowed transitions:
+   * - USER_WITHOUT_PARENT → USER (creates parent record)
+   * - USER_WITHOUT_STUDENT → USER (creates student record)
+   */
+  async upgradeUserType(userId: string, dto: UpgradeUserTypeDto): Promise<UserResponseDto> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const user = await queryRunner.manager.findOne(UserEntity, { where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found`);
+      }
+
+      if (user.userType !== UserType.USER_WITHOUT_PARENT && user.userType !== UserType.USER_WITHOUT_STUDENT) {
+        throw new BadRequestException(
+          `User type '${user.userType}' cannot be upgraded. Only USER_WITHOUT_PARENT and USER_WITHOUT_STUDENT can be upgraded to USER.`
+        );
+      }
+
+      if (user.userType === UserType.USER_WITHOUT_PARENT) {
+        // Check if parent record already exists (safety check)
+        const existingParent = await queryRunner.manager.findOne(ParentEntity, { where: { userId } });
+        if (existingParent) {
+          throw new BadRequestException('Parent record already exists for this user.');
+        }
+
+        // Create parent record
+        const parentEntity = queryRunner.manager.create(ParentEntity, {
+          userId,
+          occupation: dto.parentData?.occupation || null,
+          workplace: dto.parentData?.workplace || null,
+          workPhone: dto.parentData?.workPhone || null,
+          educationLevel: dto.parentData?.educationLevel || null,
+          isActive: true,
+          createdAt: now(),
+          updatedAt: now(),
+        });
+        await queryRunner.manager.save(parentEntity);
+      }
+
+      if (user.userType === UserType.USER_WITHOUT_STUDENT) {
+        // Check if student record already exists (safety check)
+        const existingStudent = await queryRunner.manager.findOne(StudentEntity, { where: { userId } });
+        if (existingStudent) {
+          throw new BadRequestException('Student record already exists for this user.');
+        }
+
+        // Create student record
+        const studentEntity = queryRunner.manager.create(StudentEntity, {
+          userId,
+          emergencyContact: dto.studentData?.emergencyContact || null,
+          medicalConditions: dto.studentData?.medicalConditions || null,
+          allergies: dto.studentData?.allergies || null,
+          bloodGroup: dto.studentData?.bloodGroup || null,
+          isActive: true,
+          createdAt: now(),
+          updatedAt: now(),
+        });
+        await queryRunner.manager.save(studentEntity);
+      }
+
+      // Update userType to USER
+      await queryRunner.manager.update(UserEntity, userId, {
+        userType: UserType.USER,
+        updatedAt: now(),
+      });
+
+      await queryRunner.commitTransaction();
+
+      // Refresh cache
+      try {
+        await this.userManagementService.refreshUserCache(userId);
+      } catch (cacheError) {
+        this.logger.warn(`Cache refresh failed after user type upgrade for user ${userId}: ${cacheError.message}`);
+      }
+
+      const updatedUser = await this.userRepository.findOne({ where: { id: userId } });
+      return new UserResponseDto(updatedUser);
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      this.logger.error(`Failed to upgrade user type for user ${userId}:`, error);
+      throw new InternalServerErrorException('Failed to upgrade user type. Please try again.');
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<UserResponseDto> {

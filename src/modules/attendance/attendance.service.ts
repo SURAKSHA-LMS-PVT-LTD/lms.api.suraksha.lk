@@ -1719,7 +1719,8 @@ export class AttendanceService {
       }
 
       // Get package config to check isAds flag
-      const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[data.subscriptionPlan.toUpperCase()];
+      const normalizedPlan = String(data.subscriptionPlan || 'FREE').toUpperCase();
+      const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
       const isAdsEnabled = packageConfig?.isAds === true;
       const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
@@ -1778,7 +1779,7 @@ export class AttendanceService {
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
 
       // ✅ BUG-B FIX: Only increment currentSendings AFTER successful delivery
-      if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && notificationResult.successfulChannels > 0) {
+      if (this.shouldTrackAdvertisementSending(advertisementData) && notificationResult.successfulChannels > 0) {
         this.advertisementRepository.increment(
           { id: advertisementData.id },
           'currentSendings',
@@ -1851,7 +1852,8 @@ export class AttendanceService {
       }
 
       // Check if this subscription plan should receive ads
-      const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[subscriptionPlan.toUpperCase()];
+      const normalizedPlan = String(subscriptionPlan || 'FREE').toUpperCase();
+      const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
       const shouldReceiveAds = packageConfig?.isAds === true;
       
       let advertisementData: any = null;
@@ -1908,7 +1910,7 @@ export class AttendanceService {
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
 
       // ✅ BUG-B FIX: Only increment currentSendings AFTER successful delivery
-      if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && notificationResult.successfulChannels > 0) {
+      if (this.shouldTrackAdvertisementSending(advertisementData) && notificationResult.successfulChannels > 0) {
         this.advertisementRepository.increment(
           { id: advertisementData.id },
           'currentSendings',
@@ -1965,7 +1967,7 @@ export class AttendanceService {
       }
 
       // Send notification to EACH parent with the SAME ad
-      const cascadePromises = allParents.map(async (parent) => {
+      const cascadeResults = await Promise.allSettled(allParents.map(async (parent) => {
         try {
           const parentUser = parent.user;
           
@@ -2002,16 +2004,36 @@ export class AttendanceService {
           };
 
           // Send notification (fire-and-forget)
-          await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+          const result = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+
+          if (result.successfulChannels > 0) {
+            return true;
+          }
+
+          return false;
           
         } catch (error) {
           this.logger.error(`❌ Failed to cascade ad to ${parent.type}: ${error.message}`);
           // Continue with other parents
+          return false;
         }
-      });
+      }));
 
-      // Wait for all cascade notifications (but don't block main response)
-      await Promise.allSettled(cascadePromises);
+      // Track successful cascade deliveries so campaign caps remain accurate.
+      const successfulCascadeDeliveries = cascadeResults.reduce((count, item) => {
+        if (item.status === 'fulfilled' && item.value === true) {
+          return count + 1;
+        }
+        return count;
+      }, 0);
+
+      if (this.shouldTrackAdvertisementSending(advertisementData) && successfulCascadeDeliveries > 0) {
+        this.advertisementRepository.increment(
+          { id: advertisementData.id },
+          'currentSendings',
+          successfulCascadeDeliveries
+        ).catch(err => this.logger.error(`Failed to increment cascade ad sendings: ${err.message}`));
+      }
 
     } catch (error) {
       this.logger.error(`❌ Cascade to parents failed: ${error.message}`, error.stack);
@@ -2108,6 +2130,16 @@ export class AttendanceService {
         cascadeToParents: false  // Default ads don't cascade
       };
     }
+  }
+
+  private shouldTrackAdvertisementSending(advertisementData: any): boolean {
+    const adId = advertisementData?.id;
+    if (!adId || typeof adId !== 'string') {
+      return false;
+    }
+
+    // Fallback/default IDs are not persisted campaign rows, so they must not be counted.
+    return !adId.startsWith('default-');
   }
 
   /**
