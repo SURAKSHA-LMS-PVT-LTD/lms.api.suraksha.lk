@@ -84,14 +84,6 @@ export class MarkAttendanceByInstituteCardDto {
   status: AttendanceStatus;
 
   @ApiPropertyOptional({ 
-    description: 'Date of attendance (YYYY-MM-DD format)', 
-    example: '2025-10-19' 
-  })
-  @IsOptional()
-  @IsString()
-  date?: string;
-
-  @ApiPropertyOptional({ 
     description: 'Location/Address (auto-generated if not provided)' 
   })
   @IsOptional()

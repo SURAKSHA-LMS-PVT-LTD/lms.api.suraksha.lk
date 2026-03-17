@@ -880,10 +880,12 @@ export class BookhireAttendanceService {
   }
 
   /**
-   * �🔍 Check if subscription plan should receive advertisements
+   * 🔍 Check if subscription plan should receive advertisements
    */
   private async shouldReceiveAdvertisements(subscriptionPlan: string): Promise<boolean> {
     try {
+      // Global kill-switch: skip ads entirely unless env flag is set
+      if (this.configService.get('ENABLE_ADVERTISEMENT_DELIVERY', 'false') !== 'true') return false;
       // Get package configuration from notification packages config
       const packageConfig = await this.getPackageConfiguration(subscriptionPlan);
       return packageConfig?.isAds === true;

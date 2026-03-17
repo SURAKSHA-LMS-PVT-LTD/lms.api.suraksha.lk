@@ -1,6 +1,6 @@
 ﻿import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
+import { getCurrentSriLankaDate, timestampToSriLankaDate } from '../../../common/utils/timezone.util';
 import { DynamoDBClient, QueryCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { QueryCommandInput, PutItemCommandInput, UpdateItemCommandInput, DeleteItemCommandInput } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
@@ -31,6 +31,7 @@ export interface AttendanceRecord {
   userType?: string; // Institute user type: STUDENT, TEACHER, INSTITUTE_ADMIN, ATTENDANCE_MARKER, PARENT, NOT_ENROLLED
   calendarDayId?: string; // NEW - institute_calendar_days.id (FK to calendar)
   eventId?: string; // NEW - institute_calendar_events.id (optional - specific event attendance)
+  advertisementId?: string; // Advertisement ID for delivery capability tracking
   timestamp: number;
   ttl?: number;
 }
@@ -221,15 +222,17 @@ export class DynamoDBAttendanceService {
   // Convert DTO to DynamoDB record
   private attendanceToRecord(attendance: MarkAttendanceDto): AttendanceRecord {
     const timestamp = Date.now();
+    // Derive date from timestamp — timestamp is the single source of truth
+    const dateStr = timestampToSriLankaDate(timestamp);
     const ttl = this.calculateTTL();
     
     // ✅ FIXED: Pass timestamp to generateSortKey and generateGSISortKey
     // ✅ UPDATED: Handle optional class and subject fields
     const record: any = {
       pk: this.generatePartitionKey(attendance.instituteId),
-      sk: this.generateSortKey(attendance.date, attendance.studentId, attendance.classId, attendance.subjectId, timestamp),
+      sk: this.generateSortKey(dateStr, attendance.studentId, attendance.classId, attendance.subjectId, timestamp),
       gsi_pk: this.generateGSIPartitionKey(attendance.instituteId, attendance.studentId),
-      gsi_sk: this.generateGSISortKey(attendance.date, attendance.classId, attendance.subjectId, attendance.instituteId, timestamp),
+      gsi_sk: this.generateGSISortKey(dateStr, attendance.classId, attendance.subjectId, attendance.instituteId, timestamp),
     };
 
     // Generate stable ID from PK+SK — decodable back to keys for direct GetItem lookup
@@ -244,7 +247,7 @@ export class DynamoDBAttendanceService {
     }
     record.instituteId = attendance.instituteId;
     record.instituteName = attendance.instituteName;
-    record.date = attendance.date;
+    record.date = dateStr;
     record.status = this.statusToNumber(attendance.status);
     record.timestamp = timestamp;
     record.ttl = ttl;
@@ -300,6 +303,11 @@ export class DynamoDBAttendanceService {
       record.eventId = (attendance as any).eventId;
     }
 
+    // Add advertisement ID if provided (for delivery capability tracking)
+    if (attendance.advertisementId) {
+      record.advertisementId = attendance.advertisementId;
+    }
+
     return record;
   }
 
@@ -330,6 +338,7 @@ export class DynamoDBAttendanceService {
       userType: record.userType || 'STUDENT',  // Default to STUDENT for backward compatibility
       calendarDayId: record.calendarDayId,
       eventId: record.eventId,
+      advertisementId: record.advertisementId || undefined,
       timestamp: record.timestamp,  // ✅ FIXED DATA-004: Return timestamp so frontend can update/delete
     } as any;
   }
@@ -444,15 +453,18 @@ export class DynamoDBAttendanceService {
                 error: 'Item not processed in batch - capacity exceeded'
               });
             } else {
-              // Attach generated record id to the DTO so callers can build deep-links
+              // Attach generated record id and timestamp to the DTO so callers can build
+              // deep-links and sync to MySQL with the SAME timestamp used in DynamoDB
               (dto as any).id = record.id;
+              (dto as any).timestamp = record.timestamp;
               successful.push(dto);
             }
           }
         } else {
-          // All items processed successfully — attach ids and collect
+          // All items processed successfully — attach ids and timestamps, then collect
           for (const { dto, record } of batchPairs) {
             (dto as any).id = record.id;
+            (dto as any).timestamp = record.timestamp;
           }
           successful.push(...batchPairs.map(p => p.dto));
         }
@@ -477,7 +489,7 @@ export class DynamoDBAttendanceService {
   // ✅ FIXED BUG-001: Now accepts and propagates calendarDayId + eventId from the bulk DTO
   // ✅ CONSOLIDATED: Uses address object for storing latitude/longitude
   async markBulkAttendance(bulkData: BulkAttendanceDto): Promise<MarkAttendanceDto[]> {
-    const dateForRecords = bulkData.date || getCurrentSriLankaDate();
+    const dateForRecords = getCurrentSriLankaDate();
     const attendances = bulkData.students.map(studentData => ({
       studentId: studentData.studentId,
       studentName: studentData.studentName,
@@ -657,6 +669,31 @@ export class DynamoDBAttendanceService {
       });
     } catch (error) {
       this.handleDynamoDBError(error, 'delete attendance');
+    }
+  }
+
+  /**
+   * Update just the advertisementId on an existing attendance record.
+   * Called fire-and-forget after an ad is matched during notification delivery.
+   */
+  async patchAdvertisementId(encodedId: string, advertisementId: string): Promise<void> {
+    try {
+      const decoded = Buffer.from(encodedId, 'base64url').toString('utf8');
+      const separatorIndex = decoded.indexOf('~');
+      if (separatorIndex === -1) return;
+
+      const pk = decoded.substring(0, separatorIndex);
+      const sk = decoded.substring(separatorIndex + 1);
+
+      await this.dynamoClient.send(new UpdateItemCommand({
+        TableName: this.tableName,
+        Key: marshall({ pk, sk }),
+        UpdateExpression: 'SET #adId = :adId',
+        ExpressionAttributeNames: { '#adId': 'advertisementId' },
+        ExpressionAttributeValues: marshall({ ':adId': advertisementId }),
+      }));
+    } catch (error) {
+      this.logger.warn(`patchAdvertisementId failed for ${encodedId}: ${error.message}`);
     }
   }
 

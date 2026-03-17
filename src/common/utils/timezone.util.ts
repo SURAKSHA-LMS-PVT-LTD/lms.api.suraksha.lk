@@ -75,6 +75,21 @@ export function getCurrentSriLankaISO(): string {
 }
 
 /**
+ * Convert an epoch-millisecond timestamp to a YYYY-MM-DD date string
+ * in Sri Lanka timezone (UTC+5:30).
+ * This is the canonical way to derive the attendance date from a timestamp,
+ * ensuring the date column always matches the timing of the mark.
+ */
+export function timestampToSriLankaDate(epochMs: number): string {
+  // Shift the epoch to Sri Lanka local time, then read UTC components
+  const d = new Date(epochMs + TIMEZONE.offsetMilliseconds);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Convert any date to Sri Lanka timezone
  * Handles dates from UTC database correctly
  */
