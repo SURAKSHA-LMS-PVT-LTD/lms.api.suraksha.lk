@@ -1691,6 +1691,58 @@ export class AttendanceService {
     };
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // MONTHLY ATTENDANCE COUNT APIs
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async getInstituteMonthlyCount(instituteId: string, year: number, month: number): Promise<any> {
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month);
+    return {
+      success: true,
+      message: 'Institute monthly attendance count retrieved successfully',
+      instituteId,
+      year,
+      month,
+      ...counts,
+    };
+  }
+
+  async getClassMonthlyCount(instituteId: string, classId: string, year: number, month: number): Promise<any> {
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month, classId);
+    return {
+      success: true,
+      message: 'Class monthly attendance count retrieved successfully',
+      instituteId,
+      classId,
+      year,
+      month,
+      ...counts,
+    };
+  }
+
+  async getSubjectMonthlyCount(instituteId: string, classId: string, subjectId: string, year: number, month: number): Promise<any> {
+    const dbService = this.syncConfigService.isMysqlOnly()
+      ? this.mysqlAttendanceService
+      : this.dynamoAttendanceService;
+    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month, classId, subjectId);
+    return {
+      success: true,
+      message: 'Subject monthly attendance count retrieved successfully',
+      instituteId,
+      classId,
+      subjectId,
+      year,
+      month,
+      ...counts,
+    };
+  }
+
   private scheduleAttendanceNotification(markAttendanceDto: MarkAttendanceDto, attendanceResult: any, studentData?: any): void {
     // Fire-and-forget notification - no blocking, no waiting
     this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));

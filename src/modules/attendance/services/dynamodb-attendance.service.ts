@@ -1077,5 +1077,45 @@ export class DynamoDBAttendanceService {
 
     return response;
   }
+
+  /**
+   * Get monthly attendance count grouped by status.
+   * Delegates to getAttendanceSummary with computed month date range.
+   */
+  async getMonthlyAttendanceCount(
+    instituteId: string,
+    year: number,
+    month: number,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<{
+    totalRecords: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    leftCount: number;
+    leftEarlyCount: number;
+    leftLatelyCount: number;
+    attendanceRate: number;
+  }> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const summary = await this.getAttendanceSummary(
+      instituteId, classId, subjectId, startDate, endDate, undefined, false,
+    );
+
+    return {
+      totalRecords: summary.totalRecords,
+      presentCount: summary.presentCount,
+      absentCount: summary.absentCount,
+      lateCount: summary.lateCount || 0,
+      leftCount: summary.leftCount || 0,
+      leftEarlyCount: summary.leftEarlyCount || 0,
+      leftLatelyCount: summary.leftLatelyCount || 0,
+      attendanceRate: summary.attendanceRate,
+    };
+  }
 }
 
