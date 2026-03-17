@@ -895,6 +895,20 @@ export class MysqlAttendanceService {
     };
   }
 
+  // Normalize any date value (JS Date object, ISO string, or YYYY-MM-DD) → "YYYY-MM-DD"
+  private toDateStr(val: any): string {
+    if (!val) return '';
+    if (val instanceof Date) {
+      const y = val.getFullYear();
+      const mo = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      return `${y}-${mo}-${d}`;
+    }
+    const s = String(val);
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : s;
+  }
+
   async getDailyAttendanceCount(
     instituteId: string,
     year: number,
@@ -920,19 +934,17 @@ export class MysqlAttendanceService {
       qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
     }
 
-    // Use DATE_FORMAT to guarantee YYYY-MM-DD string regardless of driver date serialization
     const rows = await qb
-      .select("DATE_FORMAT(ar.date, '%Y-%m-%d')", 'date')
+      .select('ar.date', 'date')
       .addSelect('ar.status', 'status')
       .addSelect('COUNT(*)', 'cnt')
-      .groupBy("DATE_FORMAT(ar.date, '%Y-%m-%d')")
+      .groupBy('ar.date')
       .addGroupBy('ar.status')
-      .orderBy("DATE_FORMAT(ar.date, '%Y-%m-%d')", 'ASC')
       .getRawMany();
 
     const dayMap: Record<string, { presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }> = {};
     for (const row of rows) {
-      const d: string = row.date;
+      const d = this.toDateStr(row.date);
       if (!d) continue;
       if (!dayMap[d]) {
         dayMap[d] = { presentCount: 0, absentCount: 0, lateCount: 0, leftCount: 0, leftEarlyCount: 0, leftLatelyCount: 0, totalRecords: 0 };
