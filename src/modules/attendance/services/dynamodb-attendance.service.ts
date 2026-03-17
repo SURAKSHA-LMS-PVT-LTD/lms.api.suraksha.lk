@@ -1114,5 +1114,135 @@ export class DynamoDBAttendanceService {
 
     return response;
   }
+
+  /**
+   * Get daily attendance counts for a month, grouped by date.
+   * Queries raw DynamoDB records directly so status remains a number (0–5).
+   */
+  async getDailyAttendanceCount(
+    instituteId: string,
+    year: number,
+    month: number,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<{ date: string; day: number; presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }[]> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // Build DynamoDB query mirroring getAttendanceSummary — raw records, status is a number
+    const params: QueryCommandInput = {
+      TableName: this.tableName,
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: marshall({ ':pk': this.generatePartitionKey(instituteId) }, { removeUndefinedValues: true }),
+      ScanIndexForward: false,
+    };
+
+    const filterConditions: string[] = [];
+    const attributeNames: Record<string, string> = {};
+    const attributeValues: Record<string, any> = { ':pk': this.generatePartitionKey(instituteId) };
+
+    if (classId && subjectId) {
+      filterConditions.push('#classId = :classId', '#subjectId = :subjectId');
+      attributeNames['#classId'] = 'classId';
+      attributeNames['#subjectId'] = 'subjectId';
+      attributeValues[':classId'] = classId;
+      attributeValues[':subjectId'] = subjectId;
+    } else if (classId && !subjectId) {
+      filterConditions.push('#classId = :classId', '(attribute_not_exists(#subjectId) OR #subjectId = :defaultSubject)');
+      attributeNames['#classId'] = 'classId';
+      attributeNames['#subjectId'] = 'subjectId';
+      attributeValues[':classId'] = classId;
+      attributeValues[':defaultSubject'] = 'default';
+    } else if (!classId && !subjectId) {
+      filterConditions.push('(attribute_not_exists(#classId) OR #classId = :defaultClass)');
+      attributeNames['#classId'] = 'classId';
+      attributeValues[':defaultClass'] = 'default';
+    }
+
+    filterConditions.push('#date >= :startDate AND #date <= :endDate');
+    attributeNames['#date'] = 'date';
+    attributeValues[':startDate'] = startDate;
+    attributeValues[':endDate'] = endDate;
+
+    params.FilterExpression = filterConditions.join(' AND ');
+    params.ExpressionAttributeNames = attributeNames;
+    params.ExpressionAttributeValues = marshall(attributeValues, { removeUndefinedValues: true });
+
+    // Paginate through all matching records
+    const rawRecords: any[] = [];
+    let lastEvaluatedKey: Record<string, any> | undefined;
+    do {
+      if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey;
+      const result = await this.retryWithBackoff(async () => this.dynamoClient.send(new QueryCommand(params)));
+      if (result.Items) {
+        for (const item of result.Items) rawRecords.push(unmarshall(item));
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    // Aggregate day-by-day — record.status is a raw number here
+    const dayMap: Record<string, { presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }> = {};
+    for (const record of rawRecords) {
+      const d: string = record.date;
+      if (!d) continue;
+      if (!dayMap[d]) {
+        dayMap[d] = { presentCount: 0, absentCount: 0, lateCount: 0, leftCount: 0, leftEarlyCount: 0, leftLatelyCount: 0, totalRecords: 0 };
+      }
+      dayMap[d].totalRecords++;
+      switch (Number(record.status)) {
+        case 1: dayMap[d].presentCount++; break;
+        case 0: dayMap[d].absentCount++; break;
+        case 2: dayMap[d].lateCount++; break;
+        case 3: dayMap[d].leftCount++; break;
+        case 4: dayMap[d].leftEarlyCount++; break;
+        case 5: dayMap[d].leftLatelyCount++; break;
+      }
+    }
+
+    return Object.entries(dayMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, counts]) => ({ date, day: parseInt(date.split('-')[2], 10), ...counts }));
+  }
+
+  /**
+   * Get monthly attendance count grouped by status.
+   * Delegates to getAttendanceSummary with computed month date range.
+   */
+  async getMonthlyAttendanceCount(
+    instituteId: string,
+    year: number,
+    month: number,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<{
+    totalRecords: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    leftCount: number;
+    leftEarlyCount: number;
+    leftLatelyCount: number;
+    attendanceRate: number;
+  }> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const summary = await this.getAttendanceSummary(
+      instituteId, classId, subjectId, startDate, endDate, undefined, false,
+    );
+
+    return {
+      totalRecords: summary.totalRecords,
+      presentCount: summary.presentCount,
+      absentCount: summary.absentCount,
+      lateCount: summary.lateCount || 0,
+      leftCount: summary.leftCount || 0,
+      leftEarlyCount: summary.leftEarlyCount || 0,
+      leftLatelyCount: summary.leftLatelyCount || 0,
+      attendanceRate: summary.attendanceRate,
+    };
+  }
 }
 

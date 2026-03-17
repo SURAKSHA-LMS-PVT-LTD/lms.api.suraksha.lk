@@ -822,4 +822,140 @@ export class MysqlAttendanceService {
       records: includeRecords ? records : undefined,
     };
   }
+
+  /**
+   * Get monthly attendance count grouped by status.
+   * Efficient SQL aggregation — single round-trip.
+   */
+  async getMonthlyAttendanceCount(
+    instituteId: string,
+    year: number,
+    month: number,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<{
+    totalRecords: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    leftCount: number;
+    leftEarlyCount: number;
+    leftLatelyCount: number;
+    attendanceRate: number;
+  }> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const qb = this.repo.createQueryBuilder('ar')
+      .where('ar.instituteId = :instituteId', { instituteId })
+      .andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });
+
+    if (classId && subjectId) {
+      qb.andWhere('ar.classId = :classId', { classId });
+      qb.andWhere('ar.subjectId = :subjectId', { subjectId });
+    } else if (classId && !subjectId) {
+      qb.andWhere('ar.classId = :classId', { classId });
+      qb.andWhere('(ar.subjectId IS NULL OR ar.subjectId = :defaultSubject)', { defaultSubject: 'default' });
+    } else if (!classId && !subjectId) {
+      qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
+    }
+
+    const rows = await qb
+      .select('ar.status', 'status')
+      .addSelect('COUNT(*)', 'cnt')
+      .groupBy('ar.status')
+      .getRawMany();
+
+    let presentCount = 0, absentCount = 0, lateCount = 0;
+    let leftCount = 0, leftEarlyCount = 0, leftLatelyCount = 0;
+    let totalRecords = 0;
+
+    for (const row of rows) {
+      const cnt = parseInt(row.cnt, 10);
+      totalRecords += cnt;
+      switch (Number(row.status)) {
+        case 1: presentCount = cnt; break;
+        case 0: absentCount = cnt; break;
+        case 2: lateCount = cnt; break;
+        case 3: leftCount = cnt; break;
+        case 4: leftEarlyCount = cnt; break;
+        case 5: leftLatelyCount = cnt; break;
+      }
+    }
+
+    const attendanceRate = totalRecords > 0
+      ? parseFloat(((presentCount / totalRecords) * 100).toFixed(2))
+      : 0;
+
+    return {
+      totalRecords,
+      presentCount,
+      absentCount,
+      lateCount,
+      leftCount,
+      leftEarlyCount,
+      leftLatelyCount,
+      attendanceRate,
+    };
+  }
+
+  async getDailyAttendanceCount(
+    instituteId: string,
+    year: number,
+    month: number,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<{ date: string; day: number; presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }[]> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const qb = this.repo.createQueryBuilder('ar')
+      .where('ar.instituteId = :instituteId', { instituteId })
+      .andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });
+
+    if (classId && subjectId) {
+      qb.andWhere('ar.classId = :classId', { classId });
+      qb.andWhere('ar.subjectId = :subjectId', { subjectId });
+    } else if (classId && !subjectId) {
+      qb.andWhere('ar.classId = :classId', { classId });
+      qb.andWhere('(ar.subjectId IS NULL OR ar.subjectId = :defaultSubject)', { defaultSubject: 'default' });
+    } else if (!classId && !subjectId) {
+      qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
+    }
+
+    // Use DATE_FORMAT to guarantee YYYY-MM-DD string regardless of driver date serialization
+    const rows = await qb
+      .select("DATE_FORMAT(ar.date, '%Y-%m-%d')", 'date')
+      .addSelect('ar.status', 'status')
+      .addSelect('COUNT(*)', 'cnt')
+      .groupBy("DATE_FORMAT(ar.date, '%Y-%m-%d')")
+      .addGroupBy('ar.status')
+      .orderBy("DATE_FORMAT(ar.date, '%Y-%m-%d')", 'ASC')
+      .getRawMany();
+
+    const dayMap: Record<string, { presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }> = {};
+    for (const row of rows) {
+      const d: string = row.date;
+      if (!d) continue;
+      if (!dayMap[d]) {
+        dayMap[d] = { presentCount: 0, absentCount: 0, lateCount: 0, leftCount: 0, leftEarlyCount: 0, leftLatelyCount: 0, totalRecords: 0 };
+      }
+      const cnt = parseInt(row.cnt, 10);
+      dayMap[d].totalRecords += cnt;
+      switch (Number(row.status)) {
+        case 1: dayMap[d].presentCount += cnt; break;
+        case 0: dayMap[d].absentCount += cnt; break;
+        case 2: dayMap[d].lateCount += cnt; break;
+        case 3: dayMap[d].leftCount += cnt; break;
+        case 4: dayMap[d].leftEarlyCount += cnt; break;
+        case 5: dayMap[d].leftLatelyCount += cnt; break;
+      }
+    }
+
+    return Object.entries(dayMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, counts]) => ({ date, day: parseInt(date.split('-')[2], 10), ...counts }));
+  }
 }

@@ -1649,7 +1649,215 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Attendance Detail — opened from notification deep-link
+  // MONTHLY ATTENDANCE COUNT ENDPOINTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  @Get('institute/:instituteId/monthly-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get institute monthly attendance count',
+    description: 'Returns aggregated attendance counts (present, absent, late, left, leftEarly, leftLate) for an entire institute for a given month.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiResponse({ status: 200, description: 'Monthly attendance counts retrieved' })
+  async getInstituteMonthlyCount(
+    @Param('instituteId') instituteId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ): Promise<any> {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new HttpException(
+        { success: false, message: 'Valid year and month (1-12) query parameters are required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      return await this.attendanceService.getInstituteMonthlyCount(instituteId, y, m);
+    } catch (e) { this._err(e, 'Failed to get institute monthly attendance count'); }
+  }
+
+  @Get('institute/:instituteId/class/:classId/monthly-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get class monthly attendance count',
+    description: 'Returns aggregated attendance counts (present, absent, late, left, leftEarly, leftLate) for a specific class within an institute for a given month.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiResponse({ status: 200, description: 'Monthly class attendance counts retrieved' })
+  async getClassMonthlyCount(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ): Promise<any> {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new HttpException(
+        { success: false, message: 'Valid year and month (1-12) query parameters are required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      return await this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m);
+    } catch (e) { this._err(e, 'Failed to get class monthly attendance count'); }
+  }
+
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/monthly-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get subject monthly attendance count',
+    description: 'Returns aggregated attendance counts (present, absent, late, left, leftEarly, leftLate) for a specific class+subject within an institute for a given month.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Monthly subject attendance counts retrieved' })
+  async getSubjectMonthlyCount(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ): Promise<any> {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new HttpException(
+        { success: false, message: 'Valid year and month (1-12) query parameters are required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      return await this.attendanceService.getSubjectMonthlyCount(instituteId, classId, subjectId, y, m);
+    } catch (e) { this._err(e, 'Failed to get subject monthly attendance count'); }
+  }
+
+  @Get('institute/:instituteId/daily-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get institute daily attendance count for a month',
+    description: 'Returns day-by-day attendance counts (present, absent, late, left, leftEarly, leftLate) for an entire institute for a given month.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiResponse({ status: 200, description: 'Daily attendance counts retrieved' })
+  async getInstituteDailyCount(
+    @Param('instituteId') instituteId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ): Promise<any> {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new HttpException(
+        { success: false, message: 'Valid year and month (1-12) query parameters are required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      return await this.attendanceService.getInstituteDailyCount(instituteId, y, m);
+    } catch (e) { this._err(e, 'Failed to get institute daily attendance count'); }
+  }
+
+  @Get('institute/:instituteId/class/:classId/daily-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get class daily attendance count for a month',
+    description: 'Returns day-by-day attendance counts (present, absent, late, left, leftEarly, leftLate) for a specific class within an institute for a given month.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiResponse({ status: 200, description: 'Daily class attendance counts retrieved' })
+  async getClassDailyCount(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ): Promise<any> {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new HttpException(
+        { success: false, message: 'Valid year and month (1-12) query parameters are required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      return await this.attendanceService.getClassDailyCount(instituteId, classId, y, m);
+    } catch (e) { this._err(e, 'Failed to get class daily attendance count'); }
+  }
+
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/daily-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get subject daily attendance count for a month',
+    description: 'Returns day-by-day attendance counts (present, absent, late, left, leftEarly, leftLate) for a specific class+subject within an institute for a given month.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Daily subject attendance counts retrieved' })
+  async getSubjectDailyCount(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ): Promise<any> {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new HttpException(
+        { success: false, message: 'Valid year and month (1-12) query parameters are required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      return await this.attendanceService.getSubjectDailyCount(instituteId, classId, subjectId, y, m);
+    } catch (e) { this._err(e, 'Failed to get subject daily attendance count'); }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attendance Detail View — opened from notification deep-link
   // ─────────────────────────────────────────────────────────────────────────
 
   @Get('view')
