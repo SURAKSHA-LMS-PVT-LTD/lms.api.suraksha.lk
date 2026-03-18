@@ -1,7 +1,7 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateInstituteClassSubjectDto } from './create-institute_class_subject.dto';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateInstituteClassSubjectDto {
@@ -22,6 +22,18 @@ export class UpdateInstituteClassSubjectDto {
   @ApiProperty({ description: 'Enrollment key (set to require key, leave empty for open enrollment)' })
   @IsOptional()
   @IsString()
+  enrollmentKey?: string;
+}
+
+export class UpdateEnrollmentKeyDto {
+  @ApiProperty({ description: 'Enable or disable self-enrollment for this subject' })
+  @IsBoolean()
+  enrollmentEnabled: boolean;
+
+  @ApiProperty({ description: 'Enrollment key required to join. Leave empty for open enrollment when enrollment is enabled.', required: false })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   enrollmentKey?: string;
 }
 

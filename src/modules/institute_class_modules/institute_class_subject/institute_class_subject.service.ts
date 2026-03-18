@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { CreateInstituteClassSubjectDto, BulkCreateInstituteClassSubjectDto, SubjectBulkItemDto } from './dto/create-institute_class_subject.dto';
-import { UpdateInstituteClassSubjectDto } from './dto/update-institute_class_subject.dto';
+import { UpdateInstituteClassSubjectDto, UpdateEnrollmentKeyDto } from './dto/update-institute_class_subject.dto';
 import { QueryInstituteClassSubjectDto } from './dto/query-institute-class-subject.dto';
 import { InstituteClassSubjectResponseDto, PaginatedInstituteClassSubjectResponseDto, BulkInstituteClassSubjectResponseDto, InstituteClassSubjectSuccessResponseDto } from './dto/institute-class-subject-response.dto';
 import { SubjectResponseDto } from '../../subject/dto/subject-response.dto';
@@ -144,6 +144,39 @@ export class InstituteClassSubjectService {
     }
 
     return this.mapToResponseDto(entity);
+  }
+
+  /**
+   * Update enrollment key for a specific class subject
+   */
+  async updateEnrollmentKey(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    dto: UpdateEnrollmentKeyDto,
+  ) {
+    const existing = await this.instituteClassSubjectRepository.findOneWithRelations(
+      instituteId,
+      classId,
+      subjectId,
+    );
+
+    if (!existing) {
+      throw new NotFoundException(INSTITUTE_CLASS_SUBJECT_CONSTANTS.ERRORS.NOT_FOUND);
+    }
+
+    const enrollmentData = this.handleEnrollmentSettings(dto.enrollmentEnabled, dto.enrollmentKey);
+
+    await this.instituteClassSubjectRepository.update(instituteId, classId, subjectId, {
+      enrollmentEnabled: enrollmentData.enrollmentEnabled,
+      enrollmentKey: enrollmentData.enrollmentKey,
+    });
+
+    return {
+      subjectId: existing.subjectId,
+      enrollmentEnabled: enrollmentData.enrollmentEnabled,
+      enrollmentKey: enrollmentData.enrollmentEnabled ? (enrollmentData.enrollmentKey || null) : null,
+    };
   }
 
   /**

@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@ne
 import { Throttle } from '@nestjs/throttler';
 import { InstituteClassSubjectService } from './institute_class_subject.service';
 import { CreateInstituteClassSubjectDto, BulkCreateInstituteClassSubjectDto } from './dto/create-institute_class_subject.dto';
-import { UpdateInstituteClassSubjectDto } from './dto/update-institute_class_subject.dto';
+import { UpdateInstituteClassSubjectDto, UpdateEnrollmentKeyDto } from './dto/update-institute_class_subject.dto';
 import { QueryInstituteClassSubjectDto } from './dto/query-institute-class-subject.dto';
 import { InstituteClassSubjectResponseDto, PaginatedInstituteClassSubjectResponseDto, BulkInstituteClassSubjectResponseDto, InstituteClassSubjectSuccessResponseDto } from './dto/institute-class-subject-response.dto';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -208,6 +208,30 @@ export class InstituteClassSubjectController {
     @Param('subjectId', ParseBigIntPipe) subjectId: string
   ) {
     return this.instituteClassSubjectService.unassignTeacher(instituteId, classId, subjectId);
+  }
+
+  @Patch(':subjectId/enrollment-key')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireClass: true, requireSubject: true },
+  })
+  @ApiOperation({
+    summary: 'Update enrollment key for a class subject',
+    description: 'Update the enrollment key and enrollment status for a specific subject in a class. Institute admins and teachers assigned to the subject can update the enrollment code.',
+  })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Enrollment key updated successfully' })
+  @ApiResponse({ status: 404, description: 'Subject assignment not found' })
+  @ApiResponse({ status: 403, description: 'Access denied - Institute admin or assigned teacher required' })
+  async updateEnrollmentKey(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Body() body: UpdateEnrollmentKeyDto,
+  ) {
+    return this.instituteClassSubjectService.updateEnrollmentKey(instituteId, classId, subjectId, body);
   }
 
   @Get(':subjectId/enrollment-key')
