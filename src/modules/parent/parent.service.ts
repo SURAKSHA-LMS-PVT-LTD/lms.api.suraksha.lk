@@ -319,11 +319,14 @@ export class ParentsService {
 
     const queryBuilder = this.parentRepository.createQueryBuilder('parent')
       .select([
+        'parent.id',
         'parent.userId',
         'parent.occupation',
         'parent.workplace',
         'parent.educationLevel',
-        'parent.isActive'
+        'parent.isActive',
+        'parent.createdAt',
+        'parent.updatedAt'
       ])
       .leftJoin('parent.user', 'user')
       .addSelect([

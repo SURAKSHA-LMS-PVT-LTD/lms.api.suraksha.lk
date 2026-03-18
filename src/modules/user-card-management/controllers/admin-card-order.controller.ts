@@ -116,6 +116,21 @@ export class AdminCardOrderController {
     return this.orderService.getAllOrders(page, limit, { userId });
   }
 
+  // ========== Statistics ==========
+
+  @Get('card-orders/statistics')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({ summary: '[Admin] Get card order statistics' })
+  @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
+  @ApiQuery({ name: 'dateFrom', required: false, type: Date })
+  @ApiQuery({ name: 'dateTo', required: false, type: Date })
+  async getStatistics(
+    @Query('dateFrom') dateFrom?: Date,
+    @Query('dateTo') dateTo?: Date,
+  ): Promise<any> {
+    return this.orderService.getStatistics(dateFrom, dateTo);
+  }
+
   // ========== Order Management ==========
 
   @Get('card-orders')
@@ -234,20 +249,5 @@ export class AdminCardOrderController {
   @ApiResponse({ status: 403, description: 'Payment deletion forbidden' })
   async attemptDeletePayment(@Param('paymentId') paymentId: string): Promise<never> {
     return this.paymentService.attemptDelete(paymentId);
-  }
-
-  // ========== Statistics ==========
-
-  @Get('card-orders/statistics')
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
-  @ApiOperation({ summary: '[Admin] Get card order statistics' })
-  @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
-  @ApiQuery({ name: 'dateFrom', required: false, type: Date })
-  @ApiQuery({ name: 'dateTo', required: false, type: Date })
-  async getStatistics(
-    @Query('dateFrom') dateFrom?: Date,
-    @Query('dateTo') dateTo?: Date,
-  ): Promise<any> {
-    return this.orderService.getStatistics(dateFrom, dateTo);
   }
 }

@@ -57,34 +57,15 @@ export class BookhireService {
     currentPage: number;
   }> {
     const skip = (page - 1) * limit;
-    
-    const [bookhires, total] = await Promise.all([
-      this.bookhireRepository.find({
-        where: { ownerId },
-        relations: ['owner'],
-        select: [
-          'id',
-          'ownerId',
-          'vehicleNumber',
-          'vehicleType',
-          'vehicleModel',
-          'capacity',
-          'route',
-          'pricePerMonth',
-          'availableSeats',
-          'vehicleImages',
-          'amenities',
-          'status',
-          'isActive',
-          'createdAt',
-          'updatedAt'
-        ],
-        order: { createdAt: 'DESC' },
-        skip,
-        take: limit,
-      }),
-      this.bookhireRepository.count({ where: { ownerId } })
-    ]);
+
+    const qb = this.bookhireRepository.createQueryBuilder('bookhire')
+      .leftJoinAndSelect('bookhire.owner', 'owner')
+      .where('bookhire.ownerId = :ownerId', { ownerId })
+      .orderBy('bookhire.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [bookhires, total] = await qb.getManyAndCount();
 
     return {
       bookhires,
@@ -196,17 +177,14 @@ export class BookhireService {
     currentPage: number;
   }> {
     const skip = (page - 1) * limit;
-    
-    const [bookhires, total] = await Promise.all([
-      this.bookhireRepository.find({
-        relations: ['owner'],
-        order: { createdAt: 'DESC' },
-        skip,
-        take: limit,
-      }),
-      this.bookhireRepository.count()
-    ]);
 
+    const qb = this.bookhireRepository.createQueryBuilder('bookhire')
+      .leftJoinAndSelect('bookhire.owner', 'owner')
+      .orderBy('bookhire.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [bookhires, total] = await qb.getManyAndCount();
     const totalPages = Math.ceil(total / limit);
 
     return {
@@ -285,25 +263,15 @@ export class BookhireService {
   }> {
     const skip = (page - 1) * limit;
     
-    const [bookhires, total] = await Promise.all([
-      this.bookhireRepository.find({
-        where: {
-          isActive: true,
-          status: 'approved' 
-        },
-        relations: ['owner'],
-        order: { createdAt: 'DESC' },
-        skip,
-        take: limit,
-      }),
-      this.bookhireRepository.count({
-        where: {
-          isActive: true,
-          status: 'approved' 
-        }
-      })
-    ]);
+    const qb = this.bookhireRepository.createQueryBuilder('bookhire')
+      .leftJoinAndSelect('bookhire.owner', 'owner')
+      .where('bookhire.isActive = :isActive', { isActive: true })
+      .andWhere('bookhire.status = :status', { status: 'approved' })
+      .orderBy('bookhire.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
 
+    const [bookhires, total] = await qb.getManyAndCount();
     const totalPages = Math.ceil(total / limit);
 
     return {
@@ -347,17 +315,16 @@ export class BookhireService {
     currentPage: number;
   }> {
     const skip = (page - 1) * limit;
-    
-    const [bookhires, total] = await Promise.all([
-      this.bookhireRepository.find({
-        where: { status: 'approved', isActive: true },
-        relations: ['owner'],
-        order: { createdAt: 'DESC' },
-        skip,
-        take: limit,
-      }),
-      this.bookhireRepository.count({ where: { status: 'approved', isActive: true } })
-    ]);
+
+    const qb = this.bookhireRepository.createQueryBuilder('bookhire')
+      .leftJoinAndSelect('bookhire.owner', 'owner')
+      .where('bookhire.status = :status', { status: 'approved' })
+      .andWhere('bookhire.isActive = :isActive', { isActive: true })
+      .orderBy('bookhire.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [bookhires, total] = await qb.getManyAndCount();
 
     return {
       bookhires,
@@ -558,18 +525,16 @@ export class BookhireService {
 
   async findApprovedBookhiresAsDto(page: number = 1, limit: number = 10): Promise<BookhireListResponseDto> {
     const skip = (page - 1) * limit;
-    
-    // Query with proper join to ensure owner data is loaded
-    const [bookhires, total] = await Promise.all([
-      this.bookhireRepository.find({
-        where: { status: 'approved', isActive: true },
-        relations: ['owner'],
-        order: { createdAt: 'DESC' },
-        skip,
-        take: limit,
-      }),
-      this.bookhireRepository.count({ where: { status: 'approved', isActive: true } })
-    ]);
+
+    const qb = this.bookhireRepository.createQueryBuilder('bookhire')
+      .leftJoinAndSelect('bookhire.owner', 'owner')
+      .where('bookhire.status = :status', { status: 'approved' })
+      .andWhere('bookhire.isActive = :isActive', { isActive: true })
+      .orderBy('bookhire.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [bookhires, total] = await qb.getManyAndCount();
 
     return {
       bookhires: bookhires.map(entity => this.transformEntityToDto(entity)).filter(dto => dto !== null),

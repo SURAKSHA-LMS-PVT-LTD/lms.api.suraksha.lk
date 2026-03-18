@@ -298,6 +298,108 @@ export class AdvertisementController {
     }
   }
 
+  // ========================================
+  // 📊 STATISTICS & CACHE ENDPOINTS (must be before :id param route)
+  // ========================================
+
+  @Get('stats')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Get unified advertisement statistics (FEAT-3)',
+    description: 'Returns delivery statistics across all ads plus current cache health status.'
+  })
+  @ApiResponse({ status: 200, description: 'Stats retrieved' })
+  async getStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    try {
+      const [deliveryStats, cacheStatus] = await Promise.all([
+        this.advertisementDeliveryService.getDeliveryStatistics(
+          startDate ? new Date(startDate) : undefined,
+          endDate ? new Date(endDate) : undefined,
+        ),
+        this.advertisementCacheService.getCacheStatus(),
+      ]);
+      return {
+        success: true,
+        data: {
+          delivery: deliveryStats,
+          cache: cacheStatus,
+          configuration: this.advertisementDeliveryService.getConfiguration(),
+        },
+      };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('cache-status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Get advertisement cache health status (PERF-3)' })
+  @ApiResponse({ status: 200, description: 'Cache status retrieved' })
+  async getCacheStatus() {
+    try {
+      const status = await this.advertisementCacheService.getCacheStatus();
+      return { success: true, data: status };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('cache/current')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Get currently cached advertisements (admin)' })
+  @ApiResponse({ status: 200, description: 'Current cached advertisements retrieved' })
+  async getCurrentCachedAds() {
+    try {
+      const data = await this.advertisementCacheService.getCurrentCachedAdvertisements();
+      return { success: true, data };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('delivery/by-user')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Get advertisement deliveries by user/time window',
+    description: 'Returns attendance-linked advertisement deliveries for a specific user, useful for support and auditing.'
+  })
+  @ApiResponse({ status: 200, description: 'User delivery history retrieved' })
+  async getDeliveryByUser(
+    @Query('userId') userId: string,
+    @Query('instituteId') instituteId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!userId?.trim()) {
+      throw new HttpException(
+        { success: false, message: 'userId is required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      const data = await this.advertisementDeliveryService.getUserAdvertisementDeliveryHistory({
+        userId: userId.trim(),
+        instituteId: instituteId?.trim() || undefined,
+        startDate: startDate?.trim() || undefined,
+        endDate: endDate?.trim() || undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+      return { success: true, data };
+    } catch (error) {
+      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  // ========================================
+  // 📦 PARAMETERIZED ROUTES (:id must come after all static routes)
+  // ========================================
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get advertisement by ID' })
@@ -448,7 +550,7 @@ export class AdvertisementController {
 
   // ========================================
   // 📊 ANALYTICS & TRACKING ENDPOINTS
-  // FEAT-1, FEAT-2, FEAT-3: Click / Impression / Stats
+  // FEAT-1, FEAT-2: Click / Impression
   // ========================================
 
   @Post(':id/click')
@@ -488,100 +590,6 @@ export class AdvertisementController {
       // FEAT-2: Use matching service to record impression (impressionCount atomic increment)
       await this.advertisementMatchingService.recordImpression(id, { userId } as any);
       return { success: true, message: 'Impression recorded' };
-    } catch (error) {
-      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
-
-  @Get('stats')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ 
-    summary: 'Get unified advertisement statistics (FEAT-3)',
-    description: 'Returns delivery statistics across all ads plus current cache health status.'
-  })
-  @ApiResponse({ status: 200, description: 'Stats retrieved' })
-  async getStats(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-    try {
-      const [deliveryStats, cacheStatus] = await Promise.all([
-        this.advertisementDeliveryService.getDeliveryStatistics(
-          startDate ? new Date(startDate) : undefined,
-          endDate ? new Date(endDate) : undefined,
-        ),
-        this.advertisementCacheService.getCacheStatus(),
-      ]);
-      return {
-        success: true,
-        data: {
-          delivery: deliveryStats,
-          cache: cacheStatus,
-          configuration: this.advertisementDeliveryService.getConfiguration(),
-        },
-      };
-    } catch (error) {
-      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
-
-  @Get('cache-status')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Get advertisement cache health status (PERF-3)' })
-  @ApiResponse({ status: 200, description: 'Cache status retrieved' })
-  async getCacheStatus() {
-    try {
-      const status = await this.advertisementCacheService.getCacheStatus();
-      return { success: true, data: status };
-    } catch (error) {
-      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
-
-  @Get('cache/current')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Get currently cached advertisements (admin)' })
-  @ApiResponse({ status: 200, description: 'Current cached advertisements retrieved' })
-  async getCurrentCachedAds() {
-    try {
-      const data = await this.advertisementCacheService.getCurrentCachedAdvertisements();
-      return { success: true, data };
-    } catch (error) {
-      throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
-
-  @Get('delivery/by-user')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({
-    summary: 'Get advertisement deliveries by user/time window',
-    description: 'Returns attendance-linked advertisement deliveries for a specific user, useful for support and auditing.'
-  })
-  @ApiResponse({ status: 200, description: 'User delivery history retrieved' })
-  async getDeliveryByUser(
-    @Query('userId') userId: string,
-    @Query('instituteId') instituteId?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('limit') limit?: string,
-  ) {
-    if (!userId?.trim()) {
-      throw new HttpException(
-        { success: false, message: 'userId is required' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    try {
-      const data = await this.advertisementDeliveryService.getUserAdvertisementDeliveryHistory({
-        userId: userId.trim(),
-        instituteId: instituteId?.trim() || undefined,
-        startDate: startDate?.trim() || undefined,
-        endDate: endDate?.trim() || undefined,
-        limit: limit ? Number(limit) : undefined,
-      });
-      return { success: true, data };
     } catch (error) {
       throw new HttpException({ success: false, message: error.message }, HttpStatus.INTERNAL_SERVER_ERROR);
     }

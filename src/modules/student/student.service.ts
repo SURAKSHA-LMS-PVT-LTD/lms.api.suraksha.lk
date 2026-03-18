@@ -563,7 +563,9 @@ export class StudentsService {
         'student.medicalConditions',
         'student.allergies',
         'student.bloodGroup',
-        'student.isActive'
+        'student.isActive',
+        'student.createdAt',
+        'student.updatedAt'
       ])
       .leftJoin('student.user', 'user')
       .addSelect([
