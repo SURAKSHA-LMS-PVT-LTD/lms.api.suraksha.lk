@@ -122,7 +122,14 @@ export class SmsProviderService {
       return data;
 
     } catch (error) {
-      this.logger.error(`❌ SMS send error: ${error.message}`);
+      // Validation errors (bad phone/message) are caller mistakes — log as warn, not error.
+      // Network / provider errors are logged as error.
+      const isValidationError = error?.status === 400 || error?.name === 'BadRequestException';
+      if (isValidationError) {
+        this.logger.warn(`⚠️ SMS skipped: ${error.message}`);
+      } else {
+        this.logger.error(`❌ SMS send error: ${error.message}`);
+      }
       throw new BadRequestException(`Failed to send SMS: ${error.message}`);
     }
   }

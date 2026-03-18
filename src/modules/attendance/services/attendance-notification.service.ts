@@ -159,11 +159,9 @@ export class AttendanceNotificationService {
     const retryConfig = this.getRetryConfig(data.subscriptionPlan);
     const isAdsEnabled = this.isAdsEnabled(data.subscriptionPlan);
 
-    // 📱 FIRST LOGIN GUARD: If parent hasn't completed first login they have no app/device.
-    // Remove push channel — there is no FCM token to deliver to.
-    if (!data.firstLoginCompleted) {
-      channels = channels.filter(ch => ch !== 'push');
-    }
+    // 📱 Push is always attempted — sendPushNotification handles the no-token case gracefully.
+    // firstLoginCompleted is not a reliable indicator that FCM tokens are absent,
+    // and removing the channel here also blocks push for parents who DO have tokens.
 
     // 🎯 PLATFORM-SPECIFIC FILTERING: Use modeOfSending (primary) or supportivePlatforms (fallback) to filter channels
     if (isAdsEnabled && data.advertisementData) {
@@ -966,6 +964,14 @@ export class AttendanceNotificationService {
       // Check if parent contact is available
       if (!data.parentContact) {
         return { success: false, deliveryId: undefined };
+      }
+
+      // Pre-validate phone number format before hitting the provider.
+      // Sri Lanka mobile numbers: +9476XXXXXXX or +9477XXXXXXX (12 chars total).
+      const sriLankaPattern = /^\+947[0-9]{8}$/;
+      if (!sriLankaPattern.test(data.parentContact)) {
+        this.logger.warn(`⚠️ SMS skipped — invalid phone number format: ${data.parentContact}. Expected: +9476XXXXXXX`);
+        return { success: false };
       }
 
       // Get SMS credentials from environment
