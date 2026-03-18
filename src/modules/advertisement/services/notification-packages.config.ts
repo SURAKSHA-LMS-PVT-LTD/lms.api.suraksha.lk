@@ -1,21 +1,15 @@
 export const NOTIFICATION_PACKAGES_CONFIG = {
   packages: {
-    BASIC: {
-      channels: ["telegram"],
-      isAds: true,
-      priority: 1,
-      retryCount: 1,
-      retryDelay: 10000
-    },
+    // ─── Base Plans ──────────────────────────────────────────────────────────
     FREE: {
-      channels: ["email", "sms", "telegram", "push"],
+      channels: ["sms", "push"],
       isAds: true,
       priority: 1,
       retryCount: 1,
       retryDelay: 10000
     },
     WHATSAPP: {
-      channels: ["whatsapp", "telegram", "push"],
+      channels: ["whatsapp", "push"],
       isAds: true,
       retryCount: 2,
       retryDelay: 7000
@@ -32,30 +26,33 @@ export const NOTIFICATION_PACKAGES_CONFIG = {
       retryCount: 2,
       retryDelay: 7000
     },
-    PRO_WHATSAPP: {
-      channels: ["whatsapp", "telegram", "email", "push"],
-      isAds: true,
-      retryCount: 3,
-      retryDelay: 5000
-    },
-    PRO_SMS: {
-      channels: ["sms", "whatsapp", "email", "push"],
-      isAds: true,
-      retryCount: 3,
-      retryDelay: 5000
-    },
-    PRO_TELEGRAM: {
-      channels: ["telegram", "whatsapp", "email", "push"],
-      isAds: true,
-      retryCount: 3,
-      retryDelay: 5000
-    },
-    PRO_EMAIL: {
-      channels: ["email", "telegram", "push"],
+    // ─── PRO Plans (same channel as base, higher retries + priority) ─────────
+    // Keys MUST match SubscriptionPlan enum values exactly (PRO-WHATSAPP not PRO_WHATSAPP)
+    'PRO-WHATSAPP': {
+      channels: ["whatsapp", "push"],
       isAds: false,
       retryCount: 3,
       retryDelay: 5000
     },
+    'PRO-SMS': {
+      channels: ["sms", "push"],
+      isAds: false,
+      retryCount: 3,
+      retryDelay: 5000
+    },
+    'PRO-TELEGRAM': {
+      channels: ["telegram", "push"],
+      isAds: false,
+      retryCount: 3,
+      retryDelay: 5000
+    },
+    'PRO-EMAIL': {
+      channels: ["email", "push"],
+      isAds: false,
+      retryCount: 3,
+      retryDelay: 5000
+    },
+    // ─── DYNAMAD — all channels, all ads, maximum reach ──────────────────────
     DYNAMAD: {
       channels: ["whatsapp", "telegram", "email", "sms", "push"],
       isAds: true,

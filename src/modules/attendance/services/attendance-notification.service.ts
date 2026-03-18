@@ -34,6 +34,7 @@ export interface AttendanceNotificationData {
   vehicleNumber?: string;
   bookhireName?: string;
   subscriptionPlan: string;
+  firstLoginCompleted?: boolean;   // ✅ Whether parent has completed first login (has app installed)
   advertisementData?: {
     id: string;
     mediaUrl: string;
@@ -157,6 +158,12 @@ export class AttendanceNotificationService {
     let channels = this.getNotificationChannels(data.subscriptionPlan);
     const retryConfig = this.getRetryConfig(data.subscriptionPlan);
     const isAdsEnabled = this.isAdsEnabled(data.subscriptionPlan);
+
+    // 📱 FIRST LOGIN GUARD: If parent hasn't completed first login they have no app/device.
+    // Remove push channel — there is no FCM token to deliver to.
+    if (!data.firstLoginCompleted) {
+      channels = channels.filter(ch => ch !== 'push');
+    }
 
     // 🎯 PLATFORM-SPECIFIC FILTERING: Use modeOfSending (primary) or supportivePlatforms (fallback) to filter channels
     if (isAdsEnabled && data.advertisementData) {
@@ -1330,7 +1337,13 @@ export class AttendanceNotificationService {
       if (data.instituteName) {
         sms += ` | ${data.instituteName}`;
       }
-      
+
+      // 📥 APP DOWNLOAD CTA: Parent hasn't installed the app yet — invite them
+      if (!data.firstLoginCompleted) {
+        const downloadUrl = process.env.APP_DOWNLOAD_URL || 'https://play.google.com/store/apps/details?id=lk.suraksha.lms';
+        sms += `\n\nGet real-time updates, attendance history & more - Download the Suraksha LMS app:\n${downloadUrl}`;
+      }
+
       return sms;
     }
 

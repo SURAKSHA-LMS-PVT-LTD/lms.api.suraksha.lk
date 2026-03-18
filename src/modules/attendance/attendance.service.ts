@@ -1874,6 +1874,7 @@ export class AttendanceService {
         vehicleNumber: null,
         bookhireName: null,
         subscriptionPlan: data.subscriptionPlan,
+        firstLoginCompleted: data.primaryParent?.firstLoginCompleted ?? false,
         advertisementData
       };
 
@@ -1933,6 +1934,7 @@ export class AttendanceService {
     parentEmail: string | null;
     parentTelegramId: string | null;
     parentUserId: string | null;
+    firstLoginCompleted?: boolean;
     subscriptionPlan: string;
     attendanceDto: MarkAttendanceDto;
     isAdsFromDB: boolean;
@@ -1948,6 +1950,7 @@ export class AttendanceService {
         parentEmail,
         parentTelegramId,
         parentUserId,
+        firstLoginCompleted,
         subscriptionPlan,
         attendanceDto,
         isAdsFromDB,
@@ -2013,6 +2016,7 @@ export class AttendanceService {
         vehicleNumber: null,
         bookhireName: null,
         subscriptionPlan,
+        firstLoginCompleted: firstLoginCompleted ?? false,
         advertisementData
       };
 
@@ -2414,7 +2418,8 @@ export class AttendanceService {
               nameWithInitials: true,
               email: true,
               phoneNumber: true,
-              telegramId: true
+              telegramId: true,
+              firstLoginCompleted: true
             }
           },
           mother: {
@@ -2426,7 +2431,8 @@ export class AttendanceService {
               nameWithInitials: true,
               email: true,
               phoneNumber: true,
-              telegramId: true
+              telegramId: true,
+              firstLoginCompleted: true
             }
           },
           guardian: {
@@ -2438,7 +2444,8 @@ export class AttendanceService {
               nameWithInitials: true,
               email: true,
               phoneNumber: true,
-              telegramId: true
+              telegramId: true,
+              firstLoginCompleted: true
             }
           }
         }
@@ -2694,6 +2701,7 @@ export class AttendanceService {
     let parentEmail: string | null = null;
     let parentTelegramId: string | null = null;
     let parentUserId: string | null = null;
+    let parentFirstLoginCompleted: boolean = false;
     let studentData: any = null;
 
     if (isStudent) {
@@ -2714,11 +2722,11 @@ export class AttendanceService {
           'user.id', 'user.firstName', 'user.lastName', 'user.nameWithInitials', 'user.email', 'user.phoneNumber',
           'user.subscriptionPlan', 'user.telegramId', 'user.imageUrl',
           'father.userId', 'fatherUser.firstName', 'fatherUser.lastName',
-          'fatherUser.email', 'fatherUser.phoneNumber', 'fatherUser.telegramId',
+          'fatherUser.email', 'fatherUser.phoneNumber', 'fatherUser.telegramId', 'fatherUser.firstLoginCompleted',
           'mother.userId', 'motherUser.firstName', 'motherUser.lastName',
-          'motherUser.email', 'motherUser.phoneNumber', 'motherUser.telegramId',
+          'motherUser.email', 'motherUser.phoneNumber', 'motherUser.telegramId', 'motherUser.firstLoginCompleted',
           'guardian.userId', 'guardianUser.firstName', 'guardianUser.lastName',
-          'guardianUser.email', 'guardianUser.phoneNumber', 'guardianUser.telegramId'
+          'guardianUser.email', 'guardianUser.phoneNumber', 'guardianUser.telegramId', 'guardianUser.firstLoginCompleted'
         ])
         .getOne();
 
@@ -2738,16 +2746,19 @@ export class AttendanceService {
         parentEmail = studentData.father.user.email || null;
         parentTelegramId = studentData.father.user.telegramId || null;
         parentUserId = studentData.father.userId || null;
+        parentFirstLoginCompleted = studentData.father.user.firstLoginCompleted ?? false;
       } else if (studentData.mother?.user) {
         parentContact = studentData.mother.user.phoneNumber || null;
         parentEmail = studentData.mother.user.email || null;
         parentTelegramId = studentData.mother.user.telegramId || null;
         parentUserId = studentData.mother.userId || null;
+        parentFirstLoginCompleted = studentData.mother.user.firstLoginCompleted ?? false;
       } else if (studentData.guardian?.user) {
         parentContact = studentData.guardian.user.phoneNumber || null;
         parentEmail = studentData.guardian.user.email || null;
         parentTelegramId = studentData.guardian.user.telegramId || null;
         parentUserId = studentData.guardian.userId || null;
+        parentFirstLoginCompleted = studentData.guardian.user.firstLoginCompleted ?? false;
       }
     } else {
       // NON-STUDENT path: Use user data already loaded from institute_user query
@@ -2823,6 +2834,7 @@ export class AttendanceService {
         parentEmail,
         parentTelegramId,
         parentUserId,
+        firstLoginCompleted: parentFirstLoginCompleted,
         subscriptionPlan,
         attendanceDto,
         isAdsFromDB,
