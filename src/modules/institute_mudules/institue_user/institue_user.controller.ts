@@ -119,7 +119,7 @@ export class InstitueUserController {
 
   @Get()
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: '[DEPRECATED] Get all institute user assignments' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async findAll(@Query() query: QueryInstituteUserDto): Promise<PaginatedSecureUserResponseDto> {
@@ -128,7 +128,7 @@ export class InstitueUserController {
 
   @Get('institute/:instituteId/users')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: '[DEPRECATED] Get all users by institute' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async getUsersByInstitute(
@@ -139,7 +139,7 @@ export class InstitueUserController {
 
   @Get('institute/:instituteId/teachers')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: '[DEPRECATED] Get teachers by institute' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async getTeachersByInstitute(
@@ -150,7 +150,7 @@ export class InstitueUserController {
 
   @Get('user/:userId/institutes')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: '[DEPRECATED] Get institutes by user' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async getInstitutesByUser(@Param('userId', ParseBigIntPipe) userId: string): Promise<SecureUserResponseDto[]> {
@@ -159,7 +159,7 @@ export class InstitueUserController {
 
   @Get(':instituteId/:userId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: '[DEPRECATED] Get specific institute user assignment' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async findOne(

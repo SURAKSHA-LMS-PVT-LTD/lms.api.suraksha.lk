@@ -99,9 +99,10 @@ export class SubjectController {
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of records per page (-1 for all records)' })
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field (default: createdAt)' })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['ASC', 'DESC'], description: 'Sort order (default: DESC)' })
-  async findAll(@Query() query: QuerySubjectDto): Promise<SubjectResponseDto[]> {
-    // Validate that instituteId is provided
-    if (!query.instituteId) {
+  async findAll(@Query() query: QuerySubjectDto, @Req() req: any): Promise<SubjectResponseDto[]> {
+    // SUPERADMIN can query subjects across all institutes
+    const isSuperAdmin = req.user?.t === UserType.SUPERADMIN;
+    if (!query.instituteId && !isSuperAdmin) {
       throw new BadRequestException('instituteId is required to access subjects');
     }
     
@@ -141,9 +142,10 @@ export class SubjectController {
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of records per page (-1 for all records)' })
   @ApiQuery({ name: 'sortBy', required: false, description: 'Sort field (default: createdAt)' })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['ASC', 'DESC'], description: 'Sort order (default: DESC)' })
-  async findAllWithoutPagination(@Query() query: QueryAllSubjectsDto): Promise<SubjectResponseDto[]> {
-    // Validate that instituteId is provided
-    if (!query.instituteId) {
+  async findAllWithoutPagination(@Query() query: QueryAllSubjectsDto, @Req() req: any): Promise<SubjectResponseDto[]> {
+    // SUPERADMIN can query subjects across all institutes
+    const isSuperAdmin = req.user?.t === UserType.SUPERADMIN;
+    if (!query.instituteId && !isSuperAdmin) {
       throw new BadRequestException('instituteId is required to access subjects');
     }
     

@@ -46,10 +46,10 @@ export class BookhireOwnerEntity {
   @Column({ type: 'timestamp', nullable: true })
   resetPasswordExpires?: Date;
 
-  @Column({ name: 'created_at', type: 'timestamp' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
-  @Column({ name: 'updated_at', type: 'timestamp' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
 
   // Relations
