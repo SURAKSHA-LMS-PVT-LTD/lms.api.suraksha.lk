@@ -373,9 +373,14 @@ export class SmsController {
     }
 
     // Institute Admin can only view their own institute's submissions
-    const tokenInstituteId = req.user.i?.[0]?.i;
-    if (userType !== UserType.SUPERADMIN && userType !== 'SUPER_ADMIN') {
-      if (!tokenInstituteId || tokenInstituteId !== instituteId) {
+    // FlexibleAccessGuard already enforces institute-specific access, but double-check here
+    const instituteAccessList = Array.isArray(req.user.i) ? req.user.i : [];
+    const isSuperAdmin = req.user.hasGlobalInstituteAccess || req.user.u === 0;
+    if (!isSuperAdmin && instituteAccessList.length > 0) {
+      const hasAccess = instituteAccessList.some(
+        (entry: any) => String(entry.i) === String(instituteId),
+      );
+      if (!hasAccess) {
         throw new BadRequestException('You can only view payment submissions for your own institute');
       }
     }
