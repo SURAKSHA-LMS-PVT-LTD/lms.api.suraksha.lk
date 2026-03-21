@@ -1533,13 +1533,15 @@ export class SystemAdminUserService {
     // Generate unique file path
     const timestamp = Date.now();
     const sanitizedFileName = dto.fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const relativePath = `profile-images/${dto.userId}/${timestamp}_${sanitizedFileName}`;
+    const folder = `profile-images/${dto.userId}`;
+    const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
 
     // Generate signed upload URL (10 minutes expiry)
     const signedUrlResult = await this.cloudStorageService.generateSignedUploadUrl(
-      relativePath,
+      folder,
+      uniqueFileName,
       dto.contentType,
-      '10m', // 10 minutes
+      600, // 10 minutes in seconds
     );
 
     this.logger.log(
@@ -1552,7 +1554,7 @@ export class SystemAdminUserService {
       userId: user.id.toString(),
       studentName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nameWithInitials || 'Unknown',
       uploadUrl: signedUrlResult.uploadUrl,
-      relativePath,
+      relativePath: signedUrlResult.relativePath,
       expiresAt: signedUrlResult.expiresAt || new Date(Date.now() + 10 * 60 * 1000),
       contentType: dto.contentType,
       fields: signedUrlResult.fields,
