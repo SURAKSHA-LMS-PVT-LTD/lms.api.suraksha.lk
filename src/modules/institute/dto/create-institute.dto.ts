@@ -18,8 +18,18 @@ import { Country } from '../../user/enums/country.enum';
 import { District } from '../../user/enums/district.enum';
 import { Province } from '../../user/enums/province.enum';
 import { Transform } from 'class-transformer';
+import { InstituteType } from '../enums/institute.enums';
 
 export class CreateInstituteDto {
+  @ApiPropertyOptional({
+    description: 'Institute type',
+    example: InstituteType.SCHOOL,
+    enum: InstituteType
+  })
+  @IsOptional()
+  @IsEnum(InstituteType)
+  type?: InstituteType;
+
   @ApiProperty({
     description: 'Institute name',
     example: 'Cambridge International School',
