@@ -120,6 +120,7 @@ export class SystemAdminUserService {
       let motherId: string | null = null;
       let guardianId: string | null = null;
       let notificationsSent = 0;
+      const usersToNotify: Array<{ user: UserEntity; role: 'student' | 'father' | 'mother' | 'guardian' }> = [];
 
       // ============================================
       // STEP 1: Create Father (if provided)
@@ -129,12 +130,11 @@ export class SystemAdminUserService {
           queryRunner,
           dto.father,
           'father',
-          adminUserId,
-          dto.sendWelcomeNotifications
+          adminUserId
         );
         createdUsers.father = fatherResult.response;
         fatherId = fatherResult.userId;
-        if (fatherResult.notificationSent) notificationsSent++;
+        if (fatherResult.newUser) usersToNotify.push({ user: fatherResult.newUser, role: 'father' });
       }
 
       // ============================================
@@ -145,12 +145,11 @@ export class SystemAdminUserService {
           queryRunner,
           dto.mother,
           'mother',
-          adminUserId,
-          dto.sendWelcomeNotifications
+          adminUserId
         );
         createdUsers.mother = motherResult.response;
         motherId = motherResult.userId;
-        if (motherResult.notificationSent) notificationsSent++;
+        if (motherResult.newUser) usersToNotify.push({ user: motherResult.newUser, role: 'mother' });
       }
 
       // ============================================
@@ -178,12 +177,11 @@ export class SystemAdminUserService {
             queryRunner,
             dto.guardian,
             'guardian',
-            adminUserId,
-            dto.sendWelcomeNotifications
+            adminUserId
           );
           createdUsers.guardian = guardianResult.response;
           guardianId = guardianResult.userId;
-          if (guardianResult.notificationSent) notificationsSent++;
+          if (guardianResult.newUser) usersToNotify.push({ user: guardianResult.newUser, role: 'guardian' });
         }
       }
 
@@ -194,11 +192,10 @@ export class SystemAdminUserService {
         queryRunner,
         dto.student,
         { fatherId, motherId, guardianId },
-        adminUserId,
-        dto.sendWelcomeNotifications
+        adminUserId
       );
       createdUsers.student = studentResult.response;
-      if (studentResult.notificationSent) notificationsSent++;
+      if (studentResult.newUser) usersToNotify.push({ user: studentResult.newUser, role: 'student' });
 
       // ============================================
       // STEP 5: Institute Enrollments (new nested structure)
@@ -252,6 +249,22 @@ export class SystemAdminUserService {
 
       // Commit transaction
       await queryRunner.commitTransaction();
+
+      // ✅ Send welcome notifications AFTER commit (data is persisted, studentId lookups will work)
+      if (dto.sendWelcomeNotifications !== false) {
+        for (const { user, role } of usersToNotify) {
+          try {
+            const sent = await this.sendWelcomeNotification(user, role);
+            if (sent) {
+              notificationsSent++;
+              // Update the response DTO to reflect actual sent status
+              if (createdUsers[role]) createdUsers[role]!.welcomeMessageSent = true;
+            }
+          } catch (e) {
+            this.logger.warn(`Post-commit notification failed for user ${user.id}: ${e.message}`);
+          }
+        }
+      }
 
       // Calculate totals
       const totalUsersCreated = [
@@ -448,9 +461,8 @@ export class SystemAdminUserService {
     queryRunner: QueryRunner,
     data: FamilyMemberUserDto,
     role: 'father' | 'mother' | 'guardian',
-    adminUserId: string,
-    sendNotification?: boolean
-  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean }> {
+    adminUserId: string
+  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean; newUser: UserEntity | null }> {
     
     // Check if user already exists
     let existingUser: UserEntity | null = null;
@@ -496,7 +508,8 @@ export class SystemAdminUserService {
       return {
         userId: existingUser.id,
         response: this.toFamilyMemberResponse(existingUser, false),
-        notificationSent: false
+        notificationSent: false,
+        newUser: null as UserEntity | null,
       };
     }
 
@@ -591,16 +604,12 @@ export class SystemAdminUserService {
     });
     await queryRunner.manager.save(parentEntity);
 
-    // Send notification
-    let notificationSent = false;
-    if (sendNotification !== false) {
-      notificationSent = await this.sendWelcomeNotification(savedUser, role);
-    }
-
+    // Notification deferred to after transaction commit in createFamilyUnit
     return {
       userId: savedUser.id,
-      response: this.toFamilyMemberResponse(savedUser, notificationSent),
-      notificationSent
+      response: this.toFamilyMemberResponse(savedUser, false),
+      notificationSent: false,
+      newUser: savedUser,
     };
   }
 
@@ -611,9 +620,8 @@ export class SystemAdminUserService {
     queryRunner: QueryRunner,
     data: FamilyStudentDto,
     parents: { fatherId: string | null; motherId: string | null; guardianId: string | null },
-    adminUserId: string,
-    sendNotification?: boolean
-  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean }> {
+    adminUserId: string
+  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean; newUser: UserEntity | null }> {
     
     // Check if user already exists
     let existingUser: UserEntity | null = null;
@@ -774,19 +782,15 @@ export class SystemAdminUserService {
     });
     await queryRunner.manager.save(studentEntity);
 
-    // Send notification
-    let notificationSent = false;
-    if (sendNotification !== false) {
-      notificationSent = await this.sendWelcomeNotification(savedUser, 'student');
-    }
-
-    const response = this.toFamilyMemberResponse(savedUser, notificationSent);
+    // Notification deferred to after transaction commit in createFamilyUnit
+    const response = this.toFamilyMemberResponse(savedUser, false);
     response.studentId = studentEntity.studentId;
 
     return {
       userId: savedUser.id,
       response,
-      notificationSent
+      notificationSent: false,
+      newUser: savedUser,
     };
   }
 
@@ -1127,17 +1131,20 @@ export class SystemAdminUserService {
   }
 
   /**
-   * Send welcome notification
+   * Send welcome notification (email + SMS) with app URL
+   * Called AFTER transaction commit so DB lookups (studentId) work correctly
    */
   private async sendWelcomeNotification(
     user: UserEntity,
     role: 'student' | 'father' | 'mother' | 'guardian'
   ): Promise<boolean> {
     try {
-      const firstLoginUrl = `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`;
-      
+      const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
+      const firstLoginUrl = `${appUrl}/first-login?userId=${user.id}`;
+      const displayName = user.firstName || user.nameWithInitials || 'User';
+
       if (user.email) {
-        // ✅ Student with VERIFIED imageUrl AND cardId → send ID card email only (no welcome)
+        // ✅ Student with VERIFIED imageUrl AND cardId → send ID card email
         if (role === 'student' && user.imageUrl && user.cardId && user.imageVerificationStatus === ImageVerificationStatus.VERIFIED) {
           let photoUrl = user.imageUrl;
           try {
@@ -1146,7 +1153,7 @@ export class SystemAdminUserService {
             // Use raw imageUrl if getFullUrl fails
           }
 
-          // Get studentId if available
+          // Get studentId (safe now because transaction is committed)
           let studentId: string | undefined;
           try {
             const student = await this.studentRepository.findOne({
@@ -1171,43 +1178,36 @@ export class SystemAdminUserService {
               cardId: user.cardId,
               issueDate: new Date().toISOString().split('T')[0],
               barcodeNumber: user.cardId,
+              appUrl,
             },
             customSubject: 'Welcome to Suraksha LMS - Your ID Card!'
           });
 
-          // Also send SMS if phone available
-          if (user.phoneNumber) {
-            this.userNotificationService.sendWelcomeSmsOnly(
-              user.phoneNumber,
-              user.firstName || user.nameWithInitials || 'User',
-              user.id?.toString(),
-              'system'
-            );
-          }
+          this.logger.log(`ID card email queued for user ${user.id}, cardId: ${user.cardId}`);
+        } else {
+          // For non-ID-card users → send welcome email using 'generic' template (proven reliable)
+          this.asyncEmailService.sendTemplateEmailAsync({
+            templateType: 'generic',
+            toEmails: [user.email],
+            templateData: {
+              USER_NAME: displayName,
+              MESSAGE_TITLE: 'Welcome to Suraksha LMS!',
+              MESSAGE_BODY: `Dear ${displayName},\n\nYour ${role} account has been successfully created.\n\nPlease complete your registration using the link below.\n\nYour login details:\nEmail: ${user.email || 'Not set'}\nPhone: ${user.phoneNumber || 'Not set'}\n\nDownload our app: ${appUrl}`,
+              ACTION_URL: firstLoginUrl,
+              ACTION_TEXT: 'Complete Registration',
+              FOOTER_TEXT: `Download our app: ${appUrl}`
+            },
+            customSubject: 'Welcome to Suraksha LMS - Complete Your Registration'
+          });
 
-          this.logger.log(`ID card email sent for user ${user.id}, cardId: ${user.cardId}`);
-          return true;
+          this.logger.log(`Welcome email queued for ${role} user ${user.id}`);
         }
-
-        // For users without image/card or non-students → send incomplete profile email
-        this.asyncEmailService.sendTemplateEmailAsync({
-          templateType: 'welcome-incomplete-profile',
-          toEmails: [user.email],
-          templateData: {
-            name: user.firstName || user.nameWithInitials || 'User',
-            role: role,
-            firstLoginUrl,
-            email: user.email,
-            phoneNumber: user.phoneNumber
-          },
-          customSubject: 'Welcome to Suraksha LMS - Complete Your Registration'
-        });
 
         // Also send SMS if phone available
         if (user.phoneNumber) {
-          this.userNotificationService.sendWelcomeSmsOnly(
+          await this.userNotificationService.sendWelcomeSmsOnly(
             user.phoneNumber,
-            user.firstName || user.nameWithInitials || 'User',
+            displayName,
             user.id?.toString(),
             'system'
           );
@@ -1218,9 +1218,9 @@ export class SystemAdminUserService {
 
       // Send SMS if phone but no email
       if (user.phoneNumber) {
-        this.userNotificationService.sendWelcomeSmsOnly(
+        await this.userNotificationService.sendWelcomeSmsOnly(
           user.phoneNumber,
-          user.firstName || user.nameWithInitials || 'User',
+          displayName,
           user.id?.toString(),
           'system'
         );
@@ -1229,7 +1229,7 @@ export class SystemAdminUserService {
 
       return false;
     } catch (error) {
-      this.logger.warn(`Failed to send welcome notification: ${error.message}`);
+      this.logger.warn(`Failed to send welcome notification for user ${user.id}: ${error.message}`);
       return false;
     }
   }
@@ -1328,10 +1328,19 @@ export class SystemAdminUserService {
       throw new BadRequestException('User has no email or phone number to send notification');
     }
 
-    // Determine role based on user type
+    // Determine role based on user type and parent record
     let role: 'student' | 'father' | 'mother' | 'guardian' = 'student';
     if (user.userType === UserType.USER_WITHOUT_STUDENT) {
-      role = 'guardian'; // Parent without student
+      try {
+        const parentRecord = await this.parentRepository.findOne({
+          where: { userId: user.id },
+          select: ['id']
+        });
+        // All USER_WITHOUT_STUDENT are parents; 'guardian' is a safe generic label
+        role = parentRecord ? 'guardian' : 'guardian';
+      } catch {
+        role = 'guardian';
+      }
     }
 
     const sent = await this.sendWelcomeNotification(user as UserEntity, role);
@@ -1359,7 +1368,7 @@ export class SystemAdminUserService {
       profileCompletionPercentage: user.profileCompletionPercentage || 0,
       welcomeMessageSent,
       firstLoginUrl: user.profileCompletionStatus === ProfileCompletionStatus.INCOMPLETE
-        ? `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`
+        ? `${process.env.FRONTEND_URL || 'https://lms.suraksha.lk'}/first-login?userId=${user.id}`
         : undefined
     };
   }

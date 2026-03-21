@@ -285,7 +285,7 @@ export class InstituteAdminUserService {
         profileCompletionPercentage: savedUser.profileCompletionPercentage ?? 0,
         requiresFirstLogin,
         firstLoginUrl: requiresFirstLogin
-          ? `${process.env.FRONTEND_URL ?? 'https://app.suraksha.lk'}/first-login?userId=${savedUser.id}`
+          ? `${process.env.FRONTEND_URL ?? 'https://lms.suraksha.lk'}/first-login?userId=${savedUser.id}`
           : undefined,
         studentId: studentRecord?.studentId,
         instituteImage: imageResults.instituteImage,
@@ -644,7 +644,7 @@ export class InstituteAdminUserService {
     try {
       if (!user.email && !user.phoneNumber) return false;
 
-      const firstLoginUrl = `${process.env.FRONTEND_URL ?? 'https://app.suraksha.lk'}/first-login?userId=${user.id}`;
+      const firstLoginUrl = `${process.env.FRONTEND_URL ?? 'https://lms.suraksha.lk'}/first-login?userId=${user.id}`;
       const roleLabel = role.toLowerCase().replace('_', ' ');
 
       if (user.email) {
