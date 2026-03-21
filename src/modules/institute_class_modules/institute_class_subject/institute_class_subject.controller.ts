@@ -100,6 +100,7 @@ export class InstituteClassSubjectController {
   @Get(':subjectId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
     teacher: {},
     student: {},
     attendanceMarker: true,  // Institute-level access (no class requirement)
@@ -333,7 +334,7 @@ export class InstituteClassSubjectGlobalController {
 
   @Get()
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   @ApiOperation({ summary: 'Get all institute class subjects with filtering' })
   @ApiResponse({ status: 200, description: 'Subjects retrieved successfully', type: PaginatedInstituteClassSubjectResponseDto })
   async findAll(@Query() query: QueryInstituteClassSubjectDto): Promise<PaginatedInstituteClassSubjectResponseDto> {
@@ -343,6 +344,7 @@ export class InstituteClassSubjectGlobalController {
   @Get('teacher/:teacherId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
     teacher: true,
     instituteAdmin: true
   })
@@ -355,7 +357,7 @@ export class InstituteClassSubjectGlobalController {
 
   @Get('institute/:instituteId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   @ApiOperation({ summary: 'Get all subjects for a specific institute' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiResponse({ status: 200, description: 'Institute subjects retrieved successfully', type: [InstituteClassSubjectResponseDto] })
