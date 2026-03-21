@@ -49,6 +49,10 @@ import { ImageVerificationStatus } from '../../institute_mudules/institue_user/e
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
+import { CardType } from '../../user-card-management/enums/card-type.enum';
+import { OrderStatus } from '../../user-card-management/enums/order-status.enum';
+import { UserIdCardOrder } from '../../user-card-management/entities/user-id-card-order.entity';
+import { Card } from '../../user-card-management/entities/card.entity';
 import { now } from '../../../common/utils/timezone.util';
 import { UserImageEntity, ImageScope } from '../entities/user-image.entity';
 import { UserNotificationService } from './user-notification.service';
@@ -547,12 +551,32 @@ export class SystemAdminUserService {
         password: hashedPassword
       }),
       firstLoginCompleted: !!hashedPassword, // If password provided, first login is complete
+      // ✅ Mark image as VERIFIED when admin provides it
+      imageVerificationStatus: data.imageUrl ? ImageVerificationStatus.VERIFIED : undefined,
+      imageVerifiedBy: data.imageUrl ? adminUserId : undefined,
+      imageVerifiedAt: data.imageUrl ? now() : undefined,
       createdByAdminId: adminUserId,
       createdAt: now(),
       updatedAt: now()
     });
 
     const savedUser = await queryRunner.manager.save(userEntity);
+
+    // Create user_images row for system-admin-assigned image (GLOBAL, VERIFIED)
+    if (data.imageUrl) {
+      await queryRunner.manager.save(
+        queryRunner.manager.create(UserImageEntity, {
+          userId: savedUser.id,
+          imageUrl: data.imageUrl,
+          scope: ImageScope.GLOBAL,
+          status: ImageVerificationStatus.VERIFIED,
+          verifiedBy: adminUserId,
+          verifiedAt: now(),
+          createdAt: now(),
+          updatedAt: now(),
+        }),
+      );
+    }
 
     // Create parent record
     const parentEntity = queryRunner.manager.create(ParentEntity, {
@@ -684,6 +708,38 @@ export class SystemAdminUserService {
     }
 
     const savedUser = await queryRunner.manager.save(userEntity);
+
+    // Create user_id_card_orders record for the auto-generated card (TEMPORARY type)
+    try {
+      const cardRepo = queryRunner.manager.getRepository(Card);
+      let catalogCard = await cardRepo.findOne({ where: { cardType: CardType.TEMPORARY, isActive: true } });
+      if (!catalogCard) {
+        catalogCard = await cardRepo.findOne({ where: { isActive: true } });
+      }
+      if (catalogCard) {
+        const orderRepo = queryRunner.manager.getRepository(UserIdCardOrder);
+        const newOrder = orderRepo.create({
+          userId: savedUser.id,
+          cardId: catalogCard.id,
+          cardType: CardType.TEMPORARY,
+          cardExpiryDate,
+          status: CardStatus.ACTIVE,
+          orderStatus: OrderStatus.DELIVERED,
+          rfidNumber: generatedCardId,
+          orderDate: now(),
+          deliveryAddress: 'System Admin Auto-Generated',
+          contactPhone: savedUser.phoneNumber || 'N/A',
+          deliveredAt: now(),
+          activatedAt: now(),
+          notes: `Auto-generated during family unit creation by admin ID: ${adminUserId}`,
+          createdAt: now(),
+          updatedAt: now(),
+        });
+        await orderRepo.save(newOrder);
+      }
+    } catch (orderError) {
+      this.logger.warn(`Failed to create card order for student ${savedUser.id}: ${orderError.message}`);
+    }
 
     // Create user_images row for system-admin-assigned image (GLOBAL, VERIFIED)
     if (data.imageUrl) {
@@ -1261,7 +1317,7 @@ export class SystemAdminUserService {
   ): Promise<{ success: boolean; message: string }> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'firstName', 'nameWithInitials', 'email', 'phoneNumber', 'profileCompletionStatus', 'userType']
+      select: ['id', 'firstName', 'nameWithInitials', 'email', 'phoneNumber', 'profileCompletionStatus', 'userType', 'imageUrl', 'cardId', 'imageVerificationStatus']
     });
 
     if (!user) {
@@ -1453,6 +1509,20 @@ export class SystemAdminUserService {
       }
     );
 
+    // Create user_images record for tracking
+    await this.userImageRepository.save(
+      this.userImageRepository.create({
+        userId: student.userId,
+        imageUrl: fullUrl,
+        scope: ImageScope.GLOBAL,
+        status: ImageVerificationStatus.VERIFIED,
+        verifiedBy: adminUserId,
+        verifiedAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      }),
+    );
+
     this.logger.log(
       `Profile image assigned for student ${dto.studentId} (user ${student.userId}) by admin ${adminUserId}`
     );
@@ -1600,6 +1670,20 @@ export class SystemAdminUserService {
         imageRejectionReason: null,
         updatedAt: now()
       }
+    );
+
+    // Create user_images record for tracking
+    await this.userImageRepository.save(
+      this.userImageRepository.create({
+        userId: dto.userId.toString(),
+        imageUrl: fullUrl,
+        scope: ImageScope.GLOBAL,
+        status: ImageVerificationStatus.VERIFIED,
+        verifiedBy: adminUserId.toString(),
+        verifiedAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      }),
     );
 
     this.logger.log(
@@ -1858,6 +1942,38 @@ export class SystemAdminUserService {
       user.cardExpiryDate = cardExpiryDate;
       cardGenerated = true;
 
+      // Create user_id_card_orders record for the auto-generated card
+      try {
+        const cardRepo = this.dataSource.getRepository(Card);
+        let catalogCard = await cardRepo.findOne({ where: { cardType: CardType.TEMPORARY, isActive: true } });
+        if (!catalogCard) {
+          catalogCard = await cardRepo.findOne({ where: { isActive: true } });
+        }
+        if (catalogCard) {
+          const orderRepo = this.dataSource.getRepository(UserIdCardOrder);
+          const newOrder = orderRepo.create({
+            userId: dto.userId.toString(),
+            cardId: catalogCard.id,
+            cardType: CardType.TEMPORARY,
+            cardExpiryDate,
+            status: CardStatus.ACTIVE,
+            orderStatus: OrderStatus.DELIVERED,
+            rfidNumber: generatedCardId,
+            orderDate: now(),
+            deliveryAddress: 'System Admin Image Approval',
+            contactPhone: user.phoneNumber || 'N/A',
+            deliveredAt: now(),
+            activatedAt: now(),
+            notes: `Auto-generated on image approval by admin ID: ${adminId}`,
+            createdAt: now(),
+            updatedAt: now(),
+          });
+          await orderRepo.save(newOrder);
+        }
+      } catch (orderError) {
+        this.logger.warn(`Failed to create card order on image approval for user ${dto.userId}: ${orderError.message}`);
+      }
+
       this.logger.log(`Generated card ID ${generatedCardId} for user ${dto.userId}`);
     }
 
@@ -1949,6 +2065,20 @@ export class SystemAdminUserService {
         }
       } catch (emailError) {
         this.logger.warn(`Failed to send approval email to user ${dto.userId}: ${emailError.message}`);
+      }
+    }
+
+    // Also send SMS if phone available
+    if (user.phoneNumber) {
+      try {
+        this.userNotificationService.sendWelcomeSmsOnly(
+          user.phoneNumber,
+          user.firstName || user.nameWithInitials || 'User',
+          user.id?.toString(),
+          'system'
+        );
+      } catch (smsError) {
+        this.logger.warn(`Failed to send approval SMS to user ${dto.userId}: ${smsError.message}`);
       }
     }
 
@@ -2188,7 +2318,8 @@ export class SystemAdminUserService {
   }
 
   /**
-   * Assign or update a normal card (QR/barcode) for a user
+   * Assign or update a normal card (QR/barcode) for a user.
+   * Also creates a user_id_card_orders record for full tracking.
    */
   async assignNormalCard(userId: number, dto: { cardId: string; cardExpiryDate?: string }, adminId: string): Promise<any> {
     const user = await this.userRepository.findOne({ where: { id: userId.toString() } });
@@ -2202,14 +2333,87 @@ export class SystemAdminUserService {
       }
     }
 
-    // If user already has an active card, mark old one as REPLACED
+    // Also verify the card number is not in a live order belonging to another user
+    const orderRepo = this.dataSource.getRepository(UserIdCardOrder);
+    const conflictingOrder = await orderRepo.findOne({ where: { rfidNumber: dto.cardId } });
+    if (conflictingOrder && conflictingOrder.userId !== userId.toString()) {
+      throw new BadRequestException(`Card ID ${dto.cardId} is already registered in an order for another user (ID: ${conflictingOrder.userId})`);
+    }
+
     const previousCardId = user.cardId;
     const previousStatus = user.cardStatus;
 
+    // Default expiry to +2 years when not provided (consistent with createStudentUser)
+    const cardExpiryDate = dto.cardExpiryDate
+      ? new Date(dto.cardExpiryDate)
+      : (() => { const d = now(); d.setFullYear(d.getFullYear() + 2); return d; })();
+
+    // 1. Update user columns
     user.cardId = dto.cardId;
     user.cardStatus = CardStatus.ACTIVE;
-    user.cardExpiryDate = dto.cardExpiryDate ? new Date(dto.cardExpiryDate) : null;
+    user.cardExpiryDate = cardExpiryDate;
     await this.userRepository.save(user);
+
+    // 2. Create / update user_id_card_orders record for tracking
+    try {
+      // Mark the previous card's order as REPLACED
+      if (previousCardId && previousCardId !== dto.cardId) {
+        await orderRepo.update(
+          { userId: userId.toString(), rfidNumber: previousCardId },
+          { status: CardStatus.REPLACED, deactivatedAt: now(), updatedAt: now() }
+        );
+      }
+
+      // Only create a new order if one doesn't already exist for this exact card+user
+      const existingOrderForThisCard = await orderRepo.findOne({
+        where: { userId: userId.toString(), rfidNumber: dto.cardId }
+      });
+
+      if (!existingOrderForThisCard) {
+        // Find a PVC card in the catalog to satisfy the FK; fall back to any active card.
+        const cardRepo = this.dataSource.getRepository(Card);
+        let catalogCard = await cardRepo.findOne({ where: { cardType: CardType.TEMPORARY, isActive: true } });
+        if (!catalogCard) {
+          catalogCard = await cardRepo.findOne({ where: { isActive: true } });
+        }
+
+        if (catalogCard) {
+          const newOrder = orderRepo.create({
+            userId: userId.toString(),
+            cardId: catalogCard.id,
+            cardType: CardType.TEMPORARY,
+            cardExpiryDate,
+            status: CardStatus.ACTIVE,
+            orderStatus: OrderStatus.DELIVERED,
+            rfidNumber: dto.cardId,
+            orderDate: now(),
+            deliveryAddress: 'Admin Direct Assignment',
+            contactPhone: user.phoneNumber || 'N/A',
+            deliveredAt: now(),
+            activatedAt: now(),
+            notes: `Assigned directly by system admin ID: ${adminId}`,
+            createdAt: now(),
+            updatedAt: now(),
+          });
+          await orderRepo.save(newOrder);
+          this.logger.log(`Created card order record for card ${dto.cardId} -> user ${userId}`);
+        } else {
+          this.logger.warn(`No active card catalog entry found — skipping user_id_card_orders record for card ${dto.cardId}. Add a card to the catalog via POST /admin/cards.`);
+        }
+      } else {
+        // Order exists — just reactivate it
+        await orderRepo.update(existingOrderForThisCard.id, {
+          status: CardStatus.ACTIVE,
+          cardExpiryDate,
+          activatedAt: now(),
+          deactivatedAt: null,
+          updatedAt: now(),
+        });
+      }
+    } catch (orderError) {
+      // Non-fatal: user table update already succeeded
+      this.logger.warn(`Failed to create/update order record for card ${dto.cardId}: ${orderError.message}`);
+    }
 
     this.logger.log(`Admin ${adminId} assigned normal card ${dto.cardId} to user ${userId}. Previous: ${previousCardId} (${previousStatus})`);
 

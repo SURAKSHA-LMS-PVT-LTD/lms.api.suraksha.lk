@@ -122,7 +122,7 @@ export class InstitueClassController {
 
   @Get('institute/:instituteId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })
@@ -132,7 +132,7 @@ export class InstitueClassController {
 
   @Get('academic-year/:instituteId/:academicYear')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })

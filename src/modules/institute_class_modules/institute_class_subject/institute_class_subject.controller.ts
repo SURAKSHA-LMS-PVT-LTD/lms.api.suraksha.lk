@@ -77,6 +77,7 @@ export class InstituteClassSubjectController {
   @Get()
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ 
+    global: [UserType.SUPERADMIN],
     teacher: {},
     student: {},
     attendanceMarker: true,  // Institute-level access (no class requirement)
