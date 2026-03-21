@@ -27,6 +27,7 @@ import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
 import { BloodGroup } from '../student/enums/blood-group.enum';
 import { Occupation } from './enums/occupation.enum';
+import { Country } from './enums/country.enum';
 import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { parseDate } from '../../common/validators/date-format.validator';
@@ -473,7 +474,7 @@ export class UsersService {
         district: cleanToNull(dto.district),
         province: cleanToNull(dto.province),
         postalCode: cleanToNull(dto.postalCode),
-        country: cleanToNull(dto.country),
+        country: cleanToNull(dto.country) ?? Country.SRI_LANKA,
         idUrl: cleanToNull(dto.idUrl),
         password: null, // Always NULL for new users
         imageUrl: null, // Always NULL initially
