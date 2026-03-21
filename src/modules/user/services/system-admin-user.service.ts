@@ -51,6 +51,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 import { now } from '../../../common/utils/timezone.util';
 import { UserImageEntity, ImageScope } from '../entities/user-image.entity';
+import { UserNotificationService } from './user-notification.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -80,6 +81,7 @@ export class SystemAdminUserService {
     private readonly cloudStorageService: CloudStorageService,
     @InjectRepository(UserImageEntity)
     private readonly userImageRepository: Repository<UserImageEntity>,
+    private readonly userNotificationService: UserNotificationService,
   ) {}
 
   /**
@@ -673,6 +675,14 @@ export class SystemAdminUserService {
     userEntity.cardStatus = CardStatus.ACTIVE;
     userEntity.cardExpiryDate = cardExpiryDate;
 
+    // ✅ Set imageVerificationStatus VERIFIED on the UserEntity itself when admin provides imageUrl
+    // This ensures sendWelcomeNotification can detect it and send an ID card email instead of incomplete-profile email
+    if (data.imageUrl) {
+      userEntity.imageVerificationStatus = ImageVerificationStatus.VERIFIED;
+      userEntity.imageVerifiedBy = adminUserId;
+      userEntity.imageVerifiedAt = now();
+    }
+
     const savedUser = await queryRunner.manager.save(userEntity);
 
     // Create user_images row for system-admin-assigned image (GLOBAL, VERIFIED)
@@ -1109,6 +1119,16 @@ export class SystemAdminUserService {
             customSubject: 'Welcome to Suraksha LMS - Your ID Card!'
           });
 
+          // Also send SMS if phone available
+          if (user.phoneNumber) {
+            this.userNotificationService.sendWelcomeSmsOnly(
+              user.phoneNumber,
+              user.firstName || user.nameWithInitials || 'User',
+              user.id?.toString(),
+              'system'
+            );
+          }
+
           this.logger.log(`ID card email sent for user ${user.id}, cardId: ${user.cardId}`);
           return true;
         }
@@ -1126,12 +1146,28 @@ export class SystemAdminUserService {
           },
           customSubject: 'Welcome to Suraksha LMS - Complete Your Registration'
         });
+
+        // Also send SMS if phone available
+        if (user.phoneNumber) {
+          this.userNotificationService.sendWelcomeSmsOnly(
+            user.phoneNumber,
+            user.firstName || user.nameWithInitials || 'User',
+            user.id?.toString(),
+            'system'
+          );
+        }
+
         return true;
       }
 
-      // TODO: Send SMS if phone but no email
+      // Send SMS if phone but no email
       if (user.phoneNumber) {
-        this.logger.log(`SMS notification queued for ${user.phoneNumber} (not implemented)`);
+        this.userNotificationService.sendWelcomeSmsOnly(
+          user.phoneNumber,
+          user.firstName || user.nameWithInitials || 'User',
+          user.id?.toString(),
+          'system'
+        );
         return true;
       }
 
