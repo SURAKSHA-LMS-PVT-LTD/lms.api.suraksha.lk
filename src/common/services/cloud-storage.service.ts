@@ -15,7 +15,7 @@ import {
   GetObjectCommand,
   ListObjectsV2Command
 } from '@aws-sdk/client-s3';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // AWS SDK v2 will be dynamically imported when needed (legacy support)
 let AWS: any = null;
@@ -616,42 +616,29 @@ export class CloudStorageService implements OnModuleInit {
       );
     }
 
-    const conditions: any[] = [
-      ['eq', '$Content-Type', contentType],
-      ['eq', '$key', relativePath],
-    ];
-
-    if (maxFileSize) {
-      conditions.push(['content-length-range', 0, maxFileSize]);
-    }
-
-    const fields: Record<string, string> = {
-      key: relativePath,
-      'Content-Type': contentType,
-    };
-
     try {
-      const presignedPost = await createPresignedPost(this.s3Client, {
+      // Use presigned PUT — simpler than presigned POST, no form fields needed.
+      // Frontend: PUT <uploadUrl> with Content-Type header + binary body.
+      const command = new PutObjectCommand({
         Bucket: this.s3BucketName,
         Key: relativePath,
-        Conditions: conditions,
-        Fields: fields,
-        Expires: expiresIn,
+        ContentType: contentType,
       });
 
+      const uploadUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
       return {
-        uploadUrl: presignedPost.url,
+        uploadUrl,
         relativePath,
         expiresAt,
         maxFileSize,
         contentType,
-        fields: presignedPost.fields,
+        fields: undefined, // PUT upload — no form fields required
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to create presigned POST: ${error.message}`, error.stack);
-      throw new InternalServerErrorException(`Failed to generate presigned POST: ${error.message}`);
+      this.logger.error(`❌ Failed to create presigned PUT URL: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Failed to generate presigned PUT URL: ${error.message}`);
     }
   }
 

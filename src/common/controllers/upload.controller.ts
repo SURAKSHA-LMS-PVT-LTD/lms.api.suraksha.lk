@@ -186,10 +186,6 @@ export class UploadController {
     // Construct public URL using provider-aware helper (handles GCS, S3, local correctly)
     const publicUrl = this.cloudStorageService.getFullUrl(result.relativePath);
 
-    // Determine upload method based on provider
-    const provider = this.configService.get<string>('STORAGE_PROVIDER', 'google').toLowerCase();
-    const uploadMethod = (provider === 'aws' || provider === 's3') ? 'POST' : 'PUT';
-
     return {
       success: true,
       message: 'Signed URL generated successfully (10 min expiry)',
@@ -197,12 +193,9 @@ export class UploadController {
       publicUrl: publicUrl,
       relativePath: result.relativePath,
       expiresAt: result.expiresAt,
-      ...(result.fields && { fields: result.fields }), // Include POST form fields for AWS S3
       instructions: {
-        step1: `Upload file using: ${uploadMethod} ${result.uploadUrl}`,
-        step2: uploadMethod === 'POST' 
-          ? 'Submit multipart/form-data with file field + provided fields'
-          : `Add header: Content-Type: ${contentType}`,
+        step1: `PUT ${result.uploadUrl}`,
+        step2: `Add header: Content-Type: ${contentType}`,
         step3: `Call POST /upload/verify-and-publish with relativePath: ${result.relativePath}`,
         step4: `Use publicUrl in your application: ${publicUrl}`,
         important: 'File will be PRIVATE until you call /verify-and-publish'
@@ -339,10 +332,6 @@ export class UploadController {
     // Construct public URL using provider-aware helper (handles GCS, S3, local correctly)
     const publicUrl = this.cloudStorageService.getFullUrl(result.relativePath);
 
-    // Determine upload method based on provider
-    const provider = this.configService.get<string>('STORAGE_PROVIDER', 'google').toLowerCase();
-    const uploadMethod = (provider === 'aws' || provider === 's3') ? 'POST' : 'PUT';
-
     return {
       success: true,
       message: 'Profile image signed URL generated successfully (10 min expiry)',
@@ -350,12 +339,9 @@ export class UploadController {
       publicUrl: publicUrl,
       relativePath: result.relativePath,
       expiresAt: result.expiresAt,
-      ...(result.fields && { fields: result.fields }),
       instructions: {
-        step1: `Upload file using: ${uploadMethod} ${result.uploadUrl}`,
-        step2: uploadMethod === 'POST' 
-          ? 'Submit multipart/form-data with file field + provided fields'
-          : `Add header: Content-Type: ${contentType}`,
+        step1: `PUT ${result.uploadUrl}`,
+        step2: `Add header: Content-Type: ${contentType}`,
         step3: `Call POST /upload/verify-and-publish with relativePath: ${result.relativePath}`,
         step4: `Use publicUrl in your application: ${publicUrl}`,
         important: 'File will be PRIVATE until you call /verify-and-publish'
