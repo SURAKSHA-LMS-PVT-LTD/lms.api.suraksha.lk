@@ -28,6 +28,7 @@ import {
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { NoDataMasking } from '../../../common/decorators/no-data-masking.decorator';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { InstituteAdminUserService } from '../services/institute-admin-user.service';
 import {
@@ -39,6 +40,7 @@ import {
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
 @Controller('institutes/:instituteId/users')
+@NoDataMasking()
 export class InstituteAdminUserController {
   constructor(
     private readonly instituteAdminUserService: InstituteAdminUserService,

@@ -27,7 +27,6 @@ import { SubscriptionPlan } from '../user/enums/subscription-plan.enum';
 import { Language } from '../user/enums/language.enum';
 
 // Utils & Exceptions
-import { maskPhoneNumber } from '../../common/utils/phone-mask.util';
 import { BusinessLogicException } from '../../common/exceptions/custom.exceptions';
 import { sanitizeSortField, sanitizeSortOrder } from '@common/utils/query-sanitizer.util';
 
@@ -611,7 +610,7 @@ export class ParentsService {
       userId: parent.userId,
       occupation: parent.occupation,
       workplace: parent.workplace,
-      workPhone: maskPhoneNumber(parent.workPhone),
+      workPhone: parent.workPhone,
       educationLevel: parent.educationLevel,
       isActive: parent.isActive,
       createdAt: parent.createdAt,

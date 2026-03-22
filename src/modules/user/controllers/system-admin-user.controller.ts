@@ -31,6 +31,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { SystemAdminGuard } from '../../user-card-management/guards/system-admin.guard';
+import { NoDataMasking } from '../../../common/decorators/no-data-masking.decorator';
 import { SystemAdminUserService } from '../services/system-admin-user.service';
 import {
   CreateFamilyUnitDto,
@@ -60,6 +61,7 @@ import {
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, SystemAdminGuard)
 @ApiBearerAuth()
+@NoDataMasking()
 export class SystemAdminUserController {
   constructor(
     private readonly systemAdminUserService: SystemAdminUserService

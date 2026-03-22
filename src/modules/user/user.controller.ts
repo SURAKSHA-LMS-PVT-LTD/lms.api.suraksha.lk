@@ -1274,6 +1274,7 @@ export class UsersController {
     global: [UserType.SUPERADMIN]
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get all users with advanced filtering and pagination',
     description: `Retrieves a paginated list of users with comprehensive filtering capabilities.
@@ -1855,6 +1856,7 @@ export class UsersController {
     instituteAdmin: true 
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get all parents for students in user\'s institutes',
     description: `Retrieves all parents (father, mother, guardian) of students enrolled in institutes associated with the user.
@@ -1967,6 +1969,7 @@ export class UsersController {
     teacher: true
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get all parents for students in specific institute',
     description: `Retrieves all parents (father, mother, guardian) of students enrolled in a specific institute.
@@ -2065,6 +2068,7 @@ export class UsersController {
     teacher: { requireClass: true }
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get all parents for students in specific institute class',
     description: `Retrieves all parents (father, mother, guardian) of students enrolled in a specific institute class.
@@ -2171,6 +2175,7 @@ export class UsersController {
     teacher: { requireClass: true, requireSubject: true }
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get all parents for students in specific institute class subject',
     description: `Retrieves all parents (father, mother, guardian) of students enrolled in a specific institute class subject.
@@ -2282,6 +2287,7 @@ export class UsersController {
     allowSelf: true
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Get user by ID',
     description: `Retrieves a specific user by their unique identifier.
@@ -2363,6 +2369,7 @@ export class UsersController {
     instituteAdmin: true 
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Update user by ID',
     description: `Updates a specific user's information with comprehensive validation.
@@ -2482,6 +2489,7 @@ export class UsersController {
     instituteAdmin: true 
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Activate user account',
     description: `Activates a user account, enabling system access.
@@ -2570,6 +2578,7 @@ export class UsersController {
     instituteAdmin: true 
   })
   @HttpCode(HttpStatus.OK)
+  @NoDataMasking()
   @ApiOperation({ 
     summary: 'Deactivate user account (soft delete)',
     description: `Deactivates a user account while preserving data for audit purposes.

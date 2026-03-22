@@ -24,7 +24,6 @@ import { SubjectResponseDto } from '../../subject/dto/subject-response.dto';
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
-import { maskPhoneNumber } from '../../../common/utils/phone-mask.util';
 import { UserType } from '../../user/enums/user-type.enum';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
@@ -755,7 +754,7 @@ export class InstituteClassSubjectStudentsService {
           firstName: row.student_first_name,
           lastName: row.student_last_name,
           email: row.student_email,
-          phoneNumber: maskPhoneNumber(row.student_phone)
+          phoneNumber: row.student_phone
         };
 
         const subject = {
@@ -771,7 +770,7 @@ export class InstituteClassSubjectStudentsService {
             firstName: row.father_first_name,
             lastName: row.father_last_name,
             email: row.father_email,
-            phoneNumber: maskPhoneNumber(row.father_phone),
+            phoneNumber: row.father_phone,
             imageUrl: row.father_image ? this.cloudStorageService.getFullUrl(row.father_image) : null,
             gender: row.father_gender,
             occupation: row.father_occupation,
@@ -791,7 +790,7 @@ export class InstituteClassSubjectStudentsService {
             firstName: row.mother_first_name,
             lastName: row.mother_last_name,
             email: row.mother_email,
-            phoneNumber: maskPhoneNumber(row.mother_phone),
+            phoneNumber: row.mother_phone,
             imageUrl: row.mother_image ? this.cloudStorageService.getFullUrl(row.mother_image) : null,
             gender: row.mother_gender,
             occupation: row.mother_occupation,
@@ -811,7 +810,7 @@ export class InstituteClassSubjectStudentsService {
             firstName: row.guardian_first_name,
             lastName: row.guardian_last_name,
             email: row.guardian_email,
-            phoneNumber: maskPhoneNumber(row.guardian_phone),
+            phoneNumber: row.guardian_phone,
             imageUrl: row.guardian_image ? this.cloudStorageService.getFullUrl(row.guardian_image) : null,
             gender: row.guardian_gender,
             occupation: row.guardian_occupation,
