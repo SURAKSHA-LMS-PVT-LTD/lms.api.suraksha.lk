@@ -221,10 +221,15 @@ export class UserNotificationService {
         }
       }
 
+      const appUrl = this.configService.get<string>('APP_URL') ||
+        this.configService.get<string>('FRONTEND_URL') ||
+        'https://lms.suraksha.lk';
+
       let message = 
         `Welcome to Suraksha LMS!\n\n` +
         `Your account has been successfully created.\n` +
         `User ID: ${userId}\n\n` +
+        `Download our app: ${appUrl}\n\n` +
         `Thank you,\n` +
         `Suraksha LMS`;
       

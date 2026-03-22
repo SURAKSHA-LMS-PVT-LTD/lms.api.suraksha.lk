@@ -49,6 +49,10 @@ import { ImageVerificationStatus } from '../../institute_mudules/institue_user/e
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
+import { CardType } from '../../user-card-management/enums/card-type.enum';
+import { OrderStatus } from '../../user-card-management/enums/order-status.enum';
+import { UserIdCardOrder } from '../../user-card-management/entities/user-id-card-order.entity';
+import { Card } from '../../user-card-management/entities/card.entity';
 import { now } from '../../../common/utils/timezone.util';
 import { UserImageEntity, ImageScope } from '../entities/user-image.entity';
 import { UserNotificationService } from './user-notification.service';
@@ -111,6 +115,7 @@ export class SystemAdminUserService {
       let motherId: string | null = null;
       let guardianId: string | null = null;
       let notificationsSent = 0;
+      const usersToNotify: Array<{ user: UserEntity; role: 'student' | 'father' | 'mother' | 'guardian' }> = [];
 
       // ============================================
       // STEP 1: Create Father (if provided)
@@ -120,12 +125,11 @@ export class SystemAdminUserService {
           queryRunner,
           dto.father,
           'father',
-          adminUserId,
-          dto.sendWelcomeNotifications
+          adminUserId
         );
         createdUsers.father = fatherResult.response;
         fatherId = fatherResult.userId;
-        if (fatherResult.notificationSent) notificationsSent++;
+        if (fatherResult.newUser) usersToNotify.push({ user: fatherResult.newUser, role: 'father' });
       }
 
       // ============================================
@@ -136,12 +140,11 @@ export class SystemAdminUserService {
           queryRunner,
           dto.mother,
           'mother',
-          adminUserId,
-          dto.sendWelcomeNotifications
+          adminUserId
         );
         createdUsers.mother = motherResult.response;
         motherId = motherResult.userId;
-        if (motherResult.notificationSent) notificationsSent++;
+        if (motherResult.newUser) usersToNotify.push({ user: motherResult.newUser, role: 'mother' });
       }
 
       // ============================================
@@ -169,12 +172,11 @@ export class SystemAdminUserService {
             queryRunner,
             dto.guardian,
             'guardian',
-            adminUserId,
-            dto.sendWelcomeNotifications
+            adminUserId
           );
           createdUsers.guardian = guardianResult.response;
           guardianId = guardianResult.userId;
-          if (guardianResult.notificationSent) notificationsSent++;
+          if (guardianResult.newUser) usersToNotify.push({ user: guardianResult.newUser, role: 'guardian' });
         }
       }
 
@@ -185,11 +187,10 @@ export class SystemAdminUserService {
         queryRunner,
         dto.student,
         { fatherId, motherId, guardianId },
-        adminUserId,
-        dto.sendWelcomeNotifications
+        adminUserId
       );
       createdUsers.student = studentResult.response;
-      if (studentResult.notificationSent) notificationsSent++;
+      if (studentResult.newUser) usersToNotify.push({ user: studentResult.newUser, role: 'student' });
 
       // ============================================
       // STEP 5: Institute Enrollments (new nested structure)
@@ -243,6 +244,22 @@ export class SystemAdminUserService {
 
       // Commit transaction
       await queryRunner.commitTransaction();
+
+      // ✅ Send welcome notifications AFTER commit (data is persisted, studentId lookups will work)
+      if (dto.sendWelcomeNotifications !== false) {
+        for (const { user, role } of usersToNotify) {
+          try {
+            const sent = await this.sendWelcomeNotification(user, role);
+            if (sent) {
+              notificationsSent++;
+              // Update the response DTO to reflect actual sent status
+              if (createdUsers[role]) createdUsers[role]!.welcomeMessageSent = true;
+            }
+          } catch (e) {
+            this.logger.warn(`Post-commit notification failed for user ${user.id}: ${e.message}`);
+          }
+        }
+      }
 
       // Calculate totals
       const totalUsersCreated = [
@@ -439,9 +456,8 @@ export class SystemAdminUserService {
     queryRunner: QueryRunner,
     data: FamilyMemberUserDto,
     role: 'father' | 'mother' | 'guardian',
-    adminUserId: string,
-    sendNotification?: boolean
-  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean }> {
+    adminUserId: string
+  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean; newUser: UserEntity | null }> {
     
     // Check if user already exists
     let existingUser: UserEntity | null = null;
@@ -487,7 +503,8 @@ export class SystemAdminUserService {
       return {
         userId: existingUser.id,
         response: this.toFamilyMemberResponse(existingUser, false),
-        notificationSent: false
+        notificationSent: false,
+        newUser: null as UserEntity | null,
       };
     }
 
@@ -542,12 +559,32 @@ export class SystemAdminUserService {
         password: hashedPassword
       }),
       firstLoginCompleted: !!hashedPassword, // If password provided, first login is complete
+      // ✅ Mark image as VERIFIED when admin provides it
+      imageVerificationStatus: data.imageUrl ? ImageVerificationStatus.VERIFIED : undefined,
+      imageVerifiedBy: data.imageUrl ? adminUserId : undefined,
+      imageVerifiedAt: data.imageUrl ? now() : undefined,
       createdByAdminId: adminUserId,
       createdAt: now(),
       updatedAt: now()
     });
 
     const savedUser = await queryRunner.manager.save(userEntity);
+
+    // Create user_images row for system-admin-assigned image (GLOBAL, VERIFIED)
+    if (data.imageUrl) {
+      await queryRunner.manager.save(
+        queryRunner.manager.create(UserImageEntity, {
+          userId: savedUser.id,
+          imageUrl: data.imageUrl,
+          scope: ImageScope.GLOBAL,
+          status: ImageVerificationStatus.VERIFIED,
+          verifiedBy: adminUserId,
+          verifiedAt: now(),
+          createdAt: now(),
+          updatedAt: now(),
+        }),
+      );
+    }
 
     // Create parent record
     const parentEntity = queryRunner.manager.create(ParentEntity, {
@@ -562,16 +599,12 @@ export class SystemAdminUserService {
     });
     await queryRunner.manager.save(parentEntity);
 
-    // Send notification
-    let notificationSent = false;
-    if (sendNotification !== false) {
-      notificationSent = await this.sendWelcomeNotification(savedUser, role);
-    }
-
+    // Notification deferred to after transaction commit in createFamilyUnit
     return {
       userId: savedUser.id,
-      response: this.toFamilyMemberResponse(savedUser, notificationSent),
-      notificationSent
+      response: this.toFamilyMemberResponse(savedUser, false),
+      notificationSent: false,
+      newUser: savedUser,
     };
   }
 
@@ -582,9 +615,8 @@ export class SystemAdminUserService {
     queryRunner: QueryRunner,
     data: FamilyStudentDto,
     parents: { fatherId: string | null; motherId: string | null; guardianId: string | null },
-    adminUserId: string,
-    sendNotification?: boolean
-  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean }> {
+    adminUserId: string
+  ): Promise<{ userId: string; response: FamilyMemberResponseDto; notificationSent: boolean; newUser: UserEntity | null }> {
     
     // Check if user already exists
     let existingUser: UserEntity | null = null;
@@ -680,6 +712,38 @@ export class SystemAdminUserService {
 
     const savedUser = await queryRunner.manager.save(userEntity);
 
+    // Create user_id_card_orders record for the auto-generated card (TEMPORARY type)
+    try {
+      const cardRepo = queryRunner.manager.getRepository(Card);
+      let catalogCard = await cardRepo.findOne({ where: { cardType: CardType.TEMPORARY, isActive: true } });
+      if (!catalogCard) {
+        catalogCard = await cardRepo.findOne({ where: { isActive: true } });
+      }
+      if (catalogCard) {
+        const orderRepo = queryRunner.manager.getRepository(UserIdCardOrder);
+        const newOrder = orderRepo.create({
+          userId: savedUser.id,
+          cardId: catalogCard.id,
+          cardType: CardType.TEMPORARY,
+          cardExpiryDate,
+          status: CardStatus.ACTIVE,
+          orderStatus: OrderStatus.DELIVERED,
+          rfidNumber: generatedCardId,
+          orderDate: now(),
+          deliveryAddress: 'System Admin Auto-Generated',
+          contactPhone: savedUser.phoneNumber || 'N/A',
+          deliveredAt: now(),
+          activatedAt: now(),
+          notes: `Auto-generated during family unit creation by admin ID: ${adminUserId}`,
+          createdAt: now(),
+          updatedAt: now(),
+        });
+        await orderRepo.save(newOrder);
+      }
+    } catch (orderError) {
+      this.logger.warn(`Failed to create card order for student ${savedUser.id}: ${orderError.message}`);
+    }
+
     // Create user_images row for system-admin-assigned image (GLOBAL, VERIFIED)
     if (data.imageUrl) {
       await queryRunner.manager.save(
@@ -713,19 +777,15 @@ export class SystemAdminUserService {
     });
     await queryRunner.manager.save(studentEntity);
 
-    // Send notification
-    let notificationSent = false;
-    if (sendNotification !== false) {
-      notificationSent = await this.sendWelcomeNotification(savedUser, 'student');
-    }
-
-    const response = this.toFamilyMemberResponse(savedUser, notificationSent);
+    // Notification deferred to after transaction commit in createFamilyUnit
+    const response = this.toFamilyMemberResponse(savedUser, false);
     response.studentId = studentEntity.studentId;
 
     return {
       userId: savedUser.id,
       response,
-      notificationSent
+      notificationSent: false,
+      newUser: savedUser,
     };
   }
 
@@ -1066,17 +1126,20 @@ export class SystemAdminUserService {
   }
 
   /**
-   * Send welcome notification
+   * Send welcome notification (email + SMS) with app URL
+   * Called AFTER transaction commit so DB lookups (studentId) work correctly
    */
   private async sendWelcomeNotification(
     user: UserEntity,
     role: 'student' | 'father' | 'mother' | 'guardian'
   ): Promise<boolean> {
     try {
-      const firstLoginUrl = `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`;
-      
+      const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'https://lms.suraksha.lk';
+      const firstLoginUrl = `${appUrl}/first-login?userId=${user.id}`;
+      const displayName = user.firstName || user.nameWithInitials || 'User';
+
       if (user.email) {
-        // ✅ Student with VERIFIED imageUrl AND cardId → send ID card email only (no welcome)
+        // ✅ Student with VERIFIED imageUrl AND cardId → send ID card email
         if (role === 'student' && user.imageUrl && user.cardId && user.imageVerificationStatus === ImageVerificationStatus.VERIFIED) {
           let photoUrl = user.imageUrl;
           try {
@@ -1085,7 +1148,7 @@ export class SystemAdminUserService {
             // Use raw imageUrl if getFullUrl fails
           }
 
-          // Get studentId if available
+          // Get studentId (safe now because transaction is committed)
           let studentId: string | undefined;
           try {
             const student = await this.studentRepository.findOne({
@@ -1110,43 +1173,36 @@ export class SystemAdminUserService {
               cardId: user.cardId,
               issueDate: new Date().toISOString().split('T')[0],
               barcodeNumber: user.cardId,
+              appUrl,
             },
             customSubject: 'Welcome to Suraksha LMS - Your ID Card!'
           });
 
-          // Also send SMS if phone available
-          if (user.phoneNumber) {
-            this.userNotificationService.sendWelcomeSmsOnly(
-              user.phoneNumber,
-              user.firstName || user.nameWithInitials || 'User',
-              user.id?.toString(),
-              'system'
-            );
-          }
+          this.logger.log(`ID card email queued for user ${user.id}, cardId: ${user.cardId}`);
+        } else {
+          // For non-ID-card users → send welcome email using 'generic' template (proven reliable)
+          this.asyncEmailService.sendTemplateEmailAsync({
+            templateType: 'generic',
+            toEmails: [user.email],
+            templateData: {
+              USER_NAME: displayName,
+              MESSAGE_TITLE: 'Welcome to Suraksha LMS!',
+              MESSAGE_BODY: `Dear ${displayName},\n\nYour ${role} account has been successfully created.\n\nPlease complete your registration using the link below.\n\nYour login details:\nEmail: ${user.email || 'Not set'}\nPhone: ${user.phoneNumber || 'Not set'}\n\nDownload our app: ${appUrl}`,
+              ACTION_URL: firstLoginUrl,
+              ACTION_TEXT: 'Complete Registration',
+              FOOTER_TEXT: `Download our app: ${appUrl}`
+            },
+            customSubject: 'Welcome to Suraksha LMS - Complete Your Registration'
+          });
 
-          this.logger.log(`ID card email sent for user ${user.id}, cardId: ${user.cardId}`);
-          return true;
+          this.logger.log(`Welcome email queued for ${role} user ${user.id}`);
         }
-
-        // For users without image/card or non-students → send incomplete profile email
-        this.asyncEmailService.sendTemplateEmailAsync({
-          templateType: 'welcome-incomplete-profile',
-          toEmails: [user.email],
-          templateData: {
-            name: user.firstName || user.nameWithInitials || 'User',
-            role: role,
-            firstLoginUrl,
-            email: user.email,
-            phoneNumber: user.phoneNumber
-          },
-          customSubject: 'Welcome to Suraksha LMS - Complete Your Registration'
-        });
 
         // Also send SMS if phone available
         if (user.phoneNumber) {
-          this.userNotificationService.sendWelcomeSmsOnly(
+          await this.userNotificationService.sendWelcomeSmsOnly(
             user.phoneNumber,
-            user.firstName || user.nameWithInitials || 'User',
+            displayName,
             user.id?.toString(),
             'system'
           );
@@ -1157,9 +1213,9 @@ export class SystemAdminUserService {
 
       // Send SMS if phone but no email
       if (user.phoneNumber) {
-        this.userNotificationService.sendWelcomeSmsOnly(
+        await this.userNotificationService.sendWelcomeSmsOnly(
           user.phoneNumber,
-          user.firstName || user.nameWithInitials || 'User',
+          displayName,
           user.id?.toString(),
           'system'
         );
@@ -1168,7 +1224,7 @@ export class SystemAdminUserService {
 
       return false;
     } catch (error) {
-      this.logger.warn(`Failed to send welcome notification: ${error.message}`);
+      this.logger.warn(`Failed to send welcome notification for user ${user.id}: ${error.message}`);
       return false;
     }
   }
@@ -1256,7 +1312,7 @@ export class SystemAdminUserService {
   ): Promise<{ success: boolean; message: string }> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'firstName', 'nameWithInitials', 'email', 'phoneNumber', 'profileCompletionStatus', 'userType']
+      select: ['id', 'firstName', 'nameWithInitials', 'email', 'phoneNumber', 'profileCompletionStatus', 'userType', 'imageUrl', 'cardId', 'imageVerificationStatus']
     });
 
     if (!user) {
@@ -1267,10 +1323,19 @@ export class SystemAdminUserService {
       throw new BadRequestException('User has no email or phone number to send notification');
     }
 
-    // Determine role based on user type
+    // Determine role based on user type and parent record
     let role: 'student' | 'father' | 'mother' | 'guardian' = 'student';
     if (user.userType === UserType.USER_WITHOUT_STUDENT) {
-      role = 'guardian'; // Parent without student
+      try {
+        const parentRecord = await this.parentRepository.findOne({
+          where: { userId: user.id },
+          select: ['id']
+        });
+        // All USER_WITHOUT_STUDENT are parents; 'guardian' is a safe generic label
+        role = parentRecord ? 'guardian' : 'guardian';
+      } catch {
+        role = 'guardian';
+      }
     }
 
     const sent = await this.sendWelcomeNotification(user as UserEntity, role);
@@ -1298,7 +1363,7 @@ export class SystemAdminUserService {
       profileCompletionPercentage: user.profileCompletionPercentage || 0,
       welcomeMessageSent,
       firstLoginUrl: user.profileCompletionStatus === ProfileCompletionStatus.INCOMPLETE
-        ? `${process.env.FRONTEND_URL || 'https://app.suraksha.lk'}/first-login?userId=${user.id}`
+        ? `${process.env.FRONTEND_URL || 'https://lms.suraksha.lk'}/first-login?userId=${user.id}`
         : undefined
     };
   }
@@ -1448,6 +1513,20 @@ export class SystemAdminUserService {
       }
     );
 
+    // Create user_images record for tracking
+    await this.userImageRepository.save(
+      this.userImageRepository.create({
+        userId: student.userId,
+        imageUrl: fullUrl,
+        scope: ImageScope.GLOBAL,
+        status: ImageVerificationStatus.VERIFIED,
+        verifiedBy: adminUserId,
+        verifiedAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      }),
+    );
+
     this.logger.log(
       `Profile image assigned for student ${dto.studentId} (user ${student.userId}) by admin ${adminUserId}`
     );
@@ -1595,6 +1674,20 @@ export class SystemAdminUserService {
         imageRejectionReason: null,
         updatedAt: now()
       }
+    );
+
+    // Create user_images record for tracking
+    await this.userImageRepository.save(
+      this.userImageRepository.create({
+        userId: dto.userId.toString(),
+        imageUrl: fullUrl,
+        scope: ImageScope.GLOBAL,
+        status: ImageVerificationStatus.VERIFIED,
+        verifiedBy: adminUserId.toString(),
+        verifiedAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      }),
     );
 
     this.logger.log(
@@ -1853,6 +1946,38 @@ export class SystemAdminUserService {
       user.cardExpiryDate = cardExpiryDate;
       cardGenerated = true;
 
+      // Create user_id_card_orders record for the auto-generated card
+      try {
+        const cardRepo = this.dataSource.getRepository(Card);
+        let catalogCard = await cardRepo.findOne({ where: { cardType: CardType.TEMPORARY, isActive: true } });
+        if (!catalogCard) {
+          catalogCard = await cardRepo.findOne({ where: { isActive: true } });
+        }
+        if (catalogCard) {
+          const orderRepo = this.dataSource.getRepository(UserIdCardOrder);
+          const newOrder = orderRepo.create({
+            userId: dto.userId.toString(),
+            cardId: catalogCard.id,
+            cardType: CardType.TEMPORARY,
+            cardExpiryDate,
+            status: CardStatus.ACTIVE,
+            orderStatus: OrderStatus.DELIVERED,
+            rfidNumber: generatedCardId,
+            orderDate: now(),
+            deliveryAddress: 'System Admin Image Approval',
+            contactPhone: user.phoneNumber || 'N/A',
+            deliveredAt: now(),
+            activatedAt: now(),
+            notes: `Auto-generated on image approval by admin ID: ${adminId}`,
+            createdAt: now(),
+            updatedAt: now(),
+          });
+          await orderRepo.save(newOrder);
+        }
+      } catch (orderError) {
+        this.logger.warn(`Failed to create card order on image approval for user ${dto.userId}: ${orderError.message}`);
+      }
+
       this.logger.log(`Generated card ID ${generatedCardId} for user ${dto.userId}`);
     }
 
@@ -1944,6 +2069,20 @@ export class SystemAdminUserService {
         }
       } catch (emailError) {
         this.logger.warn(`Failed to send approval email to user ${dto.userId}: ${emailError.message}`);
+      }
+    }
+
+    // Also send SMS if phone available
+    if (user.phoneNumber) {
+      try {
+        this.userNotificationService.sendWelcomeSmsOnly(
+          user.phoneNumber,
+          user.firstName || user.nameWithInitials || 'User',
+          user.id?.toString(),
+          'system'
+        );
+      } catch (smsError) {
+        this.logger.warn(`Failed to send approval SMS to user ${dto.userId}: ${smsError.message}`);
       }
     }
 
@@ -2183,7 +2322,8 @@ export class SystemAdminUserService {
   }
 
   /**
-   * Assign or update a normal card (QR/barcode) for a user
+   * Assign or update a normal card (QR/barcode) for a user.
+   * Also creates a user_id_card_orders record for full tracking.
    */
   async assignNormalCard(userId: number, dto: { cardId: string; cardExpiryDate?: string }, adminId: string): Promise<any> {
     const user = await this.userRepository.findOne({ where: { id: userId.toString() } });
@@ -2197,14 +2337,87 @@ export class SystemAdminUserService {
       }
     }
 
-    // If user already has an active card, mark old one as REPLACED
+    // Also verify the card number is not in a live order belonging to another user
+    const orderRepo = this.dataSource.getRepository(UserIdCardOrder);
+    const conflictingOrder = await orderRepo.findOne({ where: { rfidNumber: dto.cardId } });
+    if (conflictingOrder && conflictingOrder.userId !== userId.toString()) {
+      throw new BadRequestException(`Card ID ${dto.cardId} is already registered in an order for another user (ID: ${conflictingOrder.userId})`);
+    }
+
     const previousCardId = user.cardId;
     const previousStatus = user.cardStatus;
 
+    // Default expiry to +2 years when not provided (consistent with createStudentUser)
+    const cardExpiryDate = dto.cardExpiryDate
+      ? new Date(dto.cardExpiryDate)
+      : (() => { const d = now(); d.setFullYear(d.getFullYear() + 2); return d; })();
+
+    // 1. Update user columns
     user.cardId = dto.cardId;
     user.cardStatus = CardStatus.ACTIVE;
-    user.cardExpiryDate = dto.cardExpiryDate ? new Date(dto.cardExpiryDate) : null;
+    user.cardExpiryDate = cardExpiryDate;
     await this.userRepository.save(user);
+
+    // 2. Create / update user_id_card_orders record for tracking
+    try {
+      // Mark the previous card's order as REPLACED
+      if (previousCardId && previousCardId !== dto.cardId) {
+        await orderRepo.update(
+          { userId: userId.toString(), rfidNumber: previousCardId },
+          { status: CardStatus.REPLACED, deactivatedAt: now(), updatedAt: now() }
+        );
+      }
+
+      // Only create a new order if one doesn't already exist for this exact card+user
+      const existingOrderForThisCard = await orderRepo.findOne({
+        where: { userId: userId.toString(), rfidNumber: dto.cardId }
+      });
+
+      if (!existingOrderForThisCard) {
+        // Find a PVC card in the catalog to satisfy the FK; fall back to any active card.
+        const cardRepo = this.dataSource.getRepository(Card);
+        let catalogCard = await cardRepo.findOne({ where: { cardType: CardType.TEMPORARY, isActive: true } });
+        if (!catalogCard) {
+          catalogCard = await cardRepo.findOne({ where: { isActive: true } });
+        }
+
+        if (catalogCard) {
+          const newOrder = orderRepo.create({
+            userId: userId.toString(),
+            cardId: catalogCard.id,
+            cardType: CardType.TEMPORARY,
+            cardExpiryDate,
+            status: CardStatus.ACTIVE,
+            orderStatus: OrderStatus.DELIVERED,
+            rfidNumber: dto.cardId,
+            orderDate: now(),
+            deliveryAddress: 'Admin Direct Assignment',
+            contactPhone: user.phoneNumber || 'N/A',
+            deliveredAt: now(),
+            activatedAt: now(),
+            notes: `Assigned directly by system admin ID: ${adminId}`,
+            createdAt: now(),
+            updatedAt: now(),
+          });
+          await orderRepo.save(newOrder);
+          this.logger.log(`Created card order record for card ${dto.cardId} -> user ${userId}`);
+        } else {
+          this.logger.warn(`No active card catalog entry found — skipping user_id_card_orders record for card ${dto.cardId}. Add a card to the catalog via POST /admin/cards.`);
+        }
+      } else {
+        // Order exists — just reactivate it
+        await orderRepo.update(existingOrderForThisCard.id, {
+          status: CardStatus.ACTIVE,
+          cardExpiryDate,
+          activatedAt: now(),
+          deactivatedAt: null,
+          updatedAt: now(),
+        });
+      }
+    } catch (orderError) {
+      // Non-fatal: user table update already succeeded
+      this.logger.warn(`Failed to create/update order record for card ${dto.cardId}: ${orderError.message}`);
+    }
 
     this.logger.log(`Admin ${adminId} assigned normal card ${dto.cardId} to user ${userId}. Previous: ${previousCardId} (${previousStatus})`);
 

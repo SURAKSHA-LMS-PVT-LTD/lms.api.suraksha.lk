@@ -89,7 +89,7 @@ export class InstitueClassController {
 
   @Get()
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async findAll(@Query() filterDto: ClassFilterDto): Promise<PaginatedResponseDto<IInstituteClass>> {
     return this.institueClassService.findAllPaginated(filterDto);
@@ -122,7 +122,7 @@ export class InstitueClassController {
 
   @Get('institute/:instituteId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })
@@ -132,7 +132,7 @@ export class InstitueClassController {
 
   @Get('academic-year/:instituteId/:academicYear')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })
@@ -178,7 +178,7 @@ export class InstitueClassController {
 
   @Get('active/:instituteId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })
@@ -188,7 +188,7 @@ export class InstitueClassController {
 
   @Get(':id')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ anyInstituteRole: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   @ApiOperation({ 
     summary: 'Get class by ID',
     description: 'Retrieves complete class information including enrollment settings (enrollmentCode, enrollmentEnabled, requireTeacherVerification) and dates (startDate, endDate).'
