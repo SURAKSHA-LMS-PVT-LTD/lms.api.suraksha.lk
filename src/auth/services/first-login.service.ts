@@ -940,11 +940,15 @@ export class FirstLoginService {
   /**
    * Detect identifier type from a raw string.
    * Returns: 'phone' | 'email' | 'systemId'
+   * UUID (e.g. 123e4567-e89b-12d3-a456-426614174000) is treated as systemId
+   * and looked up directly by users.id.
    */
   private detectIdentifierType(identifier: string): 'phone' | 'email' | 'systemId' {
     const trimmed = identifier.trim();
     // Email: contains @
     if (trimmed.includes('@')) return 'email';
+    // UUID v4: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return 'systemId';
     // Phone: starts with 0, +94, 94 and contains mostly digits
     const digitsOnly = trimmed.replace(/[+\-\s()]/g, '');
     if (/^(0|94|\+94)\d{8,11}$/.test(digitsOnly)) return 'phone';
@@ -1009,7 +1013,7 @@ export class FirstLoginService {
       
       if (!user) {
         throw new NotFoundException(
-          `No user found with ID "${dto.identifier}". This is a global registration - please use your email or phone number to login.`
+          `No user found with identifier "${dto.identifier}". Please check your User ID, student ID, email, or phone number.`
         );
       }
     }
@@ -1095,7 +1099,7 @@ export class FirstLoginService {
     // At least one contact must exist
     if (!hasPhone && !hasEmail) {
       throw new BadRequestException(
-        'This user account has no phone number or email. Please use your User ID to login and add contact information.'
+        'This user account has no phone number or email. Please use your User ID (UUID) to login and add contact information.'
       );
     }
 

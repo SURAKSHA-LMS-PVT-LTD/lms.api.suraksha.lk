@@ -100,11 +100,6 @@ export class SystemAdminUserService {
     await queryRunner.startTransaction();
 
     try {
-      // Validate at least email or phone for student
-      if (!dto.student.email && !dto.student.phoneNumber) {
-        throw new BadRequestException('Student must have at least email OR phone number');
-      }
-
       const createdUsers: {
         student?: FamilyMemberResponseDto;
         father?: FamilyMemberResponseDto;

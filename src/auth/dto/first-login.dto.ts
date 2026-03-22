@@ -625,8 +625,8 @@ export class CompleteProfileDto {
  */
 export class InitiateFirstLoginDto2 {
   @ApiProperty({
-    description: 'User identifier — can be phone number, email address, or system student ID',
-    examples: ['0771234567', 'student@gmail.com', 'STU-0001']
+    description: 'User identifier — can be phone number, email address, system student ID, or UUID (user ID)',
+    examples: ['0771234567', 'student@gmail.com', 'STU-0001', '123e4567-e89b-12d3-a456-426614174000']
   })
   @IsString()
   @IsNotEmpty()
