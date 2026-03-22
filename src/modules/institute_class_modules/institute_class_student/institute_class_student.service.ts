@@ -20,7 +20,6 @@ import { ParentEntity } from '../../parent/entities/parent.entity';
 import { StudentsService } from '../../student/student.service';
 import { UsersService } from '../../user/user.service';
 import { UserType } from '../../user/enums/user-type.enum';
-import { maskPhoneNumber } from '../../../common/utils/phone-mask.util';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
@@ -439,7 +438,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         studentName: `${enrollment.student?.user?.firstName || ''} ${enrollment.student?.user?.lastName || ''}`.trim() || 'Unknown',
         nameWithInitials: enrollment.student?.user?.nameWithInitials || undefined,
         studentEmail: enrollment.student?.user?.email || '',
-        phoneNumber: maskPhoneNumber(enrollment.student?.user?.phoneNumber || ''),
+        phoneNumber: enrollment.student?.user?.phoneNumber || '',
         imageUrl: enrollment.student?.user?.imageUrl ? this.cloudStorageService.getFullUrl(enrollment.student.user.imageUrl) : enrollment.student?.user?.imageUrl,
         enrollmentMethod: enrollment.enrollmentMethod,
         enrollmentDate: enrollment.createdAt,
@@ -674,7 +673,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       id: row.id,
       name: `${row.firstName} ${row.lastName || ''}`.trim(),
       nameWithInitials: row.nameWithInitials || undefined,
-      phoneNumber: maskPhoneNumber(row.phoneNumber),
+      phoneNumber: row.phoneNumber,
       // ✅ Transform imageUrl to full URL
       imageUrl: row.imageUrl ? this.cloudStorageService.getFullUrl(row.imageUrl) : row.imageUrl,
       userIdByInstitute: `s${row.id}` // Generate institute user ID based on user ID
@@ -833,7 +832,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
                 firstName: student.father.user.firstName,
                 lastName: student.father.user.lastName,
                 email: student.father.user.email,
-                phoneNumber: maskPhoneNumber(student.father.user.phoneNumber),
+                phoneNumber: student.father.user.phoneNumber,
                 // ✅ Transform imageUrl to full URL
                 imageUrl: student.father.user.imageUrl ? this.cloudStorageService.getFullUrl(student.father.user.imageUrl) : student.father.user.imageUrl,
                 occupation: student.father.occupation,
@@ -855,7 +854,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
                 firstName: student.mother.user.firstName,
                 lastName: student.mother.user.lastName,
                 email: student.mother.user.email,
-                phoneNumber: maskPhoneNumber(student.mother.user.phoneNumber),
+                phoneNumber: student.mother.user.phoneNumber,
                 // ✅ Transform imageUrl to full URL
                 imageUrl: student.mother.user.imageUrl ? this.cloudStorageService.getFullUrl(student.mother.user.imageUrl) : student.mother.user.imageUrl,
                 occupation: student.mother.occupation,
@@ -877,7 +876,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
                 firstName: student.guardian.user.firstName,
                 lastName: student.guardian.user.lastName,
                 email: student.guardian.user.email,
-                phoneNumber: maskPhoneNumber(student.guardian.user.phoneNumber),
+                phoneNumber: student.guardian.user.phoneNumber,
                 // ✅ Transform imageUrl to full URL
                 imageUrl: student.guardian.user.imageUrl ? this.cloudStorageService.getFullUrl(student.guardian.user.imageUrl) : student.guardian.user.imageUrl,
                 occupation: student.guardian.occupation,

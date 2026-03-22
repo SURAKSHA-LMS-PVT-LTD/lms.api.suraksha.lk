@@ -135,7 +135,7 @@ export class InstitueUserService {
     // If either phone or email masking is enabled, we should mask sensitive data
     const isPhoneMasked = this.configService.get<string>('IS_PHONENUMBERS_MASKED') === 'true';
     const isEmailMasked = this.configService.get<string>('IS_EMAILS_MASKED') === 'true';
-    this.shouldMaskSensitiveData = isPhoneMasked || isEmailMasked;
+    this.shouldMaskSensitiveData = false;
   }
 
   // =================== DEPRECATED UNSAFE METHODS ===================
@@ -1791,7 +1791,7 @@ export class InstitueUserService {
       first_name: user.firstName,
       last_name: user.lastName,
       email: user.email,
-      phone_number: maskPhoneNumber(user.phoneNumber),
+      phone_number: user.phoneNumber,
       image_url: imageUrl,
       occupation: parent?.occupation,
       workplace: parent?.workplace
@@ -1837,8 +1837,7 @@ export class InstitueUserService {
       // ✅ Transform imageUrl to full URL if it exists
       const imageUrl = user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null;
       
-      // ✅ Mask phone number if exists, otherwise null (not empty string)
-      const phoneNumber = user.phoneNumber ? maskPhoneNumber(user.phoneNumber) : null;
+      const phoneNumber = user.phoneNumber ?? null;
       
       return {
         userId: user.id,

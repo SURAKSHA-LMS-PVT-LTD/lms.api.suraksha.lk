@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Exclude, Expose, Transform } from 'class-transformer';
-import { maskPhoneNumber } from '../../../../common/utils/phone-mask.util';
+import { Exclude, Expose } from 'class-transformer';
 
 export class SecureUnverifiedStudentResponseDto {
   @ApiProperty({ description: 'Student user ID', example: '123' })
@@ -17,7 +16,6 @@ export class SecureUnverifiedStudentResponseDto {
 
   @ApiProperty({ description: 'Masked phone number', example: '+1***-***-1234' })
   @Expose()
-  @Transform(({ value }) => maskPhoneNumber(value))
   phoneNumber: string;
 
   @ApiProperty({ description: 'Student profile image URL (if available)', required: false })

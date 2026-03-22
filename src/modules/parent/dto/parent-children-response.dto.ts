@@ -1,5 +1,4 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { maskPhoneNumber } from '../../../common/utils/phone-mask.util';
 
 export class ChildInfoDto {
   @ApiProperty({ 
@@ -49,11 +48,6 @@ export class ChildInfoDto {
 
   constructor(partial: Partial<ChildInfoDto>) {
     Object.assign(this, partial);
-    
-    // Apply phone number masking for security
-    if (partial.phoneNumber) {
-      this.phoneNumber = maskPhoneNumber(partial.phoneNumber) || '';
-    }
   }
 }
 
