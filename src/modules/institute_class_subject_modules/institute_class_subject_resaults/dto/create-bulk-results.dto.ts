@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsArray, ValidateNested, IsOptional, IsString, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { Grade } from '../../../institute_class_exams/enums/exam.enum';
+import { Grade } from '../enums/grade.enum';
 
 export class StudentResultDto {
   @ApiProperty({ description: 'ID of the student', example: '3' })

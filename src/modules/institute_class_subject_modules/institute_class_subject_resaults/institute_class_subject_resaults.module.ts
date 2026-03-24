@@ -7,7 +7,6 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_student
 import { SubjectEntity } from '../../subject/entities/subject.entity';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
-import { InstituteClassExamEntity } from '../../institute_class_exams/entities/institute-class-exam.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { CommonModule } from '../../../common/common.module';
 
@@ -19,7 +18,6 @@ import { CommonModule } from '../../../common/common.module';
       SubjectEntity,
       InstituteEntity,
       InstituteClassEntity,
-      InstituteClassExamEntity,
       UserEntity,
     ]),
     CommonModule,

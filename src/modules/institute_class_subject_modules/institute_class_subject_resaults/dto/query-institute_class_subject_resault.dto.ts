@@ -2,7 +2,7 @@ import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bi
 import { ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString, IsBoolean, IsEnum } from 'class-validator';
 import { PaginationDto } from '../../../../common/dto/pagination.dto';
-import { Grade } from '../../../institute_class_exams/enums/exam.enum';
+import { Grade } from '../enums/grade.enum';
 
 export class QueryInstituteClassSubjectResaultDto extends PaginationDto {
   @ApiProperty({ description: 'Filter by institute ID', example: '1', required: false })

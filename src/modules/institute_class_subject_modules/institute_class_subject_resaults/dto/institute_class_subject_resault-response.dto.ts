@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { InstituteClassSubjectResault } from '../entities/institute_class_subject_resault.entity';
-import { Grade } from '../../../institute_class_exams/enums/exam.enum';
+import { Grade } from '../enums/grade.enum';
 
 export class StudentDetailsDto {
   @ApiProperty({ description: 'Student ID', example: '3' })
