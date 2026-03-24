@@ -213,11 +213,11 @@ export class UsersService {
       userData.updatedAt = timestamp;
 
       // ✅ Set profile completion status for normal user creation
-      // Users created via this API have email (required) so they're at least BASIC
+      // Users created via this API with email are at least BASIC
       const completionStatus = determineProfileStatus({
         firstName: userData.firstName,
         lastName: userData.lastName,
-        email: userData.email,
+        email: userData.email || null,
         phoneNumber: userData.phoneNumber,
         password: userData.password
       });
@@ -225,10 +225,10 @@ export class UsersService {
       userData.profileCompletionPercentage = calculateProfileCompletion({
         firstName: userData.firstName,
         lastName: userData.lastName,
-        email: userData.email,
+        email: userData.email || null,
         phoneNumber: userData.phoneNumber
       });
-      userData.firstLoginCompleted = true; // Normal registration = first login done
+      userData.firstLoginCompleted = !!userData.email; // Only mark first login done if email exists
       userData.isPhoneVerified = false;
       userData.isEmailVerified = false;
 

@@ -3,6 +3,7 @@ import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, OneToOne, Index }
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { BloodGroup } from '../enums/blood-group.enum';
+import { CardDeliveryRecipient } from '../../user-card-management/enums/card-delivery-recipient.enum';
 
 @Entity('students')
 // 🎯 REAL QUERY-BASED INDEXES - Based on actual codebase queries (Nov 2024)
@@ -44,6 +45,15 @@ export class StudentEntity {
     nullable: true 
   })
   bloodGroup?: BloodGroup;
+
+  @Column({
+    name: 'card_delivery_recipient',
+    type: 'enum',
+    enum: CardDeliveryRecipient,
+    nullable: true,
+    comment: 'Who should receive the physical ID card: SELF, FATHER, MOTHER, GUARDIAN'
+  })
+  cardDeliveryRecipient?: CardDeliveryRecipient;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

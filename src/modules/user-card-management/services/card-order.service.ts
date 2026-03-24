@@ -15,6 +15,8 @@ import { CardStatus } from '../enums/card-status.enum';
 import { CardType } from '../enums/card-type.enum';
 import { now } from '../../../common/utils/timezone.util';
 import { ImageVerificationStatus } from '../../institute_mudules/institue_user/enums/image-verification-status.enum';
+import { StudentEntity } from '../../student/entities/student.entity';
+import { CardDeliveryRecipient } from '../enums/card-delivery-recipient.enum';
 
 @Injectable()
 export class CardOrderService {
@@ -111,6 +113,49 @@ export class CardOrderService {
       const expiryDate = now();
       expiryDate.setDate(expiryDate.getDate() + card.validityDays);
 
+      // Auto-populate delivery address/phone from parent if deliveryRecipientType specified
+      let deliveryAddress = createOrderDto.deliveryAddress;
+      let contactPhone = createOrderDto.contactPhone;
+
+      if (createOrderDto.deliveryRecipientType && createOrderDto.deliveryRecipientType !== CardDeliveryRecipient.SELF) {
+        const student = await queryRunner.manager.findOne(StudentEntity, {
+          where: { userId, isActive: true },
+        });
+
+        if (student) {
+          let parentUserId: string | undefined;
+          if (createOrderDto.deliveryRecipientType === CardDeliveryRecipient.FATHER) {
+            parentUserId = student.fatherId;
+          } else if (createOrderDto.deliveryRecipientType === CardDeliveryRecipient.MOTHER) {
+            parentUserId = student.motherId;
+          } else if (createOrderDto.deliveryRecipientType === CardDeliveryRecipient.GUARDIAN) {
+            parentUserId = student.guardianId;
+          }
+
+          if (parentUserId) {
+            const parentUser = await queryRunner.manager.findOne(UserEntity, {
+              where: { id: parentUserId, isActive: true },
+              select: ['id', 'phoneNumber', 'addressLine1', 'addressLine2', 'city', 'district', 'province', 'postalCode'],
+            });
+
+            if (parentUser) {
+              if (!deliveryAddress) {
+                const addrParts = [parentUser.addressLine1, parentUser.addressLine2, parentUser.city, parentUser.district, parentUser.province, parentUser.postalCode].filter(Boolean);
+                deliveryAddress = addrParts.join(', ') || undefined;
+              }
+              if (!contactPhone && parentUser.phoneNumber) {
+                contactPhone = parentUser.phoneNumber;
+              }
+            }
+          }
+        }
+      }
+
+      // Ensure delivery address and contact phone are provided
+      if (!deliveryAddress || !contactPhone) {
+        throw new BadRequestException('Delivery address and contact phone are required. Please provide them or select a delivery recipient with valid address.');
+      }
+
       // Create order
       const timestamp = now();
       const order = queryRunner.manager.create(UserIdCardOrder, {
@@ -118,8 +163,8 @@ export class CardOrderService {
         cardId: card.id,
         cardType: card.cardType,
         cardExpiryDate: expiryDate,
-        deliveryAddress: createOrderDto.deliveryAddress,
-        contactPhone: createOrderDto.contactPhone,
+        deliveryAddress,
+        contactPhone,
         notes: createOrderDto.notes,
         status: CardStatus.INACTIVE,
         orderDate: timestamp,

@@ -103,9 +103,33 @@ export class InstituteAdminUserService {
     adminUserId: string,
     dto: CreateInstituteUserDto,
   ): Promise<CreateInstituteUserResponseDto> {
-    // At least email or phone required
+    // For students: allow no email/phone if at least one parent has contact info
     if (!dto.email && !dto.phoneNumber) {
-      throw new BadRequestException('At least one of email or phoneNumber is required');
+      if (dto.instituteUserType === InstituteUserType.STUDENT) {
+        const parentHasContact = 
+          (dto.father && (dto.father.email || dto.father.phoneNumber)) ||
+          (dto.mother && (dto.mother.email || dto.mother.phoneNumber)) ||
+          (dto.guardian && (dto.guardian.email || dto.guardian.phoneNumber));
+        if (!parentHasContact) {
+          throw new BadRequestException(
+            'Student has no email or phone number. At least one parent/guardian must have an email or phone number.'
+          );
+        }
+      } else {
+        throw new BadRequestException('At least one of email or phoneNumber is required');
+      }
+    }
+
+    // Validate: each provided parent must have at least email OR phone
+    for (const role of ['father', 'mother', 'guardian'] as const) {
+      const parentDto = dto[role];
+      if (parentDto && (parentDto.firstName || parentDto.lastName)) {
+        if (!parentDto.email && !parentDto.phoneNumber) {
+          throw new BadRequestException(
+            `${role.charAt(0).toUpperCase() + role.slice(1)} must have at least an email address or phone number.`
+          );
+        }
+      }
     }
 
     // Validate institute exists
@@ -456,6 +480,7 @@ export class InstituteAdminUserService {
           bloodGroup: dto.studentData?.bloodGroup as any ?? null,
           medicalConditions: dto.studentData?.medicalConditions ?? null,
           allergies: dto.studentData?.allergies ?? null,
+          cardDeliveryRecipient: dto.studentData?.cardDeliveryRecipient ?? null,
           isActive: true,
           createdAt: now(),
           updatedAt: now(),

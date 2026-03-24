@@ -45,10 +45,10 @@ export class UserEntity {
   nameWithInitials: string;
 
   @Column({ type: 'varchar', length: 60, nullable: true, unique: true, transformer: {
-    to: (value: string) => value?.toLowerCase(),
-    from: (value: string) => value?.toLowerCase()
+    to: (value: string) => value ? value.toLowerCase() : null,
+    from: (value: string) => value ? value.toLowerCase() : null
   }})
-  email: string;
+  email?: string;
 
   @Column({ type: 'varchar', length: 120, nullable: true, select: false })
   @Exclude()

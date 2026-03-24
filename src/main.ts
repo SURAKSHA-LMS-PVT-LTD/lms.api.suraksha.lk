@@ -111,7 +111,6 @@ async function bootstrap() {
         'https://transport.suraksha.lk',
         'https://admin.suraksha.lk',
         'https://lms-923357517997.europe-west1.run.app', // Frontend production URL
-        'lk.suraksha.lms', // Mobile app (Capacitor/React Native custom scheme)
         'http://localhost:5173', // Frontend local development
         'http://localhost:3000', // Alternative frontend port
         'http://127.0.0.1:5173', // Alternative localhost
@@ -141,7 +140,7 @@ async function bootstrap() {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With', 'x-api-key'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
       exposedHeaders: ['Access-Control-Allow-Private-Network'],
       preflightContinue: false,
       optionsSuccessStatus: 204,

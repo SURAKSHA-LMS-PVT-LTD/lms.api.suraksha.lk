@@ -225,11 +225,15 @@ export class UserNotificationService {
         this.configService.get<string>('FRONTEND_URL') ||
         'https://lms.suraksha.lk';
 
+      const playStoreUrl = this.configService.get<string>('APP_DOWNLOAD_URL') ||
+        'https://play.google.com/store/apps/details?id=lk.suraksha.lms';
+
       let message = 
         `Welcome to Suraksha LMS!\n\n` +
         `Your account has been successfully created.\n` +
         `User ID: ${userId}\n\n` +
-        `Download our app: ${appUrl}\n\n` +
+        `Download our mobile app: ${playStoreUrl}\n` +
+        `Or visit: ${appUrl}\n\n` +
         `Thank you,\n` +
         `Suraksha LMS`;
       

@@ -118,6 +118,35 @@ export class SystemAdminUserService {
       const usersToNotify: Array<{ user: UserEntity; role: 'student' | 'father' | 'mother' | 'guardian' }> = [];
 
       // ============================================
+      // VALIDATION: Parent contact enforcement
+      // ============================================
+      // If student has no email AND no phone, at least one parent must have contact info
+      const studentHasContact = !!(dto.student.email || dto.student.phoneNumber);
+      if (!studentHasContact) {
+        const parentHasContact = 
+          (dto.father && (dto.father.email || dto.father.phoneNumber)) ||
+          (dto.mother && (dto.mother.email || dto.mother.phoneNumber)) ||
+          (dto.guardian && (dto.guardian.email || dto.guardian.phoneNumber));
+        if (!parentHasContact) {
+          throw new BadRequestException(
+            'Student has no email or phone number. At least one parent/guardian must have an email or phone number for login and notifications.'
+          );
+        }
+      }
+
+      // Validate: each provided parent must have at least email OR phone
+      for (const role of ['father', 'mother', 'guardian'] as const) {
+        const parentDto = dto[role];
+        if (parentDto && (parentDto.firstName || parentDto.lastName)) {
+          if (!parentDto.email && !parentDto.phoneNumber) {
+            throw new BadRequestException(
+              `${role.charAt(0).toUpperCase() + role.slice(1)} must have at least an email address or phone number.`
+            );
+          }
+        }
+      }
+
+      // ============================================
       // STEP 1: Create Father (if provided)
       // ============================================
       if (dto.father && (dto.father.email || dto.father.phoneNumber)) {
@@ -767,6 +796,7 @@ export class SystemAdminUserService {
       fatherId: parents.fatherId,
       motherId: parents.motherId,
       guardianId: parents.guardianId,
+      cardDeliveryRecipient: data.cardDeliveryRecipient ?? null,
       emergencyContact: data.emergencyContact,
       bloodGroup: data.bloodGroup,
       medicalConditions: data.medicalConditions,
@@ -1181,16 +1211,24 @@ export class SystemAdminUserService {
           this.logger.log(`ID card email queued for user ${user.id}, cardId: ${user.cardId}`);
         } else {
           // For non-ID-card users → send welcome email using 'generic' template (proven reliable)
+          const playStoreUrl = process.env.APP_DOWNLOAD_URL || 'https://play.google.com/store/apps/details?id=lk.suraksha.lms';
+          const roleLabel = role === 'student' ? 'student' : `${role} (parent/guardian)`;
+          let messageBody = `Dear ${displayName},\n\nYour ${roleLabel} account has been successfully created.\n\nPlease complete your registration using the link below.\n\nYour login details:\nEmail: ${user.email || 'Not set'}\nPhone: ${user.phoneNumber || 'Not set'}\n\nAccess Suraksha LMS:\n📱 Download our mobile app: ${playStoreUrl}\n🌐 Or visit: ${appUrl}`;
+          
+          if (!user.firstLoginCompleted) {
+            messageBody += `\n\n⚡ Complete your first login to get started: ${firstLoginUrl}`;
+          }
+
           this.asyncEmailService.sendTemplateEmailAsync({
             templateType: 'generic',
             toEmails: [user.email],
             templateData: {
               USER_NAME: displayName,
               MESSAGE_TITLE: 'Welcome to Suraksha LMS!',
-              MESSAGE_BODY: `Dear ${displayName},\n\nYour ${role} account has been successfully created.\n\nPlease complete your registration using the link below.\n\nYour login details:\nEmail: ${user.email || 'Not set'}\nPhone: ${user.phoneNumber || 'Not set'}\n\nDownload our app: ${appUrl}`,
+              MESSAGE_BODY: messageBody,
               ACTION_URL: firstLoginUrl,
               ACTION_TEXT: 'Complete Registration',
-              FOOTER_TEXT: `Download our app: ${appUrl}`
+              FOOTER_TEXT: `📱 Download our app: ${playStoreUrl} | 🌐 Web: ${appUrl}`
             },
             customSubject: 'Welcome to Suraksha LMS - Complete Your Registration'
           });

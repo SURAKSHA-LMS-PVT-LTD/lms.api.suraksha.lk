@@ -21,6 +21,7 @@ import { BloodGroup } from '../../student/enums/blood-group.enum';
 import { Occupation } from '../enums/occupation.enum';
 import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
+import { CardDeliveryRecipient } from '../../user-card-management/enums/card-delivery-recipient.enum';
 
 // ---------------------------------------------------------------------------
 // Sub-DTOs for class / subject enrollment
@@ -82,6 +83,15 @@ export class InstAdminStudentDataDto {
   @IsOptional()
   @IsString()
   allergies?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'ID card delivery recipient — who should receive the physical ID card',
+    enum: CardDeliveryRecipient,
+    example: 'FATHER'
+  })
+  @IsOptional()
+  @IsEnum(CardDeliveryRecipient, { message: 'Card delivery recipient must be one of: SELF, FATHER, MOTHER, GUARDIAN' })
+  cardDeliveryRecipient?: CardDeliveryRecipient;
 }
 
 // ---------------------------------------------------------------------------

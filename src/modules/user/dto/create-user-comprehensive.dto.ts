@@ -31,6 +31,7 @@ import { IsDateOfBirth, TransformToYMDDate } from '../../../common/validators/da
 import { IsOptionalNic } from '../../../common/validators/optional-nic.validator';
 import { IsAllowedUserType } from '../../../common/validators/allowed-user-type.validator';
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
+import { CardDeliveryRecipient } from '../../user-card-management/enums/card-delivery-recipient.enum';
 
 /**
  * � Institute enrollment data
@@ -244,6 +245,15 @@ export class StudentDataDto {
     return value.trim();
   })
   guardianSkipReason?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'ID card delivery recipient — who should receive the physical ID card',
+    enum: CardDeliveryRecipient,
+    example: CardDeliveryRecipient.FATHER
+  })
+  @IsOptional()
+  @IsEnum(CardDeliveryRecipient, { message: 'Card delivery recipient must be one of: SELF, FATHER, MOTHER, GUARDIAN' })
+  cardDeliveryRecipient?: CardDeliveryRecipient;
 }
 
 /**
@@ -359,20 +369,18 @@ export class CreateUserComprehensiveDto {
   nameWithInitials: string;
 
   @ApiProperty({ 
-    description: 'Email address (REQUIRED, cannot be empty, automatically converted to lowercase)', 
+    description: 'Email address (optional for students if parent contact is provided, required for other user types)', 
     example: 'john.doe@example.com',
     maxLength: 60
   })
-  @IsNotEmpty({ message: 'Email is required and cannot be empty' })
+  @IsOptional()
+  @ValidateIf(o => o.email && o.email.trim() !== '')
   @IsEmail({}, { message: 'Please provide a valid email address' })
-  @Length(5, 60, { message: 'Email must be between 5 and 60 characters' })
   @Transform(({ value }) => {
-    if (!value || value.trim() === '') {
-      throw new BadRequestException('Email cannot be empty');
-    }
+    if (!value || (typeof value === 'string' && value.trim() === '')) return null;
     return value.toLowerCase().trim();
   })
-  email: string;
+  email?: string;
 
   @ApiPropertyOptional({ 
     description: 'Phone number with country code (optional, auto-normalized to +94XXXXXXXXX format)', 

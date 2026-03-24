@@ -42,6 +42,7 @@ import {
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { ProfileCompletionStatus, calculateProfileCompletion, determineProfileStatus } from '../../modules/user/enums/profile-completion-status.enum';
 import { ImageVerificationStatus } from '../../modules/institute_mudules/institue_user/enums/image-verification-status.enum';
+import { StudentEntity } from '../../modules/student/entities/student.entity';
 
 @Injectable()
 export class FirstLoginService {
@@ -980,6 +981,8 @@ export class FirstLoginService {
     userId: string;
     accessToken?: string;
     requiresContactInfo?: boolean;
+    parentOtpUsed?: boolean;
+    parentRelationship?: string;
   }> {
     const identifierType = this.detectIdentifierType(dto.identifier);
     let user: UserEntity | null = null;
@@ -1035,8 +1038,63 @@ export class FirstLoginService {
     if (identifierType === 'systemId') {
       const accessToken = this.generateFirstLoginAccessToken(user.id);
       
-      // Case 1: No phone AND no email → Must add at least one contact
+      // Case 1: No phone AND no email → Check for parent contact (students) or require contact info
       if (!hasPhone && !hasEmail) {
+        // Check if this user is a student with parents who have contact info
+        const studentRecord = await this.dataSource.getRepository(StudentEntity).findOne({
+          where: { userId: user.id, isActive: true },
+        });
+
+        if (studentRecord) {
+          // Look up parent users with contact info (priority: father → mother → guardian)
+          const parentIds = [
+            { id: studentRecord.fatherId, relationship: 'father' },
+            { id: studentRecord.motherId, relationship: 'mother' },
+            { id: studentRecord.guardianId, relationship: 'guardian' },
+          ].filter(p => !!p.id);
+
+          for (const parent of parentIds) {
+            const parentUser = await this.userRepository.findOne({
+              where: { id: parent.id, isActive: true },
+              select: ['id', 'phoneNumber', 'email', 'firstName', 'nameWithInitials'],
+            });
+
+            if (parentUser && (parentUser.phoneNumber || parentUser.email)) {
+              // Send OTP to parent's contact
+              let otpSentVia: 'phone' | 'email' | null = null;
+              let maskedDestination: string | null = null;
+
+              if (parentUser.phoneNumber) {
+                await this.sendFirstLoginPhoneOtp(parentUser.phoneNumber, user.id, ipAddress, userAgent);
+                otpSentVia = 'phone';
+                maskedDestination = maskPii(parentUser.phoneNumber);
+              } else if (parentUser.email) {
+                const userName = parentUser.nameWithInitials || parentUser.firstName || 'Parent';
+                await this.sendFirstLoginEmailOtp(parentUser.email, user.id, userName, ipAddress, userAgent);
+                otpSentVia = 'email';
+                maskedDestination = maskPii(parentUser.email);
+              }
+
+              return {
+                success: true,
+                message: `OTP sent to ${parent.relationship}'s ${otpSentVia === 'phone' ? 'phone' : 'email'} (${maskedDestination}). Valid for 15 minutes.`,
+                otpSentVia,
+                maskedDestination,
+                expiresInMinutes: 15,
+                verificationsRequired: { phone: false, email: false },
+                userHasPhone: false,
+                userHasEmail: false,
+                userId: user.id,
+                accessToken,
+                requiresContactInfo: false,
+                parentOtpUsed: true,
+                parentRelationship: parent.relationship,
+              };
+            }
+          }
+        }
+
+        // No parent contact found — fall back to requiring contact info
         return {
           success: true,
           message: 'Please add your phone number or email to continue registration.',

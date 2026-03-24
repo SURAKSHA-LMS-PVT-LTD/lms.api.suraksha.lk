@@ -57,6 +57,20 @@ export class FirstLoginTemplate {
                     Keep it confidential and don't share with anyone.
                 </p>
             </div>
+
+            <div style="background: #f0f7ff; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+                <p style="margin: 0 0 10px 0; color: #333; font-weight: 600;">📱 Get the Suraksha LMS App</p>
+                <p style="margin: 0 0 15px 0; color: #555; font-size: 14px;">Access your courses anywhere, anytime</p>
+                <a href="https://play.google.com/store/apps/details?id=lk.suraksha.lms" 
+                   style="display: inline-block; background: #667eea; color: white; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 0 5px 10px;">
+                    📲 Download Android App
+                </a>
+                <br>
+                <a href="https://lms.suraksha.lk" 
+                   style="display: inline-block; color: #667eea; padding: 8px 24px; text-decoration: none; font-size: 14px;">
+                    🌐 Or visit lms.suraksha.lk
+                </a>
+            </div>
             
             <p style="color: #777; font-size: 14px; margin-top: 25px;">
                 Having trouble? Contact your administrator or reply to this email for assistance.
@@ -85,6 +99,11 @@ ${otp}
 This code will expire in ${expiryMinutes} minutes.
 
 Important: Keep this code confidential and don't share with anyone.
+
+Download the Suraksha LMS mobile app:
+https://play.google.com/store/apps/details?id=lk.suraksha.lms
+
+Or visit: https://lms.suraksha.lk
 
 If you didn't request this code, please ignore this email.
 

@@ -25,6 +25,7 @@ import { BloodGroup } from '../../student/enums/blood-group.enum';
 import { Occupation } from '../enums/occupation.enum';
 import { Language } from '../enums/language.enum';
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
+import { CardDeliveryRecipient } from '../../user-card-management/enums/card-delivery-recipient.enum';
 
 /**
  * 👤 Minimal User Data - For admin creating users with minimal info
@@ -324,6 +325,15 @@ export class FamilyStudentDto extends MinimalUserDto {
   @IsString()
   @MaxLength(20)
   grade?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'ID card delivery recipient — who should receive the physical ID card',
+    enum: CardDeliveryRecipient,
+    example: CardDeliveryRecipient.FATHER
+  })
+  @IsOptional()
+  @IsEnum(CardDeliveryRecipient, { message: 'Card delivery recipient must be one of: SELF, FATHER, MOTHER, GUARDIAN' })
+  cardDeliveryRecipient?: CardDeliveryRecipient;
 }
 
 /**
