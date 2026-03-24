@@ -152,25 +152,24 @@ export class UsersService {
 
     try {
       // 🚀 ULTRA-OPTIMIZED: Streamlined validation with early returns
-      if (!createUserDto.email) {
-        throw new BadRequestException('Email is required');
-      }
       if (!createUserDto.userType) {
         throw new BadRequestException('User type is required');
       }
 
-      // � CRITICAL SECURITY: Check for duplicate email BEFORE insertion
+      // 🔒 CRITICAL SECURITY: Check for duplicate email BEFORE insertion (only if email provided)
       // Email MUST be unique for authentication security
-      const existingUser = await this.userRepository.findOne({
-        where: { email: createUserDto.email.toLowerCase() },
-        select: ['id', 'email']
-      });
+      if (createUserDto.email) {
+        const existingUser = await this.userRepository.findOne({
+          where: { email: createUserDto.email.toLowerCase() },
+          select: ['id', 'email']
+        });
 
-      if (existingUser) {
-        throw new BadRequestException(
-          `Email address '${createUserDto.email}' is already registered. ` +
-          `Please use a different email or try logging in.`
-        );
+        if (existingUser) {
+          throw new BadRequestException(
+            `Email address '${createUserDto.email}' is already registered. ` +
+            `Please use a different email or try logging in.`
+          );
+        }
       }
 
       // Note: Per user requirements, NIC, birth certificate, and phone number are NOT unique constraints
@@ -357,7 +356,8 @@ export class UsersService {
       }
       
       if (!dto.email || typeof dto.email !== 'string' || dto.email.trim() === '') {
-        throw new BadRequestException('Email is required and cannot be empty');
+        // Email is optional - set to null if not provided
+        dto.email = null;
       }
       
       if (!dto.firstName || typeof dto.firstName !== 'string' || dto.firstName.trim() === '') {
@@ -368,10 +368,12 @@ export class UsersService {
         throw new BadRequestException('User type is required');
       }
 
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(dto.email)) {
-        throw new BadRequestException('Invalid email format');
+      // Validate email format if provided
+      if (dto.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(dto.email)) {
+          throw new BadRequestException('Invalid email format');
+        }
       }
 
       // ============================================

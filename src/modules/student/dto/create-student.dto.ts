@@ -31,13 +31,13 @@ class CreateUserDto {
   @Length(1, 100)
   lastName: string;
 
-  @ApiProperty({ 
-    description: 'Email address (required for student login)',
+  @ApiPropertyOptional({ 
+    description: 'Email address (optional for institute-created students)',
     example: 'john.doe@student.com'
   })
-  @IsNotEmpty()
-  @IsEmail()
-  email: string;
+  @IsOptional()
+  @IsEmail({}, { message: 'email must be a valid email address' })
+  email?: string;
 
   @ApiPropertyOptional({ 
     description: 'Phone number',

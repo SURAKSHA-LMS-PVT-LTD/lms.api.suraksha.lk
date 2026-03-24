@@ -55,15 +55,16 @@ export class CreateUserDto {
   @Transform(({ value }) => value?.trim())
   nameWithInitials: string;
 
-  @ApiProperty({ 
-    description: 'Email address (required, automatically converted to lowercase)', 
+  @ApiPropertyOptional({ 
+    description: 'Email address (optional, automatically converted to lowercase)', 
     example: 'john.doe@example.com',
     maxLength: 60
   })
+  @IsOptional()
   @IsEmail({}, { message: 'Please provide a valid email address' })
   @Length(1, 60, { message: 'Email must be between 1 and 60 characters' })
   @Transform(({ value }) => value?.toLowerCase().trim())
-  email: string;
+  email?: string;
 
   @ApiPropertyOptional({ 
     description: 'Phone number (10-15 characters)', 

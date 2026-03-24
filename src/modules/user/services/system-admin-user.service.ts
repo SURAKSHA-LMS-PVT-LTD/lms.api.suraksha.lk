@@ -1317,13 +1317,12 @@ export class SystemAdminUserService {
 
   /**
    * Generate unique normal card ID (QR/Barcode)
-   * Format: CARD-YYYY-XXXXXXX (e.g. CARD-2026-0004231)
+   * Format: plain numeric string (e.g. 0004231)
    * Uses cryptographically secure random
    */
   private generateCardId(): string {
-    const year = new Date().getFullYear();
     const random = crypto.randomInt(0, 10000000).toString().padStart(7, '0');
-    return `CARD-${year}-${random}`;
+    return random;
   }
 
   /**
@@ -1339,7 +1338,7 @@ export class SystemAdminUserService {
     }
     // Fallback with timestamp for guaranteed uniqueness
     const ts = Date.now().toString(36);
-    return `CARD-${new Date().getFullYear()}-${ts}`;
+    return ts;
   }
 
   /**

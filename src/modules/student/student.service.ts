@@ -58,14 +58,13 @@ export class StudentsService {
     if (!user.lastName?.trim()) {
       throw new BadRequestException('lastName is required');
     }
-    if (!user.email?.trim()) {
-      throw new BadRequestException('email is required');
-    }
 
-    // 3. VALIDATE EMAIL FORMAT
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(user.email)) {
-      throw new BadRequestException('email must be a valid email address');
+    // 3. VALIDATE EMAIL FORMAT (only if provided)
+    if (user.email?.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(user.email)) {
+        throw new BadRequestException('email must be a valid email address');
+      }
     }
 
     // 4. VALIDATE DATE FORMAT  
