@@ -32,7 +32,6 @@ import { InstituteClassSubjectResaultsModule } from './modules/institute_class_s
 import { InstituteClassSubjectStudentsModule } from './modules/institute_class_subject_modules/institute_class_subject_students/institute_class_subject_students.module';
 import { InstituteClassSubjectHomeworksModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks/institute_class_subject_homeworks.module';
 import { InstituteClassSubjectHomeworksSubmissionsModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks_submissions/institute_class_subject_homeworks_submissions.module';
-import { NestedClassResourcesModule } from './modules/institute_class_subject_modules/nested/nested-class-resources.module';
 import { InstituteClassSubjectEntity } from './modules/institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { UserOtpEntity } from './modules/user/entities/user-otp.entity';
 import { PasswordResetTokenEntity, UserFirstLoginLogEntity } from './auth/entities/password-reset.entity';
@@ -153,7 +152,6 @@ import { AppService } from './app.service';
     InstituteClassSubjectStudentsModule,
     InstituteClassSubjectHomeworksModule,
     InstituteClassSubjectHomeworksSubmissionsModule,
-    NestedClassResourcesModule, // Nested routes: /institutes/:id/classes/:id/lectures|exams|homeworks|results
     GoogleAuthModule, // Add Google OAuth 2.0 for Drive integration (legacy - online tokens)
     UserDriveAccessModule, // Secure Google Drive access with persistent encrypted tokens
     InstituteClassExamModule, // Add institute class exams module
