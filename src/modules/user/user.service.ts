@@ -2221,12 +2221,13 @@ export class UsersService {
           'institute.isActive'
         ])
         .where('iu.userId = :userId', { userId })
+        .andWhere('iu.instituteUserType = :userType', { userType: InstituteUserType.STUDENT })
         .andWhere('iu.status IN (:...statuses)', { statuses: ['ACTIVE', 'PENDING'] })
         .andWhere('institute.isActive = :isActive', { isActive: true })
         .orderBy('institute.name', 'ASC')
         .getMany();
       
-      this.logger.log(`Found ${instituteUserRelations.length} parent institutes for user ${userId}`);
+      this.logger.log(`Found ${instituteUserRelations.length} parent institutes (STUDENT only) for user ${userId}`);
 
       // Transform results - same format as getUserInstitutes
       return instituteUserRelations.map((relation) => ({

@@ -33,9 +33,27 @@ import { PaginatedCardsResponseDto } from '../dto/response/card-response.dto';
 import { OrderResponseDto, PaginatedOrdersResponseDto } from '../dto/response/order-response.dto';
 import { PaymentResponseDto } from '../dto/response/payment-response.dto';
 import { OrderStatus } from '../enums/order-status.enum';
+import { ForbiddenException } from '@nestjs/common';
 
 interface JwtRequest extends Request {
-  user: { s: string; ut: string };
+  user: { s: string; ut: string; c?: string[] };
+}
+
+/**
+ * Resolves the effective userId for an operation.
+ * If forUserId is provided, validates that the requesting user is a parent of that user.
+ * Returns the userId to use for the operation.
+ */
+function resolveUserIdForParent(req: JwtRequest, forUserId?: string): string {
+  if (!forUserId || forUserId === req.user.s) {
+    return req.user.s;
+  }
+  // Validate parent-child relationship via JWT 'c' array
+  const childUserIds = (req.user.c || []).map(String);
+  if (!childUserIds.includes(String(forUserId))) {
+    throw new ForbiddenException('You do not have access to this user\'s data');
+  }
+  return forUserId;
 }
 
 @ApiTags('User Card Orders')
@@ -63,15 +81,17 @@ export class UserCardOrderController {
     return this.cardService.findAll(page, limit, true);
   }
 
-  // Create Order
+  // Create Order (supports parent ordering for child via forUserId query)
   @Post('orders')
-  @ApiOperation({ summary: 'Create new card order' })
+  @ApiOperation({ summary: 'Create new card order (parent can order for child via ?forUserId=)' })
   @ApiResponse({ status: 201, description: 'Order created successfully', type: OrderResponseDto })
+  @ApiQuery({ name: 'forUserId', required: false, type: String, description: 'Child user ID (parent ordering for child)' })
   async createOrder(
     @Request() req: JwtRequest,
     @Body() createOrderDto: CreateOrderDto,
+    @Query('forUserId') forUserId?: string,
   ): Promise<OrderResponseDto> {
-    const userId = req.user.s;
+    const userId = resolveUserIdForParent(req, forUserId);
     return this.orderService.createOrder(userId, createOrderDto);
   }
 
@@ -171,20 +191,22 @@ export class UserCardOrderController {
     return this.paymentService.submitDrivePayment(orderId, userId, submitDrivePaymentDto);
   }
 
-  // Get My Orders
+  // Get My Orders (supports parent viewing child's orders via forUserId query)
   @Get('orders')
-  @ApiOperation({ summary: "Get user's card orders" })
+  @ApiOperation({ summary: "Get user's card orders (parent can view child's via ?forUserId=)" })
   @ApiResponse({ status: 200, description: 'Orders retrieved successfully', type: PaginatedOrdersResponseDto })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'orderStatus', required: false, enum: OrderStatus })
+  @ApiQuery({ name: 'forUserId', required: false, type: String, description: 'Child user ID (parent viewing child orders)' })
   async getMyOrders(
     @Request() req: JwtRequest,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query('orderStatus') orderStatus?: OrderStatus,
+    @Query('forUserId') forUserId?: string,
   ): Promise<PaginatedOrdersResponseDto> {
-    const userId = req.user.s;
+    const userId = resolveUserIdForParent(req, forUserId);
     return this.orderService.getMyOrders(userId, page, limit, orderStatus);
   }
 
@@ -200,18 +222,20 @@ export class UserCardOrderController {
     return this.orderService.getOrderById(orderId, userId);
   }
 
-  // Get My Cards (Active + Deactivated)
+  // Get My Cards (Active + Deactivated) — supports parent viewing child's cards
   @Get('my-cards')
-  @ApiOperation({ summary: 'Get all my cards (all statuses: ACTIVE, INACTIVE, LOST, DAMAGED, EXPIRED, REPLACED, etc.)' })
+  @ApiOperation({ summary: "Get all cards (parent can view child's via ?forUserId=)" })
   @ApiResponse({ status: 200, description: 'Cards retrieved successfully', type: PaginatedOrdersResponseDto })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'forUserId', required: false, type: String, description: 'Child user ID (parent viewing child cards)' })
   async getMyCards(
     @Request() req: JwtRequest,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('forUserId') forUserId?: string,
   ): Promise<PaginatedOrdersResponseDto> {
-    const userId = req.user.s;
+    const userId = resolveUserIdForParent(req, forUserId);
     return this.orderService.getMyCards(userId, page, limit);
   }
 

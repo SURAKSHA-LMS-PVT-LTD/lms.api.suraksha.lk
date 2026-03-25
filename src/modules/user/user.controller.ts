@@ -2284,7 +2284,8 @@ export class UsersController {
   @RequireAnyOfRoles({ 
     global: [UserType.SUPERADMIN], 
     instituteAdmin: true,
-    allowSelf: true
+    allowSelf: true,
+    parent: { requireStudent: true }
   })
   @HttpCode(HttpStatus.OK)
   @NoDataMasking()
@@ -2806,6 +2807,13 @@ export class UsersController {
     if (userType === UserType.ORGANIZATION_MANAGER || currentUser.u === 1) return true;
     // Users with institute access can access users in their institutes
     if (currentUser.i && currentUser.i.length > 0) return true;
+    // Parents can access their children's user data (children userIds from JWT 'c' array)
+    if (currentUser.c && Array.isArray(currentUser.c)) {
+      const childUserIds = currentUser.c.map((child: any) => 
+        typeof child === 'object' ? String(child.userId || child.u) : String(child)
+      );
+      if (childUserIds.includes(String(targetUserId))) return true;
+    }
     return false;
   }
 
