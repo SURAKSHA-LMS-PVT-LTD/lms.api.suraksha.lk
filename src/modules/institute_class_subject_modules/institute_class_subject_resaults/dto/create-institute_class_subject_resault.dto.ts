@@ -1,7 +1,7 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, IsOptional, IsDecimal, IsBoolean, IsEnum } from 'class-validator';
-import { Grade } from '../../../institute_class_exams/enums/exam.enum';
+import { Grade } from '../enums/grade.enum';
 export class CreateInstituteClassSubjectResaultDto {
   @ApiProperty({ description: 'ID of the institute', example: '1' })
   @IsNotEmpty()

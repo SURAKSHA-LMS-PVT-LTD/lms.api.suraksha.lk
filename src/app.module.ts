@@ -35,7 +35,6 @@ import { InstituteClassSubjectHomeworksSubmissionsModule } from './modules/insti
 import { InstituteClassSubjectEntity } from './modules/institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { UserOtpEntity } from './modules/user/entities/user-otp.entity';
 import { PasswordResetTokenEntity, UserFirstLoginLogEntity } from './auth/entities/password-reset.entity';
-import { InstituteClassExamModule } from './modules/institute_class_exams/institute-class-exam.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { ApiFrontendModule } from './modules/api-frontend/api-frontend.module';
 import { FileModule } from './modules/files/file.module';
@@ -154,7 +153,6 @@ import { AppService } from './app.service';
     InstituteClassSubjectHomeworksSubmissionsModule,
     GoogleAuthModule, // Add Google OAuth 2.0 for Drive integration (legacy - online tokens)
     UserDriveAccessModule, // Secure Google Drive access with persistent encrypted tokens
-    InstituteClassExamModule, // Add institute class exams module
     PaymentModule, // Add payment module with file uploads and admin verification
     FileModule, // Add file proxy module for custom domain serving
     SmsModule, // Add SMS module with payment and verification workflow

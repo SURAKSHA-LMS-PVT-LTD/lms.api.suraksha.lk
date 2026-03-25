@@ -4,7 +4,7 @@ import { InstituteClassEntity } from '../../../institute_mudules/institue_class/
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
 import { InstituteClassSubjectExam } from '../../institute_class_subject_exams/entities/institute_class_subject_exam.entity';
-import { Grade } from '../../../institute_class_exams/enums/exam.enum';
+import { Grade } from '../enums/grade.enum';
 
 /**
  * Entity representing results for specific class subjects.

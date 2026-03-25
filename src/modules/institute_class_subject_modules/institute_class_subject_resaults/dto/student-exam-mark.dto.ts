@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Grade } from '../../../institute_class_exams/enums/exam.enum';
+import { Grade } from '../enums/grade.enum';
 
 export class StudentExamMarkDto {
   @ApiProperty({ description: 'Student user ID', example: '42' })
