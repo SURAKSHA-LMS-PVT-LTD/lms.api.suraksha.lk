@@ -324,6 +324,48 @@ export class InstituteClassSubjectPaymentSubmissionController {
   }
 
   /**
+   * Get all STUDENT members for an institute/class/subject with their payment status
+   * GET /institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions/payment/:paymentId/users/STUDENT
+   * Access: Institute Admin, Teachers, Attendance Marker
+   */
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions/payment/:paymentId/users/STUDENT')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true },
+    attendanceMarker: {}
+  })
+  @ApiOperation({
+    summary: 'Get STUDENT members with payment status for a specific payment (scoped by institute/class/subject)',
+    description:
+      'Returns all active STUDENT members of the institute with their payment submission status for the given payment. ' +
+      'Includes nameWithInitials, userId, instituteStudentId, instituteUserImage, and verification details (status, verifiedAt, amount).',
+  })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiParam({ name: 'classId', type: String, description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', type: String, description: 'Subject ID' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
+  @ApiResponse({ status: 200, description: 'Student list with payment status retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Payment not found for given institute/class/subject' })
+  async getStudentsByInstituteClassSubject(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getStudentsByInstituteClassSubject(
+      instituteId, classId, subjectId, paymentId, page, limit, req.user,
+    );
+  }
+
+  /**
    * Admin manually verifies/records a payment for a specific student (class-subject context)
    * POST /institute-class-subject-payment-submissions/payment/:paymentId/student/:studentId/admin-verify
    * Access: Institute Admin, Teachers (with subject access), Attendance Marker, Superadmin

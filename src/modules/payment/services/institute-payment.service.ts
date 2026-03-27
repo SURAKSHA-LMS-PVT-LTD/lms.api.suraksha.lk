@@ -1801,7 +1801,7 @@ export class InstitutePaymentService {
     // Get user details
     const student = await this.userRepository.findOne({
       where: { id: studentId },
-      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'phoneNumber', 'isActive'],
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'phoneNumber', 'isActive', 'imageUrl'],
     });
 
     if (!student) {
@@ -1830,6 +1830,7 @@ export class InstitutePaymentService {
           email: student.email,
           phoneNumber: student.phoneNumber,
           isActive: student.isActive,
+          profileImage: student.imageUrl ? this.cloudStorageService.getFullUrl(student.imageUrl) : null,
           instituteRole: membership.instituteUserType,
           instituteStudentId: membership.userIdByInstitute,
           cardId: membership.instituteCardId,

@@ -1,6 +1,6 @@
 # Payment Admin Verify — Frontend Implementation Guide
 
-This guide covers 4 new APIs added to support admin/teacher/attendance-marker payment verification workflows.
+This guide covers 5 APIs added to support admin/teacher/attendance-marker payment verification workflows.
 
 ---
 
@@ -11,9 +11,10 @@ This guide covers 4 new APIs added to support admin/teacher/attendance-marker pa
    - [Search Student in Institute](#1-search-student-in-institute)
    - [Admin Verify Student Payment](#2-admin-verify-student-payment)
 3. [Class-Subject Payment APIs](#class-subject-payment-apis)
-   - [List Students for Payment](#3-list-students-for-payment)
-   - [Admin Verify Student CSP Payment](#4-admin-verify-student-csp-payment)
-   - [Verify/Reject a Submission (existing)](#5-verifyreject-a-submission-existing-endpoint-updated)
+   - [List Students for Payment (by paymentId)](#3-list-students-for-payment-by-paymentid)
+   - [List Students Scoped by Institute/Class/Subject](#4-list-students-scoped-by-instituteclasssubject)
+   - [Admin Verify Student CSP Payment](#5-admin-verify-student-csp-payment)
+   - [Verify/Reject a Submission (existing)](#6-verifyreject-a-submission-existing-endpoint-updated)
 4. [UI Flow Recommendations](#ui-flow-recommendations)
 5. [Error Handling Reference](#error-handling-reference)
 
@@ -25,7 +26,8 @@ This guide covers 4 new APIs added to support admin/teacher/attendance-marker pa
 |---|---|---|---|---|
 | Search student in institute | ✅ | ✅ | ✅ | ✅ |
 | Admin verify institute payment | ✅ | ✅ | ❌ | ✅ |
-| List students for CSP payment | ✅ | ✅ | ✅ (subject-scoped) | ✅ |
+| List students for CSP payment (by paymentId) | ✅ | ✅ | ✅ (subject-scoped) | ✅ |
+| List students scoped by institute/class/subject | ✅ | ✅ | ✅ (subject-scoped) | ✅ |
 | Admin verify student CSP payment | ✅ | ✅ | ✅ (subject-scoped) | ✅ |
 | Verify/reject a submission | ✅ | ✅ | ✅ (subject-scoped) | ✅ |
 
@@ -173,7 +175,7 @@ Content-Type: application/json
 
 ## Class-Subject Payment APIs
 
-### 3. List Students for Payment
+### 3. List Students for Payment (by paymentId)
 
 Get all students enrolled in a class-subject payment with their submission status.
 
@@ -264,7 +266,129 @@ GET /institute-class-subject-payment-submissions/payment/789/students?page=1&lim
 
 ---
 
-### 4. Admin Verify Student CSP Payment
+---
+
+### 4. List Students Scoped by Institute/Class/Subject
+
+Get all **STUDENT** members for a specific institute/class/subject with their payment submission status. Returns richer details than endpoint #3: `nameWithInitials`, `userId`, `instituteStudentId`, `instituteUserImage`, and post-verification details (`status`, `verifiedAt`, `amount`). Also validates that the payment belongs to the given scope.
+
+**Endpoint**
+```
+GET /institute-class-subject-payment-submissions/institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions/payment/:paymentId/users/STUDENT
+```
+
+**Path Parameters**
+
+| Parameter | Description |
+|---|---|
+| `instituteId` | Institute ID |
+| `classId` | Class ID |
+| `subjectId` | Subject ID |
+| `paymentId` | Payment ID — must belong to the given institute/class/subject |
+
+**Query Parameters**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `page` | number | ❌ | `1` | Page number |
+| `limit` | number | ❌ | `20` | Items per page |
+
+**Headers**
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Example Request**
+```
+GET /institute-class-subject-payment-submissions/institute/109/class/5/subject/12/payment-submissions/payment/1/users/STUDENT?page=1&limit=20
+```
+
+**Success Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "paymentId": "1",
+    "paymentTitle": "March Monthly Fee",
+    "paymentAmount": 3000,
+    "students": [
+      {
+        "userId": "500362",
+        "nameWithInitials": "A. Perera",
+        "instituteStudentId": "S-2024-001",
+        "cardId": "CARD-123",
+        "instituteUserImage": "https://storage.example.com/images/abc.jpg",
+        "paymentStatus": "VERIFIED",
+        "submissionId": "42",
+        "verifiedAt": "2026-03-10T08:00:00.000Z",
+        "amount": 3000
+      },
+      {
+        "userId": "500363",
+        "nameWithInitials": "N. Silva",
+        "instituteStudentId": "S-2024-002",
+        "cardId": null,
+        "instituteUserImage": null,
+        "paymentStatus": "PENDING",
+        "submissionId": "55",
+        "verifiedAt": null,
+        "amount": 3000
+      },
+      {
+        "userId": "500364",
+        "nameWithInitials": "K. Bandara",
+        "instituteStudentId": null,
+        "cardId": null,
+        "instituteUserImage": "https://storage.example.com/images/def.jpg",
+        "paymentStatus": "NOT_SUBMITTED",
+        "submissionId": null,
+        "verifiedAt": null,
+        "amount": null
+      }
+    ],
+    "summary": {
+      "total": 45,
+      "verified": 30,
+      "pending": 5,
+      "rejected": 2,
+      "notSubmitted": 8
+    },
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 3,
+      "totalItems": 45,
+      "itemsPerPage": 20,
+      "hasNextPage": true,
+      "hasPreviousPage": false
+    }
+  }
+}
+```
+
+**Student Object Fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `userId` | string | User's UUID (BigInt as string) |
+| `nameWithInitials` | string \| null | e.g. `"A. Perera"` |
+| `instituteStudentId` | string \| null | Institute-assigned student ID / entrance number |
+| `cardId` | string \| null | Institute card ID / QR code |
+| `instituteUserImage` | string \| null | Full URL — prefers institute-specific image, falls back to global profile image |
+| `paymentStatus` | string | `NOT_SUBMITTED` \| `PENDING` \| `VERIFIED` \| `REJECTED` |
+| `submissionId` | string \| null | Submission ID if one exists |
+| `verifiedAt` | ISO 8601 \| null | Timestamp when payment was verified (`VERIFIED` only) |
+| `amount` | number \| null | Submitted amount (`null` when `NOT_SUBMITTED`) |
+
+**Error Responses**
+
+| Status | Reason |
+|---|---|
+| 403 | Caller has no access to this institute |
+| 404 | Payment not found for the given institute/class/subject combination |
+
+---
+
+### 5. Admin Verify Student CSP Payment
 
 Record/verify a class-subject payment for a student directly. Creates a `VERIFIED` record immediately without requiring student submission.
 
@@ -330,7 +454,7 @@ Content-Type: application/json
 
 ---
 
-### 5. Verify/Reject a Submission (existing endpoint, updated)
+### 6. Verify/Reject a Submission (existing endpoint, updated)
 
 This endpoint existed before. Access control has been updated to also allow `AttendanceMarker` role.
 
@@ -494,6 +618,7 @@ All `date` fields in request bodies must be `YYYY-MM-DD` format:
 | `GET` | `/institute-payments/institute/:instituteId/search-student` | Search student + payment history | Admin, Teacher, AttendanceMarker |
 | `POST` | `/institute-payments/institute/:instituteId/payment/:paymentId/admin-verify-student/:studentId` | Record institute payment for student | Admin, AttendanceMarker |
 | `GET` | `/institute-class-subject-payment-submissions/payment/:paymentId/students` | List students with payment status | Admin, Teacher*, AttendanceMarker |
+| `GET` | `/institute-class-subject-payment-submissions/institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions/payment/:paymentId/users/STUDENT` | List STUDENT members with rich details + payment status (scoped) | Admin, Teacher*, AttendanceMarker |
 | `POST` | `/institute-class-subject-payment-submissions/payment/:paymentId/student/:studentId/admin-verify` | Record CSP payment for student | Admin, Teacher*, AttendanceMarker |
 | `PATCH` | `/institute-class-subject-payment-submissions/submission/:submissionId/verify` | Verify/reject a submission | Admin, Teacher*, AttendanceMarker |
 
