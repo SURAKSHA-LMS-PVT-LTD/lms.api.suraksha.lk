@@ -79,7 +79,7 @@ export class AuthV2Controller {
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
       secure: isProduction,  // HTTPS only in production
-      sameSite: isProduction ? 'strict' : 'lax', // CSRF protection (lax for local development)
+      sameSite: 'lax',       // 'lax' allows same-site cross-origin (lms→lmsapi) and top-level navigations
       maxAge: cookieMaxAge,
       path: '/',
       domain: isProduction ? undefined : 'localhost' // Set domain for localhost
@@ -125,7 +125,7 @@ export class AuthV2Controller {
     const refreshToken = req.cookies?.refresh_token || refreshTokenDto.refresh_token;
     
     if (!refreshToken) {
-      throw new Error('Refresh token not provided in cookie or body');
+      throw new UnauthorizedException('Refresh token not provided in cookie or body');
     }
 
     const clientInfo = {
@@ -147,7 +147,7 @@ export class AuthV2Controller {
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
       secure: isProduction,  // HTTPS only in production
-      sameSite: isProduction ? 'strict' : 'lax', // CSRF protection
+      sameSite: 'lax',       // 'lax' allows same-site cross-origin (lms→lmsapi) and top-level navigations
       maxAge: cookieMaxAge,
       path: '/',
       domain: isProduction ? undefined : 'localhost'
@@ -193,7 +193,7 @@ export class AuthV2Controller {
       res.clearCookie('refresh_token', {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: 'lax',
         path: '/'
       });
       

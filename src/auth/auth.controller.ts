@@ -107,10 +107,11 @@ export class ResetPasswordDto {
   })
   @IsString()
   @MinLength(8, { message: 'Min 8 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/, {
     message: 'Need uppercase, lowercase, number, special char'
   })
   @IsNotEmpty({ message: 'Password required' })
+  @Transform(({ value, obj }) => value || obj.new_password || '')
   newPassword: string;
 
   @ApiProperty({
@@ -120,6 +121,7 @@ export class ResetPasswordDto {
   @IsString()
   @MinLength(8, { message: 'Min 8 characters' })
   @IsNotEmpty({ message: 'Confirm password required' })
+  @Transform(({ value, obj }) => value || obj.confirm_password || obj.confirmNewPassword || '')
   confirmPassword: string;
 
   // Legacy: accept confirm_password or confirmNewPassword
@@ -155,7 +157,7 @@ export class ChangePasswordAuthDto {
   })
   @IsString({ message: 'Password must be a string' })
   @MinLength(8, { message: 'Password must be at least 8 characters long' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/, {
     message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
   })
   @IsNotEmpty({ message: 'New password is required' })
@@ -265,18 +267,9 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Too many password change attempts' })
   @Throttle({ default: { limit: 3, ttl: 900000 } }) // 3 attempts per 15 minutes
   async changePassword(
-    @Body() changePasswordDto: ChangePasswordDto,
+    @Body(ValidationPipe) changePasswordDto: ChangePasswordDto,
     @Headers('authorization') authorization: string,
   ) {
-    // Basic validation (DTO handles detailed validation)
-    if (!changePasswordDto.currentPassword || !changePasswordDto.newPassword || !changePasswordDto.confirmNewPassword) {
-      throw new BadRequestException('All password fields are required');
-    }
-
-    if (!authorization) {
-      throw new UnauthorizedException('Authorization header is required');
-    }
-
     return await this.authService.changePasswordWithJWT(changePasswordDto, authorization);
   }
 
@@ -344,7 +337,8 @@ export class AuthController {
 
       return result;
     } catch (error) {
-      throw new BadRequestException(error.message);
+      if (error.status) throw error;
+      throw new BadRequestException('Unable to process request. Please try again later.');
     }
   }
 
@@ -388,7 +382,8 @@ export class AuthController {
 
       return result;
     } catch (error) {
-      throw new BadRequestException(error.message);
+      if (error.status) throw error;
+      throw new BadRequestException('Unable to process request. Please try again later.');
     }
   }
 
@@ -444,10 +439,11 @@ export class AuthController {
 
       return result;
     } catch (error) {
-      if (error.message.includes('Current password is incorrect')) {
-        throw new UnauthorizedException(error.message);
+      if (error.status) throw error;
+      if (error.message?.includes('Current password is incorrect')) {
+        throw new UnauthorizedException('Current password is incorrect');
       }
-      throw new BadRequestException(error.message);
+      throw new BadRequestException('Unable to change password. Please try again later.');
     }
   }
 
@@ -511,7 +507,7 @@ export class AuthController {
       res.cookie('refresh_token', result.refresh_token, {
         httpOnly: true,
         secure: isProduction, // HTTPS only in production
-        sameSite: isProduction ? 'strict' : 'lax', // Lax for local development
+        sameSite: 'lax', // Allows same-site cross-origin (lms→lmsapi) and navigations
         maxAge: cookieMaxAge,
         path: '/',
         domain: isProduction ? undefined : 'localhost' // Set domain for localhost
@@ -566,7 +562,7 @@ export class AuthController {
       res.clearCookie('refresh_token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: 'lax',
         path: '/'
       });
       

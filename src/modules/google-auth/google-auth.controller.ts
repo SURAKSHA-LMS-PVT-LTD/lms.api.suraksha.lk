@@ -166,7 +166,7 @@ export class GoogleAuthController {
       res.cookie('google_access_token', tokenData.access_token, {
         httpOnly: false, // Frontend needs to read this for Google Drive API calls
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: 'lax',
         maxAge: (tokenData.expires_in || 3600) * 1000, // Convert seconds to ms
         path: '/',
       });
