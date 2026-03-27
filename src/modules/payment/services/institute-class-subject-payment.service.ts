@@ -9,7 +9,7 @@ import { InstituteUserType } from '../../institute_mudules/institue_user/enums/i
 import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { JwtPayload } from '../../../common/interfaces/jwt-request.interface';
 import { CreateInstituteClassSubjectPaymentDto } from '../dto/create-institute-class-subject-payment.dto';
-import { CreateInstituteClassSubjectPaymentSubmissionDto, VerifyPaymentSubmissionDto } from '../dto/create-institute-class-subject-payment-submission.dto';
+import { CreateInstituteClassSubjectPaymentSubmissionDto, VerifyPaymentSubmissionDto, AdminVerifyStudentCspPaymentDto } from '../dto/create-institute-class-subject-payment-submission.dto';
 import { InstituteClassSubjectPaymentResponseDto, InstituteClassSubjectPaymentSubmissionResponseDto, PaymentCreationSuccessResponseDto, SubmissionCreationSuccessResponseDto, PaginatedPaymentsResponseDto, PaginatedSubmissionsResponseDto } from '../dto/institute-class-subject-payment-response.dto';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
@@ -1132,6 +1132,235 @@ export class InstituteClassSubjectPaymentService {
       pendingSubmissions: pending,
       rejectedSubmissions: rejected,
       verificationRate: total > 0 ? (verified / total * 100).toFixed(2) : '0.00',
+    };
+  }
+
+  /**
+   * Get all students enrolled in the class/subject of a given payment,
+   * along with their payment submission status for that payment.
+   * Access: Institute Admin, Teachers (with subject access), Superadmin.
+   */
+  async getStudentsForPayment(
+    paymentId: string,
+    page: number = 1,
+    limit: number = 20,
+    user: JwtPayload,
+  ) {
+    // Load the payment to resolve institute/class/subject context
+    const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
+    if (!payment) {
+      throw new NotFoundException({
+        success: false,
+        message: 'Payment not found',
+        error: 'PAYMENT_NOT_FOUND',
+      });
+    }
+
+    // Validate caller has access (admin/teacher level)
+    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'You do not have access to this institute',
+        error: 'NO_INSTITUTE_ACCESS',
+      });
+    }
+
+    const isAdmin = user.userType === UserType.SUPERADMIN ||
+      user.userType === UserType.ORGANIZATION_MANAGER ||
+      user.u === 0 || user.u === 1 ||
+      instituteRole === InstituteUserType.INSTITUTE_ADMIN ||
+      instituteRole === InstituteUserType.TEACHER;
+
+    if (!isAdmin) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Only admins and teachers can view the student payment list',
+        error: 'INSUFFICIENT_PERMISSIONS',
+      });
+    }
+
+    // Find all students enrolled in this class/subject (using institute-level enrollment)
+    const [memberships, totalStudents] = await this.instituteUserRepository.findAndCount({
+      where: { instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE },
+      relations: ['user'],
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    // Get all existing submissions for this payment
+    const submissions = await this.submissionRepository.find({
+      where: { paymentId },
+    });
+    const submissionMap = new Map(submissions.map(s => [s.userId, s]));
+
+    const studentList = memberships.map(membership => {
+      const sub = submissionMap.get(membership.userId);
+      return {
+        userId: membership.userId,
+        name: membership.user
+          ? (membership.user.nameWithInitials || `${membership.user.firstName || ''} ${membership.user.lastName || ''}`.trim())
+          : null,
+        email: membership.user?.email || null,
+        phoneNumber: membership.user?.phoneNumber || null,
+        instituteRole: membership.instituteUserType,
+        instituteStudentId: membership.userIdInstitue,
+        cardId: membership.instituteCardId,
+        paymentStatus: sub ? sub.status : 'NOT_SUBMITTED',
+        submissionId: sub?.id || null,
+        submittedAmount: sub ? parseFloat(String(sub.submittedAmount)) : null,
+        paymentDate: sub?.paymentDate || null,
+        verifiedAt: sub?.verifiedAt || null,
+        notes: sub?.notes || null,
+      };
+    });
+
+    return {
+      success: true,
+      message: 'Student payment list retrieved successfully',
+      data: {
+        paymentId,
+        paymentTitle: payment.title,
+        paymentAmount: parseFloat(String(payment.amount)),
+        students: studentList,
+        summary: {
+          total: totalStudents,
+          verified: submissions.filter(s => s.status === SubmissionStatus.VERIFIED).length,
+          pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
+          rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
+          notSubmitted: totalStudents - submissions.length > 0 ? totalStudents - submissions.length : 0,
+        },
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(totalStudents / limit),
+          totalItems: totalStudents,
+          itemsPerPage: limit,
+          hasNextPage: page < Math.ceil(totalStudents / limit),
+          hasPreviousPage: page > 1,
+        },
+      },
+    };
+  }
+
+  /**
+   * Admin manually verifies/records a payment for a specific student in a class-subject payment.
+   * Creates a VERIFIED submission directly on behalf of the student.
+   * Access: Institute Admin, Teachers (with subject access), Superadmin.
+   */
+  async adminVerifyStudentCspPayment(
+    paymentId: string,
+    studentId: string,
+    dto: AdminVerifyStudentCspPaymentDto,
+    user: JwtPayload,
+  ) {
+    // Load payment
+    const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
+    if (!payment) {
+      throw new NotFoundException({
+        success: false,
+        message: 'Payment not found',
+        error: 'PAYMENT_NOT_FOUND',
+      });
+    }
+
+    // Validate caller has admin/teacher access to this institute
+    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'You do not have access to this institute',
+        error: 'NO_INSTITUTE_ACCESS',
+      });
+    }
+
+    const isAdmin = user.userType === UserType.SUPERADMIN ||
+      user.userType === UserType.ORGANIZATION_MANAGER ||
+      user.u === 0 || user.u === 1 ||
+      instituteRole === InstituteUserType.INSTITUTE_ADMIN ||
+      instituteRole === InstituteUserType.TEACHER;
+
+    if (!isAdmin) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Only admins and teachers can manually verify student payments',
+        error: 'INSUFFICIENT_PERMISSIONS',
+      });
+    }
+
+    // Verify student is enrolled in the institute
+    const membership = await this.instituteUserRepository.findOne({
+      where: { userId: studentId, instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE },
+    });
+    if (!membership) {
+      throw new NotFoundException({
+        success: false,
+        message: 'Student not found in this institute',
+        error: 'STUDENT_NOT_FOUND',
+      });
+    }
+
+    // Check if the student already has a VERIFIED submission for this payment
+    const existingVerified = await this.submissionRepository.findOne({
+      where: { paymentId, userId: studentId, status: SubmissionStatus.VERIFIED },
+    });
+    if (existingVerified) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Student already has a verified payment for this payment request',
+        error: 'ALREADY_VERIFIED',
+        data: { existingSubmissionId: existingVerified.id },
+      });
+    }
+
+    // Get user details for the username field
+    const studentUser = await this.userRepository.findOne({
+      where: { id: studentId },
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials'],
+    });
+
+    const timestamp = new Date(); // real UTC
+    const submission = this.submissionRepository.create({
+      paymentId,
+      userId: studentId,
+      userType: (membership.instituteUserType as any),
+      username: studentUser
+        ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim())
+        : studentId,
+      paymentDate: new Date(dto.date),
+      receiptUrl: '',
+      receiptFilename: '',
+      submittedAmount: dto.amount,
+      status: SubmissionStatus.VERIFIED,
+      verifiedBy: user.s,
+      verifiedAt: timestamp,
+      notes: dto.notes || null,
+      uploadedAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const savedSubmission = await this.submissionRepository.save(submission);
+
+    // Refresh user cache
+    try {
+      await this.userManagementService.refreshUserCache(studentId);
+    } catch (cacheError) {
+      this.logger.warn(`Cache refresh failed after admin CSP payment verification for user ${studentId}: ${cacheError.message}`);
+    }
+
+    return {
+      success: true,
+      message: 'Payment verified for student successfully',
+      data: {
+        submissionId: savedSubmission.id,
+        paymentId,
+        studentId,
+        amount: dto.amount,
+        status: savedSubmission.status,
+        verifiedBy: user.s,
+        verifiedAt: savedSubmission.verifiedAt,
+        notes: savedSubmission.notes,
+      },
     };
   }
 }

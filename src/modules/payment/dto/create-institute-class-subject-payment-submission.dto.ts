@@ -83,3 +83,29 @@ export class VerifyPaymentSubmissionDto {
   @MaxLength(255)
   notes?: string;
 }
+
+// DTO for admin to manually verify/record payment for a specific student (class-subject context)
+export class AdminVerifyStudentCspPaymentDto {
+  @ApiProperty({ description: 'Payment amount verified by admin', example: 5000.00 })
+  @IsNotEmpty()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(999999.99)
+  @Transform(({ value }) => {
+    const num = parseFloat(value);
+    return isNaN(num) ? value : Math.round(num * 100) / 100;
+  })
+  amount: number;
+
+  @ApiProperty({ description: 'Date of payment', example: '2024-01-15T10:30:00Z' })
+  @IsNotEmpty()
+  @IsDateString()
+  date: string;
+
+  @ApiPropertyOptional({ description: 'Optional notes from admin', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  notes?: string;
+}
