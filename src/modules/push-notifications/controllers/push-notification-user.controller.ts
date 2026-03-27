@@ -24,6 +24,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { SkipThrottle } from '../../../common/decorators/throttle.decorator';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { UserType } from '../../user/enums/user-type.enum';
 import { PushNotificationService } from '../services/push-notification.service';
@@ -72,6 +73,7 @@ export class PushNotificationUserController {
    * Useful for global badge counts (e.g. a bell icon with a number across all institutes).
    */
   @Get('my/unread-count')
+  @SkipThrottle()
   @ApiOperation({
     summary: 'Get total unread count across all scopes',
     description: 'Returns the total number of unread notifications for the current user across all institutes and global scope.',
@@ -146,6 +148,7 @@ export class PushNotificationUserController {
    * Get unread count for institute notifications
    */
   @Get('institute/:instituteId/unread-count')
+  @SkipThrottle()
   @ApiOperation({ 
     summary: 'Get unread notification count for an institute',
     description: 'Get the count of unread notifications for a specific institute'
@@ -167,6 +170,7 @@ export class PushNotificationUserController {
    * Get unread count for system notifications
    */
   @Get('system/unread-count')
+  @SkipThrottle()
   @ApiOperation({ 
     summary: 'Get unread system notification count',
     description: 'Get the count of unread global/system notifications. Available to all authenticated users.'
