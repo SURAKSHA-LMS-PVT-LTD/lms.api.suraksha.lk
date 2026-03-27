@@ -1197,6 +1197,7 @@ export class InstituteClassSubjectPaymentService {
 
     const studentList = memberships.map(membership => {
       const sub = submissionMap.get(membership.userId);
+      const rawImageUrl = membership.user?.imageUrl || null;
       return {
         userId: membership.userId,
         name: membership.user
@@ -1204,6 +1205,7 @@ export class InstituteClassSubjectPaymentService {
           : null,
         email: membership.user?.email || null,
         phoneNumber: membership.user?.phoneNumber || null,
+        profileImage: rawImageUrl ? this.cloudStorageService.getFullUrl(rawImageUrl) : null,
         instituteRole: membership.instituteUserType,
         instituteStudentId: membership.userIdByInstitute,
         cardId: membership.instituteCardId,
