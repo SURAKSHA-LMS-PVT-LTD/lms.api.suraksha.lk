@@ -73,6 +73,8 @@ export class InstituteClassSubjectStudentsService {
         subjectId: createDto.subjectId,
         studentId: createDto.studentId,
         isActive: createDto.isActive ?? true,
+        enrollmentMethod: 'teacher_assigned' as const,
+        verificationStatus: 'verified' as const,
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -272,6 +274,7 @@ export class InstituteClassSubjectStudentsService {
           isActive: bulkDto.isActive ?? true,
           enrollmentMethod: enrollmentMethod,
           enrolledBy: user.userId, // Track who performed the enrollment (from JWT)
+          verificationStatus: 'verified' as const,
           createdAt: timestamp,
           updatedAt: timestamp,
         };
@@ -1038,6 +1041,7 @@ export class InstituteClassSubjectStudentsService {
             enrollmentMethod: 'teacher_assigned',
             enrolledBy: teacherId,
             isActive: true,
+            verificationStatus: 'verified',
             createdAt: timestamp,
             updatedAt: timestamp,
           }),

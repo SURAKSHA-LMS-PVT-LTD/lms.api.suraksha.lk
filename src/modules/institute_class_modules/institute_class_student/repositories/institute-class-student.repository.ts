@@ -353,6 +353,7 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
     const entity = this.repository.create({
       ...data,
       isActive: data.isActive ?? INSTITUTE_CLASS_STUDENT_CONSTANTS.DEFAULTS.IS_ACTIVE,
+      isVerified: true, // Admin/teacher assignments are auto-verified
     });
     return await this.repository.save(entity);
   }
@@ -393,6 +394,7 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
         classId: data.classId,
         studentUserId,
         isActive: data.isActive ?? INSTITUTE_CLASS_STUDENT_CONSTANTS.DEFAULTS.IS_ACTIVE,
+        isVerified: true, // Admin/teacher assignments are auto-verified
       })
     );
     return await this.repository.save(entities);
