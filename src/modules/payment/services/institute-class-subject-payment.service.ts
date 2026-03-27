@@ -1313,17 +1313,17 @@ export class InstituteClassSubjectPaymentService {
       });
     }
 
-    // Get user details for the username field
+    // Get user details for the username and userType fields
     const studentUser = await this.userRepository.findOne({
       where: { id: studentId },
-      select: ['id', 'firstName', 'lastName', 'nameWithInitials'],
+      select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'],
     });
 
     const timestamp = new Date(); // real UTC
     const submission = this.submissionRepository.create({
       paymentId,
       userId: studentId,
-      userType: (membership.instituteUserType as any),
+      userType: studentUser?.userType ?? UserType.USER,
       username: studentUser
         ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim())
         : studentId,
