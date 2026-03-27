@@ -1785,9 +1785,9 @@ export class InstitutePaymentService {
       });
     }
 
-    // Find the student's membership in this institute
+    // Find the student's membership in this institute (any status)
     const membership = await this.instituteUserRepository.findOne({
-      where: { userId: studentId, instituteId, status: InstituteUserStatus.ACTIVE },
+      where: { userId: studentId, instituteId },
     });
 
     if (!membership) {
@@ -1831,7 +1831,7 @@ export class InstitutePaymentService {
           phoneNumber: student.phoneNumber,
           isActive: student.isActive,
           instituteRole: membership.instituteUserType,
-          instituteStudentId: membership.userIdInstitue,
+          instituteStudentId: membership.userIdByInstitute,
           cardId: membership.instituteCardId,
         },
         paymentHistory: submissions.map(sub => ({

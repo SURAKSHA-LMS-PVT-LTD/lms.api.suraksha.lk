@@ -1205,7 +1205,7 @@ export class InstituteClassSubjectPaymentService {
         email: membership.user?.email || null,
         phoneNumber: membership.user?.phoneNumber || null,
         instituteRole: membership.instituteUserType,
-        instituteStudentId: membership.userIdInstitue,
+        instituteStudentId: membership.userIdByInstitute,
         cardId: membership.instituteCardId,
         paymentStatus: sub ? sub.status : 'NOT_SUBMITTED',
         submissionId: sub?.id || null,
