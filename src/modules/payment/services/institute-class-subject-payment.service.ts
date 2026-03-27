@@ -1,10 +1,11 @@
 ﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-subject-payment.entity';
 import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
+import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { JwtPayload } from '../../../common/interfaces/jwt-request.interface';
@@ -30,6 +31,8 @@ export class InstituteClassSubjectPaymentService {
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(InstituteUserEntity)
     private readonly instituteUserRepository: Repository<InstituteUserEntity>,
+    @InjectRepository(InstituteClassSubjectStudent)
+    private readonly classSubjectStudentRepository: Repository<InstituteClassSubjectStudent>,
     private readonly cloudStorageService: CloudStorageService,
     private readonly userManagementService: UserManagementService,
     private readonly dataSource: DataSource,
@@ -1298,37 +1301,50 @@ export class InstituteClassSubjectPaymentService {
       });
     }
 
-    // All STUDENT members for this institute (class/subject scoped payments apply to all students)
-    const [memberships, totalStudents] = await this.instituteUserRepository.findAndCount({
+    // Students enrolled in this specific class/subject
+    const [enrollments, totalStudents] = await this.classSubjectStudentRepository.findAndCount({
       where: {
         instituteId,
-        instituteUserType: InstituteUserType.STUDENT,
-        status: InstituteUserStatus.ACTIVE,
+        classId,
+        subjectId,
+        isActive: true,
+        verificationStatus: 'verified',
       },
-      relations: ['user'],
+      relations: ['student'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
 
+    // Batch-load institute membership info for institute-scoped fields
+    const enrolledUserIds = enrollments.map(e => e.studentId);
+    const memberships = enrolledUserIds.length > 0
+      ? await this.instituteUserRepository.find({
+          where: { userId: In(enrolledUserIds), instituteId },
+        })
+      : [];
+    const membershipMap = new Map(memberships.map(m => [m.userId, m]));
+
     // Fetch all submissions for this payment in one query
     const submissions = await this.submissionRepository.find({ where: { paymentId } });
     const submissionMap = new Map(submissions.map(s => [s.userId, s]));
 
-    const students = memberships.map(membership => {
-      const sub = submissionMap.get(membership.userId);
-      const rawInstituteImage = membership.instituteUserImageUrl || null;
-      const rawGlobalImage = membership.user?.imageUrl || null;
+    const students = enrollments.map(enrollment => {
+      const user = enrollment.student;
+      const membership = membershipMap.get(enrollment.studentId);
+      const sub = submissionMap.get(enrollment.studentId);
+      const rawInstituteImage = membership?.instituteUserImageUrl || null;
+      const rawGlobalImage = user?.imageUrl || null;
 
       return {
         // Identity
-        userId: membership.userId,
-        nameWithInitials: membership.user
-          ? (membership.user.nameWithInitials || `${membership.user.firstName || ''} ${membership.user.lastName || ''}`.trim())
+        userId: enrollment.studentId,
+        nameWithInitials: user
+          ? (user.nameWithInitials || `${user.firstName || ''} ${user.lastName || ''}`.trim())
           : null,
         // Institute-scoped details
-        instituteStudentId: membership.userIdByInstitute || null,
-        cardId: membership.instituteCardId || null,
+        instituteStudentId: membership?.userIdByInstitute || null,
+        cardId: membership?.instituteCardId || null,
         instituteUserImage: rawInstituteImage
           ? this.cloudStorageService.getFullUrl(rawInstituteImage)
           : (rawGlobalImage ? this.cloudStorageService.getFullUrl(rawGlobalImage) : null),

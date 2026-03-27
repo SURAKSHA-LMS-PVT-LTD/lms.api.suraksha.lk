@@ -11,6 +11,7 @@ import { InstitutePayment } from './entities/institute-payment.entity';
 import { InstitutePaymentSubmission } from './entities/institute-payment-submission.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
+import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { PaymentController } from './controllers/payment.controller';
 import { InstituteClassSubjectPaymentController } from './controllers/institute-class-subject-payment.controller';
 import { InstituteClassSubjectPaymentSubmissionController } from './controllers/institute-class-subject-payment-submission.controller';
@@ -36,6 +37,7 @@ import { EnhancedEmailService } from '../../common/services/enhanced-email.servi
       InstitutePaymentSubmission,
       UserEntity,
       InstituteUserEntity,
+      InstituteClassSubjectStudent,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
