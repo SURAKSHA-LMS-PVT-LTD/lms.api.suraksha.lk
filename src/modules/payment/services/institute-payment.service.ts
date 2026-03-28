@@ -244,6 +244,7 @@ export class InstitutePaymentService {
       const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
         .leftJoinAndSelect('payment.creator', 'creator')
         .leftJoinAndSelect('payment.submissions', 'submissions')
+        .leftJoinAndSelect('submissions.submitter', 'submitter')
         .where('payment.instituteId = :instituteId', { instituteId })
         .andWhere('payment.isActive = :isActive', { isActive: true });
 
@@ -302,10 +303,40 @@ export class InstitutePaymentService {
       // Use getManyAndCount for reliable results (getCount ignores skip/take automatically)
       const [payments, totalCount] = await queryBuilder.getManyAndCount();
 
+      // For admins: batch-load institute membership to get instituteUserId per student
+      let membershipMap = new Map<string, string | null>();
+      if (userAccessLevel === UserAccessLevel.ADMIN) {
+        const allSubmitterIds = [...new Set(
+          payments.flatMap(p => (p.submissions || []).map(s => s.submittedBy).filter(Boolean))
+        )];
+        if (allSubmitterIds.length > 0) {
+          const memberships = await this.instituteUserRepository.find({
+            where: { userId: In(allSubmitterIds), instituteId },
+            select: ['userId', 'userIdByInstitute'],
+          });
+          memberships.forEach(m => membershipMap.set(m.userId, m.userIdByInstitute || null));
+        }
+      }
+
       // Transform payments with role-based security filtering
-      const securePayments = payments.map(payment => 
-        transformInstitutePaymentToSecureResponse(payment, userAccessLevel, user.s)
-      );
+      const securePayments = payments.map(payment => {
+        const base = transformInstitutePaymentToSecureResponse(payment, userAccessLevel, user.s);
+        if (userAccessLevel === UserAccessLevel.ADMIN && payment.submissions?.length) {
+          base.submissions = payment.submissions.map(sub => ({
+            uuid: sub.submittedBy,
+            nameWithInitials: sub.submitter
+              ? (sub.submitter.nameWithInitials || `${sub.submitter.firstName || ''} ${sub.submitter.lastName || ''}`.trim())
+              : null,
+            image: sub.submitter?.imageUrl ? this.cloudStorageService.getFullUrl(sub.submitter.imageUrl) : null,
+            instituteUserId: membershipMap.get(sub.submittedBy) ?? null,
+            status: sub.status,
+            amount: parseFloat(String(sub.paymentAmount || 0)),
+            date: sub.verifiedAt || sub.paymentDate || sub.createdAt,
+            note: sub.notes || null,
+          }));
+        }
+        return base;
+      });
 
       // Calculate pagination metadata
       const totalPages = Math.ceil(totalCount / limit);
