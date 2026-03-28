@@ -1797,7 +1797,7 @@ export class InstitutePaymentService {
    * Search for a student by ID within an institute and return their details + payment history.
    * Access: Institute Admin, Teachers, Superadmin only.
    */
-  async searchStudentInInstitute(instituteId: string, studentId: string, user: JwtPayload) {
+  async searchStudentInInstitute(instituteId: string, studentId: string, user: JwtPayload, paymentId?: string) {
     const { hasAccess, instituteRole } = await this.getUserFromJWT(user, instituteId);
     if (!hasAccess) {
       throw new ForbiddenException({
@@ -1843,13 +1843,35 @@ export class InstitutePaymentService {
       });
     }
 
-    // Get all payment submissions for this student in this institute
+    // Get payment submissions for this student - filter by paymentId if provided
+    const submissionWhere: any = { submittedBy: studentId, payment: { instituteId } };
+    if (paymentId) {
+      submissionWhere.paymentId = paymentId;
+    }
     const submissions = await this.submissionRepository.find({
-      where: { submittedBy: studentId, payment: { instituteId } },
+      where: submissionWhere,
       relations: ['payment'],
       order: { createdAt: 'DESC' },
-      take: 20,
+      take: paymentId ? undefined : 20,
     });
+
+    // If paymentId provided, also fetch the payment details
+    let paymentDetails: any = null;
+    if (paymentId) {
+      const payment = await this.paymentRepository.findOne({
+        where: { id: paymentId, instituteId },
+      });
+      if (payment) {
+        paymentDetails = {
+          id: payment.id,
+          paymentType: payment.paymentType,
+          description: payment.description,
+          amount: parseFloat(String(payment.amount)),
+          dueDate: payment.dueDate || null,
+          status: payment.status,
+        };
+      }
+    }
 
     return {
       success: true,
@@ -1860,6 +1882,7 @@ export class InstitutePaymentService {
         image: student.imageUrl ? this.cloudStorageService.getFullUrl(student.imageUrl) : null,
         instituteUserId: membership.userIdByInstitute || null,
       },
+      ...(paymentDetails && { payment: paymentDetails }),
       paymentHistory: submissions.map(sub => ({
         status: sub.status,
         amount: parseFloat(String(sub.paymentAmount || 0)),

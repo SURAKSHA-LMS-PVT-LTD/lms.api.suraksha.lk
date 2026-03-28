@@ -229,6 +229,7 @@ export class InstitutePaymentController {
   async searchStudentInInstitute(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Query('studentId') studentId: string,
+    @Query('paymentId') paymentId: string,
     @Request() req: JwtRequest,
   ) {
     if (!studentId) {
@@ -238,7 +239,7 @@ export class InstitutePaymentController {
         error: 'MISSING_STUDENT_ID',
       });
     }
-    return this.institutePaymentService.searchStudentInInstitute(instituteId, studentId, req.user);
+    return this.institutePaymentService.searchStudentInInstitute(instituteId, studentId, req.user, paymentId);
   }
 
   /**
