@@ -268,4 +268,32 @@ export class InstituteClassSubjectPaymentController {
   ) {
     return this.paymentService.getEnrolledUsers(instituteId, classId, subjectId, page, limit, req.user);
   }
+
+  /**
+   * Soft delete a class-subject payment (only if no submissions exist)
+   * DELETE /institute-class-subject-payments/payment/:paymentId
+   * Access: Institute Admin, Payment Creator (Teacher)
+   */
+  @Delete('payment/:paymentId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true },
+  })
+  @ApiOperation({
+    summary: 'Soft delete class-subject payment (Admin/Creator only, no submissions allowed)',
+    description: 'Deactivates a payment request. Only allowed if there are zero submissions. This is a soft delete — the record is preserved but marked inactive.',
+  })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiResponse({ status: 200, description: 'Payment deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot delete — submissions exist' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
+  async deletePayment(
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.softDeletePayment(paymentId, req.user);
+  }
 }

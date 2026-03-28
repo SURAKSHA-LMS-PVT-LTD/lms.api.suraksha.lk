@@ -2001,4 +2001,73 @@ export class InstitutePaymentService {
       },
     };
   }
+
+  /**
+   * Soft delete an institute payment request.
+   * Only allowed for institute admins when no submissions exist.
+   * Sets isActive=false and status=INACTIVE instead of hard deleting.
+   */
+  async softDeletePayment(
+    instituteId: string,
+    paymentId: string,
+    user: JwtPayload,
+  ): Promise<{ success: boolean; message: string }> {
+    // Validate access
+    const { hasAccess, instituteRole } = await this.getUserFromJWT(user, instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Access denied - not enrolled in this institute',
+        error: 'ACCESS_DENIED',
+      });
+    }
+
+    // Only admins can delete payments
+    const accessLevel = this.getUserAccessLevel(user, undefined, instituteRole);
+    if (accessLevel !== UserAccessLevel.ADMIN) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Only institute admins can delete payment requests',
+        error: 'INSUFFICIENT_PERMISSIONS',
+      });
+    }
+
+    // Find payment with submissions count
+    const payment = await this.paymentRepository.findOne({
+      where: { id: paymentId, instituteId, isActive: true },
+      relations: ['submissions'],
+    });
+
+    if (!payment) {
+      throw new NotFoundException({
+        success: false,
+        message: 'Payment not found or already deleted',
+        error: 'PAYMENT_NOT_FOUND',
+      });
+    }
+
+    // Block deletion if any submissions exist
+    if (payment.submissions && payment.submissions.length > 0) {
+      throw new BadRequestException({
+        success: false,
+        message: `Cannot delete this payment because it has ${payment.submissions.length} submission(s). Remove or process all submissions first.`,
+        error: 'PAYMENT_HAS_SUBMISSIONS',
+      });
+    }
+
+    // Soft delete: deactivate and set status to INACTIVE
+    const timestamp = now();
+    await this.paymentRepository.update(paymentId, {
+      isActive: false,
+      status: PaymentRequestStatus.INACTIVE,
+      updatedAt: timestamp,
+    });
+
+    this.logger.log(`Payment ${paymentId} soft-deleted by user ${user.s} in institute ${instituteId}`);
+
+    return {
+      success: true,
+      message: 'Payment deleted successfully',
+    };
+  }
 }

@@ -1504,4 +1504,75 @@ export class InstituteClassSubjectPaymentService {
       },
     };
   }
+
+  /**
+   * Soft delete a class-subject payment request.
+   * Only allowed for institute admins / teachers (with subject access) when no submissions exist.
+   * Sets isActive=false and status=INACTIVE instead of hard deleting.
+   */
+  async softDeletePayment(
+    paymentId: string,
+    user: JwtPayload,
+  ): Promise<{ success: boolean; message: string }> {
+    // Find payment with submissions
+    const payment = await this.paymentRepository.findOne({
+      where: { id: paymentId, isActive: true },
+      relations: ['submissions'],
+    });
+
+    if (!payment) {
+      throw new NotFoundException({
+        success: false,
+        message: 'Payment not found or already deleted',
+        error: 'PAYMENT_NOT_FOUND',
+      });
+    }
+
+    // Validate institute access and admin role
+    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Access denied - not enrolled in this institute',
+        error: 'ACCESS_DENIED',
+      });
+    }
+
+    // Only admins and teachers (creator) can delete
+    const isAdmin = instituteRole === 'SUPERADMIN' ||
+      instituteRole === InstituteUserType.INSTITUTE_ADMIN;
+    const isCreator = payment.createdBy === user.s;
+
+    if (!isAdmin && !isCreator) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Only institute admins or the payment creator can delete payment requests',
+        error: 'INSUFFICIENT_PERMISSIONS',
+      });
+    }
+
+    // Block deletion if any submissions exist
+    if (payment.submissions && payment.submissions.length > 0) {
+      throw new BadRequestException({
+        success: false,
+        message: `Cannot delete this payment because it has ${payment.submissions.length} submission(s). Remove or process all submissions first.`,
+        error: 'PAYMENT_HAS_SUBMISSIONS',
+      });
+    }
+
+    // Soft delete: deactivate and set status to INACTIVE
+    const timestamp = new Date();
+    await this.paymentRepository.update(paymentId, {
+      isActive: false,
+      status: PaymentStatus.INACTIVE,
+      updatedAt: timestamp,
+    });
+
+    this.logger.log(`Class-subject payment ${paymentId} soft-deleted by user ${user.s}`);
+
+    return {
+      success: true,
+      message: 'Payment deleted successfully',
+    };
+  }
 }
