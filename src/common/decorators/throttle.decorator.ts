@@ -49,7 +49,14 @@ export interface ThrottleOptions {
  */
 export const Throttle = (options: ThrottleOptions) => SetMetadata(THROTTLE_KEY, options);
 
+import { SkipThrottle as NestSkipThrottle } from '@nestjs/throttler';
+
 /**
- * Skip rate limiting for specific endpoint
+ * Skip rate limiting for specific endpoint.
+ * Defaults to skipping all configured throttlers (short, medium, long).
+ * Uses the official @nestjs/throttler metadata so the built-in ThrottlerGuard
+ * correctly bypasses rate limiting.
  */
-export const SkipThrottle = (skip = true) => SetMetadata(SKIP_THROTTLE_KEY, skip);
+export const SkipThrottle = (
+  options: { short?: boolean; medium?: boolean; long?: boolean; default?: boolean } = { short: true, medium: true, long: true },
+) => NestSkipThrottle(options);

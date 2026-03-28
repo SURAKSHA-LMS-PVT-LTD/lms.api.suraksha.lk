@@ -11,6 +11,7 @@ import {
   UseGuards,
   UsePipes,
   ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -26,6 +27,7 @@ import {
   CreateInstitutePaymentDto,
   UpdateInstitutePaymentDto,
   GetInstitutePaymentsQueryDto,
+  AdminVerifyStudentPaymentDto,
 } from '../dto/institute-payment.dto';
 
 @ApiTags('Institute Payments')
@@ -203,5 +205,72 @@ export class InstitutePaymentController {
     @Request() req: JwtRequest,
   ) {
     return this.institutePaymentService.getMyPaymentSummary(instituteId, req.user);
+  }
+
+  /**
+   * Search for a student by student ID within an institute
+   * GET /institute-payments/institute/:instituteId/search-student?studentId=xxx
+   * Access: Institute Admin, Teachers, Attendance Marker
+   */
+  @Get('institute/:instituteId/search-student')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: {},
+    attendanceMarker: {}
+  })
+  @ApiOperation({ summary: 'Search student by ID in institute and view their payment history (Admin/Teacher/AttendanceMarker)' })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiQuery({ name: 'studentId', required: true, type: String, description: 'Student user ID to search' })
+  @ApiResponse({ status: 200, description: 'Student found with payment history' })
+  @ApiResponse({ status: 404, description: 'Student not found in this institute' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  async searchStudentInInstitute(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Query('studentId') studentId: string,
+    @Query('paymentId') paymentId: string,
+    @Request() req: JwtRequest,
+  ) {
+    if (!studentId) {
+      throw new BadRequestException({
+        success: false,
+        message: 'studentId query parameter is required',
+        error: 'MISSING_STUDENT_ID',
+      });
+    }
+    return this.institutePaymentService.searchStudentInInstitute(instituteId, studentId, req.user, paymentId);
+  }
+
+  /**
+   * Admin manually verifies/records a payment for a specific student
+   * POST /institute-payments/institute/:instituteId/payment/:paymentId/admin-verify-student/:studentId
+   * Access: Institute Admin, Attendance Marker, Superadmin
+   */
+  @Post('institute/:instituteId/payment/:paymentId/admin-verify-student/:studentId')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    attendanceMarker: {}
+  })
+  @ApiOperation({ summary: 'Admin/AttendanceMarker verifies/records payment for a specific student' })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment request ID' })
+  @ApiParam({ name: 'studentId', type: String, description: 'Student user ID' })
+  @ApiResponse({ status: 201, description: 'Payment verified for student successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - student already has a verified payment' })
+  @ApiResponse({ status: 404, description: 'Payment or student not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async adminVerifyStudentPayment(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Body() dto: AdminVerifyStudentPaymentDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.institutePaymentService.adminVerifyStudentPayment(instituteId, paymentId, studentId, dto, req.user);
   }
 }

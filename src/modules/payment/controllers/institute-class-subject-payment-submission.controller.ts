@@ -25,7 +25,7 @@ import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard'
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../../user/enums/user-type.enum';
 import { InstituteClassSubjectPaymentService } from '../services/institute-class-subject-payment.service';
-import { CreateInstituteClassSubjectPaymentSubmissionDto, VerifyPaymentSubmissionDto } from '../dto/create-institute-class-subject-payment-submission.dto';
+import { CreateInstituteClassSubjectPaymentSubmissionDto, VerifyPaymentSubmissionDto, AdminVerifyStudentCspPaymentDto } from '../dto/create-institute-class-subject-payment-submission.dto';
 import { SubmissionCreationSuccessResponseDto, PaginatedSubmissionsResponseDto, PaymentSubmissionStatusResponseDto, UserSubmissionDetailsResponseDto } from '../dto/institute-class-subject-payment-response.dto';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 
@@ -108,16 +108,17 @@ export class InstituteClassSubjectPaymentSubmissionController {
   /**
    * Verify or reject a payment submission
    * PATCH /institute-class-subject-payment-submissions/submission/:submissionId/verify
-   * Access: Institute Admin, Teachers (with subject access)
+   * Access: Institute Admin, Teachers (with subject access), Attendance Marker
    */
   @Patch('submission/:submissionId/verify')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireSubject: true }
+    teacher: { requireSubject: true },
+    attendanceMarker: {}
   })
-  @ApiOperation({ summary: 'Verify or reject a payment submission (Admin/Teacher only)' })
+  @ApiOperation({ summary: 'Verify or reject a payment submission (Admin/Teacher/AttendanceMarker)' })
   @ApiParam({ name: 'submissionId', type: String, description: 'Submission ID' })
   @ApiResponse({ status: 200, description: 'Submission verified successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - submission already processed' })
@@ -291,5 +292,118 @@ export class InstituteClassSubjectPaymentSubmissionController {
     @Request() req: JwtRequest,
   ) {
     return this.paymentService.getSubmissionStats(instituteId, classId, subjectId, req.user);
+  }
+
+  /**
+   * Get all students for a payment with their payment status (Admin/Teacher view)
+   * GET /institute-class-subject-payment-submissions/payment/:paymentId/students
+   * Access: Institute Admin, Teachers (with subject access), Attendance Marker
+   */
+  @Get('payment/:paymentId/students')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true },
+    attendanceMarker: {}
+  })
+  @ApiOperation({ summary: 'Get all students with their payment status for a specific payment (Admin/Teacher/AttendanceMarker)' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
+  @ApiResponse({ status: 200, description: 'Students with payment status retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  async getStudentsForPayment(
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getStudentsForPayment(paymentId, page, limit, req.user);
+  }
+
+  /**
+   * Get all STUDENT members for an institute/class/subject with their payment status
+   * GET /institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions/payment/:paymentId/users/STUDENT
+   * Access: Institute Admin, Teachers, Attendance Marker
+   */
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions/payment/:paymentId/users/STUDENT')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true },
+    attendanceMarker: {}
+  })
+  @ApiOperation({
+    summary: 'Get STUDENT members with payment status for a specific payment (scoped by institute/class/subject)',
+    description:
+      'Returns all active STUDENT members of the institute with their payment submission status for the given payment. ' +
+      'Includes nameWithInitials, userId, instituteStudentId, instituteUserImage, and verification details (status, verifiedAt, amount).',
+  })
+  @ApiParam({ name: 'instituteId', type: String, description: 'Institute ID' })
+  @ApiParam({ name: 'classId', type: String, description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', type: String, description: 'Subject ID' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
+  @ApiResponse({ status: 200, description: 'Student list with payment status retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Payment not found for given institute/class/subject' })
+  async getStudentsByInstituteClassSubject(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getStudentsByInstituteClassSubject(
+      instituteId, classId, subjectId, paymentId, page, limit, req.user,
+    );
+  }
+
+  /**
+   * Admin manually verifies/records a payment for a specific student (class-subject context)
+   * POST /institute-class-subject-payment-submissions/payment/:paymentId/student/:studentId/admin-verify
+   * Access: Institute Admin, Teachers (with subject access), Attendance Marker, Superadmin
+   */
+  @Post('payment/:paymentId/student/:studentId/admin-verify')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true },
+    attendanceMarker: {}
+  })
+  @ApiOperation({ summary: 'Admin/Teacher/AttendanceMarker verifies/records payment for a specific student' })
+  @ApiParam({ name: 'paymentId', type: String, description: 'Payment ID' })
+  @ApiParam({ name: 'studentId', type: String, description: 'Student user ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['amount', 'date'],
+      properties: {
+        amount: { type: 'number', description: 'Payment amount' },
+        date: { type: 'string', format: 'date-time', description: 'Payment date' },
+        notes: { type: 'string', description: 'Optional notes from admin', maxLength: 500 }
+      }
+    }
+  })
+  @ApiResponse({ status: 201, description: 'Payment verified for student successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - student already has a verified payment' })
+  @ApiResponse({ status: 404, description: 'Payment or student not found' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async adminVerifyStudentCspPayment(
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Body() dto: AdminVerifyStudentCspPaymentDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.adminVerifyStudentCspPayment(paymentId, studentId, dto, req.user);
   }
 }

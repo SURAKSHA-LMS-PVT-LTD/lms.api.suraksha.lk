@@ -567,3 +567,26 @@ export class GetInstitutePaymentSubmissionsQueryDto {
   })
   hasAttachment?: boolean;
 }
+
+// DTO for admin to manually verify/record payment for a specific student
+export class AdminVerifyStudentPaymentDto {
+  @IsNotEmpty()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(999999.99)
+  @Transform(({ value }) => {
+    const num = parseFloat(value);
+    return isNaN(num) ? value : Math.round(num * 100) / 100;
+  })
+  amount: number;
+
+  @IsNotEmpty()
+  @IsDateString()
+  date: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  notes?: string;
+}
