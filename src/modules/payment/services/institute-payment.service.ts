@@ -1470,7 +1470,7 @@ export class InstitutePaymentService {
         receiptFileUrl: submission.receiptFileUrl || null,
         receiptFileSize: submission.receiptFileSize ? parseInt(submission.receiptFileSize.toString()) : null,
         receiptFileType: submission.receiptFileType || null,
-        paymentRemarks: submission.paymentRemarks,
+        paymentRemarks: submission.paymentRemarks || submission.notes || null,
         createdAt: submission.createdAt?.toISOString() || null,
         // Minimal additional fields
         canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
