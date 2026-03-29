@@ -317,11 +317,13 @@ export class InstitueUserService {
       'u.address_line2',
       'u.is_active',
       'iu.user_id_institue as userIdByInstitute',
+      'iu.house_id as house_id',
       'iu.status',
       'iu.verified_at',
       'iu.created_at',
       'iu.institute_user_image_url',  // Institute-specific image
       'iu.image_verification_status',  // Image verification status
+      'ih.name as house_name',
       'CONCAT(v.first_name, " ", COALESCE(v.last_name, "")) as verifier_name'
     ];
 
@@ -342,6 +344,7 @@ export class InstitueUserService {
     let queryBuilder = this.instituteUserRepository
       .createQueryBuilder('iu')
       .leftJoin('iu.user', 'u')
+      .leftJoin('institute_house', 'ih', 'ih.id = iu.house_id AND ih.institute_id = iu.institute_id')
       // Only join verifier when needed for display
       .leftJoin('iu.verifier', 'v');
 
@@ -366,6 +369,12 @@ export class InstitueUserService {
       .andWhere('iu.instituteUserType = :userType', { userType: safeUserType })
       .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
       .andWhere('u.is_active = :userActive', { userActive: true });
+
+    if (query.houseId) {
+      const safeHouseId = SecurityUtils.validateBigIntId(query.houseId, 'houseId');
+      queryBuilder.andWhere('iu.house_id = :houseId', { houseId: safeHouseId });
+      countQueryBuilder.andWhere('iu.house_id = :houseId', { houseId: safeHouseId });
+    }
 
     // Apply search filter if provided
     if (safeSearch) {
@@ -1705,7 +1714,9 @@ export class InstitueUserService {
         status: raw.status,
         verified_at: raw.verified_at,
         verifiedByName: raw.verifier_name,
-        imageUrl: finalImageUrl // Use the verified imageUrl logic
+        imageUrl: finalImageUrl, // Use the verified imageUrl logic
+        house_id: raw.house_id,
+        house_name: raw.house_name,
       };
 
       if (userType === InstituteUserType.STUDENT) {
@@ -2271,6 +2282,11 @@ export class InstitueUserService {
           '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search OR user.phoneNumber LIKE :search OR iu.userIdByInstitute LIKE :search)',
           { search: `%${query.search}%` }
         );
+      }
+
+      if (query.houseId) {
+        const safeHouseId = SecurityUtils.validateBigIntId(query.houseId, 'houseId');
+        queryBuilder.andWhere('iu.house_id = :houseId', { houseId: safeHouseId });
       }
 
       // Filter by institute user type

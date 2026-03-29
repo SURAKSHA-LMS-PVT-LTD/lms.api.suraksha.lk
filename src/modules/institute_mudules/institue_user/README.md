@@ -150,6 +150,60 @@ GET /institute-users?instituteId=456&userType=STUDENT&status=ACTIVE&page=1&limit
 Authorization: Bearer {jwt_token}
 ```
 
+## House Support In Institute User APIs
+
+The secure institute user list APIs now support filtering by house and return each user's assigned house details.
+
+### Supported Endpoints
+
+- `GET /institute-users/institute/:instituteId/users/STUDENT`
+- `GET /institute-users/institute/:instituteId/users/TEACHER`
+- `GET /institute-users/institute/:instituteId/users/ATTENDANCEMARKER`
+
+### New Query Filter
+
+| Query Param | Type | Required | Description |
+|---|---|---|---|
+| `houseId` | string (numeric) | No | Filters users assigned to a specific house inside the institute |
+
+### Existing Pagination
+
+| Query Param | Type | Default |
+|---|---|---|
+| `page` | number | `1` |
+| `limit` | number | `10` |
+
+### Response Additions
+
+Each returned user now includes:
+
+- `houseId`: Assigned house ID (or `null` / omitted if not assigned)
+- `houseName`: Assigned house name (or `null` / omitted if not assigned)
+
+### Example Requests
+
+```http
+GET /institute-users/institute/109/users/STUDENT?parent=true&page=1&limit=50&houseId=1
+GET /institute-users/institute/109/users/TEACHER?page=1&limit=50&houseId=1
+GET /institute-users/institute/109/users/ATTENDANCEMARKER?page=1&limit=50&houseId=1
+```
+
+### Example Response Item
+
+```json
+{
+  "id": "123",
+  "name": "Kasun Perera",
+  "email": "kasun@example.com",
+  "userIdByInstitute": "STU-001",
+  "status": "ACTIVE",
+  "houseId": "1",
+  "houseName": "Red House"
+}
+```
+
+> Note: If `houseId` is not provided, users from all houses are returned.
+
 ## Error Handling
 
 ### Common Errors

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserType } from '../../../user/enums/user-type.enum';
 import { Gender } from '../../../user/enums/gender.enum';
 import { maskPhoneNumber, maskEmail } from '../../../../common/utils/phone-mask.util';
@@ -55,6 +55,10 @@ interface InstituteUserLikeData {
   verifiedBy?: string;
   verified_by?: string;
   verifierName?: string;
+  houseId?: string;
+  house_id?: string;
+  houseName?: string;
+  house_name?: string;
 }
 
 /**
@@ -109,6 +113,12 @@ export class SecureUserResponseDto {
   @ApiProperty({ example: 'Admin User', description: 'Name of the user who verified this enrollment' })
   verifiedBy?: string;
 
+  @ApiPropertyOptional({ example: '12', description: 'Assigned house ID within the institute' })
+  houseId?: string;
+
+  @ApiPropertyOptional({ example: 'Blue House', description: 'Assigned house name within the institute' })
+  houseName?: string;
+
   constructor(user: UserEntity | UserLikeData, userIdByInstitute?: string, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     // ✅ Handle both camelCase and snake_case field names from raw query results
     this.id = user.id || (user as any).user_id;
@@ -148,6 +158,8 @@ export class SecureUserResponseDto {
       this.status = instituteUserData.status;
       this.verifiedAt = instituteUserData.verifiedAt || (instituteUserData as any).verified_at;
       this.verifiedBy = instituteUserData.verifiedBy || (instituteUserData as any).verified_by || (instituteUserData as any).verifierName;
+      this.houseId = (instituteUserData as any).houseId || (instituteUserData as any).house_id;
+      this.houseName = (instituteUserData as any).houseName || (instituteUserData as any).house_name;
     }
   }
 }

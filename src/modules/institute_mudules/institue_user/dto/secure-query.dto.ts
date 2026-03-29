@@ -287,6 +287,18 @@ export class SecureUserQueryDto {
     return value.toString().trim().replace(/['"`;\\]/g, '');
   })
   city?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by assigned house ID within institute users',
+    example: '12'
+  })
+  @IsOptional()
+  @IsOptionalBigIntId({ message: 'houseId must be a valid positive numeric ID' })
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return String(value).trim();
+  })
+  houseId?: string;
 }
 
 /**
