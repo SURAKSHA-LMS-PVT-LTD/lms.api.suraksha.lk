@@ -38,6 +38,11 @@ import { InstituteClassEntity } from '../../institute_mudules/institue_class/ent
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { UserImageEntity, ImageScope } from '../entities/user-image.entity';
+import { InstituteHouseEntity } from '../../institute_mudules/institute_house/entities/institute_house.entity';
+import {
+  InstituteHouseMemberEntity,
+  HouseEnrollmentMethod,
+} from '../../institute_mudules/institute_house/entities/institute_house_member.entity';
 import { UserType } from '../enums/user-type.enum';
 import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
@@ -82,6 +87,10 @@ export class InstituteAdminUserService {
     private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
     @InjectRepository(UserImageEntity)
     private readonly userImageRepository: Repository<UserImageEntity>,
+    @InjectRepository(InstituteHouseEntity)
+    private readonly houseRepository: Repository<InstituteHouseEntity>,
+    @InjectRepository(InstituteHouseMemberEntity)
+    private readonly houseMemberRepository: Repository<InstituteHouseMemberEntity>,
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
     private readonly cloudStorageService: CloudStorageService,
@@ -262,11 +271,57 @@ export class InstituteAdminUserService {
             verifiedAt: now(),
             createdAt: now(),
             updatedAt: now(),
+            houseId: dto.houseId ?? null,
           }),
+        );
+      } else if (dto.houseId) {
+        // User already in institute — update house assignment
+        await queryRunner.manager.update(
+          InstituteUserEntity,
+          { instituteId, userId: savedUser.id },
+          { houseId: dto.houseId, updatedAt: now() },
         );
       }
 
-      // ── 6. Class & subject enrollments (STUDENT only) ─────────────────────
+      // ── 6. House enrollment (if houseId provided) ──────────────────────────
+      let houseEnrolled = false;
+      if (dto.houseId) {
+        const house = await queryRunner.manager.findOne(InstituteHouseEntity, {
+          where: { id: dto.houseId, instituteId, isActive: true },
+        });
+        if (!house) {
+          throw new BadRequestException(
+            `House ${dto.houseId} not found in institute ${instituteId}.`,
+          );
+        }
+        const existingMember = await queryRunner.manager.findOne(
+          InstituteHouseMemberEntity,
+          { where: { houseId: dto.houseId, userId: savedUser.id, instituteId } },
+        );
+        if (!existingMember) {
+          await queryRunner.manager.save(
+            queryRunner.manager.create(InstituteHouseMemberEntity, {
+              houseId: dto.houseId,
+              instituteId,
+              userId: savedUser.id,
+              enrolledBy: adminUserId,
+              enrollmentMethod: HouseEnrollmentMethod.AUTO,
+              isActive: true,
+              createdAt: now(),
+              updatedAt: now(),
+            }),
+          );
+        } else if (!existingMember.isActive) {
+          await queryRunner.manager.update(
+            InstituteHouseMemberEntity,
+            { id: existingMember.id },
+            { isActive: true, updatedAt: now() },
+          );
+        }
+        houseEnrolled = true;
+      }
+
+      // ── 7. Class & subject enrollments (STUDENT only) ─────────────────────
       const classEnrollmentResults: any[] = [];
 
       if (
@@ -315,6 +370,8 @@ export class InstituteAdminUserService {
         instituteImage: imageResults.instituteImage,
         globalImage: imageResults.globalImage,
         classEnrollments: classEnrollmentResults.length ? classEnrollmentResults : undefined,
+        houseId: dto.houseId ?? undefined,
+        houseEnrolled,
         welcomeNotificationSent: notificationSent,
       };
     } catch (error) {

@@ -51,6 +51,7 @@ import { GoogleAuthModule } from './modules/google-auth/google-auth.module';
 import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-access.module';
 import { AttendanceDeviceModule } from './modules/attendance-device/attendance-device.module';
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
+import { InstituteHouseModule } from './modules/institute_mudules/institute_house/institute_house.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -165,6 +166,7 @@ import { AppService } from './app.service';
     PushNotificationModule, // Add push notification module for FCM notifications
     AttendanceDeviceModule, // Add device management for attendance marking devices
     AccountDeletionModule, // Google Play compliant account deletion with 30-day grace period
+    InstituteHouseModule, // Institute house management with member enrollment
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
   ],
   controllers: [AppController],

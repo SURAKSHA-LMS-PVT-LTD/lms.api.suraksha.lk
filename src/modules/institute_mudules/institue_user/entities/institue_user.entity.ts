@@ -72,6 +72,10 @@ export class InstituteUserEntity {
   @Column({ name: 'image_verified_by', type: 'bigint', nullable: true })
   imageVerifiedBy?: string;
 
+  // House this user belongs to within the institute
+  @Column({ name: 'house_id', type: 'bigint', nullable: true })
+  houseId?: string;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

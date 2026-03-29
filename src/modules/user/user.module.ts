@@ -34,14 +34,16 @@ import { UserNotificationService } from './services/user-notification.service';
 import { SystemAdminUserService } from './services/system-admin-user.service';
 import { InstituteAdminUserService } from './services/institute-admin-user.service';
 import { SmslenzProvider } from '../sms/providers/smslenz.provider';
+import { InstituteHouseEntity } from '../institute_mudules/institute_house/entities/institute_house.entity';
+import { InstituteHouseMemberEntity } from '../institute_mudules/institute_house/entities/institute_house_member.entity';
 
 @Module({
   imports: [
     ConfigModule,
     TypeOrmModule.forFeature([
-      UserEntity, 
+      UserEntity,
       UserOtpEntity,
-      UserFcmTokenEntity, 
+      UserFcmTokenEntity,
       InstituteEntity,
       InstituteUserEntity,
       StudentEntity,
@@ -50,6 +52,8 @@ import { SmslenzProvider } from '../sms/providers/smslenz.provider';
       InstituteClassSubjectStudent,
       InstituteClassEntity,
       UserImageEntity,
+      InstituteHouseEntity,
+      InstituteHouseMemberEntity,
     ]),
     CacheModule,
     SmsModule, // Add SMS module for welcome notifications

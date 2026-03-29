@@ -390,6 +390,19 @@ export class CreateInstituteUserDto {
   @IsOptional()
   @IsBoolean()
   sendWelcomeNotifications?: boolean;
+
+  // ─── House enrollment ────────────────────────────────────────────────────
+
+  @ApiPropertyOptional({
+    description:
+      'House ID to auto-enroll the user in upon creation. ' +
+      'The house must belong to this institute. ' +
+      'Sets the house_id on the institute_user record.',
+    example: '5',
+  })
+  @IsOptional()
+  @IsString()
+  houseId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +474,12 @@ export class CreateInstituteUserResponseDto {
 
   @ApiPropertyOptional({ description: 'Class enrollment results' })
   classEnrollments?: any[];
+
+  @ApiPropertyOptional({ description: 'House ID the user was auto-enrolled in' })
+  houseId?: string;
+
+  @ApiPropertyOptional({ description: 'Whether the user was enrolled in a house' })
+  houseEnrolled?: boolean;
 
   @ApiProperty({ description: 'Whether welcome notification was sent' })
   welcomeNotificationSent: boolean;
