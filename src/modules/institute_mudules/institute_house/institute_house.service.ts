@@ -30,6 +30,7 @@ import {
   InstituteHouseResponseDto,
   HouseMemberResponseDto,
   HouseActionResponseDto,
+  PaginatedHouseMembersDto,
 } from './dto/institute_house.dto';
 
 @Injectable()
@@ -349,9 +350,13 @@ export class InstituteHouseService {
     houseId: string,
     adminUserId: string,
     query: HouseMemberQueryDto,
-  ): Promise<HouseMemberResponseDto[]> {
+  ): Promise<PaginatedHouseMembersDto> {
     await this.assertInstituteAdmin(adminUserId, instituteId);
     await this.findHouse(instituteId, houseId);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
 
     const qb = this.memberRepository
       .createQueryBuilder('m')
@@ -396,9 +401,10 @@ export class InstituteHouseService {
 
     qb.orderBy('u.first_name', 'ASC');
 
-    const rows = await qb.getRawMany();
+    const total = await qb.getCount();
+    const rows = await qb.offset(skip).limit(limit).getRawMany();
 
-    return rows.map((r) => {
+    const mapped = rows.map((r) => {
       // Institute-scoped image takes priority; fall back to global image
       const instituteImg = r.iu_institute_user_image_url
         ? this.safeFullUrl(r.iu_institute_user_image_url)
@@ -425,6 +431,14 @@ export class InstituteHouseService {
         enrolledAt: r.m_created_at,
       };
     });
+
+    return {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      data: mapped,
+    };
   }
 
   // ─── INTERNAL HELPER (used by InstituteAdminUserService as well) ──────────

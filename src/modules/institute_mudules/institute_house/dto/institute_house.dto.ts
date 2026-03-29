@@ -7,8 +7,10 @@ import {
   MaxLength,
   IsArray,
   IsEnum,
+  IsInt,
+  Min,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { HouseEnrollmentMethod } from '../entities/institute_house_member.entity';
 
 // ─── Create House ────────────────────────────────────────────────────────────
@@ -128,6 +130,20 @@ export class HouseMemberQueryDto {
   @IsOptional()
   @IsEnum(HouseEnrollmentMethod)
   enrollmentMethod?: HouseEnrollmentMethod;
+
+  @ApiPropertyOptional({ description: 'Page number (1-based)', example: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ description: 'Number of results per page', example: 20, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number = 20;
 }
 
 // ─── Response DTOs ───────────────────────────────────────────────────────────
@@ -178,6 +194,14 @@ export class HouseMemberResponseDto {
   @ApiProperty() isActive: boolean;
   @ApiProperty({ description: 'Date the user was enrolled / assigned to this house' })
   enrolledAt: Date;
+}
+
+export class PaginatedHouseMembersDto {
+  @ApiProperty() total: number;
+  @ApiProperty() page: number;
+  @ApiProperty() limit: number;
+  @ApiProperty() totalPages: number;
+  @ApiProperty({ type: [HouseMemberResponseDto] }) data: HouseMemberResponseDto[];
 }
 
 export class HouseActionResponseDto {

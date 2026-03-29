@@ -358,34 +358,42 @@ GET /institutes/:instituteId/houses/:houseId/members
 |---|---|---|---|
 | `isActive` | boolean | `true` | Filter by active status |
 | `enrollmentMethod` | string | — | `manual` \| `auto` \| `self` |
+| `page` | number | `1` | Page number (1-based) |
+| `limit` | number | `20` | Results per page |
 
 **Example:**
 ```
-GET /institutes/42/houses/1/members?isActive=true&enrollmentMethod=auto
+GET /institutes/42/houses/1/members?isActive=true&enrollmentMethod=auto&page=1&limit=20
 ```
 
 **Success response `200`:**
 
 ```json
-[
-  {
-    "id": "10",
-    "houseId": "1",
-    "userId": "123",
-    "firstName": "Kasun",
-    "lastName": "Perera",
-    "nameWithInitials": "K.B. Perera",
-    "email": "kasun@example.com",
-    "phoneNumber": "+94771234567",
-    "nic": "200512345678",
-    "instituteUserType": "STUDENT",
-    "userIdByInstitute": "RC-2026-001",
-    "profileImageUrl": "https://cdn.example.com/profile-images/123/photo.jpg",
-    "enrollmentMethod": "auto",
-    "isActive": true,
-    "enrolledAt": "2026-03-29T10:00:00.000Z"
-  }
-]
+{
+  "total": 87,
+  "page": 1,
+  "limit": 20,
+  "totalPages": 5,
+  "data": [
+    {
+      "id": "10",
+      "houseId": "1",
+      "userId": "123",
+      "firstName": "Kasun",
+      "lastName": "Perera",
+      "nameWithInitials": "K.B. Perera",
+      "email": "kasun@example.com",
+      "phoneNumber": "+94771234567",
+      "nic": "200512345678",
+      "instituteUserType": "STUDENT",
+      "userIdByInstitute": "RC-2026-001",
+      "profileImageUrl": "https://cdn.example.com/profile-images/123/photo.jpg",
+      "enrollmentMethod": "auto",
+      "isActive": true,
+      "enrolledAt": "2026-03-29T10:00:00.000Z"
+    }
+  ]
+}
 ```
 
 **Image resolution logic:**
@@ -580,6 +588,14 @@ export interface HouseMember {
   isActive: boolean;
   /** Date the user was enrolled / assigned to this house */
   enrolledAt: string;
+}
+
+export interface PaginatedHouseMembers {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  data: HouseMember[];
 }
 
 export interface HouseActionResponse {

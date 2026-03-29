@@ -37,6 +37,7 @@ import {
   InstituteHouseResponseDto,
   HouseMemberResponseDto,
   HouseActionResponseDto,
+  PaginatedHouseMembersDto,
 } from './dto/institute_house.dto';
 
 @ApiTags('Institute Houses')
@@ -213,13 +214,13 @@ export class InstituteHouseController {
   @ApiParam({ name: 'instituteId', example: '42' })
   @ApiParam({ name: 'houseId', example: '1' })
   @ApiOperation({ summary: 'Get house members with user details (admin only)' })
-  @ApiResponse({ status: 200, type: [HouseMemberResponseDto] })
+  @ApiResponse({ status: 200, type: PaginatedHouseMembersDto })
   async getHouseMembers(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('houseId', ParseBigIntPipe) houseId: string,
     @Query() query: HouseMemberQueryDto,
     @Request() req: any,
-  ): Promise<HouseMemberResponseDto[]> {
+  ): Promise<PaginatedHouseMembersDto> {
     const adminId = req.user.s ?? req.user.userId ?? req.user.sub;
     return this.houseService.getHouseMembers(instituteId, houseId, adminId, query);
   }
