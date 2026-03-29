@@ -250,7 +250,7 @@ POST /institutes/:instituteId/houses/:houseId/members
 }
 ```
 
-The user must be an **active member** of the institute. Operation is **idempotent** — calling it twice is safe.
+The user must be an **active member** of the institute. A user can only belong to **one house at a time**. Operation is **idempotent** — assigning to the same house twice is safe.
 
 **Success response `201`:**
 
@@ -266,6 +266,7 @@ The user must be an **active member** of the institute. Operation is **idempoten
 | Code | Reason |
 |---|---|
 | `400` | User is not an active member of this institute |
+| `409` | User is already assigned to a different house — remove them first |
 | `404` | House not found |
 | `403` | Caller is not an institute admin |
 
@@ -299,6 +300,8 @@ POST /institutes/:instituteId/houses/:houseId/members/bulk
 
 > Tip: Show a summary toast: "3 of 4 users assigned successfully."
 
+> Users already in a **different** house will appear as an error in `results` (status: `"User ... is already assigned to another house. Remove them from their current house first."`). Re-assigning to the **same** house is idempotent and will succeed silently.
+
 ---
 
 ### 3.3 Self-Enroll (User enrolls themselves)
@@ -307,7 +310,7 @@ POST /institutes/:instituteId/houses/:houseId/members/bulk
 POST /institutes/:instituteId/houses/:houseId/enroll
 ```
 
-No body required. The JWT identifies the user.
+No body required. The JWT identifies the user. A user can only belong to **one house at a time** — if they are already active in a different house this will return `409`.
 
 **Success response `200`:**
 
@@ -368,13 +371,24 @@ GET /institutes/42/houses/1/members?isActive=true&enrollmentMethod=auto
     "nameWithInitials": "K.B. Perera",
     "email": "kasun@example.com",
     "phoneNumber": "+94771234567",
+    "nic": "200512345678",
     "instituteUserType": "STUDENT",
+    "userIdByInstitute": "RC-2026-001",
+    "profileImageUrl": "https://cdn.example.com/profile-images/123/photo.jpg",
     "enrollmentMethod": "auto",
     "isActive": true,
-    "createdAt": "2026-03-29T10:00:00.000Z"
+    "enrolledAt": "2026-03-29T10:00:00.000Z"
   }
 ]
 ```
+
+**Image resolution logic:**
+
+| Scenario | `profileImageUrl` value |
+|---|---|
+| Institute image set | Institute-scoped image (verified) |
+| No institute image, global image set | Global profile image |
+| Neither set | `null` / `undefined` |
 
 **`enrollmentMethod` values:**
 
@@ -505,7 +519,7 @@ Use `house.color` as a background for badge chips. Fall back to a neutral grey i
 | `400` | Bad request / validation | Show field-level error from `message` |
 | `403` | Forbidden | Show "You don't have permission" |
 | `404` | House / Institute not found | Redirect to list |
-| `409` | Duplicate house name | Highlight name field: "A house with this name already exists" |
+| `409` | Duplicate house name OR user already in a different house | Highlight name field **or** show "Already in another house — remove them first" |
 | `401` | Unauthorized (JWT expired) | Redirect to login |
 
 ---
@@ -538,10 +552,21 @@ export interface HouseMember {
   nameWithInitials?: string;
   email?: string;
   phoneNumber?: string;
+  /** NIC / national ID number */
+  nic?: string;
   instituteUserType?: string;
+  /** Institute-assigned user ID / index number (e.g. 'RC-2026-001') */
+  userIdByInstitute?: string;
+  /**
+   * Profile image URL — institute-scoped image if available,
+   * otherwise falls back to global profile image.
+   * Null if neither is set.
+   */
+  profileImageUrl?: string;
   enrollmentMethod: HouseEnrollmentMethod;
   isActive: boolean;
-  createdAt: string;
+  /** Date the user was enrolled / assigned to this house */
+  enrolledAt: string;
 }
 
 export interface HouseActionResponse {

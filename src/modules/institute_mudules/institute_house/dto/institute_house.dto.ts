@@ -155,10 +155,19 @@ export class HouseMemberResponseDto {
   @ApiPropertyOptional() nameWithInitials?: string;
   @ApiPropertyOptional() email?: string;
   @ApiPropertyOptional() phoneNumber?: string;
+  @ApiPropertyOptional() nic?: string;
   @ApiPropertyOptional() instituteUserType?: string;
+  @ApiPropertyOptional({ description: 'Institute-assigned user ID / index number' })
+  userIdByInstitute?: string;
+  @ApiPropertyOptional({
+    description:
+      'Profile image URL — institute-scoped image if available, otherwise global image. Null if neither exists.',
+  })
+  profileImageUrl?: string;
   @ApiProperty() enrollmentMethod: string;
   @ApiProperty() isActive: boolean;
-  @ApiProperty() createdAt: Date;
+  @ApiProperty({ description: 'Date the user was enrolled / assigned to this house' })
+  enrolledAt: Date;
 }
 
 export class HouseActionResponseDto {

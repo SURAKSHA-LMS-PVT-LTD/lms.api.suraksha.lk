@@ -353,20 +353,22 @@ export class InstituteHouseService {
         'iu',
         'iu.institute_id = m.institute_id AND iu.user_id = m.user_id',
       )
-      .select([
-        'm.id',
-        'm.houseId',
-        'm.userId',
-        'm.enrollmentMethod',
-        'm.isActive',
-        'm.createdAt',
-        'u.firstName',
-        'u.lastName',
-        'u.nameWithInitials',
-        'u.email',
-        'u.phoneNumber',
-        'iu.instituteUserType',
-      ])
+      .select('m.id', 'm_id')
+      .addSelect('m.house_id', 'm_house_id')
+      .addSelect('m.user_id', 'm_user_id')
+      .addSelect('m.enrollment_method', 'm_enrollment_method')
+      .addSelect('m.is_active', 'm_is_active')
+      .addSelect('m.created_at', 'm_created_at')
+      .addSelect('u.first_name', 'u_first_name')
+      .addSelect('u.last_name', 'u_last_name')
+      .addSelect('u.name_with_initials', 'u_name_with_initials')
+      .addSelect('u.email', 'u_email')
+      .addSelect('u.phone_number', 'u_phone_number')
+      .addSelect('u.nic', 'u_nic')
+      .addSelect('u.image_url', 'u_image_url')
+      .addSelect('iu.institute_user_type', 'iu_institute_user_type')
+      .addSelect('iu.user_id_institue', 'iu_user_id_by_institute')
+      .addSelect('iu.institute_user_image_url', 'iu_institute_user_image_url')
       .where('m.house_id = :houseId AND m.institute_id = :instituteId', {
         houseId,
         instituteId,
@@ -384,24 +386,37 @@ export class InstituteHouseService {
       });
     }
 
-    qb.orderBy('u.firstName', 'ASC');
+    qb.orderBy('u.first_name', 'ASC');
 
-    const rows = await qb.getMany();
+    const rows = await qb.getRawMany();
 
-    return rows.map((m) => ({
-      id: m.id,
-      houseId: m.houseId,
-      userId: m.userId,
-      firstName: (m as any).u_firstName ?? m.user?.firstName,
-      lastName: (m as any).u_lastName ?? m.user?.lastName,
-      nameWithInitials: (m as any).u_nameWithInitials ?? m.user?.nameWithInitials,
-      email: (m as any).u_email ?? m.user?.email,
-      phoneNumber: (m as any).u_phoneNumber ?? m.user?.phoneNumber,
-      instituteUserType: (m as any).iu_instituteUserType,
-      enrollmentMethod: m.enrollmentMethod,
-      isActive: m.isActive,
-      createdAt: m.createdAt,
-    }));
+    return rows.map((r) => {
+      // Institute-scoped image takes priority; fall back to global image
+      const instituteImg = r.iu_institute_user_image_url
+        ? this.safeFullUrl(r.iu_institute_user_image_url)
+        : null;
+      const globalImg = r.u_image_url
+        ? this.safeFullUrl(r.u_image_url)
+        : null;
+
+      return {
+        id: String(r.m_id),
+        houseId: String(r.m_house_id),
+        userId: String(r.m_user_id),
+        firstName: r.u_first_name ?? undefined,
+        lastName: r.u_last_name ?? undefined,
+        nameWithInitials: r.u_name_with_initials ?? undefined,
+        email: r.u_email ?? undefined,
+        phoneNumber: r.u_phone_number ?? undefined,
+        nic: r.u_nic ?? undefined,
+        instituteUserType: r.iu_institute_user_type ?? undefined,
+        userIdByInstitute: r.iu_user_id_by_institute ?? undefined,
+        profileImageUrl: instituteImg ?? globalImg ?? undefined,
+        enrollmentMethod: r.m_enrollment_method,
+        isActive: Boolean(r.m_is_active),
+        enrolledAt: r.m_created_at,
+      };
+    });
   }
 
   // ─── INTERNAL HELPER (used by InstituteAdminUserService as well) ──────────
@@ -427,12 +442,22 @@ export class InstituteHouseService {
       );
     }
 
+    // Block if the user is already actively enrolled in a DIFFERENT house
+    const activeElsewhere = await this.memberRepository.findOne({
+      where: { instituteId, userId, isActive: true },
+    });
+    if (activeElsewhere && String(activeElsewhere.houseId) !== String(houseId)) {
+      throw new ConflictException(
+        `User ${userId} is already assigned to another house. Remove them from their current house first.`,
+      );
+    }
+
     const existing = await this.memberRepository.findOne({
       where: { houseId, userId, instituteId },
     });
 
     if (existing) {
-      if (existing.isActive) return; // Already enrolled — idempotent
+      if (existing.isActive) return; // Already enrolled in this house — idempotent
       // Re-activate
       existing.isActive = true;
       existing.updatedAt = now();
