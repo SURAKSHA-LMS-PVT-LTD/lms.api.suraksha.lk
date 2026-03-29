@@ -144,6 +144,16 @@ export class InstituteHouseResponseDto {
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
   @ApiPropertyOptional() memberCount?: number;
+  @ApiPropertyOptional({
+    description:
+      'True if the requesting user is currently actively enrolled in this house.',
+  })
+  isEnrolled?: boolean;
+  @ApiPropertyOptional({
+    description:
+      'ID of the house the requesting user is currently enrolled in. Null if not enrolled in any house.',
+  })
+  enrolledHouseId?: string | null;
 }
 
 export class HouseMemberResponseDto {

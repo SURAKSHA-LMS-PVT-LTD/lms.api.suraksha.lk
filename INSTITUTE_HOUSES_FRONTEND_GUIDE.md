@@ -84,7 +84,7 @@ GET /institutes/:instituteId/houses
 
 No request body or query params required.
 
-**Success response `200`:** Array of house objects, each with an extra `memberCount` field.
+**Success response `200`:** Array of house objects, each with an extra `memberCount` and `isEnrolled` field.
 
 ```json
 [
@@ -99,7 +99,9 @@ No request body or query params required.
     "createdBy": "99",
     "createdAt": "2026-03-29T10:00:00.000Z",
     "updatedAt": "2026-03-29T10:00:00.000Z",
-    "memberCount": 25
+    "memberCount": 25,
+    "isEnrolled": true,
+    "enrolledHouseId": "1"
   },
   {
     "id": "2",
@@ -108,12 +110,16 @@ No request body or query params required.
     "color": "#1E88E5",
     "imageUrl": null,
     "isActive": true,
-    "memberCount": 30
+    "memberCount": 30,
+    "isEnrolled": false,
+    "enrolledHouseId": "1"
   }
 ]
 ```
 
 > Results are sorted alphabetically by name. Only **active** houses are returned.
+>
+> `isEnrolled` is `true` only on the house the requesting user belongs to. `enrolledHouseId` is the same value on every item — use it to quickly know which house the user is in without scanning the array. Both are `null` / `false` if the user is not enrolled in any house.
 
 ---
 
@@ -539,6 +545,13 @@ export interface InstituteHouse {
   createdAt: string;
   updatedAt: string;
   memberCount?: number;
+  /** True if the requesting user is currently actively enrolled in this house */
+  isEnrolled?: boolean;
+  /**
+   * ID of the house the requesting user is enrolled in.
+   * Same value on every item in the list — null if not enrolled in any house.
+   */
+  enrolledHouseId?: string | null;
 }
 
 export type HouseEnrollmentMethod = 'manual' | 'auto' | 'self';

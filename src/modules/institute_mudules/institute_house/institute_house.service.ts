@@ -112,9 +112,17 @@ export class InstituteHouseService {
       memberCounts.map((r) => [String(r.houseId), Number(r.cnt)]),
     );
 
+    // Find which house (if any) the requesting user is currently enrolled in
+    const userMembership = await this.memberRepository.findOne({
+      where: { instituteId, userId: requestingUserId, isActive: true },
+    });
+    const enrolledHouseId = userMembership ? String(userMembership.houseId) : null;
+
     return houses.map((h) => ({
       ...this.toHouseResponse(h),
       memberCount: countMap.get(h.id) ?? 0,
+      isEnrolled: enrolledHouseId !== null && enrolledHouseId === String(h.id),
+      enrolledHouseId: enrolledHouseId ?? null,
     }));
   }
 
