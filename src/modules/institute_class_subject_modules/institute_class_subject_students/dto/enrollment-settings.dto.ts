@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class UpdateEnrollmentSettingsDto {
   @ApiProperty({
@@ -8,6 +9,28 @@ export class UpdateEnrollmentSettingsDto {
   })
   @IsBoolean()
   enrollmentEnabled: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Whether payment is required for enrollment',
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  enrollmentFeeRequired?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Fee amount for enrollment (required if enrollmentFeeRequired is true)',
+    example: 5000.00
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999.99)
+  @Transform(({ value }) => {
+    const num = parseFloat(value);
+    return isNaN(num) ? value : Math.round(num * 100) / 100;
+  })
+  enrollmentFeeAmount?: number;
 }
 
 export class EnrollmentSettingsResponseDto {
@@ -66,4 +89,16 @@ export class EnrollmentSettingsResponseDto {
     example: '2025-08-30T10:15:30Z'
   })
   updatedAt: Date;
+
+  @ApiPropertyOptional({
+    description: 'Whether payment is required for enrollment',
+    example: true
+  })
+  enrollmentFeeRequired?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Fee amount for enrollment',
+    example: 5000.00
+  })
+  enrollmentFeeAmount?: number;
 }

@@ -65,8 +65,8 @@ export class InstituteClassSubjectStudent {
   enrolledByTeacher?: UserEntity;
 
   // Verification tracking for self-enrolled students
-  @Column({ name: 'verification_status', type: 'enum', enum: ['verified', 'pending', 'rejected'], default: 'verified', comment: 'Verification status: verified (default for teacher_assigned), pending (for self_enrolled), rejected' })
-  verificationStatus: 'verified' | 'pending' | 'rejected';
+  @Column({ name: 'verification_status', type: 'enum', enum: ['verified', 'pending', 'rejected', 'pending_payment', 'payment_rejected'], default: 'verified', comment: 'verified=active, pending=awaiting admin, rejected=denied, pending_payment=awaiting payment verification, payment_rejected=payment slip rejected (can resubmit)' })
+  verificationStatus: 'verified' | 'pending' | 'rejected' | 'pending_payment' | 'payment_rejected';
 
   @Column({ name: 'verified_by', type: 'bigint', nullable: true, comment: 'Admin/Teacher who verified or rejected the enrollment' })
   verifiedBy?: string;
@@ -80,6 +80,10 @@ export class InstituteClassSubjectStudent {
 
   @Column({ name: 'rejection_reason', type: 'text', nullable: true, comment: 'Reason for rejecting the enrollment' })
   rejectionReason?: string;
+
+  // Payment-gated enrollment tracking
+  @Column({ name: 'enrollment_payment_id', type: 'bigint', nullable: true, comment: 'FK to institute_class_subject_payment_submissions if payment-gated' })
+  enrollmentPaymentId?: string;
 
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

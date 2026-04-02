@@ -428,7 +428,37 @@ export class InstituteClassSubjectPaymentService {
 
     await this.submissionRepository.save(submission);
 
-    // 🔄 CRITICAL FIX: Refresh user cache after payment verification (payment status affects user data)
+    // � ENROLLMENT PAYMENT GATING: If this submission is linked to a student enrollment, update enrollment status
+    if (verifyDto.status === SubmissionStatus.VERIFIED || verifyDto.status === SubmissionStatus.REJECTED) {
+      try {
+        const linkedEnrollment = await this.classSubjectStudentRepository.findOne({
+          where: { enrollmentPaymentId: submissionId },
+        });
+
+        if (linkedEnrollment) {
+          if (verifyDto.status === SubmissionStatus.VERIFIED) {
+            // Payment approved → activate enrollment
+            linkedEnrollment.verificationStatus = 'verified';
+            linkedEnrollment.verifiedBy = user.s;
+            linkedEnrollment.verifiedAt = new Date();
+            linkedEnrollment.rejectionReason = null;
+            this.logger.log(`Enrollment activated for student ${linkedEnrollment.studentId} in subject ${linkedEnrollment.subjectId} after payment verification`);
+          } else {
+            // Payment rejected → mark enrollment as payment_rejected so student can resubmit
+            linkedEnrollment.verificationStatus = 'payment_rejected' as any;
+            linkedEnrollment.rejectionReason = verifyDto.rejectionReason || 'Payment slip rejected';
+            linkedEnrollment.enrollmentPaymentId = null; // Clear so they can submit again
+            this.logger.log(`Enrollment payment rejected for student ${linkedEnrollment.studentId} in subject ${linkedEnrollment.subjectId}`);
+          }
+          linkedEnrollment.updatedAt = new Date();
+          await this.classSubjectStudentRepository.save(linkedEnrollment);
+        }
+      } catch (enrollmentError) {
+        this.logger.warn(`Failed to update enrollment status after payment verification: ${enrollmentError.message}`);
+      }
+    }
+
+    // �🔄 CRITICAL FIX: Refresh user cache after payment verification (payment status affects user data)
     if (verifyDto.status === SubmissionStatus.VERIFIED) {
       try {
         await this.userManagementService.refreshUserCache(submission.userId);

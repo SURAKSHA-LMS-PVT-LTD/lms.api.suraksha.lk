@@ -60,6 +60,13 @@ export class InstituteClassSubjectEntity {
   @Column({ name: 'enrollment_key', type: 'varchar', length: 50, nullable: true, comment: 'Unique key for self-enrollment. Generated when enrollment is enabled' })
   enrollmentKey?: string;
 
+  // Enrollment fee settings (tuition institutes: monthly fee; schools: subject fee)
+  @Column({ name: 'enrollment_fee_required', type: 'boolean', default: false, comment: 'Whether enrollment requires payment' })
+  enrollmentFeeRequired: boolean;
+
+  @Column({ name: 'enrollment_fee_amount', type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Monthly/enrollment fee amount' })
+  enrollmentFeeAmount?: number;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

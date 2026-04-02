@@ -84,7 +84,7 @@ export class SelfEnrollResponseDto {
   @ApiProperty({
     description: 'Verification status',
     example: 'pending',
-    enum: ['verified', 'pending', 'rejected']
+    enum: ['verified', 'pending', 'rejected', 'pending_payment', 'payment_rejected']
   })
   verificationStatus: string;
 
@@ -93,4 +93,22 @@ export class SelfEnrollResponseDto {
     example: '2025-08-30T10:15:30Z'
   })
   enrolledAt: Date;
+
+  @ApiProperty({
+    description: 'Whether payment is required for this enrollment',
+    example: true
+  })
+  paymentRequired?: boolean;
+
+  @ApiProperty({
+    description: 'Fee amount if payment is required',
+    example: 5000.00
+  })
+  feeAmount?: number;
+
+  @ApiProperty({
+    description: 'Payment submission ID if auto-created',
+    example: '123'
+  })
+  enrollmentPaymentId?: string;
 }

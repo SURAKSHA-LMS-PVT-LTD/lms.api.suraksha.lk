@@ -901,16 +901,43 @@ export class InstituteClassSubjectStudentsService {
       });
 
       if (existingEnrollment) {
+        // Allow re-enrollment if payment was rejected (student wants to resubmit)
+        if (existingEnrollment.verificationStatus === 'payment_rejected') {
+          // Reset to pending_payment so they can upload a new slip
+          existingEnrollment.verificationStatus = 'pending_payment';
+          existingEnrollment.rejectionReason = null;
+          existingEnrollment.enrollmentPaymentId = null;
+          existingEnrollment.updatedAt = getCurrentSriLankaISO() as any;
+          await this.studentRepository.save(existingEnrollment);
+
+          return {
+            message: `Re-enrollment initiated for ${classSubject.subject.name}. Please upload your payment slip.`,
+            instituteId: classSubject.instituteId,
+            classId: classSubject.classId,
+            subjectId: classSubject.subjectId,
+            subjectName: classSubject.subject.name,
+            className: classSubject.class.name,
+            enrollmentMethod: 'self_enrolled',
+            verificationStatus: 'pending_payment',
+            enrolledAt: new Date(),
+            paymentRequired: true,
+            feeAmount: classSubject.enrollmentFeeAmount ? Number(classSubject.enrollmentFeeAmount) : undefined,
+          };
+        }
         if (existingEnrollment.verificationStatus === 'rejected') {
           throw new ConflictException('Your enrollment was previously rejected. Please contact the teacher or admin.');
         }
-        if (existingEnrollment.verificationStatus === 'pending') {
+        if (existingEnrollment.verificationStatus === 'pending' || existingEnrollment.verificationStatus === 'pending_payment') {
           throw new ConflictException('Your enrollment is already pending verification');
         }
         throw new ConflictException('You are already enrolled in this subject');
       }
 
-      // Create enrollment with pending verification status
+      // Determine verification status based on fee requirement
+      const paymentRequired = classSubject.enrollmentFeeRequired && classSubject.enrollmentFeeAmount > 0;
+      const verificationStatus = paymentRequired ? 'pending_payment' : 'pending';
+
+      // Create enrollment with appropriate verification status
       const timestamp = getCurrentSriLankaISO();
       const enrollment = this.studentRepository.create({
         instituteId: classSubject.instituteId,
@@ -920,7 +947,7 @@ export class InstituteClassSubjectStudentsService {
         enrollmentMethod: 'self_enrolled',
         enrolledBy: null, // Self-enrolled
         isActive: true,
-        verificationStatus: 'pending',
+        verificationStatus: verificationStatus as any,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -930,16 +957,22 @@ export class InstituteClassSubjectStudentsService {
       // Refresh student cache after self-enrollment
       await this.userManagementService.refreshUserCache(studentId);
 
+      const message = paymentRequired
+        ? `Enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Please upload your payment slip (Rs. ${classSubject.enrollmentFeeAmount}).`
+        : `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Awaiting verification by teacher or admin.`;
+
       return {
-        message: `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Awaiting verification by teacher or admin.`,
+        message,
         instituteId: classSubject.instituteId,
         classId: classSubject.classId,
         subjectId: classSubject.subjectId,
         subjectName: classSubject.subject.name,
         className: classSubject.class.name,
         enrollmentMethod: 'self_enrolled',
-        verificationStatus: 'pending',
+        verificationStatus,
         enrolledAt: new Date(),
+        paymentRequired,
+        feeAmount: paymentRequired ? Number(classSubject.enrollmentFeeAmount) : undefined,
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof ForbiddenException) {
@@ -1115,13 +1148,25 @@ export class InstituteClassSubjectStudentsService {
         enrollmentKey = null;
       }
 
-      // Update settings
+      // Update settings (including fee fields if provided)
+      const updateData: any = {
+        enrollmentEnabled: updateDto.enrollmentEnabled,
+        enrollmentKey,
+      };
+      if (updateDto.enrollmentFeeRequired !== undefined) {
+        updateData.enrollmentFeeRequired = updateDto.enrollmentFeeRequired;
+      }
+      if (updateDto.enrollmentFeeAmount !== undefined) {
+        updateData.enrollmentFeeAmount = updateDto.enrollmentFeeAmount;
+      }
+      // If fee is disabled, clear the amount
+      if (updateDto.enrollmentFeeRequired === false) {
+        updateData.enrollmentFeeAmount = null;
+      }
+
       await this.classSubjectRepository.update(
         { instituteId, classId, subjectId },
-        {
-          enrollmentEnabled: updateDto.enrollmentEnabled,
-          enrollmentKey,
-        }
+        updateData
       );
 
       // Get current enrollment count
@@ -1144,6 +1189,8 @@ export class InstituteClassSubjectStudentsService {
         enrollmentKey: updateDto.enrollmentEnabled ? enrollmentKey : undefined,
         currentEnrollmentCount: enrollmentCount,
         updatedAt: new Date(),
+        enrollmentFeeRequired: updateDto.enrollmentFeeRequired ?? classSubject.enrollmentFeeRequired,
+        enrollmentFeeAmount: updateDto.enrollmentFeeAmount ?? (classSubject.enrollmentFeeAmount ? Number(classSubject.enrollmentFeeAmount) : undefined),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {
@@ -1232,7 +1279,7 @@ export class InstituteClassSubjectStudentsService {
         .where('enrollment.instituteId = :instituteId', { instituteId })
         .andWhere('enrollment.classId = :classId', { classId })
         .andWhere('enrollment.subjectId = :subjectId', { subjectId })
-        .andWhere('enrollment.verificationStatus = :status', { status: 'pending' })
+        .andWhere('enrollment.verificationStatus IN (:...statuses)', { statuses: ['pending', 'pending_payment', 'payment_rejected'] })
         .andWhere('enrollment.isActive = :isActive', { isActive: true })
         .orderBy('enrollment.createdAt', 'ASC')
         .getMany();
@@ -1249,6 +1296,8 @@ export class InstituteClassSubjectStudentsService {
         studentImageUrl: enrollment.student?.imageUrl ? this.cloudStorageService.getFullUrl(enrollment.student.imageUrl) : null,
         enrollmentMethod: enrollment.enrollmentMethod,
         verificationStatus: enrollment.verificationStatus,
+        enrollmentPaymentId: enrollment.enrollmentPaymentId || null,
+        rejectionReason: enrollment.rejectionReason || null,
         enrolledAt: enrollment.createdAt,
       }));
     } catch (error) {
