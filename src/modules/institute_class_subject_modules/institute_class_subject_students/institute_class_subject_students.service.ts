@@ -469,10 +469,13 @@ export class InstituteClassSubjectStudentsService {
           enrollment.rejection_reason as "rejectionReason",
           enrollment.enrollment_method as "enrollmentMethod",
           enrollment.created_at as "enrolledAt",
+          enrollment.enrollment_payment_id as "enrollmentPaymentId",
+          enrollment.student_type as "studentType",
 
           -- Get teacher and class status from institute_class_subjects (LEFT JOIN to include enrollments without teacher assignment)
           ics.teacher_id as "teacherId",
           ics.is_active as "classSubjectActive",
+          ics.enrollment_fee_amount as "enrollmentFeeAmount",
           
           -- Complete subject details for SubjectResponseDto
           subj.id as "subjectId",
@@ -537,6 +540,9 @@ export class InstituteClassSubjectStudentsService {
         verifiedAt: row.verifiedAt ?? null,
         rejectionReason: row.rejectionReason ?? null,
         enrolledAt: row.enrolledAt ?? null,
+        enrollmentPaymentId: row.enrollmentPaymentId ?? null,
+        studentType: row.studentType ?? 'paid',
+        enrollmentFeeAmount: row.enrollmentFeeAmount ? Number(row.enrollmentFeeAmount) : null,
         teacherId: row.teacherId,
         classSubjectActive: Boolean(row.classSubjectActive),
         
@@ -1058,6 +1064,93 @@ export class InstituteClassSubjectStudentsService {
   }
 
   /**
+   * Student claims free card status for a pending_payment enrollment.
+   * Changes verificationStatus to 'pending' and studentType to 'free_card'.
+   * Admin must then verify the claim.
+   */
+  async claimFreeCard(
+    studentId: string,
+    instituteId: string,
+    classId: string,
+    subjectId: string
+  ): Promise<{ message: string; verificationStatus: string; studentType: string }> {
+    try {
+      const enrollment = await this.studentRepository.findOne({
+        where: { instituteId, classId, subjectId, studentId },
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Enrollment not found');
+      }
+
+      if (enrollment.verificationStatus !== 'pending_payment') {
+        throw new BadRequestException('Free card claim is only allowed for enrollments awaiting payment');
+      }
+
+      const timestamp = getCurrentSriLankaISO();
+      await this.studentRepository.update(
+        { instituteId, classId, subjectId, studentId },
+        {
+          studentType: 'free_card',
+          verificationStatus: 'pending',
+          updatedAt: timestamp,
+        }
+      );
+
+      return {
+        message: 'Free card claim submitted. Awaiting admin verification.',
+        verificationStatus: 'pending',
+        studentType: 'free_card',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to claim free card: ${error.message}`);
+    }
+  }
+
+  /**
+   * Admin/Teacher updates student type (paid/free_card) for a specific enrollment.
+   */
+  async updateStudentType(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    studentId: string,
+    studentType: 'paid' | 'free_card'
+  ): Promise<{ message: string; studentType: string }> {
+    try {
+      const enrollment = await this.studentRepository.findOne({
+        where: { instituteId, classId, subjectId, studentId },
+      });
+
+      if (!enrollment) {
+        throw new NotFoundException('Enrollment not found');
+      }
+
+      const timestamp = getCurrentSriLankaISO();
+      await this.studentRepository.update(
+        { instituteId, classId, subjectId, studentId },
+        {
+          studentType,
+          updatedAt: timestamp,
+        }
+      );
+
+      return {
+        message: `Student type updated to ${studentType}`,
+        studentType,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to update student type: ${error.message}`);
+    }
+  }
+
+  /**
    * Teacher assigns students to subject
    */
   async teacherAssignStudents(
@@ -1150,6 +1243,7 @@ export class InstituteClassSubjectStudentsService {
             enrolledBy: teacherId,
             isActive: true,
             verificationStatus: 'verified',
+            studentType: assignDto.studentType || 'paid',
             createdAt: timestamp,
             updatedAt: timestamp,
           }),
@@ -1371,6 +1465,7 @@ export class InstituteClassSubjectStudentsService {
         studentImageUrl: enrollment.student?.imageUrl ? this.cloudStorageService.getFullUrl(enrollment.student.imageUrl) : null,
         enrollmentMethod: enrollment.enrollmentMethod,
         verificationStatus: enrollment.verificationStatus,
+        studentType: enrollment.studentType,
         enrollmentPaymentId: enrollment.enrollmentPaymentId || null,
         rejectionReason: enrollment.rejectionReason || null,
         enrolledAt: enrollment.createdAt,

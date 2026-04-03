@@ -103,6 +103,9 @@ export class UnverifiedStudentResponseDto {
   @ApiProperty({ description: 'Verification status', example: 'pending' })
   verificationStatus: string;
 
+  @ApiProperty({ description: 'Student type', example: 'paid', enum: ['paid', 'free_card'] })
+  studentType: string;
+
   @ApiProperty({ description: 'When the student enrolled', example: '2025-08-30T10:15:30Z' })
   enrolledAt: Date;
 }

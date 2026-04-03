@@ -28,7 +28,7 @@ export class InstituteClassSubjectStudentResponseDto {
   enrolledBy?: string;
 
   @ApiProperty({ description: 'Verification status', example: 'verified', enum: ['verified', 'pending', 'rejected'] })
-  verificationStatus: 'verified' | 'pending' | 'rejected';
+  verificationStatus: 'verified' | 'pending' | 'rejected' | 'pending_payment' | 'payment_rejected';
 
   @ApiProperty({ description: 'ID of user who verified/rejected', example: '100', required: false })
   verifiedBy?: string;
@@ -38,6 +38,9 @@ export class InstituteClassSubjectStudentResponseDto {
 
   @ApiProperty({ description: 'Reason for rejection', required: false })
   rejectionReason?: string;
+
+  @ApiProperty({ description: 'Student type', example: 'paid', enum: ['paid', 'free_card'] })
+  studentType: 'paid' | 'free_card';
 
   @ApiProperty({ description: 'Creation date', example: '2024-01-15T10:00:00Z' })
   createdAt: Date;
@@ -58,6 +61,7 @@ export class InstituteClassSubjectStudentResponseDto {
     dto.verifiedBy = entity.verifiedBy;
     dto.verifiedAt = entity.verifiedAt;
     dto.rejectionReason = entity.rejectionReason;
+    dto.studentType = entity.studentType;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;
     

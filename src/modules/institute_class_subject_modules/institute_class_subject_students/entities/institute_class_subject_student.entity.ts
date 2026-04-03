@@ -81,6 +81,10 @@ export class InstituteClassSubjectStudent {
   @Column({ name: 'rejection_reason', type: 'text', nullable: true, comment: 'Reason for rejecting the enrollment' })
   rejectionReason?: string;
 
+  // Student type tracking
+  @Column({ name: 'student_type', type: 'enum', enum: ['paid', 'free_card'], default: 'paid', comment: 'Student payment type: paid=regular, free_card=exempt from enrollment fee' })
+  studentType: 'paid' | 'free_card';
+
   // Payment-gated enrollment tracking
   @Column({ name: 'enrollment_payment_id', type: 'bigint', nullable: true, comment: 'FK to institute_class_subject_payment_submissions if payment-gated' })
   enrollmentPaymentId?: string;

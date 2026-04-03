@@ -710,6 +710,58 @@ export class InstituteClassSubjectStudentsController {
     return await this.studentsService.selfEnroll(user.s, enrollDto);
   }
 
+  @Patch('claim-free-card/:instituteId/:classId/:subjectId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    student: {},
+    parent: {}
+  })
+  @ApiOperation({ 
+    summary: 'Student claims free card status for a pending_payment enrollment',
+    description: 'Changes the enrollment from pending_payment to pending with studentType=free_card. Admin must verify.'
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Free card claim submitted' })
+  @ApiResponse({ status: 400, description: 'Not in pending_payment state' })
+  @ApiResponse({ status: 404, description: 'Enrollment not found' })
+  async claimFreeCard(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Request() req: JwtRequest
+  ) {
+    return await this.studentsService.claimFreeCard(req.user.s, instituteId, classId, subjectId);
+  }
+
+  @Patch('student-type/:instituteId/:classId/:subjectId/:studentId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({ 
+    summary: 'Update student type (paid/free_card) for an enrollment',
+    description: 'Admin or teacher can change the student type between paid and free_card.'
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiParam({ name: 'studentId', description: 'Student ID' })
+  @ApiResponse({ status: 200, description: 'Student type updated' })
+  @ApiResponse({ status: 404, description: 'Enrollment not found' })
+  async updateStudentType(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Body() body: { studentType: 'paid' | 'free_card' }
+  ) {
+    return await this.studentsService.updateStudentType(instituteId, classId, subjectId, studentId, body.studentType);
+  }
+
   @Post('teacher-assign/:instituteId/:classId/:subjectId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
