@@ -1092,14 +1092,14 @@ export class InstituteClassSubjectStudentsService {
         { instituteId, classId, subjectId, studentId },
         {
           studentType: 'free_card',
-          verificationStatus: 'pending',
+          verificationStatus: 'enrolled_free_card',
           updatedAt: timestamp,
         }
       );
 
       return {
-        message: 'Free card claim submitted. Awaiting admin verification.',
-        verificationStatus: 'pending',
+        message: 'Free card claim accepted. You are enrolled without payment.',
+        verificationStatus: 'enrolled_free_card',
         studentType: 'free_card',
       };
     } catch (error) {
@@ -1118,7 +1118,7 @@ export class InstituteClassSubjectStudentsService {
     classId: string,
     subjectId: string,
     studentId: string,
-    studentType: 'paid' | 'free_card'
+    studentType: 'normal' | 'paid' | 'free_card'
   ): Promise<{ message: string; studentType: string }> {
     try {
       const enrollment = await this.studentRepository.findOne({
@@ -1243,7 +1243,7 @@ export class InstituteClassSubjectStudentsService {
             enrolledBy: teacherId,
             isActive: true,
             verificationStatus: 'verified',
-            studentType: assignDto.studentType || 'paid',
+            studentType: assignDto.studentType || 'normal',
             createdAt: timestamp,
             updatedAt: timestamp,
           }),

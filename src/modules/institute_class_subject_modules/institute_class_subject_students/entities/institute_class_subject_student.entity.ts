@@ -65,8 +65,8 @@ export class InstituteClassSubjectStudent {
   enrolledByTeacher?: UserEntity;
 
   // Verification tracking for self-enrolled students
-  @Column({ name: 'verification_status', type: 'enum', enum: ['verified', 'pending', 'rejected', 'pending_payment', 'payment_rejected'], default: 'verified', comment: 'verified=active, pending=awaiting admin, rejected=denied, pending_payment=awaiting payment verification, payment_rejected=payment slip rejected (can resubmit)' })
-  verificationStatus: 'verified' | 'pending' | 'rejected' | 'pending_payment' | 'payment_rejected';
+  @Column({ name: 'verification_status', type: 'enum', enum: ['verified', 'pending', 'rejected', 'pending_payment', 'payment_rejected', 'enrolled_free_card'], default: 'verified', comment: 'verified=active, pending=awaiting admin, rejected=denied, pending_payment=awaiting payment verification, payment_rejected=payment slip rejected (can resubmit), enrolled_free_card=free card student auto-enrolled without verification' })
+  verificationStatus: 'verified' | 'pending' | 'rejected' | 'pending_payment' | 'payment_rejected' | 'enrolled_free_card';
 
   @Column({ name: 'verified_by', type: 'bigint', nullable: true, comment: 'Admin/Teacher who verified or rejected the enrollment' })
   verifiedBy?: string;
@@ -82,8 +82,8 @@ export class InstituteClassSubjectStudent {
   rejectionReason?: string;
 
   // Student type tracking
-  @Column({ name: 'student_type', type: 'enum', enum: ['paid', 'free_card'], default: 'paid', comment: 'Student payment type: paid=regular, free_card=exempt from enrollment fee' })
-  studentType: 'paid' | 'free_card';
+  @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card'], default: 'normal', comment: 'Student type: normal=default, paid=confirmed paid, free_card=exempt from enrollment fee' })
+  studentType: 'normal' | 'paid' | 'free_card';
 
   // Payment-gated enrollment tracking
   @Column({ name: 'enrollment_payment_id', type: 'bigint', nullable: true, comment: 'FK to institute_class_subject_payment_submissions if payment-gated' })

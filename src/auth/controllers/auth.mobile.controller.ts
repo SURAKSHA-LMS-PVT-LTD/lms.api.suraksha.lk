@@ -114,6 +114,12 @@ Authenticates user credentials and returns tokens for mobile applications.
         loginDto.password
       );
 
+      // Auto-complete first login if user has password but firstLoginCompleted = false
+      if (user.firstLoginCompleted === false) {
+        await this.authService.autoCompleteFirstLogin(user.id);
+        user.firstLoginCompleted = true;
+      }
+
       // Extract client info
       const clientInfo = {
         ipAddress: getClientIp(req),

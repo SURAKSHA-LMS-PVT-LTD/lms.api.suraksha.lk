@@ -84,7 +84,7 @@ export class SelfEnrollResponseDto {
   @ApiProperty({
     description: 'Verification status',
     example: 'pending',
-    enum: ['verified', 'pending', 'rejected', 'pending_payment', 'payment_rejected']
+    enum: ['verified', 'pending', 'rejected', 'pending_payment', 'payment_rejected', 'enrolled_free_card']
   })
   verificationStatus: string;
 

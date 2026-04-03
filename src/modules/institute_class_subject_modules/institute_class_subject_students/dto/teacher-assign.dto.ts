@@ -14,14 +14,14 @@ export class TeacherAssignStudentsDto {
   studentIds: string[];
 
   @ApiProperty({
-    description: 'Student type for assigned students (default: paid)',
-    example: 'paid',
-    enum: ['paid', 'free_card'],
+    description: 'Student type for assigned students (default: normal)',
+    example: 'normal',
+    enum: ['normal', 'paid', 'free_card'],
     required: false
   })
   @IsOptional()
   @IsString()
-  studentType?: 'paid' | 'free_card';
+  studentType?: 'normal' | 'paid' | 'free_card';
 }
 
 export class TeacherAssignResponseDto {

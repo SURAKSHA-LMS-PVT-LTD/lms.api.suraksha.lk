@@ -145,7 +145,8 @@ export class AuthService {
               lastName: userData.lastName,
               isActive: userData.isActive,
               userType: userData.userType,
-              imageUrl: userData.imageUrl
+              imageUrl: userData.imageUrl,
+              firstLoginCompleted: userData.firstLoginCompleted ?? true,
             } as UserEntity;
           }
         } else {
@@ -178,7 +179,7 @@ export class AuthService {
       
       const user = await this.userRepository.findOne({ 
         where: whereClause,
-        select: ['id', 'email', 'password', 'phoneNumber', 'birthCertificateNo', 'firstName', 'lastName', 'nameWithInitials', 'isActive', 'userType', 'imageUrl']
+        select: ['id', 'email', 'password', 'phoneNumber', 'birthCertificateNo', 'firstName', 'lastName', 'nameWithInitials', 'isActive', 'userType', 'imageUrl', 'firstLoginCompleted']
       });
       
       if (!user) {
@@ -265,8 +266,28 @@ export class AuthService {
         nameWithInitials: user.nameWithInitials,
         userType: user.userType,
         imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        firstLoginCompleted: user.firstLoginCompleted ?? true,
       },
     };
+  }
+
+  /**
+   * Auto-complete first login for users who login with correct credentials
+   * but have firstLoginCompleted = false. Since they already have a password
+   * and verified their identity, just mark first login as done.
+   */
+  async autoCompleteFirstLogin(userId: string): Promise<void> {
+    await this.userRepository.update(userId, {
+      firstLoginCompleted: true,
+      updatedAt: now(),
+    });
+    // Refresh cache so future logins pick up the change
+    try {
+      await this.userManagementService.refreshUserCache(userId);
+    } catch (cacheError) {
+      this.logger.warn(`Cache refresh failed after auto-completing first login for user ${userId}: ${cacheError.message}`);
+    }
+    this.logger.log(`✅ Auto-completed first login for user ${userId} (password login)`);
   }
 
   // REMOVED: All complex data building methods
@@ -1591,6 +1612,7 @@ export class AuthService {
         nameWithInitials: user.nameWithInitials,
         userType: user.userType,
         imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        firstLoginCompleted: user.firstLoginCompleted ?? true,
       },
     };
   }

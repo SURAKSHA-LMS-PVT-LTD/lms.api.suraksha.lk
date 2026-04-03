@@ -54,6 +54,13 @@ export class AuthV2Controller {
   ) {
     const user = await this.authService.validateUser(loginDto.identifier, loginDto.password);
     
+    // Auto-complete first login if user has password but firstLoginCompleted = false
+    // User proved identity with correct credentials — no need for OTP/verification flow
+    if (user.firstLoginCompleted === false) {
+      await this.authService.autoCompleteFirstLogin(user.id);
+      user.firstLoginCompleted = true;
+    }
+
     const clientInfo = {
       ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent') || 'unknown'
