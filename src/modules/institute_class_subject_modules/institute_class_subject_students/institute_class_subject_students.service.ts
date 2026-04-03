@@ -23,6 +23,7 @@ import { SubjectEntity } from '../../subject/entities/subject.entity';
 import { SubjectResponseDto } from '../../subject/dto/subject-response.dto';
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
+import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType, PaymentPriority } from '../../payment/entities/institute-class-subject-payment.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
@@ -46,6 +47,8 @@ export class InstituteClassSubjectStudentsService {
     private readonly classSubjectRepository: Repository<InstituteClassSubjectEntity>,
     @InjectRepository(InstituteClassStudentEntity)
     private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
+    @InjectRepository(InstituteClassSubjectPayment)
+    private readonly paymentRepository: Repository<InstituteClassSubjectPayment>,
     private readonly userManagementService: UserManagementService,
     private readonly cloudStorageService: CloudStorageService,
   ) {}
@@ -908,6 +911,39 @@ export class InstituteClassSubjectStudentsService {
           existingEnrollment.rejectionReason = null;
           existingEnrollment.enrollmentPaymentId = null;
           existingEnrollment.updatedAt = getCurrentSriLankaISO() as any;
+
+          // Auto-create a new enrollment payment for re-submission
+          let reEnrollPaymentId: string | undefined;
+          try {
+            const feeAmount = classSubject.enrollmentFeeAmount ? Number(classSubject.enrollmentFeeAmount) : 0;
+            if (feeAmount > 0) {
+              const dueDate = new Date();
+              dueDate.setDate(dueDate.getDate() + 30);
+
+              const reEnrollPayment = this.paymentRepository.create({
+                instituteId: classSubject.instituteId,
+                classId: classSubject.classId,
+                subjectId: classSubject.subjectId,
+                createdBy: null,
+                title: `Enrollment Fee - ${classSubject.subject.name}`,
+                description: `Re-enrollment fee for ${classSubject.subject.name} in ${classSubject.class.name}.`,
+                targetType: PaymentTargetType.STUDENTS,
+                priority: PaymentPriority.MANDATORY,
+                amount: feeAmount,
+                lastDate: dueDate,
+                status: PaymentStatus.ACTIVE,
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+              const savedRePayment = await this.paymentRepository.save(reEnrollPayment);
+              reEnrollPaymentId = savedRePayment.id;
+              existingEnrollment.enrollmentPaymentId = savedRePayment.id;
+            }
+          } catch (paymentError) {
+            console.error('Failed to auto-create re-enrollment payment:', paymentError);
+          }
+
           await this.studentRepository.save(existingEnrollment);
 
           return {
@@ -922,6 +958,7 @@ export class InstituteClassSubjectStudentsService {
             enrolledAt: new Date(),
             paymentRequired: true,
             feeAmount: classSubject.enrollmentFeeAmount ? Number(classSubject.enrollmentFeeAmount) : undefined,
+            enrollmentPaymentId: reEnrollPaymentId,
           };
         }
         if (existingEnrollment.verificationStatus === 'rejected') {
@@ -952,7 +989,44 @@ export class InstituteClassSubjectStudentsService {
         updatedAt: timestamp,
       });
 
-      await this.studentRepository.save(enrollment);
+      const savedEnrollment = await this.studentRepository.save(enrollment);
+
+      // Auto-create enrollment fee payment record if payment is required
+      let enrollmentPaymentId: string | undefined;
+      if (paymentRequired) {
+        try {
+          const feeAmount = Number(classSubject.enrollmentFeeAmount);
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + 30); // 30-day deadline
+
+          const enrollmentPayment = this.paymentRepository.create({
+            instituteId: classSubject.instituteId,
+            classId: classSubject.classId,
+            subjectId: classSubject.subjectId,
+            createdBy: null,
+            title: `Enrollment Fee - ${classSubject.subject.name}`,
+            description: `Monthly enrollment fee for ${classSubject.subject.name} in ${classSubject.class.name}. Student self-enrollment payment.`,
+            targetType: PaymentTargetType.STUDENTS,
+            priority: PaymentPriority.MANDATORY,
+            amount: feeAmount,
+            lastDate: dueDate,
+            status: PaymentStatus.ACTIVE,
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          const savedPayment = await this.paymentRepository.save(enrollmentPayment);
+          enrollmentPaymentId = savedPayment.id;
+
+          // Link enrollment to payment
+          savedEnrollment.enrollmentPaymentId = savedPayment.id;
+          await this.studentRepository.save(savedEnrollment);
+        } catch (paymentError) {
+          // Payment creation failed but enrollment is created - log but don't fail
+          console.error('Failed to auto-create enrollment payment:', paymentError);
+        }
+      }
 
       // Refresh student cache after self-enrollment
       await this.userManagementService.refreshUserCache(studentId);
@@ -973,6 +1047,7 @@ export class InstituteClassSubjectStudentsService {
         enrolledAt: new Date(),
         paymentRequired,
         feeAmount: paymentRequired ? Number(classSubject.enrollmentFeeAmount) : undefined,
+        enrollmentPaymentId,
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof ForbiddenException) {
