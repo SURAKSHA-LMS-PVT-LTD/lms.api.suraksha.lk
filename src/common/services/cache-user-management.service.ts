@@ -200,6 +200,7 @@ export class UserManagementService {
           u.country,
           u.image_url as imageUrl,
           u.is_active as isActive,
+          u.first_login_completed as firstLoginCompleted,
           u.created_at as createdAt,
           u.updated_at as updatedAt,
           
@@ -256,6 +257,7 @@ export class UserManagementService {
         // ✅ Transform imageUrl to full URL
         imageUrl: row.imageUrl ? this.cloudStorageService.getFullUrl(row.imageUrl) : row.imageUrl,
         isActive: Boolean(row.isActive),
+        firstLoginCompleted: row.firstLoginCompleted != null ? Boolean(row.firstLoginCompleted) : undefined,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       };

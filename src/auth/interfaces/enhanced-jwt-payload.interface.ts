@@ -52,6 +52,7 @@ export interface EnhancedLoginResponse {
     nameWithInitials: string;
     userType: UserType;
     imageUrl?: string;
+    firstLoginCompleted?: boolean;
   };
 }
 

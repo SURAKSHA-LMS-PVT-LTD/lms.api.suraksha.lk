@@ -1571,6 +1571,7 @@ export class AuthService {
       nameWithInitials: string;
       userType: string;
       imageUrl?: string;
+      firstLoginCompleted?: boolean;
     };
   }> {
     // Build JWT payload with user hierarchy

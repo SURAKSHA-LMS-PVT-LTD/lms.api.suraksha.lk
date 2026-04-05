@@ -31,6 +31,7 @@ export interface UserCacheData {
   country?: string;
   imageUrl?: string;
   isActive: boolean;
+  firstLoginCompleted?: boolean;
   createdAt: Date;
   updatedAt: Date;
   
