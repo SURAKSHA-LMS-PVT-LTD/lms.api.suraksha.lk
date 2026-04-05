@@ -523,6 +523,9 @@ export class PushNotificationRepository {
       .leftJoinAndSelect('notification.subject', 'subject')
       .leftJoinAndSelect('notification.sender', 'sender');
 
+    // Exclude system-generated notifications (e.g. attendance) — only show admin-created ones
+    queryBuilder.andWhere('notification.senderRole != :systemRole', { systemRole: 'SYSTEM' });
+
     if (queryDto.instituteId) {
       queryBuilder.andWhere('notification.instituteId = :instituteId', { instituteId: queryDto.instituteId });
     }
