@@ -1322,20 +1322,22 @@ export class CloudStorageService implements OnModuleInit {
    * Used for post-upload verification in AWS S3 (since presigned URLs can't enforce size)
    */
   private getMaxFileSizeForFolder(folder: string): number {
+    // S3 uploads: 5MB max for all user uploads, 10MB for system admin (advertisements)
     const maxSizes: Record<string, number> = {
       'profile-images': this.configService.get<number>('MAX_PROFILE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'student-images': this.configService.get<number>('MAX_STUDENT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 10) * 1024 * 1024,
+      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'institute-user-images': this.configService.get<number>('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'subject-images': this.configService.get<number>('MAX_SUBJECT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 20) * 1024 * 1024,
-      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 20) * 1024 * 1024,
-      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
-      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
-      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 10) * 1024 * 1024,
+      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 10) * 1024 * 1024,
+      'lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 5) * 1024 * 1024,
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
@@ -1414,6 +1416,12 @@ export class CloudStorageService implements OnModuleInit {
         'application/pdf'
       ],
       'subject-payment-receipts': [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'application/pdf'
+      ],
+      'enrollment-payment-receipts': [
         'image/jpeg',
         'image/jpg',
         'image/png',

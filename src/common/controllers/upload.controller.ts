@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 
 class GenerateUploadUrlDto {
   @ApiProperty()
-  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'])
-  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images';
+  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'])
+  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images';
   
   @ApiProperty()
   @IsString()
@@ -69,7 +69,7 @@ export class UploadController {
   })
   @ApiQuery({ 
     name: 'folder', 
-    enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'],
+    enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'],
     description: 'Target folder for file upload',
     example: 'profile-images'
   })
@@ -163,7 +163,7 @@ export class UploadController {
     })();
 
     // Validate folder type
-    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'];
+    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'];
     if (!validFolders.includes(folder)) {
       throw new BadRequestException(`Invalid folder. Must be one of: ${validFolders.join(', ')}`);
     }
@@ -374,6 +374,7 @@ export class UploadController {
       - correction-files: Teacher corrections
       - institute-payment-receipts: Institute-level payment receipts
       - subject-payment-receipts: Subject-level payment receipts
+      - enrollment-payment-receipts: Enrollment fee payment receipts
       - id-documents: ID card images
       - bookhire-vehicle-images: Private transportation vehicle images
       - bookhire-owner-images: Private transportation owner profile images
@@ -386,7 +387,7 @@ export class UploadController {
       properties: {
         folder: {
           type: 'string',
-          enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'],
+          enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'],
           example: 'profile-images'
         },
         fileName: {
@@ -658,6 +659,7 @@ export class UploadController {
       'correction-files': ['.pdf', '.jpg', '.jpeg', '.png'],
       'institute-payment-receipts': ['.jpg', '.jpeg', '.png', '.pdf'],
       'subject-payment-receipts': ['.jpg', '.jpeg', '.png', '.pdf'],
+      'enrollment-payment-receipts': ['.jpg', '.jpeg', '.png', '.pdf'],
       'id-documents': ['.jpg', '.jpeg', '.png', '.pdf'],
       'bookhire-vehicle-images': ['.jpg', '.jpeg', '.png', '.webp'],
       'bookhire-owner-images': ['.jpg', '.jpeg', '.png', '.webp']
@@ -694,17 +696,19 @@ export class UploadController {
    */
   private validateFileSize(fileSize: number, folder: string): void {
     // Get max file sizes from environment variables (in MB), with defaults
+    // S3 uploads: 5MB max for all user uploads, 10MB for system admin (advertisements)
     const maxSizes: Record<string, number> = {
       'profile-images': this.configService.get<number>('MAX_PROFILE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'student-images': this.configService.get<number>('MAX_STUDENT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 10) * 1024 * 1024,
+      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'institute-user-images': this.configService.get<number>('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'subject-images': this.configService.get<number>('MAX_SUBJECT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 20) * 1024 * 1024,
-      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 20) * 1024 * 1024,
-      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
-      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
-      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 10) * 1024 * 1024,
+      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024
     };
@@ -738,17 +742,19 @@ export class UploadController {
    * This is used to enforce Content-Length restrictions in signed URLs
    */
   private getMaxFileSizeForFolder(folder: string): number {
+    // S3 uploads: 5MB max for all user uploads, 10MB for system admin (advertisements)
     const maxSizes: Record<string, number> = {
       'profile-images': this.configService.get<number>('MAX_PROFILE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'student-images': this.configService.get<number>('MAX_STUDENT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 10) * 1024 * 1024,
+      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'institute-user-images': this.configService.get<number>('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'subject-images': this.configService.get<number>('MAX_SUBJECT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 20) * 1024 * 1024,
-      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 20) * 1024 * 1024,
-      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
-      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 10) * 1024 * 1024,
-      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 10) * 1024 * 1024,
+      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024
     };
