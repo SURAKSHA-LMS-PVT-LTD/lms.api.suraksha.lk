@@ -10,7 +10,8 @@ import { InstituteClassSubjectPaymentSubmission } from './institute-class-subjec
 
 export enum PaymentTargetType {
   PARENTS = 'PARENTS',
-  STUDENTS = 'STUDENTS'
+  STUDENTS = 'STUDENTS',
+  BOTH = 'BOTH'
 }
 
 export enum PaymentPriority {

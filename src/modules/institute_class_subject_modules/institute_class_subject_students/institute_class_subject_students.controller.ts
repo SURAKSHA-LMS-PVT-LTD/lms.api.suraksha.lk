@@ -705,9 +705,17 @@ export class InstituteClassSubjectStudentsController {
   ): Promise<SelfEnrollResponseDto> {
     const user = req.user;
     
-    // Access control will be handled by decorators
+    // If parent is enrolling on behalf of child, validate and use child's ID
+    let effectiveStudentId = user.s;
+    if (enrollDto.targetStudentId) {
+      const childrenIds = user.c ? user.c.map(id => String(id)) : [];
+      if (!childrenIds.includes(String(enrollDto.targetStudentId))) {
+        throw new ForbiddenException('Access denied. The target student is not your child.');
+      }
+      effectiveStudentId = enrollDto.targetStudentId;
+    }
 
-    return await this.studentsService.selfEnroll(user.s, enrollDto);
+    return await this.studentsService.selfEnroll(effectiveStudentId, enrollDto);
   }
 
   @Patch('claim-free-card/:instituteId/:classId/:subjectId')
@@ -730,9 +738,19 @@ export class InstituteClassSubjectStudentsController {
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Body() body: { targetStudentId?: string },
     @Request() req: JwtRequest
   ) {
-    return await this.studentsService.claimFreeCard(req.user.s, instituteId, classId, subjectId);
+    // If parent is claiming on behalf of child, validate and use child's ID
+    let effectiveStudentId = req.user.s;
+    if (body?.targetStudentId) {
+      const childrenIds = req.user.c ? req.user.c.map(id => String(id)) : [];
+      if (!childrenIds.includes(String(body.targetStudentId))) {
+        throw new ForbiddenException('Access denied. The target student is not your child.');
+      }
+      effectiveStudentId = body.targetStudentId;
+    }
+    return await this.studentsService.claimFreeCard(effectiveStudentId, instituteId, classId, subjectId);
   }
 
   @Patch('student-type/:instituteId/:classId/:subjectId/:studentId')

@@ -4,8 +4,8 @@ import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { validateAll } from './config/validate-environment';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import * as cookieParser from 'cookie-parser';
-import * as compression from 'compression';
+import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
 import { ensureTimezoneSet, formatSriLankaDateTime, logTimezoneInfo } from './common/utils/timezone.util';
 
@@ -234,7 +234,7 @@ async function bootstrap() {
     console.log(`\n✅ SERVER RUNNING on :${port} | ENV: ${process.env.NODE_ENV || 'dev'}`);
     console.log(`🕐 Started at: ${formatSriLankaDateTime(new Date(), { hour12: false })} (Asia/Colombo)\n`);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('\n❌ FATAL ERROR DURING STARTUP:');
     console.error('Error:', error?.message);
     console.error('\nStack trace:', error?.stack);

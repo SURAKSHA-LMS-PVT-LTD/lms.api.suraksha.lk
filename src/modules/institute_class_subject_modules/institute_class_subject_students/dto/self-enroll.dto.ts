@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, Length } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, Length, IsOptional } from 'class-validator';
 
 export class SelfEnrollDto {
   @ApiProperty({
@@ -36,6 +36,14 @@ export class SelfEnrollDto {
   @IsNotEmpty()
   @Length(3, 50)
   enrollmentKey: string;
+
+  @ApiPropertyOptional({
+    description: 'Target student user ID (for parents enrolling on behalf of their child)',
+    example: '500341'
+  })
+  @IsString()
+  @IsOptional()
+  targetStudentId?: string;
 }
 
 export class SelfEnrollResponseDto {

@@ -63,7 +63,7 @@ export class InstituteClassSubjectPaymentService {
         return { hasAccess: false };
       }
       return { hasAccess: true, instituteRole: membership.instituteUserType };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(`getUserInstituteRole failed: ${error?.message}`);
       return { hasAccess: false };
     }
@@ -453,7 +453,7 @@ export class InstituteClassSubjectPaymentService {
           linkedEnrollment.updatedAt = new Date();
           await this.classSubjectStudentRepository.save(linkedEnrollment);
         }
-      } catch (enrollmentError) {
+      } catch (enrollmentError: any) {
         this.logger.warn(`Failed to update enrollment status after payment verification: ${enrollmentError.message}`);
       }
     }
@@ -462,7 +462,7 @@ export class InstituteClassSubjectPaymentService {
     if (verifyDto.status === SubmissionStatus.VERIFIED) {
       try {
         await this.userManagementService.refreshUserCache(submission.userId);
-      } catch (cacheError) {
+      } catch (cacheError: any) {
         this.logger.warn(`Cache refresh failed after payment verification for user ${submission.userId}: ${cacheError.message}`);
       }
     }
@@ -1515,7 +1515,7 @@ export class InstituteClassSubjectPaymentService {
     // Refresh user cache
     try {
       await this.userManagementService.refreshUserCache(studentId);
-    } catch (cacheError) {
+    } catch (cacheError: any) {
       this.logger.warn(`Cache refresh failed after admin CSP payment verification for user ${studentId}: ${cacheError.message}`);
     }
 

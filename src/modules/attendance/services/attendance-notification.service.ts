@@ -416,7 +416,7 @@ export class AttendanceNotificationService {
 
       return { success: false };
 
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`❌ WhatsApp notification failed: ${error.message}`);
       return { success: false };
     }
@@ -611,7 +611,7 @@ export class AttendanceNotificationService {
         error: result.error?.message || 'Template message failed'
       };
 
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`❌ WhatsApp template error: ${error.message}`);
       return {
         success: false,
@@ -687,7 +687,7 @@ export class AttendanceNotificationService {
           `Attendance email failed for student ${studentId}: ${result.error}`,
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       // Silent failure for performance
       this.logger.warn(
         `Background email send error for student ${studentId}: ${error.message}`,
