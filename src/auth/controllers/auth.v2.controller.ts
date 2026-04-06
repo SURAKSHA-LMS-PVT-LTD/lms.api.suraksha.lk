@@ -112,13 +112,11 @@ export class AuthV2Controller {
       : 7 * 24 * 60 * 60 * 1000;  // 7 days
 
     // 🏢 Multi-tenant cookie strategy:
-    // The API runs on lmsapi.suraksha.lk. Browsers reject Set-Cookie for domains
-    // the response didn't originate from (e.g., academy.suraksha.lk).
-    // For subdomain/custom domain logins, the frontend must use the refresh_token
-    // from the response BODY (already returned below). We still set the cookie
-    // for default lms.suraksha.lk logins where cookie domain matches.
-    // We omit explicit domain in production so the browser scopes it to the API origin.
-    const cookieDomain = isProduction ? undefined : 'localhost';
+    // Use .suraksha.lk so the cookie is available to all subdomains
+    // (academy.suraksha.lk, lms.suraksha.lk, lmsapi.suraksha.lk, etc.).
+    // The leading dot allows the browser to send the cookie from any subdomain
+    // frontend to the API at lmsapi.suraksha.lk.
+    const cookieDomain = isProduction ? '.suraksha.lk' : 'localhost';
 
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
@@ -194,7 +192,7 @@ export class AuthV2Controller {
       sameSite: 'lax',       // 'lax' allows same-site cross-origin (lms→lmsapi) and top-level navigations
       maxAge: cookieMaxAge,
       path: '/',
-      domain: isProduction ? undefined : 'localhost'
+      domain: isProduction ? '.suraksha.lk' : 'localhost'
     });
 
     // 🌐 SSO SUPPORT: Return complete response including refresh_token
@@ -238,7 +236,8 @@ export class AuthV2Controller {
         httpOnly: true,
         secure: isProduction,
         sameSite: 'lax',
-        path: '/'
+        path: '/',
+        domain: isProduction ? '.suraksha.lk' : 'localhost'
       });
       
       return {

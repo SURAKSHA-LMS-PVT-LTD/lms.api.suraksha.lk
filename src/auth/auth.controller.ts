@@ -510,7 +510,7 @@ export class AuthController {
         sameSite: 'lax', // Allows same-site cross-origin (lms→lmsapi) and navigations
         maxAge: cookieMaxAge,
         path: '/',
-        domain: isProduction ? undefined : 'localhost' // Set domain for localhost
+        domain: isProduction ? '.suraksha.lk' : 'localhost'
       });
 
       // Return only access token and user info (not refresh token)
@@ -563,7 +563,8 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        path: '/'
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? '.suraksha.lk' : 'localhost'
       });
       
       return {
