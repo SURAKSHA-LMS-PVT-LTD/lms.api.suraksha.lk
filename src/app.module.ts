@@ -33,8 +33,11 @@ import { InstituteClassSubjectStudentsModule } from './modules/institute_class_s
 import { InstituteClassSubjectHomeworksModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks/institute_class_subject_homeworks.module';
 import { InstituteClassSubjectHomeworksSubmissionsModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks_submissions/institute_class_subject_homeworks_submissions.module';
 import { InstituteClassSubjectEntity } from './modules/institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
+import { InstituteClassEntity } from './modules/institute_mudules/institue_class/entities/institue_class.entity';
 import { UserOtpEntity } from './modules/user/entities/user-otp.entity';
 import { PasswordResetTokenEntity, UserFirstLoginLogEntity } from './auth/entities/password-reset.entity';
+import { SystemConfigEntity } from './common/entities/system-config.entity';
+import { PushNotificationEntity } from './modules/push-notifications/entities/push-notification.entity';
 import { PaymentModule } from './modules/payment/payment.module';
 import { ApiFrontendModule } from './modules/api-frontend/api-frontend.module';
 import { FileModule } from './modules/files/file.module';
@@ -101,8 +104,8 @@ import { AppService } from './app.service';
           __dirname + '/auth/entities/*.entity{.ts,.js}',
           __dirname + '/modules/institute_mudules/institue_class/entities/*.entity{.ts,.js}',
           __dirname + '/common/entities/*.entity{.ts,.js}',
-          InstituteEntity, ParentEntity, UserEntity, StudentEntity, SubjectEntity, InstituteClassSubjectEntity,
-          UserOtpEntity, // OTP verification entity
+          InstituteEntity, ParentEntity, UserEntity, StudentEntity, SubjectEntity, InstituteClassSubjectEntity, InstituteClassEntity,
+          UserOtpEntity, SystemConfigEntity, PushNotificationEntity,
           PasswordResetTokenEntity, UserFirstLoginLogEntity
         ],
         synchronize: false, // ⚠️ DISABLED - Prevents auto schema sync to avoid foreign key constraint issues

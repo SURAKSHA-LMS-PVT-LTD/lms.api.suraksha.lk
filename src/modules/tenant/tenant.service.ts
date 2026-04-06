@@ -146,12 +146,14 @@ export class TenantService {
     const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
     if (!institute) throw new NotFoundException('Institute not found');
 
+    // Require at least STARTER tier for subdomain
+    if (institute.tier === InstituteTier.FREE) {
+      throw new BadRequestException('Subdomain requires STARTER tier or higher. Please upgrade your plan.');
+    }
+
     // Set subdomain and enable custom login
     institute.subdomain = subdomain;
     institute.customLoginEnabled = true;
-    if (institute.tier === InstituteTier.FREE) {
-      institute.tier = InstituteTier.STARTER;
-    }
     institute.updatedAt = now();
 
     const saved = await this.instituteRepository.save(institute);
@@ -211,11 +213,8 @@ export class TenantService {
     const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
     if (!institute) throw new NotFoundException('Institute not found');
 
-    // Auto-upgrade FREE tier to STARTER when saving branding
     if (institute.tier === InstituteTier.FREE) {
-      institute.tier = InstituteTier.STARTER;
-      await this.ensureBillingConfig(instituteId, InstituteTier.STARTER);
-      this.logger.log(`Auto-upgraded institute ${instituteId} to STARTER tier on branding update`);
+      throw new BadRequestException('Login branding customization requires STARTER tier or higher. Please upgrade your plan.');
     }
 
     // Tier-based restrictions
@@ -461,11 +460,11 @@ export class TenantService {
     return {
       tier,
       features: {
-        subdomain: true, // All tiers can set subdomain (auto-upgrades from FREE to STARTER)
+        subdomain: tier !== InstituteTier.FREE,
         customDomain: tier === InstituteTier.ENTERPRISE || tier === InstituteTier.ISOLATED,
-        loginBranding: true, // All tiers can customize branding (auto-upgrades from FREE to STARTER)
-        videoBackground: tier !== InstituteTier.FREE && tier !== InstituteTier.STARTER,
-        hidePoweredBy: tier !== InstituteTier.FREE && tier !== InstituteTier.STARTER,
+        loginBranding: tier !== InstituteTier.FREE,
+        videoBackground: tier === InstituteTier.PROFESSIONAL || tier === InstituteTier.ENTERPRISE || tier === InstituteTier.ISOLATED,
+        hidePoweredBy: tier === InstituteTier.PROFESSIONAL || tier === InstituteTier.ENTERPRISE || tier === InstituteTier.ISOLATED,
         smsMasking: tier !== InstituteTier.FREE,
         whiteLabel: tier === InstituteTier.ISOLATED,
       },
