@@ -15,7 +15,11 @@ import {
   UpdateTierDto,
   UpdateBillingConfigDto,
   UpdateVisibilityDto,
+  UpdateSmsSettingsDto,
+  SmsSettingsResponse,
+  PlanInfoResponse,
 } from './dto/tenant.dto';
+import { SenderMaskEntity, SenderMaskStatus } from '../sms/entities/sender-mask.entity';
 import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
@@ -31,6 +35,8 @@ export class TenantService {
     private readonly billingConfigRepository: Repository<InstituteBillingConfigEntity>,
     @InjectRepository(MonthlyBillingSummaryEntity)
     private readonly billingSummaryRepository: Repository<MonthlyBillingSummaryEntity>,
+    @InjectRepository(SenderMaskEntity)
+    private readonly senderMaskRepository: Repository<SenderMaskEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -205,8 +211,11 @@ export class TenantService {
     const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
     if (!institute) throw new NotFoundException('Institute not found');
 
+    // Auto-upgrade FREE tier to STARTER when saving branding
     if (institute.tier === InstituteTier.FREE) {
-      throw new BadRequestException('Login branding customization requires a paid tier');
+      institute.tier = InstituteTier.STARTER;
+      await this.ensureBillingConfig(instituteId, InstituteTier.STARTER);
+      this.logger.log(`Auto-upgraded institute ${instituteId} to STARTER tier on branding update`);
     }
 
     // Tier-based restrictions
@@ -371,6 +380,103 @@ export class TenantService {
       .getRawMany();
 
     return stats;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // SMS SETTINGS MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════
+
+  async getSmsSettings(instituteId: string): Promise<SmsSettingsResponse> {
+    const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
+    if (!institute) throw new NotFoundException('Institute not found');
+
+    const activeMasks = await this.senderMaskRepository.find({
+      where: { instituteId, status: SenderMaskStatus.ACTIVE },
+      order: { isDefault: 'DESC', displayName: 'ASC' },
+    });
+
+    const effectiveSmsSender = institute.smsSenderName || 'SurakshaLMS';
+
+    return {
+      smsSenderName: institute.smsSenderName || null,
+      emailSenderAddress: institute.emailSenderAddress || null,
+      emailSenderName: institute.emailSenderName || null,
+      effectiveSmsSender,
+      activeMasks: activeMasks.map(m => ({
+        maskId: m.maskId,
+        displayName: m.displayName,
+        isDefault: m.isDefault,
+        status: m.status,
+      })),
+      tier: institute.tier,
+    };
+  }
+
+  async updateSmsSettings(instituteId: string, dto: UpdateSmsSettingsDto): Promise<SmsSettingsResponse> {
+    const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
+    if (!institute) throw new NotFoundException('Institute not found');
+
+    // If setting a custom SMS sender name, must have an approved mask or be PROFESSIONAL+
+    if (dto.smsSenderName !== undefined) {
+      if (dto.smsSenderName === null || dto.smsSenderName === '') {
+        institute.smsSenderName = null;
+      } else {
+        // Validate the mask exists and is approved for this institute
+        const mask = await this.senderMaskRepository.findOne({
+          where: { instituteId, maskId: dto.smsSenderName, status: SenderMaskStatus.ACTIVE },
+        });
+        if (!mask) {
+          throw new BadRequestException(
+            `SMS sender mask "${dto.smsSenderName}" is not approved for this institute. Request approval first.`,
+          );
+        }
+        institute.smsSenderName = dto.smsSenderName;
+      }
+    }
+
+    if (dto.emailSenderAddress !== undefined) {
+      institute.emailSenderAddress = dto.emailSenderAddress || null;
+    }
+    if (dto.emailSenderName !== undefined) {
+      institute.emailSenderName = dto.emailSenderName || null;
+    }
+
+    institute.updatedAt = now();
+    await this.instituteRepository.save(institute);
+
+    return this.getSmsSettings(instituteId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PLAN INFO
+  // ═══════════════════════════════════════════════════════════════════
+
+  async getPlanInfo(instituteId: string): Promise<PlanInfoResponse> {
+    const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
+    if (!institute) throw new NotFoundException('Institute not found');
+
+    const tier = institute.tier || InstituteTier.FREE;
+    const billingConfig = await this.billingConfigRepository.findOne({ where: { instituteId } });
+
+    return {
+      tier,
+      features: {
+        subdomain: true, // All tiers can set subdomain (auto-upgrades from FREE to STARTER)
+        customDomain: tier === InstituteTier.ENTERPRISE || tier === InstituteTier.ISOLATED,
+        loginBranding: true, // All tiers can customize branding (auto-upgrades from FREE to STARTER)
+        videoBackground: tier !== InstituteTier.FREE && tier !== InstituteTier.STARTER,
+        hidePoweredBy: tier !== InstituteTier.FREE && tier !== InstituteTier.STARTER,
+        smsMasking: tier !== InstituteTier.FREE,
+        whiteLabel: tier === InstituteTier.ISOLATED,
+      },
+      billing: billingConfig ? {
+        baseMonthlyFee: Number(billingConfig.baseMonthlyFee) || 0,
+        perUserMonthlyFee: Number(billingConfig.perUserMonthlyFee) || 0,
+        perSubdomainLoginFee: Number(billingConfig.perSubdomainLoginFee) || 0,
+        smsMaskingMonthlyFee: Number(billingConfig.smsMaskingMonthlyFee) || 0,
+        maxFreeSubdomainLogins: Number(billingConfig.maxFreeSubdomainLogins) || 0,
+      } : null,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════

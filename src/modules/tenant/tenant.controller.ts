@@ -13,6 +13,7 @@ import {
   UpdateTierDto,
   UpdateBillingConfigDto,
   UpdateVisibilityDto,
+  UpdateSmsSettingsDto,
   InstituteBrandingResponse,
 } from './dto/tenant.dto';
 
@@ -211,5 +212,40 @@ export class TenantController {
     const y = parseInt(year) || new Date().getFullYear();
     const m = parseInt(month) || new Date().getMonth() + 1;
     return this.tenantService.getLoginStats(id, y, m);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // SMS SETTINGS ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════
+
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @Get('institutes/:id/sms-settings')
+  @ApiOperation({ summary: 'Get SMS sender settings for an institute' })
+  async getSmsSettings(@Param('id') id: string) {
+    return this.tenantService.getSmsSettings(id);
+  }
+
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @Patch('institutes/:id/sms-settings')
+  @ApiOperation({ summary: 'Update SMS sender settings for an institute' })
+  async updateSmsSettings(
+    @Param('id') id: string,
+    @Body() dto: UpdateSmsSettingsDto,
+  ) {
+    return this.tenantService.updateSmsSettings(id, dto);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PLAN INFO ENDPOINT
+  // ═══════════════════════════════════════════════════════════════════
+
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @Get('institutes/:id/plan-info')
+  @ApiOperation({ summary: 'Get plan/tier info with feature flags and billing' })
+  async getPlanInfo(@Param('id') id: string) {
+    return this.tenantService.getPlanInfo(id);
   }
 }

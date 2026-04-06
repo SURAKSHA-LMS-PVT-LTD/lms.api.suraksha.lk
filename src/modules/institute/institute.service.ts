@@ -16,6 +16,7 @@ import { InstituteSettingsResponseDto, InstituteProfileResponseDto } from './dto
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { InstituteAccessValidator } from '../../common/helpers/institute-access-validator.helper';
 import { now } from '../../common/utils/timezone.util';
+import { RESERVED_SUBDOMAINS } from '../tenant/dto/tenant.dto';
 
 @Injectable()
 export class InstitutesService {
@@ -55,18 +56,41 @@ export class InstitutesService {
   ): Promise<InstituteEntity> {
     // Conflicts are now checked in the controller before uploading files
 
-    // ✅ Extract URL fields from DTO if provided, otherwise use parameters (backward compatibility)
+    // ✅ Extract URL fields and tier/subdomain from DTO
     const {
       imageUrl: dtoImageUrl,
       imageUrls: dtoImageUrls,
       logoUrl: dtoLogoUrl,
       loadingGifUrl: dtoLoadingGifUrl,
+      subdomain: dtoSubdomain,
       ...instituteData
     } = createInstituteDto;
+
+    // Validate subdomain requires at least STARTER tier
+    if (dtoSubdomain && (!instituteData.tier || instituteData.tier === 'FREE')) {
+      throw new BadRequestException('Subdomains require at least STARTER tier');
+    }
+
+    // Validate subdomain is not reserved and not already taken
+    if (dtoSubdomain) {
+      const normalizedSubdomain = dtoSubdomain.toLowerCase();
+      if (RESERVED_SUBDOMAINS.includes(normalizedSubdomain)) {
+        throw new BadRequestException(`Subdomain "${normalizedSubdomain}" is reserved and cannot be used`);
+      }
+      const existing = await this.instituteRepository.findOne({
+        where: { subdomain: normalizedSubdomain },
+      });
+      if (existing) {
+        throw new ConflictException(`Subdomain "${normalizedSubdomain}" is already taken`);
+      }
+    }
 
     const timestamp = now();
     const institute = this.instituteRepository.create({
       ...instituteData,
+      // Only set subdomain if tier allows it (STARTER+)
+      subdomain: (dtoSubdomain && instituteData.tier && instituteData.tier !== 'FREE') ? dtoSubdomain.toLowerCase() : null,
+      customLoginEnabled: !!(dtoSubdomain && instituteData.tier && instituteData.tier !== 'FREE'),
       imageUrl: dtoImageUrl || imageUrl || null,
       imageUrls: dtoImageUrls || imageUrls || null,
       logoUrl: dtoLogoUrl || logoUrl || null,

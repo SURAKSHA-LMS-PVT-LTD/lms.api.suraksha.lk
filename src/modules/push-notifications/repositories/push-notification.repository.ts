@@ -509,6 +509,7 @@ export class PushNotificationRepository {
       .leftJoinAndSelect('notification.subject', 'subject')
       .where('notification.status = :status', { status: NotificationStatus.SCHEDULED })
       .andWhere('notification.scheduledAt <= :now', { now: now() })
+      .andWhere('notification.senderRole != :systemRole', { systemRole: 'SYSTEM' })
       .getMany();
   }
 

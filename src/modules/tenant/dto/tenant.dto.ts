@@ -175,3 +175,60 @@ export class UpdateVisibilityDto {
   @IsBoolean()
   isVisibleInWebSelector?: boolean;
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// SMS Settings
+// ═══════════════════════════════════════════════════════════════════
+
+export class UpdateSmsSettingsDto {
+  @ApiPropertyOptional({ description: 'Custom SMS sender name (max 11 chars). Null to use system default.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(11, { message: 'SMS sender name cannot exceed 11 characters' })
+  smsSenderName?: string | null;
+
+  @ApiPropertyOptional({ description: 'Custom email sender address' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  emailSenderAddress?: string | null;
+
+  @ApiPropertyOptional({ description: 'Custom email sender display name' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  emailSenderName?: string | null;
+}
+
+export class SmsSettingsResponse {
+  smsSenderName: string | null;
+  emailSenderAddress: string | null;
+  emailSenderName: string | null;
+  effectiveSmsSender: string;
+  activeMasks: { maskId: string; displayName: string; isDefault: boolean; status: string }[];
+  tier: InstituteTier;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Plan / Tier Info
+// ═══════════════════════════════════════════════════════════════════
+
+export class PlanInfoResponse {
+  tier: InstituteTier;
+  features: {
+    subdomain: boolean;
+    customDomain: boolean;
+    loginBranding: boolean;
+    videoBackground: boolean;
+    hidePoweredBy: boolean;
+    smsMasking: boolean;
+    whiteLabel: boolean;
+  };
+  billing: {
+    baseMonthlyFee: number;
+    perUserMonthlyFee: number;
+    perSubdomainLoginFee: number;
+    smsMaskingMonthlyFee: number;
+    maxFreeSubdomainLogins: number;
+  } | null;
+}

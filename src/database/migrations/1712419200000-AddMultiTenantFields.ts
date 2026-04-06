@@ -3,42 +3,75 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class AddMultiTenantFields1712419200000 implements MigrationInterface {
   name = 'AddMultiTenantFields1712419200000';
 
+  private async columnExists(queryRunner: QueryRunner, table: string, column: string): Promise<boolean> {
+    const result = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column],
+    );
+    return Number(result[0]?.cnt) > 0;
+  }
+
+  private async tableExists(queryRunner: QueryRunner, table: string): Promise<boolean> {
+    const result = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [table],
+    );
+    return Number(result[0]?.cnt) > 0;
+  }
+
+  private async indexExists(queryRunner: QueryRunner, table: string, indexName: string): Promise<boolean> {
+    const result = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+      [table, indexName],
+    );
+    return Number(result[0]?.cnt) > 0;
+  }
+
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // ─── Institute multi-tenant columns ──────────────────────────────
-    await queryRunner.query(`
-      ALTER TABLE institutes
-        ADD COLUMN tier ENUM('FREE','STARTER','PROFESSIONAL','ENTERPRISE','ISOLATED') NOT NULL DEFAULT 'FREE' AFTER image_url,
-        ADD COLUMN subdomain VARCHAR(63) NULL UNIQUE AFTER tier,
-        ADD COLUMN custom_domain VARCHAR(255) NULL UNIQUE AFTER subdomain,
-        ADD COLUMN custom_domain_verified BOOLEAN NOT NULL DEFAULT FALSE AFTER custom_domain,
-        ADD COLUMN custom_domain_ssl_status ENUM('PENDING','ACTIVE','EXPIRED','FAILED') NULL AFTER custom_domain_verified,
-        ADD COLUMN custom_domain_verified_at TIMESTAMP NULL AFTER custom_domain_ssl_status,
-        ADD COLUMN custom_login_enabled BOOLEAN NOT NULL DEFAULT FALSE AFTER custom_domain_verified_at,
-        ADD COLUMN login_logo_url VARCHAR(500) NULL AFTER custom_login_enabled,
-        ADD COLUMN login_background_type ENUM('COLOR','GRADIENT','IMAGE','VIDEO') NOT NULL DEFAULT 'COLOR' AFTER login_logo_url,
-        ADD COLUMN login_background_url VARCHAR(500) NULL AFTER login_background_type,
-        ADD COLUMN login_video_poster_url VARCHAR(500) NULL AFTER login_background_url,
-        ADD COLUMN login_illustration_url VARCHAR(500) NULL AFTER login_video_poster_url,
-        ADD COLUMN login_welcome_title VARCHAR(200) NULL AFTER login_illustration_url,
-        ADD COLUMN login_welcome_subtitle VARCHAR(500) NULL AFTER login_welcome_title,
-        ADD COLUMN login_footer_text VARCHAR(200) NULL AFTER login_welcome_subtitle,
-        ADD COLUMN login_custom_css JSON NULL AFTER login_footer_text,
-        ADD COLUMN favicon_url VARCHAR(500) NULL AFTER login_custom_css,
-        ADD COLUMN custom_app_name VARCHAR(100) NULL AFTER favicon_url,
-        ADD COLUMN powered_by_visible BOOLEAN NOT NULL DEFAULT TRUE AFTER custom_app_name,
-        ADD COLUMN is_visible_in_app BOOLEAN NOT NULL DEFAULT TRUE AFTER powered_by_visible,
-        ADD COLUMN is_visible_in_web_selector BOOLEAN NOT NULL DEFAULT TRUE AFTER is_visible_in_app,
-        ADD COLUMN sms_sender_name VARCHAR(11) NULL AFTER is_visible_in_web_selector,
-        ADD COLUMN email_sender_address VARCHAR(255) NULL AFTER sms_sender_name,
-        ADD COLUMN email_sender_name VARCHAR(100) NULL AFTER email_sender_address
-    `);
+    // ─── Institute multi-tenant columns (safe – skips if already exists) ───
+    const cols: [string, string][] = [
+      ['tier', `ENUM('FREE','STARTER','PROFESSIONAL','ENTERPRISE','ISOLATED') NOT NULL DEFAULT 'FREE'`],
+      ['subdomain', `VARCHAR(63) NULL`],
+      ['custom_domain', `VARCHAR(255) NULL`],
+      ['custom_domain_verified', `BOOLEAN NOT NULL DEFAULT FALSE`],
+      ['custom_domain_ssl_status', `ENUM('PENDING','ACTIVE','EXPIRED','FAILED') NULL`],
+      ['custom_domain_verified_at', `TIMESTAMP NULL`],
+      ['custom_login_enabled', `BOOLEAN NOT NULL DEFAULT FALSE`],
+      ['login_logo_url', `VARCHAR(500) NULL`],
+      ['login_background_type', `ENUM('COLOR','GRADIENT','IMAGE','VIDEO') NOT NULL DEFAULT 'COLOR'`],
+      ['login_background_url', `VARCHAR(500) NULL`],
+      ['login_video_poster_url', `VARCHAR(500) NULL`],
+      ['login_illustration_url', `VARCHAR(500) NULL`],
+      ['login_welcome_title', `VARCHAR(200) NULL`],
+      ['login_welcome_subtitle', `VARCHAR(500) NULL`],
+      ['login_footer_text', `VARCHAR(200) NULL`],
+      ['login_custom_css', `JSON NULL`],
+      ['favicon_url', `VARCHAR(500) NULL`],
+      ['custom_app_name', `VARCHAR(100) NULL`],
+      ['powered_by_visible', `BOOLEAN NOT NULL DEFAULT TRUE`],
+      ['is_visible_in_app', `BOOLEAN NOT NULL DEFAULT TRUE`],
+      ['is_visible_in_web_selector', `BOOLEAN NOT NULL DEFAULT TRUE`],
+      ['sms_sender_name', `VARCHAR(11) NULL`],
+      ['email_sender_address', `VARCHAR(255) NULL`],
+      ['email_sender_name', `VARCHAR(100) NULL`],
+    ];
+
+    for (const [col, def] of cols) {
+      if (!(await this.columnExists(queryRunner, 'institutes', col))) {
+        await queryRunner.query(`ALTER TABLE institutes ADD COLUMN \`${col}\` ${def}`);
+      }
+    }
 
     // ─── Indexes for tenant resolution ───────────────────────────────
-    await queryRunner.query(`CREATE INDEX idx_institutes_subdomain ON institutes (subdomain)`);
-    await queryRunner.query(`CREATE INDEX idx_institutes_custom_domain ON institutes (custom_domain)`);
-    await queryRunner.query(`CREATE INDEX idx_institutes_tier ON institutes (tier)`);
+    if (!(await this.indexExists(queryRunner, 'institutes', 'idx_institutes_subdomain')))
+      await queryRunner.query(`CREATE INDEX idx_institutes_subdomain ON institutes (subdomain)`);
+    if (!(await this.indexExists(queryRunner, 'institutes', 'idx_institutes_custom_domain')))
+      await queryRunner.query(`CREATE INDEX idx_institutes_custom_domain ON institutes (custom_domain)`);
+    if (!(await this.indexExists(queryRunner, 'institutes', 'idx_institutes_tier')))
+      await queryRunner.query(`CREATE INDEX idx_institutes_tier ON institutes (tier)`);
 
     // ─── Billing config per institute ────────────────────────────────
+    if (!(await this.tableExists(queryRunner, 'institute_billing_config')))
     await queryRunner.query(`
       CREATE TABLE institute_billing_config (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -60,6 +93,7 @@ export class AddMultiTenantFields1712419200000 implements MigrationInterface {
     `);
 
     // ─── Login events for billing tracking ───────────────────────────
+    if (!(await this.tableExists(queryRunner, 'login_events')))
     await queryRunner.query(`
       CREATE TABLE login_events (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -78,6 +112,7 @@ export class AddMultiTenantFields1712419200000 implements MigrationInterface {
     `);
 
     // ─── Monthly billing summary ─────────────────────────────────────
+    if (!(await this.tableExists(queryRunner, 'monthly_billing_summary')))
     await queryRunner.query(`
       CREATE TABLE monthly_billing_summary (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,

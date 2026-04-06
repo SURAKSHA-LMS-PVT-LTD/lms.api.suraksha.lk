@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InstituteUserStatus } from '../enums/institute-user-status.enum';
 import { InstituteUserType } from '../enums/institute-user-type.enum';
@@ -47,4 +47,13 @@ export class CreateInstitueUserDto {
   @IsOptional()
   @IsEnum(InstituteUserStatus)
   status?: InstituteUserStatus;
+
+  @ApiPropertyOptional({
+    description: 'Institute-level password (min 8 characters). If blank, user will need admin to set it.',
+    example: 'securePass123'
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8, { message: 'Institute password must be at least 8 characters' })
+  institutePassword?: string;
 }

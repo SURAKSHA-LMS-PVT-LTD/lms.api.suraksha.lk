@@ -18,9 +18,32 @@ import { Country } from '../../user/enums/country.enum';
 import { District } from '../../user/enums/district.enum';
 import { Province } from '../../user/enums/province.enum';
 import { Transform } from 'class-transformer';
-import { InstituteType } from '../enums/institute.enums';
+import { InstituteType, InstituteTier } from '../enums/institute.enums';
 
 export class CreateInstituteDto {
+  @ApiPropertyOptional({
+    description: 'Institute tier/package',
+    example: InstituteTier.FREE,
+    enum: InstituteTier
+  })
+  @IsOptional()
+  @IsEnum(InstituteTier)
+  tier?: InstituteTier;
+
+  @ApiPropertyOptional({
+    description: 'Subdomain for the institute (e.g., "royalcollege" → royalcollege.suraksha.lk). Requires STARTER tier or above.',
+    example: 'royalcollege',
+    maxLength: 63
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(63)
+  @MinLength(3)
+  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, {
+    message: 'Subdomain must be lowercase alphanumeric with optional hyphens (not at start or end)'
+  })
+  subdomain?: string;
+
   @ApiPropertyOptional({
     description: 'Institute type',
     example: InstituteType.SCHOOL,

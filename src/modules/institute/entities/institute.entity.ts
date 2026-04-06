@@ -206,7 +206,7 @@ export class InstituteEntity {
   customAppName?: string;
 
   @Column({ name: 'powered_by_visible', type: 'boolean', default: true, comment: 'Show "Powered by Suraksha LMS"' })
-  poweredByVisible: boolean;
+  poweredByVisible: boolean = true;
 
   // Visibility Controls
   @Column({ name: 'is_visible_in_app', type: 'boolean', default: true, comment: 'Show in Suraksha mobile app institute selector' })

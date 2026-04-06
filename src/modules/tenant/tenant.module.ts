@@ -6,6 +6,7 @@ import { InstituteEntity } from '../institute/entities/institute.entity';
 import { LoginEventEntity } from './entities/login-event.entity';
 import { InstituteBillingConfigEntity } from './entities/institute-billing-config.entity';
 import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.entity';
+import { SenderMaskEntity } from '../sms/entities/sender-mask.entity';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.
       LoginEventEntity,
       InstituteBillingConfigEntity,
       MonthlyBillingSummaryEntity,
+      SenderMaskEntity,
     ]),
   ],
   controllers: [TenantController],

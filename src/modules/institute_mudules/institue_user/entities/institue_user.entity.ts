@@ -72,6 +72,13 @@ export class InstituteUserEntity {
   @Column({ name: 'image_verified_by', type: 'bigint', nullable: true })
   imageVerifiedBy?: string;
 
+  // Institute-level password (independent of main user table)
+  @Column({ name: 'institute_password', type: 'varchar', length: 120, nullable: true, select: false })
+  institutePassword?: string;
+
+  @Column({ name: 'institute_password_set_at', type: 'timestamp', nullable: true })
+  institutePasswordSetAt?: Date;
+
   // House this user belongs to within the institute
   @Column({ name: 'house_id', type: 'bigint', nullable: true })
   houseId?: string;

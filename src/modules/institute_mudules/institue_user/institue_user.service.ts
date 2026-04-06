@@ -66,6 +66,7 @@ import { SecurityUtils } from './utils/security.utils';
 import { plainToClass } from 'class-transformer';
 import { maskPhoneNumber, maskEmail } from '../../../common/utils/phone-mask.util';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import * as bcrypt from 'bcrypt';
 // ✅ CACHING SERVICES
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { CacheService } from '../../../common/services/cache.service';
@@ -200,11 +201,24 @@ export class InstitueUserService {
 
       // Create new institute user relationship
       const timestamp = getCurrentSriLankaISO();
+
+      // Hash institute password if provided
+      let hashedInstitutePassword: string | undefined;
+      if (createInstitueUserDto.institutePassword) {
+        const pepper = this.configService.get<string>('BCRYPT_PEPPER') || '';
+        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '12', 10);
+        hashedInstitutePassword = await bcrypt.hash(createInstitueUserDto.institutePassword + pepper, saltRounds);
+      }
+
       const newInstituteUser = this.instituteUserRepository.create({
         userId: userId,
         instituteId: instituteId,
         userIdByInstitute: createInstitueUserDto.userIdByInstitute,
         status: createInstitueUserDto.status || InstituteUserStatus.PENDING,
+        ...(hashedInstitutePassword && {
+          institutePassword: hashedInstitutePassword,
+          institutePasswordSetAt: timestamp,
+        }),
         createdAt: timestamp,
         updatedAt: timestamp,
       });

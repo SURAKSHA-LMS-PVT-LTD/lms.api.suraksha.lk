@@ -22,5 +22,5 @@
       "@common/*": ["src/common/*"]
     }
   },
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "test-*.ts", "*-test.ts"]
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "test-*.ts", "*-test.ts", "jest.config.ts", "run-calendar-migration.ts", "view-dynamodb-attendance.ts"]
 }
