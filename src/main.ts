@@ -101,7 +101,7 @@ async function bootstrap() {
       console.log('✅ Cookie parser enabled');
     }
 
-    // 🔒 STRICT CORS - Only allow whitelisted frontend domains
+    // 🔒 STRICT CORS - Only allow whitelisted frontend domains + wildcard subdomains
     const isDevelopment = process.env.NODE_ENV === 'development';
     const allowedOrigins = process.env.CORS_ORIGINS
       ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
@@ -117,6 +117,48 @@ async function bootstrap() {
         'http://127.0.0.1:3000'  // Alternative localhost port
       ];
 
+    // 🏢 Multi-tenant: Wildcard pattern for *.suraksha.lk subdomains
+    const subdomainPattern = /^https:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.suraksha\.lk$/;
+
+    // 🏢 Multi-tenant: Custom domains — dynamically validated against DB
+    // Static seed from env for faster startup; DB is checked as fallback
+    const customDomainOriginsStatic = new Set(
+      process.env.CUSTOM_DOMAIN_ORIGINS
+        ? process.env.CUSTOM_DOMAIN_ORIGINS.split(',').map(o => o.trim())
+        : []
+    );
+    // Cache verified custom domain origins in memory (refreshed on miss)
+    const customDomainCache = new Set<string>();
+    let lastCacheRefresh = 0;
+    const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+    const isCustomDomainAllowed = async (origin: string): Promise<boolean> => {
+      if (customDomainOriginsStatic.has(origin)) return true;
+      if (customDomainCache.has(origin)) return true;
+
+      // Refresh cache if stale
+      const now = Date.now();
+      if (now - lastCacheRefresh > CACHE_TTL_MS) {
+        try {
+          const dataSource = app.get('DataSource' as any) || app.get('default_DataSource' as any);
+          if (dataSource?.isInitialized) {
+            const rows = await dataSource.query(
+              `SELECT custom_domain FROM institutes WHERE custom_domain IS NOT NULL AND custom_domain_verified = TRUE AND is_active = TRUE`
+            );
+            customDomainCache.clear();
+            for (const row of rows) {
+              customDomainCache.add(`https://${row.custom_domain}`);
+            }
+            lastCacheRefresh = now;
+          }
+        } catch (e) {
+          // DB not ready yet — fall through to static list
+        }
+      }
+
+      return customDomainCache.has(origin);
+    };
+
     app.enableCors({
       origin: (origin, callback) => {
         // ✅ Allow all in development mode
@@ -125,18 +167,31 @@ async function bootstrap() {
         }
 
         // 🔒 PRODUCTION MODE: Allow requests without origin (server-to-server, mobile apps)
-        // These are NOT cross-origin and don't need CORS validation
         if (!origin) {
           return callback(null, true);
         }
 
-        // Check if origin is in whitelist
+        // Check if origin is in static whitelist
         if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
+          return callback(null, true);
+        }
+
+        // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
+        if (subdomainPattern.test(origin)) {
+          return callback(null, true);
+        }
+
+        // 🏢 Multi-tenant: Check custom domain origins dynamically
+        isCustomDomainAllowed(origin).then(allowed => {
+          if (allowed) {
+            return callback(null, true);
+          }
           console.warn(`🚫 CORS blocked origin: ${origin}`);
           callback(new Error('Not allowed by CORS'));
-        }
+        }).catch(() => {
+          console.warn(`🚫 CORS blocked origin (error): ${origin}`);
+          callback(new Error('Not allowed by CORS'));
+        });
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -52,6 +52,7 @@ import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-ac
 import { AttendanceDeviceModule } from './modules/attendance-device/attendance-device.module';
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
 import { InstituteHouseModule } from './modules/institute_mudules/institute_house/institute_house.module';
+import { TenantModule } from './modules/tenant/tenant.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -167,6 +168,7 @@ import { AppService } from './app.service';
     AttendanceDeviceModule, // Add device management for attendance marking devices
     AccountDeletionModule, // Google Play compliant account deletion with 30-day grace period
     InstituteHouseModule, // Institute house management with member enrollment
+    TenantModule, // Multi-tenant subdomain/custom domain management with billing
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
   ],
   controllers: [AppController],

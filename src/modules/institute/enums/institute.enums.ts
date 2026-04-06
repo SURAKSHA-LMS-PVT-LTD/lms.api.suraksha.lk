@@ -17,3 +17,39 @@ export enum InstituteStatus {
   UNDER_REVIEW = 'under_review',
   CLOSED = 'closed',
 }
+
+export enum InstituteTier {
+  FREE = 'FREE',
+  STARTER = 'STARTER',
+  PROFESSIONAL = 'PROFESSIONAL',
+  ENTERPRISE = 'ENTERPRISE',
+  ISOLATED = 'ISOLATED',
+}
+
+export enum LoginBackgroundType {
+  COLOR = 'COLOR',
+  GRADIENT = 'GRADIENT',
+  IMAGE = 'IMAGE',
+  VIDEO = 'VIDEO',
+}
+
+export enum CustomDomainSslStatus {
+  PENDING = 'PENDING',
+  ACTIVE = 'ACTIVE',
+  EXPIRED = 'EXPIRED',
+  FAILED = 'FAILED',
+}
+
+export enum LoginMethod {
+  SURAKSHA_WEB = 'SURAKSHA_WEB',
+  SURAKSHA_APP = 'SURAKSHA_APP',
+  SUBDOMAIN = 'SUBDOMAIN',
+  CUSTOM_DOMAIN = 'CUSTOM_DOMAIN',
+}
+
+export enum BillingStatus {
+  PENDING = 'PENDING',
+  INVOICED = 'INVOICED',
+  PAID = 'PAID',
+  OVERDUE = 'OVERDUE',
+}

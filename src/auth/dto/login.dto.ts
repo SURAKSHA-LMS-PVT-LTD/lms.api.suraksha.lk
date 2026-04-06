@@ -1,6 +1,7 @@
-import { IsNotEmpty, IsString, MinLength, IsOptional, IsBoolean, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsString, MinLength, IsOptional, IsBoolean, ValidateIf, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
+import { LoginMethod } from '../../modules/institute/enums/institute.enums';
 
 export class LoginDto {
   @ApiProperty({ 
@@ -55,4 +56,31 @@ export class LoginDto {
   @IsBoolean()
   @Transform(({ value }) => value === true || value === 'true')
   remember_me?: boolean;
+
+  // ═══ Multi-tenant fields (optional — only sent from subdomain/custom domain login pages)
+
+  @ApiPropertyOptional({
+    description: 'Subdomain the user is logging in from (e.g., "academy" for academy.suraksha.lk)',
+    example: 'academy'
+  })
+  @IsOptional()
+  @IsString()
+  subdomain?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom domain the user is logging in from (e.g., "lms.myinstitute.com")',
+    example: 'lms.myinstitute.com'
+  })
+  @IsOptional()
+  @IsString()
+  customDomain?: string;
+
+  @ApiPropertyOptional({
+    description: 'Login method — automatically set based on login origin',
+    enum: LoginMethod,
+    example: LoginMethod.SURAKSHA_WEB
+  })
+  @IsOptional()
+  @IsEnum(LoginMethod)
+  loginMethod?: LoginMethod;
 }

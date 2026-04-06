@@ -7,11 +7,16 @@ import { Request as ExpressRequest, Response as ExpressResponse } from 'express'
 import { Public } from '../../common/decorators/public.decorator';
 import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { RefreshTokenDto } from '../auth.controller';
+import { TenantService } from '../../modules/tenant/tenant.service';
+import { LoginMethod } from '../../modules/institute/enums/institute.enums';
 
 @ApiTags('Authentication V2')
 @Controller('v2/auth')
 export class AuthV2Controller {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly tenantService: TenantService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -69,11 +74,34 @@ export class AuthV2Controller {
     // 🔐 SSO: Pass rememberMe flag for extended session
     const rememberMe = loginDto.rememberMe || loginDto.remember_me || false;
     
+    // 🏢 Multi-tenant: Resolve login method and institute context
+    let loginMethod = loginDto.loginMethod || LoginMethod.SURAKSHA_WEB;
+    let tenantInstituteId: string | undefined;
+
+    if (loginDto.subdomain) {
+      loginMethod = LoginMethod.SUBDOMAIN;
+      tenantInstituteId = await this.tenantService.getInstituteIdBySubdomain(loginDto.subdomain) || undefined;
+    } else if (loginDto.customDomain) {
+      loginMethod = LoginMethod.CUSTOM_DOMAIN;
+      tenantInstituteId = await this.tenantService.getInstituteIdByCustomDomain(loginDto.customDomain) || undefined;
+    }
+
+    // 🔒 SECURITY: Validate the user actually belongs to the tenant institute
+    // Prevents audit log pollution from users logging in via other institutes' subdomains
+    if (tenantInstituteId) {
+      const userInstitutes = await this.authService.getUserInstituteIds(user.id);
+      if (!userInstitutes?.length || !userInstitutes.some(ui => ui.instituteId === tenantInstituteId)) {
+        throw new UnauthorizedException('You are not a member of this institute');
+      }
+    }
+
     const result = await this.authService.loginV2(
       user,
       clientInfo.ipAddress,
       clientInfo.userAgent,
-      rememberMe
+      rememberMe,
+      loginMethod,
+      tenantInstituteId,
     );
 
     // 🔐 SECURITY: Set refresh token in httpOnly cookie (for browsers)
@@ -83,13 +111,22 @@ export class AuthV2Controller {
       ? 30 * 24 * 60 * 60 * 1000  // 30 days
       : 7 * 24 * 60 * 60 * 1000;  // 7 days
 
+    // 🏢 Multi-tenant cookie strategy:
+    // The API runs on lmsapi.suraksha.lk. Browsers reject Set-Cookie for domains
+    // the response didn't originate from (e.g., academy.suraksha.lk).
+    // For subdomain/custom domain logins, the frontend must use the refresh_token
+    // from the response BODY (already returned below). We still set the cookie
+    // for default lms.suraksha.lk logins where cookie domain matches.
+    // We omit explicit domain in production so the browser scopes it to the API origin.
+    const cookieDomain = isProduction ? undefined : 'localhost';
+
     res.cookie('refresh_token', result.refresh_token, {
       httpOnly: true,        // Cannot be accessed by JavaScript
       secure: isProduction,  // HTTPS only in production
       sameSite: 'lax',       // 'lax' allows same-site cross-origin (lms→lmsapi) and top-level navigations
       maxAge: cookieMaxAge,
       path: '/',
-      domain: isProduction ? undefined : 'localhost' // Set domain for localhost
+      domain: cookieDomain,
     });
 
     // 🌐 SSO SUPPORT: Return complete response including refresh_token

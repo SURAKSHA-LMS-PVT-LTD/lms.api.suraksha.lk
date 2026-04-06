@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column,  Index, AfterLoad } from 'typeorm';
-import { InstituteType } from '../enums/institute.enums';
+import { InstituteType, InstituteTier, LoginBackgroundType, CustomDomainSslStatus } from '../enums/institute.enums';
 import { Province } from '../../user/enums/province.enum';
 import { District } from '../../user/enums/district.enum';
 import { Country } from '../../user/enums/country.enum';
@@ -12,6 +12,10 @@ import { Country } from '../../user/enums/country.enum';
 @Index('idx_institutes_code', ['code'])
 // Institute email lookup
 @Index('idx_institutes_email', ['email'])
+// Subdomain lookup (tenant resolution)
+@Index('idx_institutes_subdomain', ['subdomain'], { unique: true })
+// Custom domain lookup (tenant resolution)
+@Index('idx_institutes_custom_domain', ['customDomain'], { unique: true })
 export class InstituteEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
@@ -140,6 +144,86 @@ export class InstituteEntity {
   // Legacy field - keeping for backward compatibility
   @Column({ type: 'varchar', length: 255, nullable: true })
   imageUrl?: string;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // MULTI-TENANT / SUBDOMAIN / CUSTOM DOMAIN FIELDS
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Tier & Subdomain
+  @Column({ type: 'enum', enum: InstituteTier, default: InstituteTier.FREE, comment: 'Package tier: FREE, STARTER, PROFESSIONAL, ENTERPRISE, ISOLATED' })
+  tier: InstituteTier;
+
+  @Column({ type: 'varchar', length: 63, nullable: true, unique: true, comment: 'Subdomain slug e.g. "royalcollege" → royalcollege.suraksha.lk' })
+  subdomain?: string;
+
+  @Column({ name: 'custom_domain', type: 'varchar', length: 255, nullable: true, unique: true, comment: 'Custom domain e.g. "lms.royalcollege.lk"' })
+  customDomain?: string;
+
+  @Column({ name: 'custom_domain_verified', type: 'boolean', default: false })
+  customDomainVerified: boolean;
+
+  @Column({ name: 'custom_domain_ssl_status', type: 'enum', enum: CustomDomainSslStatus, nullable: true })
+  customDomainSslStatus?: CustomDomainSslStatus;
+
+  @Column({ name: 'custom_domain_verified_at', type: 'timestamp', nullable: true })
+  customDomainVerifiedAt?: Date;
+
+  // Login Page Customization
+  @Column({ name: 'custom_login_enabled', type: 'boolean', default: false, comment: 'Whether custom login page is active' })
+  customLoginEnabled: boolean;
+
+  @Column({ name: 'login_logo_url', type: 'varchar', length: 500, nullable: true })
+  loginLogoUrl?: string;
+
+  @Column({ name: 'login_background_type', type: 'enum', enum: LoginBackgroundType, default: LoginBackgroundType.COLOR })
+  loginBackgroundType: LoginBackgroundType;
+
+  @Column({ name: 'login_background_url', type: 'varchar', length: 500, nullable: true, comment: 'Background image or video URL' })
+  loginBackgroundUrl?: string;
+
+  @Column({ name: 'login_video_poster_url', type: 'varchar', length: 500, nullable: true, comment: 'Poster image for video background' })
+  loginVideoPosterUrl?: string;
+
+  @Column({ name: 'login_illustration_url', type: 'varchar', length: 500, nullable: true, comment: 'Replaces default login illustration' })
+  loginIllustrationUrl?: string;
+
+  @Column({ name: 'login_welcome_title', type: 'varchar', length: 200, nullable: true })
+  loginWelcomeTitle?: string;
+
+  @Column({ name: 'login_welcome_subtitle', type: 'varchar', length: 500, nullable: true })
+  loginWelcomeSubtitle?: string;
+
+  @Column({ name: 'login_footer_text', type: 'varchar', length: 200, nullable: true })
+  loginFooterText?: string;
+
+  @Column({ name: 'login_custom_css', type: 'json', nullable: true, comment: 'Custom CSS overrides: { fontFamily, borderRadius, ... }' })
+  loginCustomCss?: Record<string, string>;
+
+  @Column({ name: 'favicon_url', type: 'varchar', length: 500, nullable: true })
+  faviconUrl?: string;
+
+  @Column({ name: 'custom_app_name', type: 'varchar', length: 100, nullable: true, comment: 'Browser tab title override' })
+  customAppName?: string;
+
+  @Column({ name: 'powered_by_visible', type: 'boolean', default: true, comment: 'Show "Powered by Suraksha LMS"' })
+  poweredByVisible: boolean;
+
+  // Visibility Controls
+  @Column({ name: 'is_visible_in_app', type: 'boolean', default: true, comment: 'Show in Suraksha mobile app institute selector' })
+  isVisibleInApp: boolean;
+
+  @Column({ name: 'is_visible_in_web_selector', type: 'boolean', default: true, comment: 'Show in lms.suraksha.lk institute selector' })
+  isVisibleInWebSelector: boolean;
+
+  // SMS / Email Masking
+  @Column({ name: 'sms_sender_name', type: 'varchar', length: 11, nullable: true, comment: 'Custom SMS sender ID (max 11 chars)' })
+  smsSenderName?: string;
+
+  @Column({ name: 'email_sender_address', type: 'varchar', length: 255, nullable: true })
+  emailSenderAddress?: string;
+
+  @Column({ name: 'email_sender_name', type: 'varchar', length: 100, nullable: true })
+  emailSenderName?: string;
 
 }
 

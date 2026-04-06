@@ -28,6 +28,8 @@ import {
 } from './interfaces/jwt-payload.interface';
 import { EnhancedLoginResponse } from './interfaces/enhanced-jwt-payload.interface';
 import { EnhancedJwtService } from './services/enhanced-jwt.service';
+import { TenantService } from '../modules/tenant/tenant.service';
+import { LoginMethod } from '../modules/institute/enums/institute.enums';
 
 @Injectable()
 export class AuthService {
@@ -60,6 +62,7 @@ export class AuthService {
     private readonly cacheService: CacheService,
     private readonly cloudStorageService: CloudStorageService,
     private readonly enhancedJwtService: EnhancedJwtService,
+    private readonly tenantService: TenantService,
   ) {
     // Get salt rounds from environment variable
     this.saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS', '12'), 10);
@@ -234,7 +237,9 @@ export class AuthService {
     user: UserEntity,
     ipAddress?: string,
     userAgent?: string,
-    rememberMe: boolean = false
+    rememberMe: boolean = false,
+    loginMethod: LoginMethod = LoginMethod.SURAKSHA_WEB,
+    tenantInstituteId?: string,
   ): Promise<EnhancedLoginResponse & { refresh_token: string; expires_in: number; refresh_expires_in: number }> {
     const payload = await this.enhancedJwtService.buildPayload(user);
     
@@ -253,6 +258,10 @@ export class AuthService {
     const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';
     const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
     const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400; // 30d or 7d in seconds
+
+    // 🔥 Fire-and-forget: Record login event for billing/analytics
+    this.tenantService.recordLoginEvent(user.id, loginMethod, tenantInstituteId, ipAddress, userAgent)
+      .catch(err => this.logger.warn(`Login event recording failed: ${err.message}`));
 
     return {
       access_token,
@@ -316,6 +325,41 @@ export class AuthService {
       }));
     } catch (error) {
       this.logger.warn(`Failed to get institute assignments for user ${userId}: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get all institute IDs a user belongs to (via institute_users or student enrollments).
+   * Used by auth flow to validate tenant institute membership.
+   */
+  async getUserInstituteIds(userId: string): Promise<Array<{ instituteId: string }>> {
+    try {
+      // Check institute_users (admin/teacher roles)
+      const userAssignments = await this.instituteUserRepository
+        .createQueryBuilder('iu')
+        .select('DISTINCT iu.institute_id', 'instituteId')
+        .where('iu.user_id = :userId', { userId })
+        .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
+        .getRawMany();
+
+      // Check student enrollments (student role)
+      const studentEnrollments = await this.instituteClassStudentRepository
+        .createQueryBuilder('ics')
+        .select('DISTINCT ic.institute_id', 'instituteId')
+        .innerJoin('institute_classes', 'ic', 'ics.institute_class_id = ic.id')
+        .where('ics.student_user_id = :userId', { userId })
+        .andWhere('ics.is_active = true')
+        .getRawMany();
+
+      // Merge and deduplicate
+      const allIds = new Map<string, { instituteId: string }>();
+      for (const row of [...userAssignments, ...studentEnrollments]) {
+        allIds.set(row.instituteId, row);
+      }
+      return Array.from(allIds.values());
+    } catch (error: any) {
+      this.logger.warn(`Failed to get user institute IDs for ${userId}: ${error.message}`);
       return [];
     }
   }
