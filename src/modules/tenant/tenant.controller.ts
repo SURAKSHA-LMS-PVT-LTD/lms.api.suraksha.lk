@@ -28,6 +28,7 @@ export class TenantController {
 
   @Public()
   @Get('branding/subdomain/:subdomain')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 🔒 SECURITY: 20 req/min to prevent enumeration
   @ApiOperation({ summary: 'Get login branding for a subdomain (public)' })
   @ApiResponse({ status: 200, description: 'Institute branding returned' })
   @ApiResponse({ status: 404, description: 'Subdomain not found or not active' })
@@ -41,6 +42,7 @@ export class TenantController {
 
   @Public()
   @Get('branding/domain/:domain')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 🔒 SECURITY: 20 req/min to prevent enumeration
   @ApiOperation({ summary: 'Get login branding for a custom domain (public)' })
   @ApiResponse({ status: 200, description: 'Institute branding returned' })
   @ApiResponse({ status: 404, description: 'Custom domain not found or not verified' })

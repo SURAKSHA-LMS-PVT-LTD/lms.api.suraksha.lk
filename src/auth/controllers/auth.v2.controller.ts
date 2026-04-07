@@ -9,6 +9,9 @@ import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { RefreshTokenDto } from '../auth.controller';
 import { TenantService } from '../../modules/tenant/tenant.service';
 import { LoginMethod } from '../../modules/institute/enums/institute.enums';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { InstituteEntity } from '../../modules/institute/entities/institute.entity';
 
 @ApiTags('Authentication V2')
 @Controller('v2/auth')
@@ -16,6 +19,8 @@ export class AuthV2Controller {
   constructor(
     private readonly authService: AuthService,
     private readonly tenantService: TenantService,
+    @InjectRepository(InstituteEntity)
+    private readonly instituteRepository: Repository<InstituteEntity>,
   ) {}
 
   @Public()
@@ -88,10 +93,21 @@ export class AuthV2Controller {
 
     // 🔒 SECURITY: Validate the user actually belongs to the tenant institute
     // Prevents audit log pollution from users logging in via other institutes' subdomains
+    let preSelectedInstituteName: string | undefined;
     if (tenantInstituteId) {
       const userInstitutes = await this.authService.getUserInstituteIds(user.id);
       if (!userInstitutes?.length || !userInstitutes.some(ui => ui.instituteId === tenantInstituteId)) {
         throw new UnauthorizedException('You are not a member of this institute');
+      }
+      // Fetch institute name for the frontend pre-selection
+      try {
+        const institute = await this.instituteRepository.findOne({
+          where: { id: tenantInstituteId },
+          select: ['id', 'name'],
+        });
+        preSelectedInstituteName = institute?.name;
+      } catch {
+        // Non-critical — name is cosmetic only
       }
     }
 
@@ -129,7 +145,14 @@ export class AuthV2Controller {
 
     // 🌐 SSO SUPPORT: Return complete response including refresh_token
     // Available in both cookie (browsers) and response body (all clients: web/mobile/SSO)
-    return result;
+    // 🏢 Multi-tenant: Include preSelectedInstituteId so frontend auto-skips institute selector
+    return {
+      ...result,
+      ...(tenantInstituteId && {
+        preSelectedInstituteId: tenantInstituteId,
+        preSelectedInstituteName: preSelectedInstituteName,
+      }),
+    };
   }
 
   @Public()

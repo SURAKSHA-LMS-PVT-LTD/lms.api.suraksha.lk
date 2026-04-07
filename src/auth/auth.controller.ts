@@ -180,15 +180,14 @@ export class ChangePasswordAuthDto {
 
 export class RefreshTokenDto {
   @ApiProperty({
-    description: 'Refresh token received during login',
+    description: 'Refresh token received during login (optional if httpOnly cookie is present)',
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    required: true
+    required: false
   })
+  @IsOptional()
   @IsString({ message: 'Refresh token must be a string' })
-  @ValidateIf((o) => !o.refreshToken)
-  @IsNotEmpty({ message: 'Refresh token is required' })
-  @Transform(({ value, obj }) => value || obj.refreshToken || '')
-  refresh_token: string;
+  @Transform(({ value, obj }) => value || obj.refreshToken || undefined)
+  refresh_token?: string;
 
   // Accept camelCase variant
   @IsOptional()
