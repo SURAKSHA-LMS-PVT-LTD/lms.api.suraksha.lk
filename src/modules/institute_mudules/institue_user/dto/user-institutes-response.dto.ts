@@ -137,6 +137,15 @@ export class UserInstitutesResponseDto {
   @Expose()
   isActive: boolean;
 
+  // =================== MULTI-TENANT FIELDS ===================
+  @ApiPropertyOptional({ description: 'Subscription tier' })
+  @Expose()
+  tier?: string;
+
+  @ApiPropertyOptional({ description: 'Custom subdomain slug' })
+  @Expose()
+  subdomain?: string;
+
   @ApiPropertyOptional({ description: 'Creation timestamp' })
   @Expose()
   createdAt: Date | null;
@@ -249,6 +258,10 @@ export class UserInstitutesResponseDto {
     dto.isActive = institute.isActive;
     dto.createdAt = institute.createdAt || null;
     dto.updatedAt = institute.updatedAt || null;
+
+    // Multi-tenant
+    dto.tier = institute.tier || 'FREE';
+    dto.subdomain = institute.subdomain || undefined;
 
     // =================== INSTITUTE USER TYPE ===================
     dto.instituteUserType = entity.instituteUserType;

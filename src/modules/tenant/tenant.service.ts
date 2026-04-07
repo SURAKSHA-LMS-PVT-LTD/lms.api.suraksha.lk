@@ -552,4 +552,99 @@ export class TenantService {
     const existing = await this.instituteRepository.findOne({ where: { subdomain: subdomain.toLowerCase() } });
     return !existing;
   }
+
+  /**
+   * Get a global billing overview across all institutes.
+   * Returns summary of all institutes with tier/subdomain/billing info.
+   */
+  async getBillingOverview(year: number, month: number) {
+    const billingMonth = `${year}-${String(month).padStart(2, '0')}`;
+
+    // Get all active institutes with their tier, subdomain, domain info
+    const institutes = await this.instituteRepository.find({
+      where: { isActive: true },
+      select: ['id', 'name', 'shortName', 'tier', 'subdomain', 'customDomain', 'customDomainVerified', 'logoUrl'],
+      order: { name: 'ASC' },
+    });
+
+    // Get all billing configs
+    const billingConfigs = await this.billingConfigRepository.find({
+      where: { isActive: true },
+    });
+    const configMap = new Map(billingConfigs.map(c => [c.instituteId, c]));
+
+    // Get all billing summaries for the requested month
+    const summaries = await this.billingSummaryRepository.find({
+      where: { billingMonth },
+    });
+    const summaryMap = new Map(summaries.map(s => [s.instituteId, s]));
+
+    // Build per-institute overview
+    const instituteOverviews = institutes.map(inst => {
+      const config = configMap.get(inst.id);
+      const summary = summaryMap.get(inst.id);
+      return {
+        id: inst.id,
+        name: inst.name,
+        shortName: inst.shortName,
+        tier: inst.tier || 'FREE',
+        subdomain: inst.subdomain || null,
+        customDomain: inst.customDomain || null,
+        customDomainVerified: inst.customDomainVerified || false,
+        billing: config ? {
+          baseMonthlyFee: Number(config.baseMonthlyFee) || 0,
+          perUserMonthlyFee: Number(config.perUserMonthlyFee) || 0,
+          perSubdomainLoginFee: Number(config.perSubdomainLoginFee) || 0,
+          smsMaskingMonthlyFee: Number(config.smsMaskingMonthlyFee) || 0,
+          currency: config.currency || 'LKR',
+        } : null,
+        monthlySummary: summary ? {
+          totalLogins: summary.totalLogins || 0,
+          subdomainLogins: summary.subdomainLogins || 0,
+          customDomainLogins: summary.customDomainLogins || 0,
+          totalActiveUsers: summary.totalActiveUsers || 0,
+          baseFee: Number(summary.baseFee) || 0,
+          userFee: Number(summary.userFee) || 0,
+          loginFee: Number(summary.loginFee) || 0,
+          smsMaskingFee: Number(summary.smsMaskingFee) || 0,
+          totalFee: Number(summary.totalFee) || 0,
+          status: summary.status || 'PENDING',
+          paidAt: summary.paidAt || null,
+        } : null,
+      };
+    });
+
+    // Compute global totals
+    const tierCounts: Record<string, number> = {};
+    let totalRevenue = 0;
+    let totalPaid = 0;
+    let totalPending = 0;
+    let withSubdomain = 0;
+    let withCustomDomain = 0;
+
+    for (const inst of instituteOverviews) {
+      tierCounts[inst.tier] = (tierCounts[inst.tier] || 0) + 1;
+      if (inst.subdomain) withSubdomain++;
+      if (inst.customDomain) withCustomDomain++;
+      if (inst.monthlySummary) {
+        totalRevenue += inst.monthlySummary.totalFee;
+        if (inst.monthlySummary.status === 'PAID') totalPaid += inst.monthlySummary.totalFee;
+        else totalPending += inst.monthlySummary.totalFee;
+      }
+    }
+
+    return {
+      billingMonth,
+      summary: {
+        totalInstitutes: institutes.length,
+        tierCounts,
+        withSubdomain,
+        withCustomDomain,
+        totalRevenue,
+        totalPaid,
+        totalPending,
+      },
+      institutes: instituteOverviews,
+    };
+  }
 }

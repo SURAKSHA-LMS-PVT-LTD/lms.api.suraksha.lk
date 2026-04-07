@@ -207,6 +207,35 @@ export class InstituteResponseDto {
   @Expose()
   isActive: boolean;
 
+  // Multi-Tenant Fields
+  @ApiPropertyOptional({ description: 'Subscription tier' })
+  @Expose()
+  tier?: string;
+
+  @ApiPropertyOptional({ description: 'Custom subdomain slug' })
+  @Expose()
+  subdomain?: string;
+
+  @ApiPropertyOptional({ description: 'Custom domain name' })
+  @Expose()
+  customDomain?: string;
+
+  @ApiPropertyOptional({ description: 'Whether custom domain DNS is verified' })
+  @Expose()
+  customDomainVerified?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether custom login page is enabled' })
+  @Expose()
+  customLoginEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether institute is visible in mobile app' })
+  @Expose()
+  isVisibleInApp?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether institute is visible in web selector' })
+  @Expose()
+  isVisibleInWebSelector?: boolean;
+
   @ApiProperty({
     description: 'Creation timestamp',
     example: '2024-01-15T10:30:00.000Z'

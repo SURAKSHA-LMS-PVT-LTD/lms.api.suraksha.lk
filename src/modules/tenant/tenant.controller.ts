@@ -265,4 +265,22 @@ export class TenantController {
   async getPlanInfo(@Param('id') id: string) {
     return this.tenantService.getPlanInfo(id);
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GLOBAL BILLING OVERVIEW (SUPERADMIN ONLY)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @Get('billing-overview')
+  @ApiOperation({ summary: 'Get global billing overview across all institutes' })
+  async getBillingOverview(
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    const now = new Date();
+    const y = year ? parseInt(year, 10) : now.getFullYear();
+    const m = month ? parseInt(month, 10) : now.getMonth() + 1;
+    return this.tenantService.getBillingOverview(y, m);
+  }
 }
