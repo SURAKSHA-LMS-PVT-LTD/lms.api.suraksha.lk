@@ -459,6 +459,9 @@ export class TenantService {
 
     return {
       tier,
+      subdomain: institute.subdomain || null,
+      customDomain: institute.customDomain || null,
+      customDomainVerified: institute.customDomainVerified || false,
       features: {
         subdomain: tier !== InstituteTier.FREE,
         customDomain: tier === InstituteTier.ENTERPRISE || tier === InstituteTier.ISOLATED,

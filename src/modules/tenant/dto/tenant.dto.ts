@@ -215,6 +215,9 @@ export class SmsSettingsResponse {
 
 export class PlanInfoResponse {
   tier: InstituteTier;
+  subdomain: string | null;
+  customDomain: string | null;
+  customDomainVerified: boolean;
   features: {
     subdomain: boolean;
     customDomain: boolean;

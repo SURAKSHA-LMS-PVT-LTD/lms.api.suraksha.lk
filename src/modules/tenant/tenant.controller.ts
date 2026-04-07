@@ -198,7 +198,22 @@ export class TenantController {
     const y = parseInt(year) || new Date().getFullYear();
     const m = parseInt(month) || new Date().getMonth() + 1;
     const summary = await this.tenantService.getBillingSummary(id, y, m);
-    if (!summary) throw new NotFoundException('No billing summary for this period');
+    if (!summary) {
+      return {
+        totalLogins: 0,
+        subdomainLogins: 0,
+        customDomainLogins: 0,
+        totalActiveUsers: 0,
+        baseFee: 0,
+        userFee: 0,
+        loginFee: 0,
+        smsMaskingFee: 0,
+        totalFee: 0,
+        status: 'PENDING',
+        paidAt: null,
+        isEmpty: true,
+      };
+    }
     return summary;
   }
 
