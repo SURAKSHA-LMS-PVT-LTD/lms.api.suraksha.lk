@@ -52,6 +52,7 @@ import { UserCardManagementModule } from './modules/user-card-management/user-ca
 import { PushNotificationModule } from './modules/push-notifications/push-notification.module';
 import { GoogleAuthModule } from './modules/google-auth/google-auth.module';
 import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-access.module';
+import { InstituteDriveModule } from './modules/institute-drive/institute-drive.module';
 import { AttendanceDeviceModule } from './modules/attendance-device/attendance-device.module';
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
 import { InstituteHouseModule } from './modules/institute_mudules/institute_house/institute_house.module';
@@ -158,6 +159,7 @@ import { AppService } from './app.service';
     InstituteClassSubjectHomeworksSubmissionsModule,
     GoogleAuthModule, // Add Google OAuth 2.0 for Drive integration (legacy - online tokens)
     UserDriveAccessModule, // Secure Google Drive access with persistent encrypted tokens
+    InstituteDriveModule,   // Institute-owned Google Drive (persists across staff changes)
     PaymentModule, // Add payment module with file uploads and admin verification
     FileModule, // Add file proxy module for custom domain serving
     SmsModule, // Add SMS module with payment and verification workflow

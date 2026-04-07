@@ -1,6 +1,7 @@
-import { IsString, IsOptional, IsBoolean, IsEnum, IsObject, Matches, MaxLength, MinLength, IsUrl, IsNumber, Min } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsEnum, IsObject, Matches, MaxLength, MinLength, IsUrl, IsNumber, Min, Max, IsNotEmpty, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InstituteTier, LoginBackgroundType } from '../../institute/enums/institute.enums';
+import { TenantServiceType, TenantServicePaymentMethod, TenantServicePaymentStatus } from '../entities/tenant-billing-payment.entity';
 
 /**
  * Reserved subdomains that cannot be claimed by institutes
@@ -234,4 +235,126 @@ export class PlanInfoResponse {
     smsMaskingMonthlyFee: number;
     maxFreeSubdomainLogins: number;
   } | null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TENANT SERVICE PAYMENTS (institute → platform billing)
+// Covers: monthly invoices, SMS/Email/WhatsApp credits,
+//         storage purchases, subdomain fees, etc.
+// ═══════════════════════════════════════════════════════════════════
+
+export class SubmitTenantServicePaymentDto {
+  @ApiProperty({ enum: TenantServiceType, example: TenantServiceType.MONTHLY_INVOICE })
+  @IsEnum(TenantServiceType)
+  @IsNotEmpty()
+  serviceType: TenantServiceType;
+
+  @ApiPropertyOptional({ description: 'Human-readable description e.g. "500 SMS credits", "100 GB storage"', maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  serviceDescription?: string;
+
+  @ApiProperty({ description: 'Payment amount', minimum: 0.01, maximum: 9999999.99 })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(9999999.99)
+  paymentAmount: number;
+
+  @ApiProperty({ enum: TenantServicePaymentMethod })
+  @IsEnum(TenantServicePaymentMethod)
+  paymentMethod: TenantServicePaymentMethod;
+
+  @ApiPropertyOptional({ description: 'Bank/transaction reference number', maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  paymentReference?: string;
+
+  @ApiPropertyOptional({ description: 'URL of uploaded payment slip/receipt', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  paymentSlipUrl?: string;
+
+  @ApiProperty({ description: 'Date payment was made (YYYY-MM-DD)', example: '2026-04-07' })
+  @IsDateString()
+  paymentDate: string;
+
+  @ApiProperty({ description: 'Billing month this payment covers (YYYY-MM)', example: '2026-04' })
+  @IsString()
+  @Matches(/^\d{4}-\d{2}$/, { message: 'billingMonth must be YYYY-MM' })
+  billingMonth: string;
+
+  @ApiPropertyOptional({ description: 'Notes from the institute admin', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+
+  @ApiPropertyOptional({ description: 'Requested quantity — e.g. 500 SMS credits, 100 GB storage', minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  requestedQuantity?: number;
+
+  @ApiPropertyOptional({ description: 'Service-specific metadata (e.g. { costPerCredit: 0.50, packageId: "sms-500" })' })
+  @IsOptional()
+  @IsObject()
+  serviceMetadata?: Record<string, any>;
+}
+
+export class VerifyTenantServicePaymentDto {
+  @ApiProperty({ enum: TenantServicePaymentStatus, example: TenantServicePaymentStatus.VERIFIED })
+  @IsEnum(TenantServicePaymentStatus)
+  status: TenantServicePaymentStatus;
+
+  @ApiPropertyOptional({ description: 'Quantity to grant (may differ from requested). Required for credit-type services when verifying.', minimum: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  grantedQuantity?: number;
+
+  @ApiPropertyOptional({ description: 'Rejection reason (required when status=REJECTED)', maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  rejectionReason?: string;
+
+  @ApiPropertyOptional({ description: 'Internal admin notes', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+}
+
+export class TenantServicePaymentFilterDto {
+  @ApiPropertyOptional({ description: 'Filter by service type', enum: TenantServiceType })
+  @IsOptional()
+  @IsEnum(TenantServiceType)
+  serviceType?: TenantServiceType;
+
+  @ApiPropertyOptional({ description: 'Filter by status', enum: TenantServicePaymentStatus })
+  @IsOptional()
+  @IsEnum(TenantServicePaymentStatus)
+  status?: TenantServicePaymentStatus;
+
+  @ApiPropertyOptional({ description: 'Billing month filter (YYYY-MM)' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}$/, { message: 'billingMonth must be YYYY-MM' })
+  billingMonth?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }

@@ -283,6 +283,20 @@ export class UserDriveAccessService {
     folderId: string;
     folderPath: string;
   }> {
+    // ⚠️  LECTURE_DOCUMENT should NOT reach this path.
+    //     Lecture documents are institute-scoped assets; they must be stored in
+    //     institute-owned cloud storage via:
+    //       POST /api/structured-lectures/upload/document/signed-url  (get URL)
+    //       POST /api/structured-lectures/upload/document/verify       (publish)
+    //     Storing them in a teacher's personal Drive causes data loss when the
+    //     teacher is removed from the institute or revokes Drive access.
+    if (purpose === DriveUploadPurpose.LECTURE_DOCUMENT) {
+      throw new BadRequestException(
+        'Lecture documents must be uploaded to institute-owned cloud storage. ' +
+        'Use POST /api/structured-lectures/upload/document/signed-url instead of Google Drive.'
+      );
+    }
+
     const accessToken = await this.getValidAccessToken(userId);
 
     const folderNames: Record<DriveUploadPurpose, string> = {
@@ -292,7 +306,7 @@ export class UserDriveAccessService {
       [DriveUploadPurpose.EXAM_SUBMISSION]: 'Exam Submissions',
       [DriveUploadPurpose.PROFILE_DOCUMENT]: 'Profile Documents',
       [DriveUploadPurpose.ID_CARD_PAYMENT]: 'ID Card Payment Receipts',
-      [DriveUploadPurpose.LECTURE_DOCUMENT]: 'Lecture Documents',
+      [DriveUploadPurpose.LECTURE_DOCUMENT]: 'Lecture Documents', // deprecated — kept for enum exhaustiveness
       [DriveUploadPurpose.GENERAL]: 'General',
     };
 

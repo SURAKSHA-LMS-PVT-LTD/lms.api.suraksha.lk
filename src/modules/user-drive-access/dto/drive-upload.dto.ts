@@ -2,7 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum, IsNotEmpty, MaxLength } from 'class-validator';
 
 /**
- * Valid file purposes for uploads.
+ * Valid file purposes for personal-Drive uploads.
+ *
+ * ⚠️  LECTURE_DOCUMENT must NOT be used for institute content.
+ *     Lecture documents stored in a teacher's personal Google Drive will
+ *     disappear if that teacher is removed or revokes Drive access.
+ *     Use the institute-owned cloud-storage endpoints instead:
+ *       POST /api/structured-lectures/upload/document/signed-url
+ *       POST /api/structured-lectures/upload/document/verify
  */
 export enum DriveUploadPurpose {
   HOMEWORK_SUBMISSION = 'HOMEWORK_SUBMISSION',
@@ -11,6 +18,10 @@ export enum DriveUploadPurpose {
   EXAM_SUBMISSION = 'EXAM_SUBMISSION',
   PROFILE_DOCUMENT = 'PROFILE_DOCUMENT',
   ID_CARD_PAYMENT = 'ID_CARD_PAYMENT',
+  /**
+   * @deprecated Use POST /api/structured-lectures/upload/document/signed-url instead.
+   * Storing lecture documents in a personal Drive causes data loss when the user is removed.
+   */
   LECTURE_DOCUMENT = 'LECTURE_DOCUMENT',
   GENERAL = 'GENERAL',
 }

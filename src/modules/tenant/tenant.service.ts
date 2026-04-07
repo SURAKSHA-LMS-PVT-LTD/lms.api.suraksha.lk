@@ -1,11 +1,13 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { InstituteEntity } from '../institute/entities/institute.entity';
 import { LoginEventEntity } from './entities/login-event.entity';
 import { InstituteBillingConfigEntity } from './entities/institute-billing-config.entity';
 import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.entity';
+import { TenantServicePaymentEntity, TenantServicePaymentStatus, TenantServiceType } from './entities/tenant-billing-payment.entity';
 import { InstituteTier, LoginMethod, LoginBackgroundType } from '../institute/enums/institute.enums';
+import { InstituteSmsCredentialsEntity, SmsVerificationStage } from '../sms/entities/institute-sms-credentials.entity';
 import {
   RESERVED_SUBDOMAINS,
   SetSubdomainDto,
@@ -18,6 +20,9 @@ import {
   UpdateSmsSettingsDto,
   SmsSettingsResponse,
   PlanInfoResponse,
+  SubmitTenantServicePaymentDto,
+  VerifyTenantServicePaymentDto,
+  TenantServicePaymentFilterDto,
 } from './dto/tenant.dto';
 import { SenderMaskEntity, SenderMaskStatus } from '../sms/entities/sender-mask.entity';
 import { now } from '../../common/utils/timezone.util';
@@ -35,6 +40,10 @@ export class TenantService {
     private readonly billingConfigRepository: Repository<InstituteBillingConfigEntity>,
     @InjectRepository(MonthlyBillingSummaryEntity)
     private readonly billingSummaryRepository: Repository<MonthlyBillingSummaryEntity>,
+    @InjectRepository(TenantServicePaymentEntity)
+    private readonly servicePaymentRepository: Repository<TenantServicePaymentEntity>,
+    @InjectRepository(InstituteSmsCredentialsEntity)
+    private readonly smsCredentialsRepository: Repository<InstituteSmsCredentialsEntity>,
     @InjectRepository(SenderMaskEntity)
     private readonly senderMaskRepository: Repository<SenderMaskEntity>,
     private readonly dataSource: DataSource,
@@ -558,7 +567,7 @@ export class TenantService {
    * Returns summary of all institutes with tier/subdomain/billing info.
    */
   async getBillingOverview(year: number, month: number) {
-    const billingMonth = `${year}-${String(month).padStart(2, '0')}`;
+    const billingMonth = new Date(`${year}-${String(month).padStart(2, '0')}-01`);
 
     // Get all active institutes with their tier, subdomain, domain info
     const institutes = await this.instituteRepository.find({
@@ -646,5 +655,278 @@ export class TenantService {
       },
       institutes: instituteOverviews,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TENANT SERVICE PAYMENTS
+  // Institute admins submit payment slips for platform services.
+  // System admins verify/reject submissions.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Submit a service payment slip (institute admin action).
+   * Creates a PENDING record the system admin will then verify.
+   */
+  async submitServicePayment(
+    instituteId: string,
+    submittedByUserId: string,
+    dto: SubmitTenantServicePaymentDto,
+  ): Promise<TenantServicePaymentEntity> {
+    const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
+    if (!institute) throw new NotFoundException('Institute not found');
+
+    const payment = this.servicePaymentRepository.create({
+      instituteId,
+      serviceType: dto.serviceType,
+      serviceDescription: dto.serviceDescription,
+      billingMonth: dto.billingMonth,
+      paymentAmount: dto.paymentAmount,
+      paymentMethod: dto.paymentMethod,
+      paymentReference: dto.paymentReference,
+      paymentSlipUrl: dto.paymentSlipUrl,
+      paymentDate: dto.paymentDate,
+      notes: dto.notes,
+      requestedQuantity: dto.requestedQuantity,
+      serviceMetadata: dto.serviceMetadata,
+      status: TenantServicePaymentStatus.PENDING,
+      submittedBy: submittedByUserId,
+      submittedAt: now(),
+      createdAt: now(),
+      updatedAt: now(),
+    });
+
+    const saved = await this.servicePaymentRepository.save(payment);
+    this.logger.log(`✅ Service payment submitted: institute=${instituteId} type=${dto.serviceType} amount=${dto.paymentAmount}`);
+    return saved;
+  }
+
+  /**
+   * List service payments for a specific institute (institute admin view).
+   */
+  async getInstituteServicePayments(
+    instituteId: string,
+    filters: TenantServicePaymentFilterDto,
+  ): Promise<{ data: TenantServicePaymentEntity[]; total: number; page: number; limit: number }> {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const qb = this.servicePaymentRepository
+      .createQueryBuilder('p')
+      .where('p.institute_id = :instituteId', { instituteId })
+      .orderBy('p.created_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    if (filters.serviceType) qb.andWhere('p.service_type = :serviceType', { serviceType: filters.serviceType });
+    if (filters.status) qb.andWhere('p.status = :status', { status: filters.status });
+    if (filters.billingMonth) qb.andWhere('p.billing_month = :billingMonth', { billingMonth: filters.billingMonth });
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
+
+  /**
+   * List ALL service payments across all institutes (system admin view).
+   */
+  async getAllServicePayments(
+    filters: TenantServicePaymentFilterDto & { instituteId?: string },
+  ): Promise<{ data: TenantServicePaymentEntity[]; total: number; page: number; limit: number }> {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const qb = this.servicePaymentRepository
+      .createQueryBuilder('p')
+      .orderBy('p.created_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    if (filters.instituteId) qb.andWhere('p.institute_id = :instituteId', { instituteId: filters.instituteId });
+    if (filters.serviceType) qb.andWhere('p.service_type = :serviceType', { serviceType: filters.serviceType });
+    if (filters.status) qb.andWhere('p.status = :status', { status: filters.status });
+    if (filters.billingMonth) qb.andWhere('p.billing_month = :billingMonth', { billingMonth: filters.billingMonth });
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
+
+  /**
+   * Get a single service payment record.
+   * Institute admins can only see their own; system admins can see all.
+   */
+  async getServicePaymentById(
+    paymentId: string,
+    requestingInstituteId?: string, // undefined = system admin (no scope restriction)
+  ): Promise<TenantServicePaymentEntity> {
+    const payment = await this.servicePaymentRepository.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Service payment not found');
+    if (requestingInstituteId && payment.instituteId !== requestingInstituteId) {
+      throw new ForbiddenException('Access denied');
+    }
+    return payment;
+  }
+
+  /**
+   * Verify or reject a service payment (system admin only).
+   * Uses a DB transaction. On VERIFIED:
+   *  - SMS_CREDITS → grants credits to InstituteSmsCredentialsEntity
+   *  - Future service types can be hooked here.
+   */
+  async verifyServicePayment(
+    paymentId: string,
+    verifiedByUserId: string,
+    dto: VerifyTenantServicePaymentDto,
+  ): Promise<TenantServicePaymentEntity> {
+    return this.dataSource.transaction(async (manager) => {
+      // Pessimistic lock to prevent double-verification
+      const payment = await manager.findOne(TenantServicePaymentEntity, {
+        where: { id: paymentId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!payment) throw new NotFoundException('Service payment not found');
+
+      if (payment.status !== TenantServicePaymentStatus.PENDING) {
+        throw new BadRequestException(`Payment is already ${payment.status.toLowerCase()}`);
+      }
+
+      if (dto.status === TenantServicePaymentStatus.REJECTED && !dto.rejectionReason) {
+        throw new BadRequestException('rejectionReason is required when rejecting a payment');
+      }
+
+      // Update payment record
+      payment.status = dto.status;
+      payment.verifiedBy = verifiedByUserId;
+      payment.verifiedAt = now();
+      payment.rejectionReason = dto.rejectionReason ?? null;
+      payment.grantedQuantity = dto.grantedQuantity ?? null;
+      if (dto.notes) payment.notes = dto.notes;
+      payment.updatedAt = now();
+
+      // ═══ SERVICE-SPECIFIC PROVISIONING ON VERIFICATION ═══
+      if (dto.status === TenantServicePaymentStatus.VERIFIED) {
+        await this.provisionServiceOnVerification(manager, payment, verifiedByUserId, dto);
+      }
+
+      const saved = await manager.save(TenantServicePaymentEntity, payment);
+      this.logger.log(`🔍 Service payment ${paymentId} ${dto.status} by admin=${verifiedByUserId}`);
+      return saved;
+    });
+  }
+
+  /**
+   * Provision the purchased service after payment is verified.
+   * Each service type has its own activation logic.
+   */
+  private async provisionServiceOnVerification(
+    manager: import('typeorm').EntityManager,
+    payment: TenantServicePaymentEntity,
+    adminUserId: string,
+    dto: VerifyTenantServicePaymentDto,
+  ): Promise<void> {
+    switch (payment.serviceType) {
+      case TenantServiceType.SMS_CREDITS:
+        await this.grantSmsCredits(manager, payment, adminUserId, dto.grantedQuantity);
+        break;
+
+      case TenantServiceType.MONTHLY_INVOICE:
+        // Update billing summary status to PAID if applicable
+        await this.markBillingSummaryPaid(manager, payment);
+        break;
+
+      // Future services:
+      // case TenantServiceType.EMAIL_CREDITS:
+      // case TenantServiceType.WHATSAPP_CREDITS:
+      // case TenantServiceType.STORAGE_PURCHASE:
+      //   break;
+
+      default:
+        // No auto-provisioning for OTHER, SUBDOMAIN_FEE, CUSTOM_DOMAIN_FEE, etc.
+        this.logger.log(`No auto-provisioning for service type: ${payment.serviceType}`);
+        break;
+    }
+  }
+
+  /**
+   * Grant SMS credits to an institute's SMS credentials.
+   * Creates credentials record if none exists, otherwise adds credits.
+   */
+  private async grantSmsCredits(
+    manager: import('typeorm').EntityManager,
+    payment: TenantServicePaymentEntity,
+    adminUserId: string,
+    grantedQuantity?: number,
+  ): Promise<void> {
+    const creditsToGrant = grantedQuantity ?? payment.requestedQuantity;
+    if (!creditsToGrant || creditsToGrant <= 0) {
+      throw new BadRequestException(
+        'grantedQuantity (or requestedQuantity) must be specified for SMS credit verification',
+      );
+    }
+
+    let credentials = await manager.findOne(InstituteSmsCredentialsEntity, {
+      where: { instituteId: payment.instituteId },
+    });
+
+    if (!credentials) {
+      // Create new SMS credentials for this institute
+      const { v4: uuidv4 } = await import('uuid');
+      credentials = manager.create(InstituteSmsCredentialsEntity, {
+        id: uuidv4(),
+        instituteId: payment.instituteId,
+        currentCredits: creditsToGrant,
+        totalPurchased: creditsToGrant,
+        totalUsed: 0,
+        verificationStage: SmsVerificationStage.PRE_APPROVED,
+        isActive: true,
+        createdBy: adminUserId,
+        approvedBy: adminUserId,
+        approvedAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      });
+      await manager.save(InstituteSmsCredentialsEntity, credentials);
+    } else {
+      // Add credits to existing record
+      credentials.currentCredits += creditsToGrant;
+      credentials.totalPurchased += creditsToGrant;
+      credentials.updatedAt = now();
+      await manager.save(InstituteSmsCredentialsEntity, credentials);
+    }
+
+    // Store granted amount in payment metadata for audit
+    payment.grantedQuantity = creditsToGrant;
+    payment.serviceMetadata = {
+      ...payment.serviceMetadata,
+      creditsGranted: creditsToGrant,
+      previousBalance: (credentials.currentCredits - creditsToGrant),
+      newBalance: credentials.currentCredits,
+    };
+
+    this.logger.log(
+      `✅ SMS credits granted: institute=${payment.instituteId} credits=${creditsToGrant} newBalance=${credentials.currentCredits}`,
+    );
+  }
+
+  /**
+   * Mark the monthly billing summary as PAID when an invoice payment is verified.
+   */
+  private async markBillingSummaryPaid(
+    manager: import('typeorm').EntityManager,
+    payment: TenantServicePaymentEntity,
+  ): Promise<void> {
+    // billingMonth is YYYY-MM, construct a Date for the first of that month
+    const billingDate = new Date(`${payment.billingMonth}-01`);
+    const summary = await manager.findOne(MonthlyBillingSummaryEntity, {
+      where: { instituteId: payment.instituteId, billingMonth: billingDate },
+    });
+
+    if (summary) {
+      summary.status = 'PAID' as any; // BillingStatus.PAID
+      summary.paidAt = now();
+      summary.updatedAt = now();
+      await manager.save(MonthlyBillingSummaryEntity, summary);
+      this.logger.log(`✅ Billing summary marked PAID: institute=${payment.instituteId} month=${payment.billingMonth}`);
+    }
   }
 }

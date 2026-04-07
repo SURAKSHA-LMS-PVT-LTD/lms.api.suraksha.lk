@@ -94,6 +94,135 @@ export class StructuredLecturesController {
     }
   }
 
+  // ─── Document upload endpoints (institute-owned cloud storage) ───────────────
+  // Files go to S3/GCS, NOT to a personal Google Drive.
+  // This ensures documents persist when a teacher is removed from the institute.
+
+  @Post('upload/document/signed-url')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({
+    summary: 'Get a presigned URL to upload a lecture document directly to institute-owned cloud storage',
+    description: `
+      Generates a signed upload URL for a lecture document.
+      Files are stored in institute-owned cloud storage (S3/GCS), NOT in a personal Google Drive.
+      
+      **Why this matters:** Documents stored in a teacher's personal Google Drive disappear
+      when that teacher is removed from the institute. Cloud storage persists independently.
+      
+      Upload flow:
+      1. Call this endpoint → receive uploadUrl + relativePath
+      2. PUT the file to uploadUrl with Content-Type header
+      3. Call POST /upload/document/verify with relativePath → receive permanent publicUrl
+      4. Save publicUrl in documentUrls when creating/updating the lecture
+    `
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['fileName', 'contentType', 'fileSize'],
+      properties: {
+        fileName: { type: 'string', example: 'chapter-3-notes.pdf' },
+        contentType: { type: 'string', example: 'application/pdf' },
+        fileSize: { type: 'number', description: 'File size in bytes', example: 2097152 },
+      }
+    }
+  })
+  async getLectureDocumentSignedUrl(
+    @Body('fileName') fileName: string,
+    @Body('contentType') contentType: string,
+    @Body('fileSize') fileSize: number,
+  ) {
+    try {
+      if (!fileName || !contentType || fileSize === undefined || fileSize === null) {
+        throw new HttpException(
+          { success: false, message: 'fileName, contentType, and fileSize are required' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      const fileSizeNum = Number(fileSize);
+      if (isNaN(fileSizeNum) || fileSizeNum <= 0) {
+        throw new HttpException(
+          { success: false, message: 'fileSize must be a positive number' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      // Max 50 MB for lecture documents
+      const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024;
+      if (fileSizeNum > MAX_DOCUMENT_SIZE) {
+        throw new HttpException(
+          { success: false, message: 'Document exceeds maximum allowed size of 50 MB' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const result = await this.cloudStorageService.generateSignedUploadUrl(
+        'structured-lecture-documents',
+        fileName,
+        contentType,
+        600, // 10 min expiry
+        MAX_DOCUMENT_SIZE
+      );
+
+      const publicUrl = this.cloudStorageService.getFullUrl(result.relativePath);
+
+      return {
+        success: true,
+        message: 'Signed URL generated (10 min expiry). Upload file then call /upload/document/verify.',
+        uploadUrl: result.uploadUrl,
+        publicUrl,
+        relativePath: result.relativePath,
+        expiresAt: result.expiresAt,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to generate signed URL' },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Post('upload/document/verify')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Verify and publish an uploaded lecture document, returns the permanent public URL' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['relativePath'],
+      properties: { relativePath: { type: 'string', example: 'structured-lecture-documents/doc-uuid.pdf' } }
+    }
+  })
+  async verifyLectureDocumentUpload(@Body('relativePath') relativePath: string) {
+    try {
+      if (!relativePath) {
+        throw new HttpException({ success: false, message: 'relativePath is required' }, HttpStatus.BAD_REQUEST);
+      }
+      // Security: only allow structured-lecture-documents folder
+      if (!relativePath.startsWith('structured-lecture-documents/')) {
+        throw new HttpException({ success: false, message: 'Invalid path: must be under structured-lecture-documents/' }, HttpStatus.BAD_REQUEST);
+      }
+      const publicUrl = await this.cloudStorageService.verifyAndMakePublic(relativePath);
+      return { success: true, publicUrl };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to verify document upload' },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   // ─── CRUD endpoints ──────────────────────────────────────────────────────────
 
   @Post()

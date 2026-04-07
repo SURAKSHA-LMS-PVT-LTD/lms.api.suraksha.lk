@@ -1338,6 +1338,9 @@ export class CloudStorageService implements OnModuleInit {
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 5) * 1024 * 1024,
+      'service-payment-receipts': this.configService.get<number>('MAX_SERVICE_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'structured-lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 5) * 1024 * 1024,
+      'structured-lecture-documents': this.configService.get<number>('MAX_LECTURE_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
@@ -1450,6 +1453,24 @@ export class CloudStorageService implements OnModuleInit {
         'image/jpg',
         'image/png',
         'image/webp',
+      ],
+      'service-payment-receipts': [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'application/pdf'
+      ],
+      'structured-lecture-covers': [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+      ],
+      'structured-lecture-documents': [
+        'application/pdf',
+        'image/jpeg',
+        'image/jpg',
+        'image/png'
       ],
     };
 
