@@ -509,6 +509,7 @@ export class InstitueClassController {
           studentUserId: student.studentUserId,
           enrollmentDate: student.enrollmentDate,
           enrollmentMethod: student.enrollmentMethod,
+          studentType: student.studentType || 'normal',
           isVerified: student.isVerified,
           isActive: student.isActive
         })),

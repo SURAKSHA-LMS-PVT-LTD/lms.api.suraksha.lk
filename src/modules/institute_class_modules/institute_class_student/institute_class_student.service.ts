@@ -654,7 +654,8 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         'ics.enrollment_method as enrollmentMethod',
         'ics.is_verified as isVerified',
         'ics.is_active as isActive',
-        'ics.created_at as enrollmentDate'
+        'ics.created_at as enrollmentDate',
+        'ics.student_type as studentType'
       ])
       .where('ics.institute_id = :instituteId', { instituteId })
       .andWhere('ics.institute_class_id = :classId', { classId })
@@ -670,6 +671,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       isVerified: row.isVerified,
       isActive: row.isActive,
       enrollmentDate: row.enrollmentDate,
+      studentType: row.studentType || 'normal',
       id: row.id,
       name: `${row.firstName} ${row.lastName || ''}`.trim(),
       nameWithInitials: row.nameWithInitials || undefined,
