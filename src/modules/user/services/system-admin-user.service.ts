@@ -360,9 +360,10 @@ export class SystemAdminUserService {
     }
 
     return {
-      totalRequested: dto.families.length,
+      success: true,
+      total: dto.families.length,
       successCount,
-      failedCount,
+      failureCount: failedCount,
       results
     };
   }

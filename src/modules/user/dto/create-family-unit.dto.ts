@@ -722,14 +722,17 @@ export class CreateFamilyUnitResponseDto {
  * 📊 Bulk Family Creation Response
  */
 export class BulkCreateFamilyResponseDto {
+  @ApiProperty({ description: 'Operation success flag' })
+  success: boolean;
+
   @ApiProperty({ description: 'Total families requested' })
-  totalRequested: number;
+  total: number;
 
   @ApiProperty({ description: 'Successfully created families' })
   successCount: number;
 
   @ApiProperty({ description: 'Failed family creations' })
-  failedCount: number;
+  failureCount: number;
 
   @ApiProperty({ description: 'Individual family results', type: [CreateFamilyUnitResponseDto] })
   results: (CreateFamilyUnitResponseDto | { success: false; error: string; index: number })[];

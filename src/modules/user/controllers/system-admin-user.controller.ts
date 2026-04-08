@@ -587,7 +587,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
     @Body() dto: AssignProfileImageByUserIdDto,
     @Request() req
   ): Promise<AssignProfileImageResponseDto> {
-    return this.systemAdminUserService.assignProfileImageByUserId(dto, req.user.id);
+    return this.systemAdminUserService.assignProfileImageByUserId(dto, req.user.userId);
   }
 
   /**
@@ -666,7 +666,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
   ): Promise<ApproveUserImageResponseDto> {
     return this.systemAdminUserService.approveUserImage(
       { ...dto, userId },
-      req.user.id
+      req.user.userId
     );
   }
 
@@ -695,7 +695,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
   ): Promise<RejectUserImageResponseDto> {
     return this.systemAdminUserService.rejectUserImage(
       { ...dto, userId },
-      req.user.id
+      req.user.userId
     );
   }
 
@@ -761,7 +761,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
     @Body() dto: { cardId: string; cardExpiryDate?: string },
     @Request() req
   ) {
-    return this.systemAdminUserService.assignNormalCard(userId, dto, req.user.id);
+    return this.systemAdminUserService.assignNormalCard(userId, dto, req.user.userId);
   }
 
   /**
@@ -790,7 +790,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
     @Body() dto: { cardType: 'normal' | 'rfid'; status: any },
     @Request() req
   ) {
-    return this.systemAdminUserService.updateUserCardStatus(userId, dto, req.user.id);
+    return this.systemAdminUserService.updateUserCardStatus(userId, dto, req.user.userId);
   }
 
   /**
