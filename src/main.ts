@@ -120,6 +120,14 @@ async function bootstrap() {
     // 🏢 Multi-tenant: Wildcard pattern for *.suraksha.lk subdomains
     const subdomainPattern = /^https:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.suraksha\.lk$/;
 
+    // 🌐 Wildcard patterns for known frontend hosting domains
+    const frontendHostingPatterns = [
+      /^https:\/\/[a-z0-9][a-z0-9-]*\.lovableproject\.com$/,
+      /^https:\/\/[a-z0-9][a-z0-9-]*\.gptengineer\.app$/,
+      /^https:\/\/[a-z0-9][a-z0-9-]*\.vercel\.app$/,
+      /^https:\/\/[a-z0-9][a-z0-9-]*\.netlify\.app$/,
+    ];
+
     // 🏢 Multi-tenant: Custom domains — dynamically validated against DB
     // Static seed from env for faster startup; DB is checked as fallback
     const customDomainOriginsStatic = new Set(
@@ -178,6 +186,11 @@ async function bootstrap() {
 
         // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
         if (subdomainPattern.test(origin)) {
+          return callback(null, true);
+        }
+
+        // 🌐 Check frontend hosting platform wildcard patterns
+        if (frontendHostingPatterns.some(pattern => pattern.test(origin))) {
           return callback(null, true);
         }
 
