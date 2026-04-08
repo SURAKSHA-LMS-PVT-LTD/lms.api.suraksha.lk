@@ -903,4 +903,24 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       throw new BadRequestException('Failed to retrieve class parents');
     }
   }
+
+  async updateClassStudentType(
+    instituteId: string,
+    classId: string,
+    studentUserId: string,
+    studentType: 'normal' | 'paid' | 'free_card',
+  ): Promise<{ message: string; studentType: string }> {
+    const record = await this.classStudentRepository.findOne({
+      where: { instituteId, classId, studentUserId },
+    });
+    if (!record) {
+      throw new NotFoundException('Student is not enrolled in this class');
+    }
+    await this.classStudentRepository.update(
+      { instituteId, classId, studentUserId },
+      { studentType },
+    );
+    await this.userManagementService.refreshUserCache(studentUserId);
+    return { message: 'Class student type updated', studentType };
+  }
 }

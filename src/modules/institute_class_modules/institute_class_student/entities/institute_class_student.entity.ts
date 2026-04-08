@@ -69,5 +69,8 @@ export class InstituteClassStudentEntity {
 
   @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
+
+  @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card'], default: 'normal', comment: 'Enrollment type at class level: normal=default, paid=confirmed paid, free_card=exempt from fee' })
+  studentType: 'normal' | 'paid' | 'free_card';
 }
 

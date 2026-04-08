@@ -1326,6 +1326,7 @@ export class InstitueUserService {
         'iu.image_verification_status',  // Image verification status
         'iu.created_at',
         'ics.isVerified as student_is_verified',
+        'ics.student_type as student_type',
         's.father_id as father_id',
         's.mother_id as mother_id',
         's.guardian_id as guardian_id',
@@ -1517,6 +1518,7 @@ export class InstitueUserService {
         'iu.institute_user_image_url',  // Institute-specific image
         'iu.image_verification_status',  // Image verification status
         'iu.created_at',
+        'icss.student_type as student_type',
         's.father_id as father_id',
         's.mother_id as mother_id',
         's.guardian_id as guardian_id',
@@ -1772,7 +1774,8 @@ export class InstitueUserService {
           emergencyContact: raw.emergency_contact || null,
           medicalConditions: raw.medical_conditions || null,
           allergies: raw.allergies || null,
-          studentId: raw.student_id || null
+          studentId: raw.student_id || null,
+          studentType: raw.student_type || 'normal',
         };
         
         const dto = new SecureStudentResponseDto(raw, studentData, raw.userIdByInstitute, parentDetails, instituteUserData, maskSensitiveData);

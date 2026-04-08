@@ -978,9 +978,28 @@ export class InstituteClassSubjectStudentsService {
         throw new ConflictException('You are already enrolled in this subject');
       }
 
-      // Determine verification status based on fee requirement
+      // Determine verification status based on fee requirement AND class-level student type
       const paymentRequired = classSubject.enrollmentFeeRequired && classSubject.enrollmentFeeAmount > 0;
-      const verificationStatus = paymentRequired ? 'pending_payment' : 'pending';
+
+      // ✅ CLASS-LEVEL FREE CARD CHECK:
+      // If admin/teacher has pre-approved this student as 'free_card' at the class level,
+      // skip payment slip and verification — enroll immediately as free_card verified.
+      const isClassFreeCard = classEnrollment.studentType === 'free_card';
+
+      let verificationStatus: string;
+      let enrollmentStudentType: 'normal' | 'paid' | 'free_card';
+
+      if (isClassFreeCard) {
+        // Admin pre-approved at class level — enroll as verified immediately so student can attend
+        verificationStatus = 'verified';
+        enrollmentStudentType = 'free_card';
+      } else if (paymentRequired) {
+        verificationStatus = 'pending_payment';
+        enrollmentStudentType = 'normal';
+      } else {
+        verificationStatus = 'pending';
+        enrollmentStudentType = 'normal';
+      }
 
       // Create enrollment with appropriate verification status
       const timestamp = getCurrentSriLankaISO();
@@ -993,15 +1012,16 @@ export class InstituteClassSubjectStudentsService {
         enrolledBy: null, // Self-enrolled
         isActive: true,
         verificationStatus: verificationStatus as any,
+        studentType: enrollmentStudentType,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
 
       const savedEnrollment = await this.studentRepository.save(enrollment);
 
-      // Auto-create enrollment fee payment record if payment is required
+      // Auto-create enrollment fee payment record if payment is required (not for free card students)
       let enrollmentPaymentId: string | undefined;
-      if (paymentRequired) {
+      if (paymentRequired && !isClassFreeCard) {
         try {
           const feeAmount = Number(classSubject.enrollmentFeeAmount);
           const dueDate = new Date();
@@ -1039,9 +1059,14 @@ export class InstituteClassSubjectStudentsService {
       // Refresh student cache after self-enrollment
       await this.userManagementService.refreshUserCache(studentId);
 
-      const message = paymentRequired
-        ? `Enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Please upload your payment slip (Rs. ${classSubject.enrollmentFeeAmount}).`
-        : `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Awaiting verification by teacher or admin.`;
+      let message: string;
+      if (isClassFreeCard) {
+        message = `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. You are enrolled as a free card student — no payment required.`;
+      } else if (paymentRequired) {
+        message = `Enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Please upload your payment slip (Rs. ${classSubject.enrollmentFeeAmount}).`;
+      } else {
+        message = `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Awaiting verification by teacher or admin.`;
+      }
 
       return {
         message,
@@ -1053,9 +1078,10 @@ export class InstituteClassSubjectStudentsService {
         enrollmentMethod: 'self_enrolled',
         verificationStatus,
         enrolledAt: new Date(),
-        paymentRequired,
-        feeAmount: paymentRequired ? Number(classSubject.enrollmentFeeAmount) : undefined,
+        paymentRequired: paymentRequired && !isClassFreeCard,
+        feeAmount: (paymentRequired && !isClassFreeCard) ? Number(classSubject.enrollmentFeeAmount) : undefined,
         enrollmentPaymentId,
+        studentType: enrollmentStudentType,
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof ForbiddenException) {
@@ -1089,19 +1115,29 @@ export class InstituteClassSubjectStudentsService {
         throw new BadRequestException('Free card claim is only allowed for enrollments awaiting payment');
       }
 
+      // Check if admin already pre-approved student as free_card at class level
+      const classEnrollment = await this.classStudentRepository.findOne({
+        where: { instituteId, classId, studentUserId: studentId },
+      });
+      const isClassFreeCard = classEnrollment?.studentType === 'free_card';
+
       const timestamp = getCurrentSriLankaISO();
+      // If pre-approved at class level, set verified directly so they can attend
+      const newVerificationStatus = isClassFreeCard ? 'verified' : 'enrolled_free_card';
       await this.studentRepository.update(
         { instituteId, classId, subjectId, studentId },
         {
           studentType: 'free_card',
-          verificationStatus: 'enrolled_free_card',
+          verificationStatus: newVerificationStatus as any,
           updatedAt: timestamp,
         }
       );
 
       return {
-        message: 'Free card claim accepted. You are enrolled without payment.',
-        verificationStatus: 'enrolled_free_card',
+        message: isClassFreeCard
+          ? 'Free card verified. You are now fully enrolled and can attend classes.'
+          : 'Free card claim accepted. You are enrolled without payment.',
+        verificationStatus: newVerificationStatus,
         studentType: 'free_card',
       };
     } catch (error) {

@@ -46,6 +46,8 @@ interface StudentLikeData {
   medicalConditions?: string;
   medical_conditions?: string;
   allergies?: string;
+  studentType?: 'normal' | 'paid' | 'free_card';
+  student_type?: 'normal' | 'paid' | 'free_card';
 }
 
 interface InstituteUserLikeData {
@@ -274,6 +276,9 @@ export class SecureStudentResponseDto extends SecureUserResponseDto {
   @ApiProperty({ example: 'BC2024001234', description: 'Birth certificate number or student ID' })
   studentId?: string;
 
+  @ApiProperty({ example: 'free_card', enum: ['normal', 'paid', 'free_card'], description: 'Enrollment type at class level' })
+  studentType?: 'normal' | 'paid' | 'free_card';
+
   // Keep legacy fields for backward compatibility
   @ApiProperty({ example: '456', description: 'Father user ID (legacy)' })
   fatherId?: string;
@@ -298,6 +303,7 @@ export class SecureStudentResponseDto extends SecureUserResponseDto {
       this.medicalConditions = student.medicalConditions || (student as any).medical_conditions || undefined;
       this.allergies = student.allergies || (student as any).allergies || undefined;
       this.studentId = student.studentId || (student as any).student_id || undefined;
+      this.studentType = (student as any).studentType || (student as any).student_type || 'normal';
     }
 
     // ✅ Full parent details with unmasked emails for admin access and null safety
