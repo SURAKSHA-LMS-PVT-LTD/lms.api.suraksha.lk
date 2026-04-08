@@ -8,11 +8,13 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AccountDeletionService } from './account-deletion.service';
 import { RequestAccountDeletionDto, AccountDeletionResponseDto, DeletionStatusResponseDto } from './dto/account-deletion.dto';
 import { JwtRequest } from '../../common/interfaces/jwt-request.interface';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 /**
  * Account Deletion Controller
@@ -27,6 +29,7 @@ import { JwtRequest } from '../../common/interfaces/jwt-request.interface';
  */
 @ApiTags('Account Deletion')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('account')
 export class AccountDeletionController {
   constructor(private readonly accountDeletionService: AccountDeletionService) {}

@@ -97,8 +97,11 @@ export class FlexibleAccessGuard implements CanActivate {
     // ============================================
     // SPECIAL CASE: API Key Authentication
     // ============================================
-    // If authenticated via API key, skip all role checks
-    if (user.isApiKeyAuth || user.authType === 'API_KEY') {
+    // API key users are allowed through ONLY when the endpoint explicitly
+    // uses ApiKeyOrJwtGuard (which sets isApiKeyAuth=true).
+    // This ensures API keys work on intentionally-exposed endpoints
+    // but cannot bypass guards on JWT-only endpoints.
+    if ((user.isApiKeyAuth || user.authType === 'API_KEY') && user.u === -1) {
       return true;
     }
 
@@ -129,13 +132,14 @@ export class FlexibleAccessGuard implements CanActivate {
     // ============================================
     if (config.allowSelf) {
       const params = request.params || {};
-      const userId = user.s; // Current user ID from JWT
+      const userId = String(user.s); // Current user ID from JWT
       
       // Check if accessing own resource by id, userId, or studentId parameter
+      // Use String() to ensure type-safe comparison (params are always strings)
       const isSelf = 
-        params.id === userId || 
-        params.userId === userId || 
-        params.studentId === userId;
+        (params.id && String(params.id) === userId) || 
+        (params.userId && String(params.userId) === userId) || 
+        (params.studentId && String(params.studentId) === userId);
       
       accessChecks.push({
         check: isSelf || false,
@@ -177,9 +181,10 @@ export class FlexibleAccessGuard implements CanActivate {
     const body = request.body || {};
     const url = request.url || '';
     
-    // 🔍 For resource-specific endpoints (PATCH/PUT/DELETE/GET with :id), check if user has the role in ANY institute
+    // 🔍 For resource-specific endpoints (GET/PATCH/DELETE with :id but no :instituteId), check if user has the role in ANY institute
     // The service layer will validate access to the specific institute after fetching the resource
-    const isResourceEndpoint = params.id && !params.instituteId && !body.instituteId;
+    const isResourceEndpoint = params.id && !params.instituteId && !body.instituteId && 
+      ['GET', 'PATCH', 'DELETE'].includes(request.method);
     const instituteId = isResourceEndpoint ? null : (params.instituteId || body.instituteId);
 
     // ============================================
@@ -244,6 +249,9 @@ export class FlexibleAccessGuard implements CanActivate {
               (entry) =>
                 entry.c?.some(([cId, subjectBitmask]) => {
                   const subjectNum = parseInt(subjectId, 10);
+                  if (isNaN(subjectNum) || subjectNum < 1 || subjectNum > 30) {
+                    return false; // Reject invalid/non-numeric subject IDs
+                  }
                   return (subjectBitmask & (1 << (subjectNum - 1))) !== 0;
                 }),
             );
@@ -286,14 +294,13 @@ export class FlexibleAccessGuard implements CanActivate {
         }
         
         // ✅ SPECIAL: If student config allows self-only access (for attendance endpoints)
-        // Check if studentId in query/params matches current user
+        // Check if studentId in params/body matches current user
         if (hasStudentAccess && (studentConfig as any).allowSelfOnly) {
-          const query = request.query || {};
-          const studentId = params.studentId || body.studentId || query.studentId;
-          const currentUserId = user.s;
+          const studentId = params.studentId || body.studentId;
+          const currentUserId = String(user.s);
           
           // Student can only access if filtering by their own ID
-          hasStudentAccess = studentId === currentUserId;
+          hasStudentAccess = !!studentId && String(studentId) === currentUserId;
         }
         
         // Validate class if required
@@ -338,10 +345,10 @@ export class FlexibleAccessGuard implements CanActivate {
       
       let hasParentAccess = false;
       
-      // Extract target userId/studentId from various sources
-      const query = request.query || {};
+      // Extract target userId/studentId from route params and body only (NOT query params)
+      // Query params excluded to prevent HTTP parameter pollution attacks
       const targetUserId = params.id || params.userId || params.studentUserId || params.studentId || 
-                          body.userId || body.studentId || query.userId || query.studentId;
+                          body.userId || body.studentId;
       
       // ✅ Parent can access if:
       // 1. They have children in JWT (c array exists and has entries)

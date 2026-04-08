@@ -159,13 +159,13 @@ export class InstituteClassSubjectStudentsService {
     const enrollment = await this.studentRepository
       .createQueryBuilder('enrollment')
       .select([
-        'enrollment.id',
         'enrollment.instituteId',
         'enrollment.classId',
         'enrollment.subjectId',
         'enrollment.studentId',
-        'enrollment.enrollmentDate',
-        'enrollment.isActive'
+        'enrollment.createdAt',
+        'enrollment.isActive',
+        'enrollment.studentType'
       ])
       .leftJoin('enrollment.institute', 'institute')
       .addSelect([
@@ -305,13 +305,15 @@ export class InstituteClassSubjectStudentsService {
     const enrollments = await this.studentRepository
       .createQueryBuilder('enrollment')
       .select([
-        'enrollment.id',
         'enrollment.instituteId',
         'enrollment.classId',
         'enrollment.subjectId',
         'enrollment.studentId',
-        'enrollment.enrollmentDate',
-        'enrollment.isActive'
+        'enrollment.createdAt',
+        'enrollment.isActive',
+        'enrollment.studentType',
+        'enrollment.enrollmentMethod',
+        'enrollment.verificationStatus'
       ])
       .leftJoin('enrollment.student', 'student')
       .addSelect([
@@ -320,6 +322,7 @@ export class InstituteClassSubjectStudentsService {
         'student.lastName',
         'student.nameWithInitials',
         'student.email',
+        'student.phoneNumber',
         'student.imageUrl'
       ])
       .where('enrollment.instituteId = :instituteId', { instituteId })
@@ -338,19 +341,18 @@ export class InstituteClassSubjectStudentsService {
     const enrollments = await this.studentRepository
       .createQueryBuilder('enrollment')
       .select([
-        'enrollment.id',
         'enrollment.instituteId',
         'enrollment.classId',
         'enrollment.subjectId',
         'enrollment.studentId',
-        'enrollment.enrollmentDate',
+        'enrollment.createdAt',
+        'enrollment.updatedAt',
         'enrollment.isActive',
+        'enrollment.studentType',
         'enrollment.enrollmentMethod',
         'enrollment.verificationStatus',
         'enrollment.verifiedAt',
-        'enrollment.rejectionReason',
-        'enrollment.createdAt',
-        'enrollment.updatedAt'
+        'enrollment.rejectionReason'
       ])
       .leftJoin('enrollment.student', 'student')
       .addSelect([
@@ -373,13 +375,13 @@ export class InstituteClassSubjectStudentsService {
     return await this.studentRepository
       .createQueryBuilder('enrollment')
       .select([
-        'enrollment.id',
         'enrollment.instituteId',
         'enrollment.classId',
         'enrollment.subjectId',
         'enrollment.studentId',
-        'enrollment.enrollmentDate',
-        'enrollment.isActive'
+        'enrollment.createdAt',
+        'enrollment.isActive',
+        'enrollment.studentType'
       ])
       .leftJoin('enrollment.institute', 'institute')
       .addSelect([
