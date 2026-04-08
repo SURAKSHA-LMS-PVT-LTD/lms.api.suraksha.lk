@@ -112,6 +112,22 @@ export class InstituteClassStudentController {
     }, req.user);
   }
 
+  @Patch('student-type/:studentUserId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true } })
+  @ApiOperation({ summary: 'Update class-level student type (Admin/Teacher only)' })
+  @ApiResponse({ status: 200, description: 'Student type updated at class level' })
+  async updateClassStudentType(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' },
+  ) {
+    return this.instituteClassStudentService.updateClassStudentType(
+      instituteId, classId, studentUserId, body.studentType,
+    );
+  }
+
   @Patch(':studentUserId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
@@ -428,20 +444,5 @@ export class StudentClassesController {
     // Use ultra-optimized method with advanced filtering (includes pending enrollments by default)
     return await this.instituteClassStudentService.getStudentEnrolledClassesWithFilters(studentUserId, filters);
   }
-
-  @Patch('student-type/:studentUserId')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true } })
-  @ApiOperation({ summary: 'Update class-level student type (Admin/Teacher only)' })
-  @ApiResponse({ status: 200, description: 'Student type updated at class level' })
-  async updateClassStudentType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' },
-  ) {
-    return this.instituteClassStudentService.updateClassStudentType(
-      instituteId, classId, studentUserId, body.studentType,
-    );
-  }
 }
+
