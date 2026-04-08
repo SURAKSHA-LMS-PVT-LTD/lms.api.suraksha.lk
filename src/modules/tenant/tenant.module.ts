@@ -9,9 +9,11 @@ import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.
 import { TenantServicePaymentEntity } from './entities/tenant-billing-payment.entity';
 import { InstituteSmsCredentialsEntity } from '../sms/entities/institute-sms-credentials.entity';
 import { SenderMaskEntity } from '../sms/entities/sender-mask.entity';
+import { NotificationCreditsModule } from '../notification-credits/notification-credits.module';
 
 @Module({
   imports: [
+    NotificationCreditsModule,
     TypeOrmModule.forFeature([
       InstituteEntity,
       LoginEventEntity,

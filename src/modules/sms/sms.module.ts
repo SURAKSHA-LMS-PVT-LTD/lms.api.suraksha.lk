@@ -33,11 +33,15 @@ import { SmsController } from './controllers/sms.controller';
 import { CommonModule } from '../../common/common.module';
 import { CacheModule } from '../../common/modules/cache.module';
 
+// Centralized credits
+import { NotificationCreditsModule } from '../notification-credits/notification-credits.module';
+
 @Module({
   imports: [
-    CommonModule, // Already provides: CloudStorageService, EnhancedEmailService, AsyncEmailService, NotificationLoggingService, DynamoDbService
-    CacheModule, // Import cache services and guards (includes CacheValidationGuard)
+    CommonModule,
+    CacheModule,
     ConfigModule,
+    NotificationCreditsModule,
     TypeOrmModule.forFeature([
       // SMS entities
       InstituteSmsCredentialsEntity,
@@ -60,7 +64,6 @@ import { CacheModule } from '../../common/modules/cache.module';
   providers: [
     SmsService,
     SmsProviderService,
-    // Services not exported by CommonModule but needed by SmsService
     NotificationLoggingService,
     EnhancedEmailService,
     AsyncEmailService,

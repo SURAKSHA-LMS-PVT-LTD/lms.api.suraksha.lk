@@ -11,7 +11,6 @@ import {
   Request,
   UseGuards,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -25,6 +24,9 @@ import {
 } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../user/enums/user-type.enum';
 import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
 import { InstituteDriveService } from './services/institute-drive.service';
 import {
@@ -75,16 +77,15 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check whether the institute has a Google Drive connected' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiResponse({ status: 200, type: InstituteDriveStatusDto })
   async getStatus(
     @Param('instituteId') instituteId: string,
-    @Request() req: JwtRequest,
   ): Promise<InstituteDriveStatusDto> {
-    this.requireInstituteAccess(req, instituteId);
     return this.driveService.getConnectionStatus(instituteId);
   }
 
@@ -93,7 +94,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/connect')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Generate the Google OAuth consent URL to connect the institute Drive',
@@ -121,7 +123,6 @@ export class InstituteDriveController {
     @Request() req: JwtRequest,
     @Query('returnUrl') returnUrl?: string,
   ): Promise<InstituteDriveAuthUrlDto> {
-    this.requireAdminAccess(req, instituteId);
     const adminUserId = JwtRequestHelper.getUserId(req.user);
     const safeReturn =
       returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//')
@@ -207,16 +208,15 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Post(':instituteId/disconnect')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Disconnect the institute Google Drive (admin only)' })
   @ApiParam({ name: 'instituteId' })
   @ApiResponse({ status: 200 })
   async disconnect(
     @Param('instituteId') instituteId: string,
-    @Request() req: JwtRequest,
   ): Promise<{ success: boolean; message: string }> {
-    this.requireAdminAccess(req, instituteId);
     return this.driveService.disconnect(instituteId);
   }
 
@@ -225,7 +225,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get a short-lived Google access token for direct upload to the institute Drive',
@@ -248,9 +249,7 @@ export class InstituteDriveController {
   @ApiResponse({ status: 200, type: InstituteDriveAccessTokenDto })
   async getToken(
     @Param('instituteId') instituteId: string,
-    @Request() req: JwtRequest,
   ): Promise<InstituteDriveAccessTokenDto> {
-    this.requireTeacherOrAdminAccess(req, instituteId);
     return this.driveService.getAccessToken(instituteId);
   }
 
@@ -259,7 +258,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/folder')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get the organised Drive folder ID for uploading (creates folder hierarchy if needed)',
@@ -295,8 +295,6 @@ export class InstituteDriveController {
     @Query('subjectName') subjectName: string,
     @Req() req: JwtRequest,
   ): Promise<InstituteFolderResponseDto> {
-    this.requireTeacherOrAdminAccess(req, instituteId);
-
     if (!purpose) throw new BadRequestException('purpose query parameter is required');
 
     // Fetch institute name for the root folder label
@@ -319,7 +317,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Post(':instituteId/files/register')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Register a file after direct upload to the institute Google Drive',
@@ -341,7 +340,6 @@ export class InstituteDriveController {
     @Body() dto: RegisterInstituteDriveFileDto,
     @Request() req: JwtRequest,
   ): Promise<InstituteDriveFileResponseDto> {
-    this.requireTeacherOrAdminAccess(req, instituteId);
     const userId = JwtRequestHelper.getUserId(req.user);
 
     const file = await this.driveService.registerUploadedFile(
@@ -366,7 +364,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/files')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List files stored on the institute Drive' })
   @ApiParam({ name: 'instituteId' })
@@ -374,9 +373,7 @@ export class InstituteDriveController {
   async listFiles(
     @Param('instituteId') instituteId: string,
     @Query() query: InstituteDriveFileQueryDto,
-    @Request() req: JwtRequest,
   ): Promise<InstituteDriveFileListResponseDto> {
-    this.requireInstituteAccess(req, instituteId);
 
     const limit = query.limit || 20;
     const { data, total } = await this.driveService.listFiles(instituteId, {
@@ -403,7 +400,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Delete(':instituteId/files/:fileId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a file from the institute Drive (admin or uploader)' })
   @ApiParam({ name: 'instituteId' })
@@ -412,9 +410,7 @@ export class InstituteDriveController {
   async deleteFile(
     @Param('instituteId') instituteId: string,
     @Param('fileId') fileId: string,
-    @Request() req: JwtRequest,
   ): Promise<{ success: boolean; message: string }> {
-    this.requireTeacherOrAdminAccess(req, instituteId);
     return this.driveService.deleteFile(instituteId, fileId);
   }
 
@@ -423,15 +419,14 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/storage')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get Google Drive storage quota for the institute account' })
   @ApiParam({ name: 'instituteId' })
   async getStorage(
     @Param('instituteId') instituteId: string,
-    @Request() req: JwtRequest,
   ): Promise<{ limit: number | null; usage: number; usageInDrive: number; usageInDriveTrash: number }> {
-    this.requireTeacherOrAdminAccess(req, instituteId);
     return this.driveService.getStorageInfo(instituteId);
   }
 
@@ -440,7 +435,8 @@ export class InstituteDriveController {
   // =========================================================================
 
   @Get(':instituteId/folders')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List top-level Drive folders inside the institute root' })
   @ApiParam({ name: 'instituteId' })
@@ -448,15 +444,14 @@ export class InstituteDriveController {
   async listFolders(
     @Param('instituteId') instituteId: string,
     @Query('instituteName') instituteName: string,
-    @Request() req: JwtRequest,
   ): Promise<Array<{ id: string; name: string; createdTime: string; modifiedTime: string; webViewLink: string }>> {
-    this.requireTeacherOrAdminAccess(req, instituteId);
     const name = instituteName?.trim() || `Institute ${instituteId}`;
     return this.driveService.listInstituteFolders(instituteId, name);
   }
 
   @Delete(':instituteId/folders/:folderId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Trash a Drive folder from the institute root (admin only)' })
   @ApiParam({ name: 'instituteId' })
@@ -464,36 +459,8 @@ export class InstituteDriveController {
   async deleteFolder(
     @Param('instituteId') instituteId: string,
     @Param('folderId') folderId: string,
-    @Request() req: JwtRequest,
   ): Promise<{ success: boolean }> {
-    this.requireAdminAccess(req, instituteId);
     return this.driveService.trashInstituteFolder(instituteId, folderId);
   }
 
-  // =========================================================================
-  // ROLE HELPERS
-  // =========================================================================
-
-  /** Any institute member (admin | teacher | student | parent) */
-  private requireInstituteAccess(req: JwtRequest, instituteId: string): void {
-    if (!JwtRequestHelper.hasInstituteAccess(req.user, instituteId)) {
-      throw new ForbiddenException('You do not have access to this institute');
-    }
-  }
-
-  /** Institute admin (bitmask 8) or SUPERADMIN */
-  private requireAdminAccess(req: JwtRequest, instituteId: string): void {
-    if (JwtRequestHelper.isSuperAdmin(req.user)) return;
-    if (!JwtRequestHelper.hasRole(req.user, instituteId, 8 /* IA */)) {
-      throw new ForbiddenException('Only institute admins can manage the institute Drive connection');
-    }
-  }
-
-  /** Teacher (bitmask 4) OR admin (bitmask 8) OR SUPERADMIN */
-  private requireTeacherOrAdminAccess(req: JwtRequest, instituteId: string): void {
-    if (JwtRequestHelper.isSuperAdmin(req.user)) return;
-    if (!JwtRequestHelper.hasRole(req.user, instituteId, 8 | 4 /* IA | TE */)) {
-      throw new ForbiddenException('Only teachers and admins can upload to the institute Drive');
-    }
-  }
 }

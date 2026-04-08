@@ -24,12 +24,13 @@ export enum TenantServicePaymentMethod {
  * monthly platform invoice, subdomain/domain fees, SMS/Email/WhatsApp credits, storage top-ups, etc.
  */
 export enum TenantServiceType {
+  CREDITS = 'CREDITS',                       // General credit top-up (universal credits)
   MONTHLY_INVOICE = 'MONTHLY_INVOICE',       // Regular monthly platform fee
   SUBDOMAIN_FEE = 'SUBDOMAIN_FEE',           // One-time or recurring subdomain fee
   CUSTOM_DOMAIN_FEE = 'CUSTOM_DOMAIN_FEE',   // Custom domain setup/renewal
-  SMS_CREDITS = 'SMS_CREDITS',               // SMS credit top-up
-  EMAIL_CREDITS = 'EMAIL_CREDITS',           // Email credit top-up
-  WHATSAPP_CREDITS = 'WHATSAPP_CREDITS',     // WhatsApp messaging credits
+  SMS_CREDITS = 'SMS_CREDITS',               // SMS credit top-up (legacy)
+  EMAIL_CREDITS = 'EMAIL_CREDITS',           // Email credit top-up (legacy)
+  WHATSAPP_CREDITS = 'WHATSAPP_CREDITS',     // WhatsApp messaging credits (legacy)
   STORAGE_PURCHASE = 'STORAGE_PURCHASE',     // Additional storage quota purchase
   OTHER = 'OTHER',                           // Any other platform service
 }
@@ -57,7 +58,7 @@ export class TenantServicePaymentEntity {
   @Column({ name: 'billing_month', type: 'char', length: 7 })
   billingMonth: string;
 
-  @Column({ name: 'service_type', type: 'enum', enum: TenantServiceType, default: TenantServiceType.MONTHLY_INVOICE })
+  @Column({ name: 'service_type', type: 'enum', enum: TenantServiceType, default: TenantServiceType.CREDITS })
   serviceType: TenantServiceType;
 
   /** Human-readable label — e.g. "500 SMS credits", "100 GB storage" */

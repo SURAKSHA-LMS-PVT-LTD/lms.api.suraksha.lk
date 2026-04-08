@@ -57,6 +57,7 @@ import { AttendanceDeviceModule } from './modules/attendance-device/attendance-d
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
 import { InstituteHouseModule } from './modules/institute_mudules/institute_house/institute_house.module';
 import { TenantModule } from './modules/tenant/tenant.module';
+import { NotificationCreditsModule } from './modules/notification-credits/notification-credits.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -163,6 +164,7 @@ import { AppService } from './app.service';
     PaymentModule, // Add payment module with file uploads and admin verification
     FileModule, // Add file proxy module for custom domain serving
     SmsModule, // Add SMS module with payment and verification workflow
+    NotificationCreditsModule, // Centralized institute credit balance management
     OrganizationModule, // Add organization module for managing organizations
     AdvertisementModule, // Add advertisement module with caching and matching
     AttendanceModule, // Add attendance module with DynamoDB and notifications

@@ -38,6 +38,8 @@ import { SmsProviderService, BulkSmsResult } from './sms-provider.service';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { InstituteCreditsService } from '../../notification-credits/services/institute-credits.service';
+import { CreditTransactionType } from '../../notification-credits/entities/institute-credit-transaction.entity';
 
 // Interfaces
 import { RecipientBreakdown } from '../interfaces/sms-internal.interface';
@@ -115,6 +117,7 @@ export class SmsService implements OnModuleDestroy {
     private readonly enhancedEmailService: EnhancedEmailService,
     private readonly asyncEmailService: AsyncEmailService,
     private readonly cloudStorageService: CloudStorageService,
+    private readonly instituteCreditsService: InstituteCreditsService,
   ) {
     this.initializeCacheCleanup();
   }
@@ -514,11 +517,14 @@ export class SmsService implements OnModuleDestroy {
         throw new NotFoundException(`SMS credentials not found for institute ${instituteId}`);
       }
 
+      // Get balance from centralized credits service
+      const creditBalance = await this.instituteCreditsService.getBalance(instituteId);
+
       return {
         verificationStage: credentials.verificationStage,
-        availableCredits: credentials.currentCredits || 0,
-        totalCreditsGranted: credentials.totalPurchased || 0,
-        totalCreditsUsed: credentials.totalUsed || 0,
+        availableCredits: creditBalance.balance || 0,
+        totalCreditsGranted: creditBalance.totalPurchased || 0,
+        totalCreditsUsed: creditBalance.totalUsed || 0,
         senderMasks: credentials.senderMasks || [],
         isActive: credentials.isActive || false
       };
@@ -798,6 +804,7 @@ export class SmsService implements OnModuleDestroy {
 
   /**
    * ✅ Verify payment submission (Admin only)
+   * Uses centralized credits service for credit granting.
    */
   async verifyPayment(
     submissionId: string,
@@ -824,41 +831,21 @@ export class SmsService implements OnModuleDestroy {
       let creditsGranted = 0;
 
       if (dto.action === 'APPROVE') {
-        // Grant credits to institute
         creditsGranted = dto.creditsToGrant || submission.requestedCredits;
-        
-        // Find or create credentials
-        let credentials = await queryRunner.manager.findOne(InstituteSmsCredentialsEntity, {
-          where: { instituteId: submission.instituteId }
-        });
 
-        if (!credentials) {
-          // Generate UUID for the credentials record (database uses VARCHAR(36) UUIDs, not auto-increment)
-          const credentialsId = uuidv4();
-          const timestamp = now();
-          
-          // Create new credentials if they don't exist
-          credentials = queryRunner.manager.create(InstituteSmsCredentialsEntity, {
-            id: credentialsId, // Set UUID explicitly (not auto-increment!)
-            instituteId: submission.instituteId,
-            currentCredits: creditsGranted,
-            totalPurchased: creditsGranted,
-            totalUsed: 0,
-            verificationStage: SmsVerificationStage.PRE_APPROVED,
-            isActive: true,
-            createdBy: adminUserId,
-            approvedBy: adminUserId,
-            approvedAt: now(),
-            createdAt: timestamp,
-            updatedAt: timestamp
-          });
-          await queryRunner.manager.save(credentials);
-        } else {
-          // Update existing credentials
-          credentials.currentCredits += creditsGranted;
-          credentials.totalPurchased += creditsGranted;
-          await queryRunner.manager.save(credentials);
-        }
+        // Grant credits via centralized credits service
+        await this.instituteCreditsService.grantCreditsWithManager(
+          queryRunner.manager,
+          submission.instituteId,
+          {
+            amount: creditsGranted,
+            type: CreditTransactionType.TOP_UP,
+            referenceType: 'SMS_PAYMENT',
+            referenceId: submissionId,
+            description: `SMS payment #${submissionId} verified — ${creditsGranted} credits`,
+          },
+          adminUserId,
+        );
 
         // Update submission status
         await queryRunner.manager.update(InstituteSmsPaymentSubmissionEntity, submissionId, {
@@ -884,8 +871,7 @@ export class SmsService implements OnModuleDestroy {
       // Clear cache
       this.invalidateInstituteCache(submission.instituteId);
 
-      // 📧 Send email notification (FIRE-AND-FORGET - Zero blocking)
-      // ⚡ OPTIMIZED: Parallel database queries instead of sequential
+      // 📧 Send email notification (FIRE-AND-FORGET)
       const [submitter, institute] = await Promise.all([
         this.userRepository.findOne({ where: { id: submission.submittedBy } }),
         this.instituteRepository.findOne({ where: { id: submission.instituteId } })
@@ -905,7 +891,6 @@ export class SmsService implements OnModuleDestroy {
             verifiedAt: getCurrentSriLankaISO(),
             adminNotes: dto.adminNotes || 'Payment verified successfully. Credits have been added to your account.',
           });
-          // ✅ Email sent asynchronously - execution continues immediately
         } else {
           this.asyncEmailService.sendPaymentRejectedEmailAsync({
             userEmail: submitter.email,
@@ -919,7 +904,6 @@ export class SmsService implements OnModuleDestroy {
             verifiedAt: getCurrentSriLankaISO(),
             adminNotes: dto.adminNotes || 'Please resubmit your payment with correct documentation.',
           });
-          // ✅ Email sent asynchronously - execution continues immediately
         }
       }
 
@@ -1655,7 +1639,6 @@ export class SmsService implements OnModuleDestroy {
     }
 
     // ✅ ALWAYS USE SYSTEM CREDENTIALS FROM .ENV
-    // We NEVER use database credentials (sms_user_id, sms_api_key)
     const hasEnvCredentials = this.configService.get('SMSLENZ_USER_ID') && this.configService.get('SMSLENZ_API_KEY');
     
     if (!hasEnvCredentials) {
@@ -1665,20 +1648,8 @@ export class SmsService implements OnModuleDestroy {
       );
     }
 
-    // ✅ FRESH DB READ: Always check credits from DB, never from cache
-    // Cached credits can be stale (up to 2 min old), allowing oversending
-    const freshCredentials = await this.smsCredentialsRepository.findOne({
-      where: { instituteId: credentials.instituteId, isActive: true },
-      select: ['currentCredits'],
-    });
-
-    const currentCredits = freshCredentials?.currentCredits ?? credentials.currentCredits;
-
-    if (currentCredits < required) {
-      throw new ForbiddenException(
-        `Insufficient SMS credits. Required: ${required}, Available: ${currentCredits}. Please purchase more credits.`
-      );
-    }
+    // ✅ Use centralized credits service for balance check
+    await this.instituteCreditsService.validateSufficientCredits(credentials.instituteId, required);
   }
 
   private normalizePhoneNumber(phone: string): string {
@@ -2370,24 +2341,18 @@ export class SmsService implements OnModuleDestroy {
   }
 
   private async deductCreditsAfterDelivery(instituteId: string, successfulSends: number): Promise<void> {
-    const result = await this.smsCredentialsRepository
-      .createQueryBuilder()
-      .update(InstituteSmsCredentialsEntity)
-      .set({
-        currentCredits: () => 'GREATEST(current_credits - :credits, 0)',
-        totalUsed: () => 'total_used + :credits',
-        dailyUsed: () => 'daily_used + :credits',
-        monthlyUsed: () => 'monthly_used + :credits',
-      })
-      .where('institute_id = :instituteId', { instituteId })
-      .setParameters({ credits: successfulSends })
-      .execute();
-
-    if (result.affected === 0) {
-      this.logger.error(`❌ Failed to deduct credits for institute ${instituteId}`);
-      throw new Error('Credit deduction failed - no records updated');
+    try {
+      await this.instituteCreditsService.deductCredits(instituteId, {
+        amount: successfulSends,
+        type: CreditTransactionType.SMS_SEND,
+        referenceType: 'SMS_DELIVERY',
+        description: `SMS delivery: ${successfulSends} messages sent`,
+      });
+    } catch (error) {
+      this.logger.error(`❌ Failed to deduct credits for institute ${instituteId}: ${error.message}`);
+      // Fallback: atomic deduction without ledger
+      await this.instituteCreditsService.deductCreditsAtomic(instituteId, successfulSends);
     }
-
 
     // Invalidate cache
     this.invalidateInstituteCache(instituteId);
@@ -2409,11 +2374,12 @@ export class SmsService implements OnModuleDestroy {
 
   private async createUnlimitedCredentials(instituteId: string): Promise<InstituteSmsCredentialsEntity> {
     return await this.smsCredentialsRepository.save({
+      id: uuidv4(),
       instituteId,
       isActive: true,
       verificationStage: SmsVerificationStage.UNLIMITED,
-      currentCredits: 999999,
-      totalPurchased: 999999,
+      currentCredits: 0,
+      totalPurchased: 0,
       totalUsed: 0,
       dailyUsed: 0,
       monthlyUsed: 0,
@@ -2422,7 +2388,9 @@ export class SmsService implements OnModuleDestroy {
         displayName: 'System Admin',
         phoneNumber: 'N/A',
         isActive: true
-      }]
+      }],
+      createdAt: now(),
+      updatedAt: now(),
     });
   }
 

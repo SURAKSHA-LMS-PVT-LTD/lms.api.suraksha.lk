@@ -12,6 +12,9 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { InstituteCalendarService } from './services/institute-calendar.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../user/enums/user-type.enum';
 
 /**
  * Institute Class Subject Calendar Controller
@@ -23,7 +26,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
  */
 @ApiTags('Institute Class Subject Calendar')
 @Controller('institutes/:instituteId/class/:classId/subject/:subjectId/calendar')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+@RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
 @ApiBearerAuth()
 export class InstituteClassSubjectCalendarController {
   private readonly logger = new Logger(InstituteClassSubjectCalendarController.name);

@@ -316,7 +316,8 @@ export class InstitueClassController {
 
   // Self-enrollment endpoints
   @Post(':id/enable-enrollment')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Enable self-enrollment for a class',
     description: 'Accessible to institute admins and system admins. Enables students to self-enroll using an enrollment code.'
@@ -326,25 +327,7 @@ export class InstitueClassController {
   async enableSelfEnrollment(
     @Param('id', ClassExistsPipe) id: string,
     @Body() enableEnrollmentDto: EnableSelfEnrollmentDto,
-    @Request() req: JwtRequest
   ) {
-    // Get class to check institute
-    const classEntity = await this.institueClassService.findOne(id);
-    if (!classEntity) {
-      throw new BadRequestException('Class not found');
-    }
-
-    // Check access: SUPERADMIN or institute admin
-    const userType = req.user?.u;
-    const userInstituteAccess = req.user?.i || [];
-    const isInstituteAdmin = userInstituteAccess.some(access => 
-      access.i === classEntity.instituteId && (access.r & 2) === 2
-    );
-
-    if (userType !== 0 && !isInstituteAdmin) {
-      throw new ForbiddenException('Access denied. You must be an institute admin or SUPERADMIN to enable enrollment.');
-    }
-
     return this.institueClassService.enableSelfEnrollment(
       id,
       enableEnrollmentDto.enrollmentCode,
@@ -353,7 +336,8 @@ export class InstitueClassController {
   }
 
   @Post(':id/disable-enrollment')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Disable self-enrollment for a class',
     description: 'Accessible to institute admins and system admins. Prevents students from self-enrolling.'
@@ -362,30 +346,13 @@ export class InstitueClassController {
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async disableSelfEnrollment(
     @Param('id', ClassExistsPipe) id: string,
-    @Request() req: JwtRequest
   ) {
-    // Get class to check institute
-    const classEntity = await this.institueClassService.findOne(id);
-    if (!classEntity) {
-      throw new BadRequestException('Class not found');
-    }
-
-    // Check access: SUPERADMIN or institute admin
-    const userType = req.user?.u;
-    const userInstituteAccess = req.user?.i || [];
-    const isInstituteAdmin = userInstituteAccess.some(access => 
-      access.i === classEntity.instituteId && (access.r & 2) === 2
-    );
-
-    if (userType !== 0 && !isInstituteAdmin) {
-      throw new ForbiddenException('Access denied. You must be an institute admin or SUPERADMIN to disable enrollment.');
-    }
-
     return this.institueClassService.disableSelfEnrollment(id);
   }
 
   @Get(':id/enrollment-settings')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ 
     summary: 'Get enrollment settings for a class',
     description: 'Accessible to institute admins and system admins. Returns enrollment configuration.'
@@ -394,25 +361,7 @@ export class InstitueClassController {
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async getEnrollmentSettings(
     @Param('id', ClassExistsPipe) id: string,
-    @Request() req: JwtRequest
   ) {
-    // Get class to check institute
-    const classEntity = await this.institueClassService.findOne(id);
-    if (!classEntity) {
-      throw new BadRequestException('Class not found');
-    }
-
-    // Check access: SUPERADMIN or institute admin
-    const userType = req.user?.u;
-    const userInstituteAccess = req.user?.i || [];
-    const isInstituteAdmin = userInstituteAccess.some(access => 
-      access.i === classEntity.instituteId && (access.r & 2) === 2
-    );
-
-    if (userType !== 0 && !isInstituteAdmin) {
-      throw new ForbiddenException('Access denied. You must be an institute admin or SUPERADMIN to view enrollment settings.');
-    }
-
     return this.institueClassService.getEnrollmentSettings(id);
   }
 

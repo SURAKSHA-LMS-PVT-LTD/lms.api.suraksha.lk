@@ -3,12 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { SmsCampaignEntity, SmsCampaignStatus, SmsCampaignType } from '../entities/sms-campaign.entity';
-import { SmsCreditEntity } from '../entities/sms-credit.entity';
 import { SmslenzProvider } from '../providers/smslenz.provider';
 import { SendSingleSmsDto, SendInstantBulkSmsDto, InstantSmsResponseDto, CreditBalanceResponseDto } from '../dto/instant-sms.dto';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { SenderMaskValidationService } from './sender-mask-validation.service';
+import { InstituteCreditsService } from '../../notification-credits/services/institute-credits.service';
+import { CreditTransactionType } from '../../notification-credits/entities/institute-credit-transaction.entity';
 
 /**
  * Simplified SMS Service
@@ -28,8 +29,6 @@ export class InstantSmsService {
   constructor(
     @InjectRepository(SmsCampaignEntity)
     private readonly campaignRepository: Repository<SmsCampaignEntity>,
-    @InjectRepository(SmsCreditEntity)
-    private readonly creditRepository: Repository<SmsCreditEntity>,
     @InjectRepository(InstituteUserEntity)
     private readonly instituteUserRepository: Repository<InstituteUserEntity>,
     @InjectRepository(UserEntity)
@@ -38,6 +37,7 @@ export class InstantSmsService {
     private readonly smsProvider: SmslenzProvider,
     private readonly configService: ConfigService,
     private readonly senderMaskValidationService: SenderMaskValidationService,
+    private readonly instituteCreditsService: InstituteCreditsService,
   ) {
     // Get cost per message from environment (default: 1 credit)
     this.costPerMessage = this.configService.get<number>('SMS_COST_PER_MESSAGE', 1);
@@ -261,45 +261,16 @@ export class InstantSmsService {
   }
 
   /**
-   * Deduct credits from institute balance
-   * Must be called BEFORE sending SMS to prevent race conditions
+   * Deduct credits from institute balance via centralized credits service.
+   * Must be called BEFORE sending SMS to prevent race conditions.
    */
   private async deductCredits(instituteId: string, amount: number): Promise<void> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      // Lock the credit record for update
-      const credit = await queryRunner.manager
-        .createQueryBuilder(SmsCreditEntity, 'credit')
-        .where('credit.instituteId = :instituteId', { instituteId })
-        .setLock('pessimistic_write')
-        .getOne();
-
-      if (!credit) {
-        throw new NotFoundException(`No SMS credit account found for institute ${instituteId}`);
-      }
-
-      if (credit.balance < amount) {
-        throw new BadRequestException(
-          `Insufficient SMS credits. Required: ${amount}, Available: ${credit.balance}`,
-        );
-      }
-
-      // Deduct credits
-      credit.balance -= amount;
-      credit.totalUsed += amount;
-
-      await queryRunner.manager.save(credit);
-      await queryRunner.commitTransaction();
-
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+    await this.instituteCreditsService.deductCredits(instituteId, {
+      amount,
+      type: CreditTransactionType.SMS_SEND,
+      referenceType: 'SMS_INSTANT',
+      description: `Instant SMS: ${amount} credits deducted`,
+    });
   }
 
   /**
@@ -392,86 +363,36 @@ export class InstantSmsService {
   }
 
   /**
-   * Get credit balance for an institute
+   * Get credit balance for an institute via centralized credits service.
    */
   async getCreditBalance(instituteId: string): Promise<CreditBalanceResponseDto> {
-    const credit = await this.creditRepository.findOne({ where: { instituteId } });
-
-    if (!credit) {
-      // Initialize credit account if it doesn't exist
-      const timestamp = new Date();
-      const newCredit = this.creditRepository.create({
-        instituteId,
-        balance: 0,
-        totalPurchased: 0,
-        totalUsed: 0,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      });
-      await this.creditRepository.save(newCredit);
-
-      return {
-        instituteId,
-        balance: 0,
-        totalPurchased: 0,
-        totalUsed: 0,
-      };
-    }
-
+    const balance = await this.instituteCreditsService.getBalance(instituteId);
     return {
-      instituteId: credit.instituteId,
-      balance: Number(credit.balance),
-      totalPurchased: Number(credit.totalPurchased),
-      totalUsed: Number(credit.totalUsed),
-      lastTopupAt: credit.lastTopupAt?.toISOString(),
+      instituteId: balance.instituteId,
+      balance: balance.balance,
+      totalPurchased: balance.totalPurchased,
+      totalUsed: balance.totalUsed,
     };
   }
 
   /**
-   * Top up credits for an institute
+   * Top up credits for an institute via centralized credits service.
    */
   async topupCredits(instituteId: string, amount: number): Promise<CreditBalanceResponseDto> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    const result = await this.instituteCreditsService.grantCredits(instituteId, {
+      amount,
+      type: CreditTransactionType.TOP_UP,
+      referenceType: 'INSTANT_TOPUP',
+      description: `Manual top-up: ${amount} credits`,
+    });
 
-    try {
-      let credit = await queryRunner.manager.findOne(SmsCreditEntity, { where: { instituteId } });
-
-      if (!credit) {
-        const timestamp = new Date();
-        credit = queryRunner.manager.create(SmsCreditEntity, {
-          instituteId,
-          balance: 0,
-          totalPurchased: 0,
-          totalUsed: 0,
-          createdAt: timestamp,
-          updatedAt: timestamp
-        });
-      }
-
-      credit.balance = Number(credit.balance) + amount;
-      credit.totalPurchased = Number(credit.totalPurchased) + amount;
-      credit.lastTopupAmount = amount;
-      credit.lastTopupAt = new Date();
-
-      await queryRunner.manager.save(credit);
-      await queryRunner.commitTransaction();
-
-
-      return {
-        instituteId: credit.instituteId,
-        balance: Number(credit.balance),
-        totalPurchased: Number(credit.totalPurchased),
-        totalUsed: Number(credit.totalUsed),
-        lastTopupAt: credit.lastTopupAt?.toISOString(),
-      };
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+    const balance = await this.instituteCreditsService.getBalance(instituteId);
+    return {
+      instituteId: balance.instituteId,
+      balance: balance.balance,
+      totalPurchased: balance.totalPurchased,
+      totalUsed: balance.totalUsed,
+    };
   }
 
   /**

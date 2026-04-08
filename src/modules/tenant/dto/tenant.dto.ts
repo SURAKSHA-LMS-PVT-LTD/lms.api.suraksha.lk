@@ -244,10 +244,10 @@ export class PlanInfoResponse {
 // ═══════════════════════════════════════════════════════════════════
 
 export class SubmitTenantServicePaymentDto {
-  @ApiProperty({ enum: TenantServiceType, example: TenantServiceType.MONTHLY_INVOICE })
+  @ApiPropertyOptional({ enum: TenantServiceType, example: TenantServiceType.CREDITS, description: 'Defaults to CREDITS (universal)' })
+  @IsOptional()
   @IsEnum(TenantServiceType)
-  @IsNotEmpty()
-  serviceType: TenantServiceType;
+  serviceType?: TenantServiceType;
 
   @ApiPropertyOptional({ description: 'Human-readable description e.g. "500 SMS credits", "100 GB storage"', maxLength: 300 })
   @IsOptional()

@@ -1778,6 +1778,115 @@ export class InstituteClassSubjectStudentsService {
   }
 
   /**
+   * Get class-level enrollment type summary:
+   * Returns all students enrolled in any subject in a class, aggregated with their
+   * per-subject studentType. Optionally filter by studentType.
+   */
+  async getClassEnrollmentTypeSummary(
+    instituteId: string,
+    classId: string,
+    filterType?: 'free_card' | 'paid' | 'normal' | 'all',
+  ): Promise<{
+    studentId: string;
+    name: string;
+    email: string;
+    imageUrl: string | null;
+    subjects: {
+      subjectId: string;
+      subjectName: string;
+      studentType: 'normal' | 'paid' | 'free_card';
+      verificationStatus: string;
+    }[];
+    hasFreeCard: boolean;
+  }[]> {
+    const qb = this.studentRepository
+      .createQueryBuilder('e')
+      .innerJoin(UserEntity, 'u', 'u.id = e.studentId')
+      .innerJoin(SubjectEntity, 'sub', 'sub.id = e.subjectId')
+      .select([
+        'e.studentId          AS "studentId"',
+        'u.firstName          AS "firstName"',
+        'u.lastName           AS "lastName"',
+        'u.email              AS "email"',
+        'u.imageUrl           AS "imageUrl"',
+        'e.subjectId          AS "subjectId"',
+        'sub.name             AS "subjectName"',
+        'e.studentType        AS "studentType"',
+        'e.verificationStatus AS "verificationStatus"',
+      ])
+      .where('e.instituteId = :instituteId', { instituteId })
+      .andWhere('e.classId = :classId', { classId })
+      .andWhere('e.isActive = :isActive', { isActive: true });
+
+    if (filterType && filterType !== 'all') {
+      qb.andWhere('e.studentType = :filterType', { filterType });
+    }
+
+    const rows: {
+      studentId: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      imageUrl: string | null;
+      subjectId: string;
+      subjectName: string;
+      studentType: 'normal' | 'paid' | 'free_card';
+      verificationStatus: string;
+    }[] = await qb.orderBy('"firstName"').getRawMany();
+
+    // Group by studentId
+    const studentMap = new Map<string, (typeof rows[number]) & { subjects: any[] }>();
+    for (const row of rows) {
+      if (!studentMap.has(row.studentId)) {
+        studentMap.set(row.studentId, {
+          ...row,
+          subjects: [],
+        });
+      }
+      studentMap.get(row.studentId)!.subjects.push({
+        subjectId:         row.subjectId,
+        subjectName:       row.subjectName,
+        studentType:       row.studentType,
+        verificationStatus: row.verificationStatus,
+      });
+    }
+
+    return Array.from(studentMap.values()).map(s => ({
+      studentId:  s.studentId,
+      name:       `${s.firstName} ${s.lastName}`.trim(),
+      email:      s.email,
+      imageUrl:   s.imageUrl,
+      subjects:   s.subjects,
+      hasFreeCard: s.subjects.some(sub => sub.studentType === 'free_card'),
+    }));
+  }
+
+  /**
+   * Update student type for ALL subject enrollments of a student within a class
+   * (batch class-level free card toggle).
+   */
+  async updateStudentTypeForClass(
+    instituteId: string,
+    classId: string,
+    studentId: string,
+    studentType: 'normal' | 'paid' | 'free_card',
+  ): Promise<{ message: string; updatedCount: number; studentType: string }> {
+    const result = await this.studentRepository.update(
+      { instituteId, classId, studentId, isActive: true },
+      { studentType, updatedAt: getCurrentSriLankaISO() },
+    );
+    const count = result.affected ?? 0;
+    if (count === 0) {
+      throw new NotFoundException('No active subject enrollments found for this student in the class');
+    }
+    return {
+      message: `Student type updated to ${studentType} across ${count} subject enrollment(s)`,
+      updatedCount: count,
+      studentType,
+    };
+  }
+
+  /**
    * Generate a unique enrollment key
    */
   private generateEnrollmentKey(subjectName: string): string {

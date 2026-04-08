@@ -22,9 +22,9 @@
  * ```
  */
 
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { EnhancedJwtPayload, ROLE_BITMASKS, COMPACT_TO_USER_TYPE } from '../interfaces/enhanced-jwt-payload.interface';
+import { EnhancedJwtPayload, EnhancedInstituteAccessEntry, ROLE_BITMASKS, COMPACT_TO_USER_TYPE } from '../interfaces/enhanced-jwt-payload.interface';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 
 /**
@@ -71,6 +71,8 @@ export const FLEXIBLE_ACCESS_KEY = 'flexible_access_config';
 
 @Injectable()
 export class FlexibleAccessGuard implements CanActivate {
+  private readonly logger = new Logger(FlexibleAccessGuard.name);
+
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -146,7 +148,9 @@ export class FlexibleAccessGuard implements CanActivate {
     }
 
     // For institute-based checks, ensure user has institute access
-    const instituteAccess = Array.isArray(user.i) ? user.i : [];
+    // Use user.i (from JWT spread) OR user.enhancedInstituteAccess (from JWT strategy extraction)
+    const rawAccess = user.i ?? (request.user as any).enhancedInstituteAccess;
+    const instituteAccess: EnhancedInstituteAccessEntry[] = Array.isArray(rawAccess) ? rawAccess : [];
     
     // ✅ FIX: Only throw error if ONLY institute checks are configured (no global fallback)
     // This allows endpoints with both global + institute roles to work for users without institutes
@@ -184,12 +188,13 @@ export class FlexibleAccessGuard implements CanActivate {
     if (config.instituteAdmin) {
       // For resource endpoints, check if user has Institute Admin role in ANY institute
       // For other endpoints, check if user has role in the SPECIFIC institute
+      // Use bitwise AND to handle combined role bitmasks (e.g. IA+TE = 12)
       const hasInstituteAdmin = isResourceEndpoint
-        ? instituteAccess.some((entry) => entry.r === ROLE_BITMASKS.IA)
+        ? instituteAccess.some((entry) => (entry.r & ROLE_BITMASKS.IA) !== 0)
         : instituteAccess.some(
             (entry) =>
-              entry.r === ROLE_BITMASKS.IA &&
-              (!instituteId || entry.i === instituteId),
+              (entry.r & ROLE_BITMASKS.IA) !== 0 &&
+              (!instituteId || String(entry.i) === String(instituteId)),
           );
       
       accessChecks.push({
@@ -210,7 +215,7 @@ export class FlexibleAccessGuard implements CanActivate {
         ? {} 
         : config.teacher;
       
-      const teacherEntries = instituteAccess.filter((entry) => entry.r === ROLE_BITMASKS.TE);
+      const teacherEntries = instituteAccess.filter((entry) => (entry.r & ROLE_BITMASKS.TE) !== 0);
       
       if (teacherEntries.length > 0) {
         let hasTeacherAccess = true;
@@ -218,7 +223,7 @@ export class FlexibleAccessGuard implements CanActivate {
         // For resource endpoints, just check if user has Teacher role in ANY institute
         // For other endpoints, validate the specific institute
         if (!isResourceEndpoint && instituteId) {
-          hasTeacherAccess = teacherEntries.some((entry) => entry.i === instituteId);
+          hasTeacherAccess = teacherEntries.some((entry) => String(entry.i) === String(instituteId));
         }
         
         // Validate class if required
@@ -269,7 +274,7 @@ export class FlexibleAccessGuard implements CanActivate {
         ? {} 
         : config.student;
       
-      const studentEntries = instituteAccess.filter((entry) => entry.r === ROLE_BITMASKS.ST);
+      const studentEntries = instituteAccess.filter((entry) => (entry.r & ROLE_BITMASKS.ST) !== 0);
       
       if (studentEntries.length > 0) {
         let hasStudentAccess = true;
@@ -277,7 +282,7 @@ export class FlexibleAccessGuard implements CanActivate {
         // For resource endpoints, just check if user has Student role in ANY institute
         // For other endpoints, validate the specific institute
         if (!isResourceEndpoint && instituteId) {
-          hasStudentAccess = studentEntries.some((entry) => entry.i === instituteId);
+          hasStudentAccess = studentEntries.some((entry) => String(entry.i) === String(instituteId));
         }
         
         // ✅ SPECIAL: If student config allows self-only access (for attendance endpoints)
@@ -382,7 +387,7 @@ export class FlexibleAccessGuard implements CanActivate {
         ? {} 
         : config.attendanceMarker;
       
-      const attendanceMarkerEntries = instituteAccess.filter((entry) => entry.r === ROLE_BITMASKS.AM);
+      const attendanceMarkerEntries = instituteAccess.filter((entry) => (entry.r & ROLE_BITMASKS.AM) !== 0);
       
       if (attendanceMarkerEntries.length > 0) {
         let hasAttendanceMarkerAccess = true;
@@ -390,7 +395,7 @@ export class FlexibleAccessGuard implements CanActivate {
         // For resource endpoints, just check if user has Attendance Marker role in ANY institute
         // For other endpoints, validate the specific institute
         if (!isResourceEndpoint && instituteId) {
-          hasAttendanceMarkerAccess = attendanceMarkerEntries.some((entry) => entry.i === instituteId);
+          hasAttendanceMarkerAccess = attendanceMarkerEntries.some((entry) => String(entry.i) === String(instituteId));
         }
         
         // Validate class if required
@@ -424,7 +429,7 @@ export class FlexibleAccessGuard implements CanActivate {
     // ============================================
     if (config.anyInstituteRole) {
       const hasAnyRole = instituteAccess.length > 0;
-      const matchesInstitute = !instituteId || instituteAccess.some((entry) => entry.i === instituteId);
+      const matchesInstitute = !instituteId || instituteAccess.some((entry) => String(entry.i) === String(instituteId));
       
       const hasAccess = hasAnyRole && matchesInstitute;
       
@@ -445,6 +450,15 @@ export class FlexibleAccessGuard implements CanActivate {
       .filter((check) => !check.check)
       .map((check) => check.reason)
       .join(', ');
+
+    // Log diagnostic info for debugging access issues
+    this.logger.warn(
+      `Access denied for user ${user.s} on ${request.method} ${request.url}. ` +
+      `Required: ${failedReasons}. ` +
+      `JWT userType: ${user.u}, instituteAccess entries: ${instituteAccess.length}, ` +
+      `roles: [${instituteAccess.map(e => `{i:${e.i},r:${e.r}}`).join(',')}], ` +
+      `targetInstituteId: ${instituteId || 'none'}`,
+    );
 
     throw new ForbiddenException(
       `Access denied. Required one of: ${failedReasons || 'No valid access configuration'}`,

@@ -7,7 +7,9 @@ import { InstituteBillingConfigEntity } from './entities/institute-billing-confi
 import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.entity';
 import { TenantServicePaymentEntity, TenantServicePaymentStatus, TenantServiceType } from './entities/tenant-billing-payment.entity';
 import { InstituteTier, LoginMethod, LoginBackgroundType } from '../institute/enums/institute.enums';
-import { InstituteSmsCredentialsEntity, SmsVerificationStage } from '../sms/entities/institute-sms-credentials.entity';
+import { InstituteSmsCredentialsEntity } from '../sms/entities/institute-sms-credentials.entity';
+import { InstituteCreditsService } from '../notification-credits/services/institute-credits.service';
+import { CreditTransactionType } from '../notification-credits/entities/institute-credit-transaction.entity';
 import {
   RESERVED_SUBDOMAINS,
   SetSubdomainDto,
@@ -47,6 +49,7 @@ export class TenantService {
     @InjectRepository(SenderMaskEntity)
     private readonly senderMaskRepository: Repository<SenderMaskEntity>,
     private readonly dataSource: DataSource,
+    private readonly instituteCreditsService: InstituteCreditsService,
   ) {}
 
   // ═══════════════════════════════════════════════════════════════════
@@ -677,7 +680,7 @@ export class TenantService {
 
     const payment = this.servicePaymentRepository.create({
       instituteId,
-      serviceType: dto.serviceType,
+      serviceType: dto.serviceType || TenantServiceType.CREDITS,
       serviceDescription: dto.serviceDescription,
       billingMonth: dto.billingMonth,
       paymentAmount: dto.paymentAmount,
@@ -824,34 +827,36 @@ export class TenantService {
     adminUserId: string,
     dto: VerifyTenantServicePaymentDto,
   ): Promise<void> {
-    switch (payment.serviceType) {
-      case TenantServiceType.SMS_CREDITS:
-        await this.grantSmsCredits(manager, payment, adminUserId, dto.grantedQuantity);
-        break;
+    // Credit-based services: grant credits to the institute's unified balance
+    const creditServiceTypes = [
+      TenantServiceType.CREDITS,
+      TenantServiceType.SMS_CREDITS,
+      TenantServiceType.EMAIL_CREDITS,
+      TenantServiceType.WHATSAPP_CREDITS,
+      TenantServiceType.STORAGE_PURCHASE,
+    ];
 
+    if (creditServiceTypes.includes(payment.serviceType)) {
+      await this.grantCreditsForPayment(manager, payment, adminUserId, dto.grantedQuantity);
+      return;
+    }
+
+    switch (payment.serviceType) {
       case TenantServiceType.MONTHLY_INVOICE:
-        // Update billing summary status to PAID if applicable
         await this.markBillingSummaryPaid(manager, payment);
         break;
 
-      // Future services:
-      // case TenantServiceType.EMAIL_CREDITS:
-      // case TenantServiceType.WHATSAPP_CREDITS:
-      // case TenantServiceType.STORAGE_PURCHASE:
-      //   break;
-
       default:
-        // No auto-provisioning for OTHER, SUBDOMAIN_FEE, CUSTOM_DOMAIN_FEE, etc.
         this.logger.log(`No auto-provisioning for service type: ${payment.serviceType}`);
         break;
     }
   }
 
   /**
-   * Grant SMS credits to an institute's SMS credentials.
-   * Creates credentials record if none exists, otherwise adds credits.
+   * Grant credits to an institute's unified credit balance.
+   * Works for SMS, email, WhatsApp, storage — all go to the same balance.
    */
-  private async grantSmsCredits(
+  private async grantCreditsForPayment(
     manager: import('typeorm').EntityManager,
     payment: TenantServicePaymentEntity,
     adminUserId: string,
@@ -860,51 +865,35 @@ export class TenantService {
     const creditsToGrant = grantedQuantity ?? payment.requestedQuantity;
     if (!creditsToGrant || creditsToGrant <= 0) {
       throw new BadRequestException(
-        'grantedQuantity (or requestedQuantity) must be specified for SMS credit verification',
+        'grantedQuantity (or requestedQuantity) must be specified for credit verification',
       );
     }
 
-    let credentials = await manager.findOne(InstituteSmsCredentialsEntity, {
-      where: { instituteId: payment.instituteId },
-    });
+    const result = await this.instituteCreditsService.grantCreditsWithManager(
+      manager,
+      payment.instituteId,
+      {
+        amount: creditsToGrant,
+        type: CreditTransactionType.TOP_UP,
+        referenceType: 'PAYMENT',
+        referenceId: payment.id,
+        description: `${payment.serviceType} payment verified — ${creditsToGrant} credits`,
+      },
+      adminUserId,
+    );
 
-    if (!credentials) {
-      // Create new SMS credentials for this institute
-      const { v4: uuidv4 } = await import('uuid');
-      credentials = manager.create(InstituteSmsCredentialsEntity, {
-        id: uuidv4(),
-        instituteId: payment.instituteId,
-        currentCredits: creditsToGrant,
-        totalPurchased: creditsToGrant,
-        totalUsed: 0,
-        verificationStage: SmsVerificationStage.PRE_APPROVED,
-        isActive: true,
-        createdBy: adminUserId,
-        approvedBy: adminUserId,
-        approvedAt: now(),
-        createdAt: now(),
-        updatedAt: now(),
-      });
-      await manager.save(InstituteSmsCredentialsEntity, credentials);
-    } else {
-      // Add credits to existing record
-      credentials.currentCredits += creditsToGrant;
-      credentials.totalPurchased += creditsToGrant;
-      credentials.updatedAt = now();
-      await manager.save(InstituteSmsCredentialsEntity, credentials);
-    }
-
-    // Store granted amount in payment metadata for audit
+    // Store in payment metadata for audit
     payment.grantedQuantity = creditsToGrant;
     payment.serviceMetadata = {
       ...payment.serviceMetadata,
       creditsGranted: creditsToGrant,
-      previousBalance: (credentials.currentCredits - creditsToGrant),
-      newBalance: credentials.currentCredits,
+      previousBalance: result.balanceAfter - creditsToGrant,
+      newBalance: result.balanceAfter,
+      transactionId: result.transactionId,
     };
 
     this.logger.log(
-      `✅ SMS credits granted: institute=${payment.instituteId} credits=${creditsToGrant} newBalance=${credentials.currentCredits}`,
+      `✅ Credits granted: institute=${payment.instituteId} credits=${creditsToGrant} type=${payment.serviceType} balance=${result.balanceAfter}`,
     );
   }
 

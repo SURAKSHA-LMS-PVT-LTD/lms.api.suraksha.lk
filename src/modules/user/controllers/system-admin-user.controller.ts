@@ -30,7 +30,9 @@ import {
   ApiParam
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
-import { SystemAdminGuard } from '../../user-card-management/guards/system-admin.guard';
+import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../enums/user-type.enum';
 import { NoDataMasking } from '../../../common/decorators/no-data-masking.decorator';
 import { SystemAdminUserService } from '../services/system-admin-user.service';
 import {
@@ -59,7 +61,8 @@ import {
 
 @ApiTags('System Admin - User Management')
 @Controller('admin/users')
-@UseGuards(JwtAuthGuard, SystemAdminGuard)
+@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+@RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
 @ApiBearerAuth()
 @NoDataMasking()
 export class SystemAdminUserController {
@@ -529,7 +532,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    * GET /admin/users/lookup/:userId
    */
   @Get('lookup/:userId')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Lookup user by user ID',
@@ -550,7 +552,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    * POST /admin/users/profile-image/generate-url
    */
   @Post('profile-image/generate-url')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Generate profile image upload URL by user ID',
@@ -572,7 +573,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    * POST /admin/users/profile-image/assign
    */
   @Post('profile-image/assign')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Assign profile image to user by user ID',
@@ -595,7 +595,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    * POST /admin/users/:userId/profile-image
    */
   @Post(':userId/profile-image')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Quick generate profile image upload URL by user ID',
@@ -626,7 +625,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    */
   @Get('unverified')
   @Get('unverified-images')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @ApiOperation({
     summary: 'Get users with pending/unverified profile images',
     description: 'System Admin can review and moderate user profile images that need verification'
@@ -650,7 +648,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    * POST /admin/users/:userId/approve-image
    */
   @Post(':userId/approve-image')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Approve user profile image',
@@ -680,7 +677,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
    * Deletes rejected image, generates 7-day signed upload URL, sends email with re-upload link
    */
   @Post(':userId/reject-image')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Reject user profile image with reason',
@@ -705,7 +701,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
 
   /** GET /admin/users/image-stats — overall profile image verification counts */
   @Get('image-stats')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @ApiOperation({ summary: 'Profile image verification statistics', description: 'Counts of pending / verified / rejected user profile image submissions' })
   @ApiResponse({ status: HttpStatus.OK, type: ImageStatsResponseDto })
   async getImageStats(): Promise<ImageStatsResponseDto> {
@@ -714,7 +709,6 @@ POST /admin/users/student/STU-20260123-001/profile-image
 
   /** GET /admin/users/:userId/image-history — full submission history for one user */
   @Get(':userId/image-history')
-  @UseGuards(JwtAuthGuard, SystemAdminGuard)
   @ApiOperation({ summary: 'User profile image submission history', description: 'All past image submissions for a user with their verification outcomes' })
   @ApiParam({ name: 'userId', description: 'User ID', example: 123 })
   @ApiResponse({ status: HttpStatus.OK, type: UserImageHistoryResponseDto })

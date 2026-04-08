@@ -926,4 +926,48 @@ export class InstituteClassSubjectStudentsController {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  //  Class-level enrollment type summary (free card / paid / normal)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  @Get('class-enrollment-summary/:instituteId/:classId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiOperation({
+    summary: 'Get enrollment type summary for all students in a class',
+    description: 'Returns each student with their per-subject enrollment type (free_card/paid/normal). Optionally filter by studentType.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiQuery({ name: 'filterType', required: false, enum: ['all', 'free_card', 'paid', 'normal'] })
+  @ApiResponse({ status: 200, description: 'Enrollment type summary' })
+  async getClassEnrollmentSummary(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Query('filterType') filterType?: 'free_card' | 'paid' | 'normal' | 'all',
+  ) {
+    return this.studentsService.getClassEnrollmentTypeSummary(instituteId, classId, filterType);
+  }
+
+  @Patch('class-student-type/:instituteId/:classId/:studentId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiOperation({
+    summary: 'Update student type across ALL subjects in a class',
+    description: 'Sets free_card/paid/normal for every active subject enrollment of the student in this class.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'studentId', description: 'Student User ID' })
+  @ApiResponse({ status: 200, description: 'Student type updated for all subject enrollments' })
+  @ApiResponse({ status: 404, description: 'No active enrollments found' })
+  async updateClassStudentType(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' },
+  ) {
+    return this.studentsService.updateStudentTypeForClass(instituteId, classId, studentId, body.studentType);
+  }
+
 }
