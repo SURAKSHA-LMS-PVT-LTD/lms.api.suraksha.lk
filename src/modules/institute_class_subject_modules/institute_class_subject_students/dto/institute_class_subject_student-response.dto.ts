@@ -73,6 +73,7 @@ export class InstituteClassSubjectStudentResponseDto {
         lastName: entity.student.lastName,
         nameWithInitials: entity.student.nameWithInitials,
         email: entity.student.email,
+        phoneNumber: entity.student.phoneNumber,
         userType: entity.student.userType,
         imageUrl: entity.student.imageUrl
       });

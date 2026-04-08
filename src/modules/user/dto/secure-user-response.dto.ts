@@ -94,8 +94,8 @@ export class UserSummaryResponseDto {
   @Expose()
   imageUrl?: string;
 
-  // Exclude sensitive data
-  @Exclude()
+  @ApiPropertyOptional({ description: 'Phone number (visible to admin/teacher in class context)' })
+  @Expose()
   phoneNumber?: string;
 
   @Exclude()
