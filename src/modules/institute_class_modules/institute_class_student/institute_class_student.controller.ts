@@ -429,7 +429,7 @@ export class StudentClassesController {
     return await this.instituteClassStudentService.getStudentEnrolledClassesWithFilters(studentUserId, filters);
   }
 
-  @Patch(':studentUserId/student-type')
+  @Patch('student-type/:studentUserId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true } })
   @ApiOperation({ summary: 'Update class-level student type (Admin/Teacher only)' })
