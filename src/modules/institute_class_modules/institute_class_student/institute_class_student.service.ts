@@ -908,7 +908,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     instituteId: string,
     classId: string,
     studentUserId: string,
-    studentType: 'normal' | 'paid' | 'free_card',
+    studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid',
   ): Promise<{ message: string; studentType: string }> {
     const record = await this.classStudentRepository.findOne({
       where: { instituteId, classId, studentUserId },

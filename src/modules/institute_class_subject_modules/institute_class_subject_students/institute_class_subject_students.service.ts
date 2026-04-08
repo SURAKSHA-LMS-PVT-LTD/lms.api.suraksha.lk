@@ -987,7 +987,7 @@ export class InstituteClassSubjectStudentsService {
       const isClassFreeCard = classEnrollment.studentType === 'free_card';
 
       let verificationStatus: string;
-      let enrollmentStudentType: 'normal' | 'paid' | 'free_card';
+      let enrollmentStudentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 
       if (isClassFreeCard) {
         // Admin pre-approved at class level — enroll as verified immediately so student can attend
@@ -1156,7 +1156,7 @@ export class InstituteClassSubjectStudentsService {
     classId: string,
     subjectId: string,
     studentId: string,
-    studentType: 'normal' | 'paid' | 'free_card'
+    studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid'
   ): Promise<{ message: string; studentType: string }> {
     try {
       const enrollment = await this.studentRepository.findOne({
@@ -1823,7 +1823,7 @@ export class InstituteClassSubjectStudentsService {
   async getClassEnrollmentTypeSummary(
     instituteId: string,
     classId: string,
-    filterType?: 'free_card' | 'paid' | 'normal' | 'all',
+    filterType?: 'free_card' | 'paid' | 'normal' | 'half_paid' | 'quarter_paid' | 'all',
   ): Promise<{
     studentId: string;
     name: string;
@@ -1832,7 +1832,7 @@ export class InstituteClassSubjectStudentsService {
     subjects: {
       subjectId: string;
       subjectName: string;
-      studentType: 'normal' | 'paid' | 'free_card';
+      studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
       verificationStatus: string;
     }[];
     hasFreeCard: boolean;
@@ -1868,7 +1868,7 @@ export class InstituteClassSubjectStudentsService {
       imageUrl: string | null;
       subjectId: string;
       subjectName: string;
-      studentType: 'normal' | 'paid' | 'free_card';
+      studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
       verificationStatus: string;
     }[] = await qb.orderBy('"firstName"').getRawMany();
 
@@ -1907,7 +1907,7 @@ export class InstituteClassSubjectStudentsService {
     instituteId: string,
     classId: string,
     studentId: string,
-    studentType: 'normal' | 'paid' | 'free_card',
+    studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid',
   ): Promise<{ message: string; updatedCount: number; studentType: string }> {
     const result = await this.studentRepository.update(
       { instituteId, classId, studentId, isActive: true },

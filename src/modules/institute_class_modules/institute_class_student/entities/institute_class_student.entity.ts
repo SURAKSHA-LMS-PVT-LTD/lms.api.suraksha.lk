@@ -70,7 +70,7 @@ export class InstituteClassStudentEntity {
   @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 
-  @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card'], default: 'normal', comment: 'Enrollment type at class level: normal=default, paid=confirmed paid, free_card=exempt from fee' })
-  studentType: 'normal' | 'paid' | 'free_card';
+  @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid'], default: 'normal', comment: 'Enrollment type at class level: normal=default, paid=fully paid, half_paid=50% fee paid, quarter_paid=25% fee paid, free_card=exempt from fee' })
+  studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 }
 

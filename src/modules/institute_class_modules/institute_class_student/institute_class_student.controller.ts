@@ -121,7 +121,7 @@ export class InstituteClassStudentController {
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' },
+    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid' },
   ) {
     return this.instituteClassStudentService.updateClassStudentType(
       instituteId, classId, studentUserId, body.studentType,

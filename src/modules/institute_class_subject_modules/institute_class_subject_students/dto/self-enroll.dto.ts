@@ -123,7 +123,7 @@ export class SelfEnrollResponseDto {
   @ApiProperty({
     description: 'Student enrollment type based on class-level pre-approval',
     example: 'free_card',
-    enum: ['normal', 'paid', 'free_card']
+    enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid']
   })
-  studentType?: 'normal' | 'paid' | 'free_card';
+  studentType?: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 }

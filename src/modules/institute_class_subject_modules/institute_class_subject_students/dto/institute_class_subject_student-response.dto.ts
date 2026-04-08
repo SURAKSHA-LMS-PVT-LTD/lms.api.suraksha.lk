@@ -39,8 +39,8 @@ export class InstituteClassSubjectStudentResponseDto {
   @ApiProperty({ description: 'Reason for rejection', required: false })
   rejectionReason?: string;
 
-  @ApiProperty({ description: 'Student type', example: 'normal', enum: ['normal', 'paid', 'free_card'] })
-  studentType: 'normal' | 'paid' | 'free_card';
+  @ApiProperty({ description: 'Student type', example: 'normal', enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid'] })
+  studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 
   @ApiProperty({ description: 'Creation date', example: '2024-01-15T10:00:00Z' })
   createdAt: Date;

@@ -82,8 +82,8 @@ export class InstituteClassSubjectStudent {
   rejectionReason?: string;
 
   // Student type tracking
-  @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card'], default: 'normal', comment: 'Student type: normal=default, paid=confirmed paid, free_card=exempt from enrollment fee' })
-  studentType: 'normal' | 'paid' | 'free_card';
+  @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid'], default: 'normal', comment: 'Student type: normal=default, paid=fully paid, half_paid=50% fee paid, quarter_paid=25% fee paid, free_card=exempt from enrollment fee' })
+  studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 
   // Payment-gated enrollment tracking
   @Column({ name: 'enrollment_payment_id', type: 'bigint', nullable: true, comment: 'FK to institute_class_subject_payment_submissions if payment-gated' })

@@ -16,12 +16,12 @@ export class TeacherAssignStudentsDto {
   @ApiProperty({
     description: 'Student type for assigned students (default: normal)',
     example: 'normal',
-    enum: ['normal', 'paid', 'free_card'],
+    enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid'],
     required: false
   })
   @IsOptional()
   @IsString()
-  studentType?: 'normal' | 'paid' | 'free_card';
+  studentType?: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 }
 
 export class TeacherAssignResponseDto {

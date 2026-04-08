@@ -775,7 +775,7 @@ export class InstituteClassSubjectStudentsController {
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('subjectId', ParseBigIntPipe) subjectId: string,
     @Param('studentId', ParseBigIntPipe) studentId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' }
+    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid' }
   ) {
     return await this.studentsService.updateStudentType(instituteId, classId, subjectId, studentId, body.studentType);
   }
@@ -939,12 +939,12 @@ export class InstituteClassSubjectStudentsController {
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
-  @ApiQuery({ name: 'filterType', required: false, enum: ['all', 'free_card', 'paid', 'normal'] })
+  @ApiQuery({ name: 'filterType', required: false, enum: ['all', 'free_card', 'paid', 'normal', 'half_paid', 'quarter_paid'] })
   @ApiResponse({ status: 200, description: 'Enrollment type summary' })
   async getClassEnrollmentSummary(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
-    @Query('filterType') filterType?: 'free_card' | 'paid' | 'normal' | 'all',
+    @Query('filterType') filterType?: 'free_card' | 'paid' | 'normal' | 'half_paid' | 'quarter_paid' | 'all',
   ) {
     return this.studentsService.getClassEnrollmentTypeSummary(instituteId, classId, filterType);
   }
@@ -965,7 +965,7 @@ export class InstituteClassSubjectStudentsController {
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('studentId', ParseBigIntPipe) studentId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' },
+    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid' },
   ) {
     return this.studentsService.updateStudentTypeForClass(instituteId, classId, studentId, body.studentType);
   }
