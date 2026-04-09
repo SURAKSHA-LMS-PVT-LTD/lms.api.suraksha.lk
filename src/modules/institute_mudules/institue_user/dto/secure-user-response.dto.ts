@@ -121,6 +121,9 @@ export class SecureUserResponseDto {
   @ApiPropertyOptional({ example: 'Blue House', description: 'Assigned house name within the institute' })
   houseName?: string;
 
+  @ApiPropertyOptional({ example: { phone2: '0771234567', note: 'VIP student' }, description: 'Institute-defined custom key-value metadata' })
+  extraData?: Record<string, any>;
+
   constructor(user: UserEntity | UserLikeData, userIdByInstitute?: string, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     // ✅ Handle both camelCase and snake_case field names from raw query results
     this.id = user.id || (user as any).user_id;
@@ -162,6 +165,11 @@ export class SecureUserResponseDto {
       this.verifiedBy = instituteUserData.verifiedBy || (instituteUserData as any).verified_by || (instituteUserData as any).verifierName;
       this.houseId = (instituteUserData as any).houseId || (instituteUserData as any).house_id;
       this.houseName = (instituteUserData as any).houseName || (instituteUserData as any).house_name;
+      // Parse extraData from JSON string if coming from raw query, or use object directly
+      const rawExtra = (instituteUserData as any).extraData || (instituteUserData as any).extra_data;
+      if (rawExtra) {
+        this.extraData = typeof rawExtra === 'string' ? JSON.parse(rawExtra) : rawExtra;
+      }
     }
   }
 }

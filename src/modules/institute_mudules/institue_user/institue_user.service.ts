@@ -333,6 +333,7 @@ export class InstitueUserService {
       'u.is_active',
       'iu.user_id_institue as userIdByInstitute',
       'iu.house_id as house_id',
+      'iu.extra_data as extra_data',
       'iu.status',
       'iu.verified_at',
       'iu.created_at',
@@ -1325,6 +1326,7 @@ export class InstitueUserService {
         'iu.user_id_institue as userIdByInstitute',
         'iu.institute_user_image_url',  // Institute-specific image
         'iu.image_verification_status',  // Image verification status
+        'iu.extra_data as extra_data',
         'iu.created_at',
         'ics.isVerified as student_is_verified',
         'ics.student_type as student_type',
@@ -1518,6 +1520,7 @@ export class InstitueUserService {
         'iu.user_id_institue as userIdByInstitute',
         'iu.institute_user_image_url',  // Institute-specific image
         'iu.image_verification_status',  // Image verification status
+        'iu.extra_data as extra_data',
         'iu.created_at',
         'icss.student_type as student_type',
         's.father_id as father_id',
