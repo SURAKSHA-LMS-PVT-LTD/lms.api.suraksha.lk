@@ -99,12 +99,24 @@ export class OriginValidationGuard implements CanActivate {
     return false;
   }
 
+  // Matches any https://<subdomain>.suraksha.lk origin (same pattern as CORS middleware)
+  private readonly surakshaDomainPattern = /^https:\/\/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.suraksha\.lk$/;
+
   /**
-   * Check if origin is in whitelist
+   * Check if origin is in whitelist.
+   * Supports:
+   *   - Exact match against CORS_ORIGINS env list
+   *   - Simple glob wildcards in the env list (e.g. https://*.example.com)
+   *   - Any *.suraksha.lk subdomain (multi-tenant SSO support)
    */
   private isOriginAllowed(origin: string): boolean {
     // Normalize origin (remove trailing slash)
     const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
+
+    // ✅ Always allow any *.suraksha.lk subdomain (SSO / multi-tenant frontends)
+    if (this.surakshaDomainPattern.test(normalizedOrigin)) {
+      return true;
+    }
 
     return this.allowedOrigins.some(allowed => {
       const normalizedAllowed = allowed.toLowerCase().replace(/\/$/, '');

@@ -105,6 +105,36 @@ export class MobileLoginDto {
   @IsOptional()
   @IsString()
   fcm_token?: string;
+
+  // ─── SSO / Multi-tenant fields ───────────────────────────────────────────
+  // Sent when the mobile app is branded for a specific institute subdomain.
+  // Ignored by the mobile controller but must be whitelisted so
+  // forbidNonWhitelisted does not reject the request with 400.
+
+  @ApiPropertyOptional({ description: 'Subdomain of the institute (e.g. "academy" for academy.suraksha.lk)' })
+  @IsOptional()
+  @IsString()
+  subdomain?: string;
+
+  @ApiPropertyOptional({ description: 'Custom domain of the institute (e.g. "lms.myschool.com")' })
+  @IsOptional()
+  @IsString()
+  customDomain?: string;
+
+  // Accept snake_case variant
+  @IsOptional()
+  @IsString()
+  custom_domain?: string;
+
+  @ApiPropertyOptional({ description: 'Login method — set automatically based on login origin' })
+  @IsOptional()
+  @IsString()
+  loginMethod?: string;
+
+  // Accept snake_case variant
+  @IsOptional()
+  @IsString()
+  login_method?: string;
 }
 
 /**
