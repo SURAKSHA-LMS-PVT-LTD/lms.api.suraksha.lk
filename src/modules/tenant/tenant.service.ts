@@ -221,6 +221,44 @@ export class TenantService {
   // LOGIN BRANDING MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════
 
+  async getLoginBranding(instituteId: string): Promise<{
+    loginLogoUrl?: string | null;
+    loginBackgroundType?: string | null;
+    loginBackgroundUrl?: string | null;
+    loginVideoPosterUrl?: string | null;
+    loginIllustrationUrl?: string | null;
+    loginWelcomeTitle?: string | null;
+    loginWelcomeSubtitle?: string | null;
+    loginFooterText?: string | null;
+    faviconUrl?: string | null;
+    customAppName?: string | null;
+    poweredByVisible?: boolean;
+  }> {
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId },
+      select: [
+        'id', 'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl',
+        'loginVideoPosterUrl', 'loginIllustrationUrl', 'loginWelcomeTitle',
+        'loginWelcomeSubtitle', 'loginFooterText', 'faviconUrl',
+        'customAppName', 'poweredByVisible',
+      ],
+    });
+    if (!institute) throw new NotFoundException('Institute not found');
+    return {
+      loginLogoUrl: institute.loginLogoUrl,
+      loginBackgroundType: institute.loginBackgroundType,
+      loginBackgroundUrl: institute.loginBackgroundUrl,
+      loginVideoPosterUrl: institute.loginVideoPosterUrl,
+      loginIllustrationUrl: institute.loginIllustrationUrl,
+      loginWelcomeTitle: institute.loginWelcomeTitle,
+      loginWelcomeSubtitle: institute.loginWelcomeSubtitle,
+      loginFooterText: institute.loginFooterText,
+      faviconUrl: institute.faviconUrl,
+      customAppName: institute.customAppName,
+      poweredByVisible: institute.poweredByVisible ?? true,
+    };
+  }
+
   async updateLoginBranding(instituteId: string, dto: UpdateLoginBrandingDto): Promise<InstituteEntity> {
     const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
     if (!institute) throw new NotFoundException('Institute not found');

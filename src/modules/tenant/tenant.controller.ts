@@ -127,6 +127,14 @@ export class TenantController {
 
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @Get('institutes/:id/login-branding')
+  @ApiOperation({ summary: 'Get current login page branding for an institute' })
+  async getLoginBranding(@Param('id') id: string) {
+    return this.tenantService.getLoginBranding(id);
+  }
+
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Patch('institutes/:id/login-branding')
   @ApiOperation({ summary: 'Update login page branding for an institute' })
   async updateLoginBranding(
