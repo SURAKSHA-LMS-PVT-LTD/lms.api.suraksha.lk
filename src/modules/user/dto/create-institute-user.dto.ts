@@ -7,6 +7,7 @@ import {
   IsBoolean,
   IsArray,
   IsNotEmpty,
+  IsObject,
   MaxLength,
   ValidateNested,
   ValidateIf,
@@ -403,6 +404,16 @@ export class CreateInstituteUserDto {
   @IsOptional()
   @IsString()
   houseId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Institute-defined custom key-value data stored on the institute_user record.',
+    example: { studentId: 'S001', batch: '2025' },
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  extraData?: Record<string, any>;
 }
 
 // ---------------------------------------------------------------------------

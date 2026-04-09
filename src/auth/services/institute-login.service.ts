@@ -94,7 +94,10 @@ export class InstituteLoginService {
 
     // 2. Check that institute password is set
     if (!instituteUser.institutePassword) {
-      throw new UnauthorizedException('Institute password not set. Please contact your institute administrator.');
+      throw new UnauthorizedException({
+        message: 'You have not set an institute password yet. Please log in to the main SurakshLMS app and activate your institute access from Profile → Security.',
+        errorCode: 'INSTITUTE_PASSWORD_NOT_SET',
+      });
     }
 
     // 3. Verify password using same bcrypt+pepper approach
