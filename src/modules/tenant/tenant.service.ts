@@ -7,6 +7,7 @@ import { InstituteBillingConfigEntity } from './entities/institute-billing-confi
 import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.entity';
 import { TenantServicePaymentEntity, TenantServicePaymentStatus, TenantServiceType } from './entities/tenant-billing-payment.entity';
 import { InstituteTier, LoginMethod, LoginBackgroundType } from '../institute/enums/institute.enums';
+import { UserType } from '../user/enums/user-type.enum';
 import { InstituteSmsCredentialsEntity } from '../sms/entities/institute-sms-credentials.entity';
 import { InstituteCreditsService } from '../notification-credits/services/institute-credits.service';
 import { CreditTransactionType } from '../notification-credits/entities/institute-credit-transaction.entity';
@@ -259,12 +260,20 @@ export class TenantService {
     };
   }
 
-  async updateLoginBranding(instituteId: string, dto: UpdateLoginBrandingDto): Promise<InstituteEntity> {
+  async updateLoginBranding(instituteId: string, dto: UpdateLoginBrandingDto, currentUser?: any): Promise<InstituteEntity> {
     const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
     if (!institute) throw new NotFoundException('Institute not found');
 
     if (institute.tier === InstituteTier.FREE) {
       throw new BadRequestException('Login branding customization requires STARTER tier or higher. Please upgrade your plan.');
+    }
+
+    // Only system administrators can change the poweredByVisible setting
+    if (dto.poweredByVisible !== undefined) {
+      const isSuperAdmin = currentUser?.userType === UserType.SUPERADMIN;
+      if (!isSuperAdmin) {
+        throw new ForbiddenException('Only system administrators can change the "Powered by SurakshaLMS" setting');
+      }
     }
 
     // Tier-based restrictions

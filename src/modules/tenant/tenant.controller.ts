@@ -140,8 +140,9 @@ export class TenantController {
   async updateLoginBranding(
     @Param('id') id: string,
     @Body() dto: UpdateLoginBrandingDto,
+    @GetUser() currentUser: any,
   ) {
-    await this.tenantService.updateLoginBranding(id, dto);
+    await this.tenantService.updateLoginBranding(id, dto, currentUser);
     return { success: true };
   }
 
