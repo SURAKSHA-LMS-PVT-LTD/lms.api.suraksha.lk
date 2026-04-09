@@ -559,6 +559,57 @@ export class InstitueUserController {
 
   // =================== ADMIN UTILITIES ===================
 
+  @Patch('institute/:instituteId/users/:userId/extra-data')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Update extra data for an institute user (ADMIN ONLY)',
+    description: 'Updates the custom key-value extra data stored on the institute_user record. Pass null to clear.'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        extraData: {
+          type: 'object',
+          nullable: true,
+          example: { studentId: 'S001', batch: '2025' },
+          description: 'Custom key-value data. Pass null to clear.'
+        }
+      },
+      required: ['extraData']
+    }
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Extra data updated successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Extra data updated successfully',
+        userId: '12345',
+        instituteId: '1',
+        extraData: { studentId: 'S001', batch: '2025' }
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+  @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
+  async updateExtraData(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Body() body: { extraData: Record<string, any> | null },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    userId: string;
+    instituteId: string;
+    extraData: Record<string, any> | null;
+  }> {
+    return this.institueUserService.updateExtraData(instituteId, userId, body.extraData ?? null);
+  }
+
   @Patch('institute/:instituteId/users/:userId/deactivate')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })

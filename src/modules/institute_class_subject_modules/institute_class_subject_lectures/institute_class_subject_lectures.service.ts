@@ -33,6 +33,17 @@ export class InstituteClassSubjectLecturesService {
     private readonly cloudStorageService: CloudStorageService,
   ) {}
 
+  private transformMaterialUrls(lecture: InstituteClassSubjectLecture): void {
+    if (Array.isArray(lecture.materials)) {
+      lecture.materials = lecture.materials.map(m => ({
+        ...m,
+        documentUrl: m.source === 'S3' && m.documentUrl
+          ? this.cloudStorageService.getFullUrl(m.documentUrl)
+          : m.documentUrl,
+      }));
+    }
+  }
+
   async create(createDto: CreateInstituteClassSubjectLectureDto): Promise<InstituteClassSubjectLecture> {
     try {
       const timestamp = now();
@@ -128,11 +139,12 @@ export class InstituteClassSubjectLecturesService {
       .orderBy('lecture.startTime', 'ASC')
       .getManyAndCount();
 
-    // ✅ Transform recordingUrl to full URL for all lectures
+    // ✅ Transform recordingUrl and material URLs to full URLs for all lectures
     const transformedLectures = lectures.map(lecture => {
       if (lecture.recordingUrl) {
         lecture.recordingUrl = this.cloudStorageService.getFullUrl(lecture.recordingUrl);
       }
+      this.transformMaterialUrls(lecture);
       return lecture;
     });
 
@@ -180,10 +192,11 @@ export class InstituteClassSubjectLecturesService {
       }
     }
 
-    // ✅ Transform recordingUrl to full URL
+    // ✅ Transform recordingUrl and material URLs to full URLs
     if (lecture.recordingUrl) {
       lecture.recordingUrl = this.cloudStorageService.getFullUrl(lecture.recordingUrl);
     }
+    this.transformMaterialUrls(lecture);
 
     return lecture;
   }
@@ -233,10 +246,11 @@ export class InstituteClassSubjectLecturesService {
       throw new NotFoundException(`Lecture with ID ${id} not found`);
     }
 
-    // ✅ Transform recordingUrl to full URL
+    // ✅ Transform recordingUrl and material URLs to full URLs
     if (lecture.recordingUrl) {
       lecture.recordingUrl = this.cloudStorageService.getFullUrl(lecture.recordingUrl);
     }
+    this.transformMaterialUrls(lecture);
 
     return lecture; // Return full entity with all relations
   }
@@ -267,14 +281,18 @@ export class InstituteClassSubjectLecturesService {
       if (updateDto.isRecorded !== undefined) updateData.isRecorded = updateDto.isRecorded;
       if (updateDto.maxParticipants !== undefined) updateData.maxParticipants = updateDto.maxParticipants;
       if (updateDto.isActive !== undefined) updateData.isActive = updateDto.isActive;
+      if (updateDto.materials !== undefined) updateData.materials = updateDto.materials;
 
       await this.lectureRepository.update(id, updateData);
       
       const updatedLecture = await this.lectureRepository.findOne({ where: { id } });
       
-      // ✅ Transform recordingUrl to full URL
-      if (updatedLecture && updatedLecture.recordingUrl) {
-        updatedLecture.recordingUrl = this.cloudStorageService.getFullUrl(updatedLecture.recordingUrl);
+      // ✅ Transform recordingUrl and material URLs to full URLs
+      if (updatedLecture) {
+        if (updatedLecture.recordingUrl) {
+          updatedLecture.recordingUrl = this.cloudStorageService.getFullUrl(updatedLecture.recordingUrl);
+        }
+        this.transformMaterialUrls(updatedLecture);
       }
       
       return updatedLecture!;

@@ -2148,6 +2148,46 @@ export class InstitueUserService {
   }
 
   /**
+   * Update extra data for an institute user.
+   * Only accessible by Institute Admins and Super Admins.
+   */
+  async updateExtraData(
+    instituteId: string,
+    userId: string,
+    extraData: Record<string, any> | null,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    userId: string;
+    instituteId: string;
+    extraData: Record<string, any> | null;
+  }> {
+    const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
+    const safeUserId = SecurityUtils.validateBigIntId(userId, 'userId');
+
+    const instituteUser = await this.instituteUserRepository.findOne({
+      where: { instituteId: safeInstituteId, userId: safeUserId },
+    });
+
+    if (!instituteUser) {
+      throw new NotFoundException(
+        `User ${userId} is not assigned to institute ${instituteId}`,
+      );
+    }
+
+    instituteUser.extraData = extraData;
+    await this.instituteUserRepository.save(instituteUser);
+
+    return {
+      success: true,
+      message: 'Extra data updated successfully',
+      userId,
+      instituteId,
+      extraData,
+    };
+  }
+
+  /**
    * Activate user in institute by setting status to ACTIVE
    * Only accessible by Institute Admins and Super Admins
    */
