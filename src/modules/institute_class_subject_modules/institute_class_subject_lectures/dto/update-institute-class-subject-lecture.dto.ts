@@ -1,9 +1,9 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
 import { PartialType } from '@nestjs/swagger';
-import { CreateInstituteClassSubjectLectureDto, LectureStatus } from './create-institute_class_subject_lecture.dto';
-import { IsEnum, IsOptional, IsString, IsBoolean, IsUrl, IsNumber, IsDateString } from 'class-validator';
+import { CreateInstituteClassSubjectLectureDto, LectureStatus, LectureMaterialDto } from './create-institute_class_subject_lecture.dto';
+import { IsEnum, IsOptional, IsString, IsBoolean, IsUrl, IsNumber, IsDateString, IsArray, ValidateNested } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { InstituteClassSubjectLectureResponseDto } from './Institute-class-subject-lecture-response.dto';
 
 export class UpdateInstituteClassSubjectLectureDto {
@@ -71,6 +71,13 @@ export class UpdateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({ description: 'Reference materials for the lecture', type: [LectureMaterialDto], required: false })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LectureMaterialDto)
+  materials?: LectureMaterialDto[];
 }
 
 // export class LectureScheduleDto {

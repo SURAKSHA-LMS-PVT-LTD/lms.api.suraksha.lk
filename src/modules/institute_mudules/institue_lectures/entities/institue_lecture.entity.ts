@@ -81,6 +81,15 @@ export class InstituteLectureEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'materials', type: 'json', nullable: true })
+  materials?: Array<{
+    documentName: string;
+    documentUrl: string;
+    driveFileId?: string;
+    driveWebViewLink?: string;
+    source?: string;
+  }>;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

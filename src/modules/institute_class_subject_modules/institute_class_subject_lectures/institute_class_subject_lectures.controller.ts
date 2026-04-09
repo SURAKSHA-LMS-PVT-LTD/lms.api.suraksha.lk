@@ -61,6 +61,7 @@ export class InstituteClassSubjectLecturesController {
         maxParticipants: lectureData.maxParticipants,
         status: (lectureData as any).status,
         isActive: (lectureData as any).isActive,
+        materials: (lectureData as any).materials,
       };
       return await this.lecturesService.create(flatDto);
     }

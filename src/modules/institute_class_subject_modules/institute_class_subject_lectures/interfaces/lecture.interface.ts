@@ -74,6 +74,13 @@ export interface ICreateLecture {
   isRecorded?: boolean;
   maxParticipants?: number;
   isActive?: boolean;
+  materials?: Array<{
+    documentName: string;
+    documentUrl: string;
+    driveFileId?: string;
+    driveWebViewLink?: string;
+    source?: string;
+  }>;
 }
 
 export interface IUpdateLecture {
@@ -90,6 +97,13 @@ export interface IUpdateLecture {
   isRecorded?: boolean;
   maxParticipants?: number;
   isActive?: boolean;
+  materials?: Array<{
+    documentName: string;
+    documentUrl: string;
+    driveFileId?: string;
+    driveWebViewLink?: string;
+    source?: string;
+  }>;
 }
 
 export interface IBulkCreateLectures {

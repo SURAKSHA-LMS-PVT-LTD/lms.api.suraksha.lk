@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, IsUUID, ValidateIf, MaxLength, MinLength, IsUrl, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, IsUUID, ValidateIf, MaxLength, MinLength, IsUrl, Min, Max, IsArray, ValidateNested } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { LectureStatus, LectureType } from '../enums/lecture.enum';
 import { 
@@ -11,6 +11,33 @@ import {
   INVALID_LECTURE_STATUS
 } from '../constants/institute-lecture.constants';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export class LectureMaterialDto {
+  @ApiProperty({ description: 'Display name for the material' })
+  @IsString()
+  @IsNotEmpty()
+  documentName: string;
+
+  @ApiProperty({ description: 'URL or relative path to the material' })
+  @IsString()
+  @IsNotEmpty()
+  documentUrl: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive file ID' })
+  @IsOptional()
+  @IsString()
+  driveFileId?: string;
+
+  @ApiPropertyOptional({ description: 'Google Drive web view link' })
+  @IsOptional()
+  @IsString()
+  driveWebViewLink?: string;
+
+  @ApiPropertyOptional({ description: 'Upload source: S3, GOOGLE_DRIVE, GOOGLE_DRIVE_INSTITUTE, EXTERNAL_LINK' })
+  @IsOptional()
+  @IsString()
+  source?: string;
+}
 
 export class CreateInstitueLectureDto {
   @ApiProperty({ description: 'Institute ID', example: '1' })
@@ -128,4 +155,11 @@ export class CreateInstitueLectureDto {
   @IsBoolean()
   @Type(() => Boolean)
   isActive?: boolean = true;
+
+  @ApiPropertyOptional({ description: 'Reference materials for the lecture', type: [LectureMaterialDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LectureMaterialDto)
+  materials?: LectureMaterialDto[];
 }

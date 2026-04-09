@@ -55,6 +55,7 @@ export class InstituteClassSubjectLecturesService {
         isRecorded: createDto.isRecorded ?? false,
         maxParticipants: createDto.maxParticipants,
         isActive: createDto.isActive ?? true,
+        materials: createDto.materials ?? undefined,
         createdAt: timestamp,
         updatedAt: timestamp,
       };

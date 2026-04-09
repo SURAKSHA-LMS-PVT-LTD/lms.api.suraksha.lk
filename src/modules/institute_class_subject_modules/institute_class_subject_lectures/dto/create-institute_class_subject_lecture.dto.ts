@@ -16,6 +16,37 @@ export enum LectureStatus {
   CANCELLED = 'cancelled',
 }
 
+export class LectureMaterialDto {
+  @ApiProperty({ description: 'Display name for the material' })
+  @IsString()
+  @IsNotEmpty()
+  documentName: string;
+
+  @ApiProperty({ description: 'URL or relative path to the material' })
+  @IsString()
+  @IsNotEmpty()
+  documentUrl: string;
+
+  @ApiProperty({ description: 'Google Drive file ID (if from Drive)', required: false })
+  @IsOptional()
+  @IsString()
+  driveFileId?: string;
+
+  @ApiProperty({ description: 'Google Drive web view link', required: false })
+  @IsOptional()
+  @IsString()
+  driveWebViewLink?: string;
+
+  @ApiProperty({
+    description: 'Upload source',
+    enum: ['S3', 'GOOGLE_DRIVE', 'GOOGLE_DRIVE_INSTITUTE', 'EXTERNAL_LINK'],
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  source?: string;
+}
+
 export class CreateInstituteClassSubjectLectureDto {
   @ApiProperty({ description: 'Institute ID' })
   @IsString()
@@ -113,6 +144,13 @@ export class CreateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({ description: 'Reference materials for the lecture', type: [LectureMaterialDto], required: false })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LectureMaterialDto)
+  materials?: LectureMaterialDto[];
 }
 
 export class LectureDataDto {
