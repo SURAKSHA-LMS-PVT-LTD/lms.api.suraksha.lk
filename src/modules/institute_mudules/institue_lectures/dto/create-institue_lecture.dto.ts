@@ -162,4 +162,10 @@ export class CreateInstitueLectureDto {
   @ValidateNested({ each: true })
   @Type(() => LectureMaterialDto)
   materials?: LectureMaterialDto[];
+
+  @ApiPropertyOptional({ description: 'Thumbnail image URL or S3 relative path', example: 'lecture-thumbnails/abc-uuid.jpg' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: 'Thumbnail URL cannot exceed 500 characters' })
+  thumbnailUrl?: string;
 }

@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 
 class GenerateUploadUrlDto {
   @ApiProperty()
-  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents'])
-  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents';
+  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'])
+  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails';
   
   @ApiProperty()
   @IsString()
@@ -163,7 +163,7 @@ export class UploadController {
     })();
 
     // Validate folder type
-    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents'];
+    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'];
     if (!validFolders.includes(folder)) {
       throw new BadRequestException(`Invalid folder. Must be one of: ${validFolders.join(', ')}`);
     }
@@ -662,7 +662,8 @@ export class UploadController {
       'enrollment-payment-receipts': ['.jpg', '.jpeg', '.png', '.pdf'],
       'id-documents': ['.jpg', '.jpeg', '.png', '.pdf'],
       'bookhire-vehicle-images': ['.jpg', '.jpeg', '.png', '.webp'],
-      'bookhire-owner-images': ['.jpg', '.jpeg', '.png', '.webp']
+      'bookhire-owner-images': ['.jpg', '.jpeg', '.png', '.webp'],
+      'lecture-thumbnails': ['.jpg', '.jpeg', '.png', '.webp', '.gif']
     };
 
     const allowed = allowedExtensions[folder] || ['.jpg', '.jpeg', '.png', '.pdf'];
@@ -710,7 +711,8 @@ export class UploadController {
       'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024
+      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024
     };
 
     const maxSize = maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
@@ -756,7 +758,8 @@ export class UploadController {
       'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024
+      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB

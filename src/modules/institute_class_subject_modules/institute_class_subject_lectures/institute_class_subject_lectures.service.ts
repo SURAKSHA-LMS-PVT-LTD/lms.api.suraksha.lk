@@ -42,6 +42,9 @@ export class InstituteClassSubjectLecturesService {
           : m.documentUrl,
       }));
     }
+    if ((lecture as any).thumbnailUrl && !(lecture as any).thumbnailUrl.startsWith('http')) {
+      (lecture as any).thumbnailUrl = this.cloudStorageService.getFullUrl((lecture as any).thumbnailUrl);
+    }
   }
 
   async create(createDto: CreateInstituteClassSubjectLectureDto): Promise<InstituteClassSubjectLecture> {

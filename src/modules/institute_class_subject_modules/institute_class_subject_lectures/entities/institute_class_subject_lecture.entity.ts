@@ -110,6 +110,9 @@ export class InstituteClassSubjectLecture {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'thumbnail_url', type: 'varchar', length: 500, nullable: true })
+  thumbnailUrl?: string;
+
   @Column({ name: 'materials', type: 'json', nullable: true })
   materials?: Array<{
     documentName: string;

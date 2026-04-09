@@ -35,6 +35,9 @@ export class InstitueLecturesService {
     if (lecture?.recordingUrl) {
       lecture.recordingUrl = this.cloudStorageService.getFullUrl(lecture.recordingUrl);
     }
+    if (lecture?.thumbnailUrl && !lecture.thumbnailUrl.startsWith('http')) {
+      lecture.thumbnailUrl = this.cloudStorageService.getFullUrl(lecture.thumbnailUrl);
+    }
   }
 
   private transformLectures<T extends any>(lectures: T[]): T[] {
