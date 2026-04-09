@@ -1,7 +1,6 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
 import { NoDataMasking } from '../../common/decorators/no-data-masking.decorator';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpStatus, ParseIntPipe, UseGuards, Put, Request, BadRequestException, ForbiddenException, Inject, UploadedFile, UploadedFiles } from '@nestjs/common';
-import { FileInterceptor, FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpStatus, ParseIntPipe, UseGuards, Put, Request, BadRequestException, ForbiddenException, Inject } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,

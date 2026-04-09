@@ -14,12 +14,33 @@ import {
   INSTITUTE_LECTURE_STARTED
 } from './constants/institute-lecture.constants';
 import { LectureStatus } from './enums/lecture.enum';
+import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 @Injectable()
 export class InstitueLecturesService {
   constructor(
     private readonly lectureRepository: InstituteLectureRepository,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
+
+  private transformMaterialUrls(lecture: any): void {
+    if (Array.isArray(lecture?.materials)) {
+      lecture.materials = lecture.materials.map((m: any) => ({
+        ...m,
+        documentUrl: m.source === 'S3' && m.documentUrl
+          ? this.cloudStorageService.getFullUrl(m.documentUrl)
+          : m.documentUrl,
+      }));
+    }
+    if (lecture?.recordingUrl) {
+      lecture.recordingUrl = this.cloudStorageService.getFullUrl(lecture.recordingUrl);
+    }
+  }
+
+  private transformLectures<T extends any>(lectures: T[]): T[] {
+    lectures.forEach(l => this.transformMaterialUrls(l));
+    return lectures;
+  }
 
   async create(createInstitueLectureDto: CreateInstitueLectureDto) {
     const timestamp = now();
@@ -31,7 +52,8 @@ export class InstitueLecturesService {
   }
 
   async findAll(filterDto: LectureFilterDto = {}) {
-    return await this.lectureRepository.findAll(filterDto);
+    const lectures = await this.lectureRepository.findAll(filterDto);
+    return this.transformLectures(lectures);
   }
 
   async findOne(id: string) {
@@ -39,6 +61,7 @@ export class InstitueLecturesService {
     if (!lecture) {
       throw new NotFoundException(INSTITUTE_LECTURE_NOT_FOUND);
     }
+    this.transformMaterialUrls(lecture);
     return lecture;
   }
 
@@ -47,7 +70,9 @@ export class InstitueLecturesService {
     if (!lecture) {
       throw new NotFoundException(INSTITUTE_LECTURE_NOT_FOUND);
     }
-    return await this.lectureRepository.update(id, updateInstitueLectureDto);
+    const updated = await this.lectureRepository.update(id, updateInstitueLectureDto);
+    this.transformMaterialUrls(updated);
+    return updated;
   }
 
   async remove(id: string) {
@@ -74,27 +99,33 @@ export class InstitueLecturesService {
   }
 
   async findByInstitute(instituteId: string) {
-    return await this.lectureRepository.findByInstitute(instituteId);
+    const lectures = await this.lectureRepository.findByInstitute(instituteId);
+    return this.transformLectures(lectures);
   }
 
   async findByClass(classId: string) {
-    return await this.lectureRepository.findByClass(classId);
+    const lectures = await this.lectureRepository.findByClass(classId);
+    return this.transformLectures(lectures);
   }
 
   async findByInstructor(instructorId: string) {
-    return await this.lectureRepository.findByInstructor(instructorId);
+    const lectures = await this.lectureRepository.findByInstructor(instructorId);
+    return this.transformLectures(lectures);
   }
 
   async findUpcoming(instituteId: string, limit?: number) {
-    return await this.lectureRepository.findUpcoming(instituteId, limit);
+    const lectures = await this.lectureRepository.findUpcoming(instituteId, limit);
+    return this.transformLectures(lectures);
   }
 
   async findOngoing(instituteId: string) {
-    return await this.lectureRepository.findOngoing(instituteId);
+    const lectures = await this.lectureRepository.findOngoing(instituteId);
+    return this.transformLectures(lectures);
   }
 
   async findCompleted(instituteId: string, limit?: number) {
-    return await this.lectureRepository.findCompleted(instituteId, limit);
+    const lectures = await this.lectureRepository.findCompleted(instituteId, limit);
+    return this.transformLectures(lectures);
   }
 
   async updateStatus(id: string, updateStatusDto: UpdateLectureStatusDto) {
@@ -104,6 +135,7 @@ export class InstitueLecturesService {
     }
 
     const updatedLecture = await this.lectureRepository.updateStatus(id, updateStatusDto.status);
+    this.transformMaterialUrls(updatedLecture);
     
     let message: string;
     switch (updateStatusDto.status) {
@@ -139,6 +171,7 @@ export class InstitueLecturesService {
       rescheduleDto.startTime, 
       rescheduleDto.endTime
     );
+    this.transformMaterialUrls(updatedLecture);
     
     return { 
       lecture: updatedLecture, 
@@ -147,6 +180,7 @@ export class InstitueLecturesService {
   }
 
   async findByDateRange(startDate: Date, endDate: Date) {
-    return await this.lectureRepository.findByDateRange(startDate, endDate);
+    const lectures = await this.lectureRepository.findByDateRange(startDate, endDate);
+    return this.transformLectures(lectures);
   }
 }

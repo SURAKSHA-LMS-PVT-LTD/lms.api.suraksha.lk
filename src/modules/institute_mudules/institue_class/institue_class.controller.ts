@@ -1,9 +1,8 @@
 ﻿import * as crypto from 'crypto';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { ImageUrlDto, TeacherIdDto } from '../../../common/dto/common-body.dto';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, UploadedFile, ClassSerializerInterceptor } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, ClassSerializerInterceptor } from '@nestjs/common';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { InstitueClassService } from './institue_class.service';
 import { InstituteClassStudentService } from '../../institute_class_modules/institute_class_student/institute_class_student.service';

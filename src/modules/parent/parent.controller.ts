@@ -1,6 +1,5 @@
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpCode, HttpStatus, UploadedFile, BadRequestException, UseGuards } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpCode, HttpStatus, BadRequestException, UseGuards } from '@nestjs/common';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';

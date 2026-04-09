@@ -215,7 +215,16 @@ export class InstituteClassSubjectLecturesService {
         'lecture.startTime',
         'lecture.endTime',
         'lecture.location',
-        'lecture.isActive'
+        'lecture.isActive',
+        'lecture.materials',
+        'lecture.recordingUrl',
+        'lecture.status',
+        'lecture.lectureType',
+        'lecture.venue',
+        'lecture.meetingLink',
+        'lecture.meetingId',
+        'lecture.maxParticipants',
+        'lecture.isRecorded'
       ])
       .leftJoin('lecture.institute', 'institute')
       .addSelect([
@@ -387,9 +396,18 @@ export class InstituteClassSubjectLecturesService {
 
     this.applyFilters(queryBuilder, query);
 
-    return await queryBuilder
+    const lectures = await queryBuilder
       .orderBy('lecture.startTime', 'ASC')
       .getMany();
+
+    // ✅ Transform recordingUrl and material URLs to full URLs for schedule
+    return lectures.map(lecture => {
+      if (lecture.recordingUrl) {
+        lecture.recordingUrl = this.cloudStorageService.getFullUrl(lecture.recordingUrl);
+      }
+      this.transformMaterialUrls(lecture);
+      return lecture;
+    });
   }
 
   async createBulk(createDtos: CreateInstituteClassSubjectLectureDto[]): Promise<InstituteClassSubjectLecture[]> {
@@ -415,6 +433,7 @@ export class InstituteClassSubjectLecturesService {
           isRecorded: dto.isRecorded ?? false,
           maxParticipants: dto.maxParticipants,
           isActive: dto.isActive ?? true,
+          materials: dto.materials ?? undefined,
           createdAt: timestamp,
           updatedAt: timestamp,
         };

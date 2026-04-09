@@ -11,10 +11,7 @@ import {
   UseGuards,
   Headers,
   Put,
-  UseInterceptors,
-  UploadedFile
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
