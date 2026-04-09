@@ -272,6 +272,7 @@ export class InstituteAdminUserService {
             createdAt: now(),
             updatedAt: now(),
             houseId: dto.houseId ?? null,
+            extraData: dto.extraData ?? null,
           }),
         );
       } else if (dto.houseId) {
@@ -336,6 +337,7 @@ export class InstituteAdminUserService {
             ce.classId,
             ce.subjectEnrollments ?? [],
             adminUserId,
+            dto.extraData ?? null,
           );
           classEnrollmentResults.push(result);
         }
@@ -653,6 +655,7 @@ export class InstituteAdminUserService {
     classId: string,
     subjectEnrollments: { subjectId: string }[],
     adminUserId: string,
+    extraData: Record<string, any> | null = null,
   ): Promise<any> {
     const classEntity = await queryRunner.manager.findOne(InstituteClassEntity, {
       where: { id: classId, instituteId },
@@ -679,8 +682,7 @@ export class InstituteAdminUserService {
           verifiedBy: adminUserId,
           verifiedAt: now(),
           createdAt: now(),
-          updatedAt: now(),
-        }),
+          updatedAt: now(),          extraData,        }),
       );
     }
 
@@ -702,6 +704,7 @@ export class InstituteAdminUserService {
             enrolledBy: adminUserId,
             createdAt: now(),
             updatedAt: now(),
+            extraData,
           }),
         );
         subjectResults.push({ subjectId: se.subjectId, enrolled: true });

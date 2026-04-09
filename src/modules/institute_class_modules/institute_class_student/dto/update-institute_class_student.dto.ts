@@ -1,13 +1,21 @@
 import { PartialType } from '@nestjs/swagger';
 import { CreateInstituteClassStudentDto } from './create-institute_class_student.dto';
-import { IsBoolean, IsOptional } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsBoolean, IsObject, IsOptional } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateInstituteClassStudentDto {
   @ApiProperty({ description: 'Is the student assignment active' })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Custom key-value data for this class enrollment. Stored as plain JSON — visible to admins, not encrypted.',
+    example: { phoneNumber: '0771234567', notes: 'Updated notes' }
+  })
+  @IsOptional()
+  @IsObject()
+  extraData?: Record<string, any>;
 }
 
 export class InstituteClassStudentResponseDto {

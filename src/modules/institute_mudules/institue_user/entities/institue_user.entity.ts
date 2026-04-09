@@ -83,6 +83,11 @@ export class InstituteUserEntity {
   @Column({ name: 'house_id', type: 'bigint', nullable: true })
   houseId?: string;
 
+  // Institute-defined custom key-value metadata (e.g. phone, email, notes).
+  // Stored as plain JSON — fully visible to admins, no encryption.
+  @Column({ name: 'extra_data', type: 'json', nullable: true, comment: 'Institute-defined custom key-value data. Visible to admins, not encrypted.' })
+  extraData?: Record<string, any>;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

@@ -219,6 +219,7 @@ export class InstitueUserService {
           institutePassword: hashedInstitutePassword,
           institutePasswordSetAt: timestamp,
         }),
+        extraData: createInstitueUserDto.extraData,
         createdAt: timestamp,
         updatedAt: timestamp,
       });

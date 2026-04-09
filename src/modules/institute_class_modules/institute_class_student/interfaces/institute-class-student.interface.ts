@@ -51,6 +51,7 @@ export interface ICreateInstituteClassStudent {
   enrollmentMethod?: string;
   verifiedBy?: string;
   verifiedAt?: Date;
+  extraData?: Record<string, any>;
 }
 
 export interface IUpdateInstituteClassStudent {
@@ -59,6 +60,7 @@ export interface IUpdateInstituteClassStudent {
   enrollmentMethod?: string;
   verifiedBy?: string;
   verifiedAt?: Date;
+  extraData?: Record<string, any>;
 }
 
 export interface IBulkCreateInstituteClassStudent {

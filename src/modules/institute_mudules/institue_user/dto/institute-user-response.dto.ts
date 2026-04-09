@@ -45,6 +45,9 @@ export class InstituteUserResponseDto {
   @ApiPropertyOptional({ description: 'User details' })
   user?: UserResponseDto;
 
+  @ApiPropertyOptional({ description: 'Custom key-value data for this institute enrollment. Plain JSON, not encrypted.' })
+  extraData?: Record<string, any>;
+
   constructor(partial?: Partial<InstituteUserResponseDto> | InstituteUserEntity) {
     if (partial) {
       Object.assign(this, partial);

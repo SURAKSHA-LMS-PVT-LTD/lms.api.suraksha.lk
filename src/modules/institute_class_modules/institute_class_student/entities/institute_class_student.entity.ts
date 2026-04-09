@@ -72,5 +72,10 @@ export class InstituteClassStudentEntity {
 
   @Column({ name: 'student_type', type: 'enum', enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid'], default: 'normal', comment: 'Enrollment type at class level: normal=default, paid=fully paid, half_paid=50% fee paid, quarter_paid=25% fee paid, free_card=exempt from fee' })
   studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
+
+  // Institute-defined custom key-value metadata (e.g. phone, notes).
+  // Stored as plain JSON — fully visible to admins, no encryption.
+  @Column({ name: 'extra_data', type: 'json', nullable: true, comment: 'Institute-defined custom key-value data for this class enrollment. Visible to admins, not encrypted.' })
+  extraData?: Record<string, any>;
 }
 

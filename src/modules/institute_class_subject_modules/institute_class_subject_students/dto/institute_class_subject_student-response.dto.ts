@@ -42,6 +42,9 @@ export class InstituteClassSubjectStudentResponseDto {
   @ApiProperty({ description: 'Student type', example: 'normal', enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid'] })
   studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 
+  @ApiProperty({ description: 'Custom key-value data for this subject enrollment. Plain JSON, not encrypted.', required: false })
+  extraData?: Record<string, any>;
+
   @ApiProperty({ description: 'Creation date', example: '2024-01-15T10:00:00Z' })
   createdAt: Date;
 
@@ -62,6 +65,7 @@ export class InstituteClassSubjectStudentResponseDto {
     dto.verifiedAt = entity.verifiedAt;
     dto.rejectionReason = entity.rejectionReason;
     dto.studentType = entity.studentType;
+    dto.extraData = entity.extraData;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;
     

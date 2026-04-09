@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
@@ -12,6 +12,9 @@ import {
   InstituteChangePasswordDto,
   InstitutePasswordResetInitiateDto,
   InstitutePasswordResetVerifyDto,
+  GetAvailableContactsDto,
+  SelfActivateRequestOtpDto,
+  SelfActivateVerifyDto,
 } from '../dto/institute-login.dto';
 
 @ApiTags('Institute Authentication')
@@ -122,5 +125,85 @@ export class InstituteAuthController {
     @Body() dto: InstitutePasswordResetVerifyDto,
   ) {
     return this.instituteLoginService.verifyAndResetPassword(dto);
+  }
+
+  // ── Contact selection (public, masked) ─────────────────────────────────────
+
+  @Public()
+  @Post('available-contacts')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Get masked contact list for OTP delivery',
+    description: 'Returns masked phone/email options including parent contacts for students. Only last 2 digits of phone numbers are shown.',
+  })
+  @ApiResponse({ status: 200, description: 'Contact list returned' })
+  async getAvailableContacts(@Body() dto: GetAvailableContactsDto) {
+    return this.instituteLoginService.getAvailableContacts(dto);
+  }
+
+  // ── Self-activate (in-app, requires main JWT) ───────────────────────────────
+
+  @UseGuards(JwtAuthGuard)
+  @Get('self-activate/profile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get institute profile info for self-activation',
+    description: 'Returns hasPassword flag, extraData, and profile fields for the logged-in user\'s institute profile.',
+  })
+  async getSelfActivateProfile(
+    @Query('instituteId') instituteId: string,
+    @Req() req: ExpressRequest,
+  ) {
+    const userId = (req as any).user?.sub || (req as any).user?.id;
+    return this.instituteLoginService.getMyInstituteProfile(userId, instituteId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('self-activate/contacts')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get masked contacts for self-activate OTP (authenticated)',
+    description: 'Returns masked contact options for the logged-in user.',
+  })
+  async getSelfActivateContacts(
+    @Query('instituteId') instituteId: string,
+    @Req() req: ExpressRequest,
+  ) {
+    const userId = (req as any).user?.sub || (req as any).user?.id;
+    return this.instituteLoginService.getMyAvailableContacts(userId, instituteId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('self-activate/request-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @ApiOperation({
+    summary: 'Request OTP for institute profile activation (authenticated)',
+    description: 'Sends OTP to selected contact. Only works if institute password is not yet set.',
+  })
+  async selfActivateRequestOtp(
+    @Body() dto: SelfActivateRequestOtpDto,
+    @Req() req: ExpressRequest,
+  ) {
+    const userId = (req as any).user?.sub || (req as any).user?.id;
+    const ipAddress = getClientIp(req);
+    return this.instituteLoginService.selfActivateRequestOtp(userId, dto, ipAddress);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('self-activate/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @ApiOperation({
+    summary: 'Verify OTP and set institute password (self-activation)',
+    description: 'Verifies OTP and sets institute password. Optionally fills empty extraData fields.',
+  })
+  async selfActivateVerify(
+    @Body() dto: SelfActivateVerifyDto,
+    @Req() req: ExpressRequest,
+  ) {
+    const userId = (req as any).user?.sub || (req as any).user?.id;
+    return this.instituteLoginService.selfActivateVerifyAndSetPassword(userId, dto);
   }
 }

@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID, MinLength, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InstituteUserStatus } from '../enums/institute-user-status.enum';
 import { InstituteUserType } from '../enums/institute-user-type.enum';
@@ -56,4 +56,12 @@ export class CreateInstitueUserDto {
   @IsString()
   @MinLength(8, { message: 'Institute password must be at least 8 characters' })
   institutePassword?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom key-value data for this institute user (e.g. phone, email, notes). Stored as plain JSON — visible to admins, not encrypted.',
+    example: { phoneNumber: '0771234567', email: 'student@mail.com', notes: 'Joined mid-term' }
+  })
+  @IsOptional()
+  @IsObject()
+  extraData?: Record<string, any>;
 }

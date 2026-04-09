@@ -25,6 +25,9 @@ import {
   InstitutePasswordResetInitiateDto,
   InstitutePasswordResetVerifyDto,
   InstitutePasswordResetChannel,
+  GetAvailableContactsDto,
+  SelfActivateRequestOtpDto,
+  SelfActivateVerifyDto,
 } from '../dto/institute-login.dto';
 
 const OTP_EXPIRY_MINUTES = 30;
@@ -216,11 +219,11 @@ export class InstituteLoginService {
 
   /**
    * Initiate password reset via OTP.
-   * Sends OTP to user's email/phone, or falls back to parent's contact for students.
+   * Prefers selectedContactId (from available-contacts endpoint), falls back to legacy channel+useParentContact.
    */
   async initiatePasswordReset(dto: InstitutePasswordResetInitiateDto, ipAddress?: string): Promise<{
     message: string;
-    sentTo: string; // Masked email/phone that OTP was sent to
+    sentTo: string;
     channel: InstitutePasswordResetChannel;
     isParentContact: boolean;
   }> {
@@ -234,145 +237,140 @@ export class InstituteLoginService {
     });
 
     if (!instituteUser) {
-      // Don't reveal whether user exists
       throw new BadRequestException('If the account exists, an OTP will be sent to the registered contact');
     }
 
-    // 2. Get the user's contact info
-    const user = await this.userRepository.findOne({
-      where: { id: instituteUser.userId },
-      select: ['id', 'email', 'phoneNumber', 'firstName', 'lastName'],
-    });
+    let contactValue: string;
+    let contactType: OtpType;
+    let isParentContact: boolean;
 
-    if (!user) {
-      throw new BadRequestException('If the account exists, an OTP will be sent to the registered contact');
-    }
-
-    // 3. Determine contact info — with parent fallback for students
-    let contactEmail: string | null = user.email || null;
-    let contactPhone: string | null = user.phoneNumber || null;
-    let isParentContact = false;
-
-    // If student and (missing requested channel OR explicitly using parent contact)
-    if (
-      instituteUser.instituteUserType === InstituteUserType.STUDENT &&
-      (dto.useParentContact || (dto.channel === InstitutePasswordResetChannel.EMAIL && !contactEmail) ||
-       (dto.channel === InstitutePasswordResetChannel.PHONE && !contactPhone))
-    ) {
-      // Look up parent contact
-      const student = await this.studentRepository.findOne({
-        where: { userId: instituteUser.userId },
+    if (dto.selectedContactId) {
+      // New flow: use selectedContactId
+      const resolved = await this.resolveContactInfo(
+        instituteUser.userId,
+        instituteUser.instituteUserType,
+        dto.selectedContactId,
+      );
+      contactValue = resolved.contactValue;
+      contactType = resolved.contactType;
+      isParentContact = resolved.isParentContact;
+    } else {
+      // Legacy flow: channel + useParentContact
+      const user = await this.userRepository.findOne({
+        where: { id: instituteUser.userId },
+        select: ['id', 'email', 'phoneNumber'],
       });
+      if (!user) throw new BadRequestException('If the account exists, an OTP will be sent to the registered contact');
 
-      if (student) {
-        // Try father → mother → guardian
-        const parentIds = [student.fatherId, student.motherId, student.guardianId].filter(Boolean);
-        
-        for (const parentId of parentIds) {
-          const parent = await this.parentRepository.findOne({
-            where: { userId: parentId },
-            relations: ['user'],
-          });
+      let contactEmail: string | null = user.email || null;
+      let contactPhone: string | null = user.phoneNumber || null;
+      isParentContact = false;
 
-          if (parent?.user) {
-            if (dto.channel === InstitutePasswordResetChannel.EMAIL && parent.user.email) {
-              contactEmail = parent.user.email;
-              isParentContact = true;
-              break;
-            }
-            if (dto.channel === InstitutePasswordResetChannel.PHONE && parent.user.phoneNumber) {
-              contactPhone = parent.user.phoneNumber;
-              isParentContact = true;
-              break;
+      if (
+        instituteUser.instituteUserType === InstituteUserType.STUDENT &&
+        (dto.useParentContact ||
+          (dto.channel === InstitutePasswordResetChannel.EMAIL && !contactEmail) ||
+          (dto.channel === InstitutePasswordResetChannel.PHONE && !contactPhone))
+      ) {
+        const student = await this.studentRepository.findOne({ where: { userId: instituteUser.userId } });
+        if (student) {
+          const parentIds = [student.fatherId, student.motherId, student.guardianId].filter(Boolean);
+          for (const parentId of parentIds) {
+            const parent = await this.parentRepository.findOne({ where: { userId: parentId }, relations: ['user'] });
+            if (parent?.user) {
+              if (dto.channel === InstitutePasswordResetChannel.EMAIL && parent.user.email) {
+                contactEmail = parent.user.email;
+                isParentContact = true;
+                break;
+              }
+              if (dto.channel === InstitutePasswordResetChannel.PHONE && parent.user.phoneNumber) {
+                contactPhone = parent.user.phoneNumber;
+                isParentContact = true;
+                break;
+              }
             }
           }
         }
       }
+
+      const resolvedChannel = dto.channel || InstitutePasswordResetChannel.PHONE;
+      if (resolvedChannel === InstitutePasswordResetChannel.EMAIL && !contactEmail) {
+        throw new BadRequestException('No email available. Please use the contact selection flow.');
+      }
+      if (resolvedChannel === InstitutePasswordResetChannel.PHONE && !contactPhone) {
+        throw new BadRequestException('No phone available. Please use the contact selection flow.');
+      }
+      contactValue = resolvedChannel === InstitutePasswordResetChannel.EMAIL ? contactEmail! : contactPhone!;
+      contactType = resolvedChannel === InstitutePasswordResetChannel.EMAIL ? OtpType.EMAIL : OtpType.PHONE;
     }
 
-    // 4. Validate that we have contact info for the requested channel
-    if (dto.channel === InstitutePasswordResetChannel.EMAIL && !contactEmail) {
-      throw new BadRequestException('No email address available. Try using phone or parent contact.');
-    }
-    if (dto.channel === InstitutePasswordResetChannel.PHONE && !contactPhone) {
-      throw new BadRequestException('No phone number available. Try using email or parent contact.');
-    }
-
-    // 5. Check daily OTP limit
+    // Rate limiting
     const todayStr = new Date().toISOString().split('T')[0];
     const todayCount = await this.otpRepository.count({
-      where: {
-        userId: instituteUser.userId,
-        otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
-        createdDate: todayStr,
-      },
+      where: { userId: instituteUser.userId, otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET, createdDate: todayStr },
     });
-
     if (todayCount >= MAX_OTP_REQUESTS_PER_DAY) {
       throw new BadRequestException('Maximum OTP requests reached for today. Try again tomorrow.');
     }
 
-    // 6. Invalidate old OTPs for this user + purpose
+    // Invalidate old OTPs
     await this.otpRepository.update(
-      {
-        userId: instituteUser.userId,
-        otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
-        isVerified: false,
-      },
-      { isVerified: true }, // Mark as used to prevent reuse
+      { userId: instituteUser.userId, otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET, isVerified: false },
+      { isVerified: true },
     );
 
-    // 7. Generate OTP
+    // Generate OTP
     const otpCode = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // 8. Save OTP record
-    const otpRecord = this.otpRepository.create({
-      userId: instituteUser.userId,
-      email: dto.channel === InstitutePasswordResetChannel.EMAIL ? contactEmail : undefined,
-      phoneNumber: dto.channel === InstitutePasswordResetChannel.PHONE ? contactPhone : undefined,
-      otpCode,
-      otpType: dto.channel === InstitutePasswordResetChannel.EMAIL ? OtpType.EMAIL : OtpType.PHONE,
-      otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
-      expiresAt,
-      createdAt: now(),
-      createdDate: todayStr,
-      ipAddress: ipAddress || null,
-    });
-    await this.otpRepository.save(otpRecord);
+    await this.otpRepository.save(
+      this.otpRepository.create({
+        userId: instituteUser.userId,
+        email: contactType === OtpType.EMAIL ? contactValue : undefined,
+        phoneNumber: contactType === OtpType.PHONE ? contactValue : undefined,
+        otpCode,
+        otpType: contactType,
+        otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+        expiresAt,
+        createdAt: now(),
+        createdDate: todayStr,
+        ipAddress: ipAddress || null,
+      }),
+    );
 
-    // 9. Send OTP
+    // Send OTP
     let sentTo: string;
-
-    if (dto.channel === InstitutePasswordResetChannel.EMAIL) {
+    if (contactType === OtpType.EMAIL) {
+      const user = await this.userRepository.findOne({
+        where: { id: instituteUser.userId },
+        select: ['firstName', 'lastName'],
+      });
       await this.enhancedEmailService.sendOTP({
-        email: contactEmail,
+        email: contactValue,
         otp: otpCode,
-        userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
+        userName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'User',
         expiryMinutes: String(OTP_EXPIRY_MINUTES),
         requestType: 'Institute Password Reset',
         ipAddress,
       });
-      // Mask email: j***@example.com
-      const [localPart, domain] = contactEmail.split('@');
-      sentTo = `${localPart[0]}***@${domain}`;
+      const [local, domain] = contactValue.split('@');
+      sentTo = `${local[0]}***@${domain}`;
     } else {
-      const normalizedPhone = normalizeSriLankanPhone(contactPhone) || contactPhone;
+      const normalized = normalizeSriLankanPhone(contactValue) || contactValue;
       await this.smslenzProvider.sendSms({
         senderId: 'Suraksha',
-        contact: normalizedPhone,
+        contact: normalized,
         message: `Your institute password reset code is: ${otpCode}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
       });
-      // Mask phone: +94***4567
-      sentTo = `${normalizedPhone.substring(0, 3)}***${normalizedPhone.substring(normalizedPhone.length - 4)}`;
+      sentTo = this.maskPhone(normalized);
     }
 
-    this.logger.log(`✅ Institute password reset OTP sent: user=${instituteUser.userId}, channel=${dto.channel}, isParent=${isParentContact}`);
+    this.logger.log(`✅ Institute password reset OTP sent: user=${instituteUser.userId}, channel=${contactType}, isParent=${isParentContact}`);
 
     return {
       message: 'OTP sent successfully',
       sentTo,
-      channel: dto.channel,
+      channel: contactType === OtpType.EMAIL ? InstitutePasswordResetChannel.EMAIL : InstitutePasswordResetChannel.PHONE,
       isParentContact,
     };
   }
@@ -455,5 +453,329 @@ export class InstituteLoginService {
       case 'd': return value * 86400;
       default: return 3600;
     }
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  private maskPhone(phone: string): string {
+    // Show only last 2 digits: e.g. "+94771234528" → "****28"
+    if (!phone || phone.length < 2) return '****';
+    return `****${phone.slice(-2)}`;
+  }
+
+  private maskEmail(email: string): string {
+    const atIdx = email.indexOf('@');
+    if (atIdx < 0) return '***@***.***';
+    return `${email.charAt(0) || '*'}***@${email.slice(atIdx + 1)}`;
+  }
+
+  /**
+   * Resolve a selectedContactId to actual contact value and type.
+   * contactId values: 'own_email', 'own_phone', 'father_phone', 'mother_phone', 'guardian_phone'
+   */
+  private async resolveContactInfo(
+    userId: string,
+    userType: InstituteUserType,
+    selectedContactId: string,
+  ): Promise<{ contactValue: string; contactType: OtpType; isParentContact: boolean }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'phoneNumber'],
+    });
+
+    if (selectedContactId === 'own_email') {
+      if (!user?.email) throw new BadRequestException('No email address registered for this account.');
+      return { contactValue: user.email, contactType: OtpType.EMAIL, isParentContact: false };
+    }
+
+    if (selectedContactId === 'own_phone') {
+      if (!user?.phoneNumber) throw new BadRequestException('No phone number registered for this account.');
+      return { contactValue: user.phoneNumber, contactType: OtpType.PHONE, isParentContact: false };
+    }
+
+    // Parent contacts (students only)
+    if (['father_phone', 'mother_phone', 'guardian_phone'].includes(selectedContactId)) {
+      if (userType !== InstituteUserType.STUDENT) {
+        throw new BadRequestException('Parent contact is only available for students.');
+      }
+      const student = await this.studentRepository.findOne({ where: { userId } });
+      if (!student) throw new BadRequestException('Student record not found.');
+
+      const parentId =
+        selectedContactId === 'father_phone' ? student.fatherId
+          : selectedContactId === 'mother_phone' ? student.motherId
+            : student.guardianId;
+
+      if (!parentId) throw new BadRequestException('Selected parent/guardian not linked.');
+
+      const parent = await this.parentRepository.findOne({ where: { userId: parentId }, relations: ['user'] });
+      if (!parent?.user?.phoneNumber) throw new BadRequestException('Parent phone number not available.');
+
+      return { contactValue: parent.user.phoneNumber, contactType: OtpType.PHONE, isParentContact: true };
+    }
+
+    throw new BadRequestException('Invalid contact selection.');
+  }
+
+  /**
+   * Build a list of masked available contacts for a user (own + parent phones/emails).
+   */
+  private async buildContactList(
+    userId: string,
+    userType: InstituteUserType,
+  ): Promise<{ id: string; label: string; masked: string; type: 'EMAIL' | 'PHONE' }[]> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'phoneNumber'],
+    });
+
+    const contacts: { id: string; label: string; masked: string; type: 'EMAIL' | 'PHONE' }[] = [];
+
+    if (user?.email) {
+      contacts.push({ id: 'own_email', label: 'Your registered email', masked: this.maskEmail(user.email), type: 'EMAIL' });
+    }
+    if (user?.phoneNumber) {
+      contacts.push({ id: 'own_phone', label: 'Your registered phone', masked: this.maskPhone(user.phoneNumber), type: 'PHONE' });
+    }
+
+    if (userType === InstituteUserType.STUDENT) {
+      const student = await this.studentRepository.findOne({ where: { userId } });
+      if (student) {
+        const parentEntries = [
+          { id: 'father_phone', parentId: student.fatherId, label: "Father's phone" },
+          { id: 'mother_phone', parentId: student.motherId, label: "Mother's phone" },
+          { id: 'guardian_phone', parentId: student.guardianId, label: "Guardian's phone" },
+        ];
+        for (const entry of parentEntries) {
+          if (!entry.parentId) continue;
+          const parent = await this.parentRepository.findOne({ where: { userId: entry.parentId }, relations: ['user'] });
+          if (parent?.user?.phoneNumber) {
+            // Only add if not already listed (avoid duplicates if father=guardian etc.)
+            const masked = this.maskPhone(parent.user.phoneNumber);
+            if (!contacts.some(c => c.id === entry.id)) {
+              contacts.push({ id: entry.id, label: entry.label, masked, type: 'PHONE' });
+            }
+          }
+        }
+      }
+    }
+
+    return contacts;
+  }
+
+  // ── Public new methods ─────────────────────────────────────────────────────
+
+  /**
+   * Returns masked contact options (own phone/email + parent phones for students).
+   * Public endpoint — no auth required. Only returns last 2 digits of phone numbers.
+   */
+  async getAvailableContacts(dto: GetAvailableContactsDto): Promise<{
+    contacts: { id: string; label: string; masked: string; type: 'EMAIL' | 'PHONE' }[];
+  }> {
+    const instituteUser = await this.instituteUserRepository.findOne({
+      where: { instituteId: dto.instituteId, userIdByInstitute: dto.userIdByInstitute, status: InstituteUserStatus.ACTIVE },
+    });
+    if (!instituteUser) throw new NotFoundException('Institute user not found.');
+
+    const contacts = await this.buildContactList(instituteUser.userId, instituteUser.instituteUserType);
+    return { contacts };
+  }
+
+  /**
+   * Get institute profile info for the currently authenticated user (main JWT).
+   * Used in the self-activate flow.
+   */
+  async getMyInstituteProfile(currentUserId: string, instituteId: string): Promise<{
+    hasPassword: boolean;
+    extraData: Record<string, any> | null;
+    instituteUserType: string;
+    status: string;
+    userIdByInstitute: string | null;
+    institutePasswordSetAt: Date | null;
+  }> {
+    const instituteUser = await this.instituteUserRepository
+      .createQueryBuilder('iu')
+      .addSelect('iu.institutePassword')
+      .where('iu.userId = :userId', { userId: currentUserId })
+      .andWhere('iu.instituteId = :instituteId', { instituteId })
+      .getOne();
+
+    if (!instituteUser) throw new NotFoundException('Institute profile not found.');
+
+    return {
+      hasPassword: !!instituteUser.institutePassword,
+      extraData: instituteUser.extraData || null,
+      instituteUserType: instituteUser.instituteUserType,
+      status: instituteUser.status,
+      userIdByInstitute: instituteUser.userIdByInstitute || null,
+      institutePasswordSetAt: instituteUser.institutePasswordSetAt || null,
+    };
+  }
+
+  /**
+   * Returns masked contacts for the currently authenticated user (main JWT) for a given institute.
+   * Used in the self-activate in-app flow.
+   */
+  async getMyAvailableContacts(currentUserId: string, instituteId: string): Promise<{
+    contacts: { id: string; label: string; masked: string; type: 'EMAIL' | 'PHONE' }[];
+  }> {
+    const instituteUser = await this.instituteUserRepository.findOne({
+      where: { userId: currentUserId, instituteId, status: InstituteUserStatus.ACTIVE },
+    });
+    if (!instituteUser) throw new NotFoundException('Institute profile not found.');
+
+    const contacts = await this.buildContactList(currentUserId, instituteUser.instituteUserType);
+    return { contacts };
+  }
+
+  /**
+   * Request OTP for self-activation (in-app, authenticated via main JWT).
+   * Only works if institute password is not yet set.
+   */
+  async selfActivateRequestOtp(
+    currentUserId: string,
+    dto: SelfActivateRequestOtpDto,
+    ipAddress?: string,
+  ): Promise<{ message: string; sentTo: string; type: 'EMAIL' | 'PHONE' }> {
+    const instituteUser = await this.instituteUserRepository
+      .createQueryBuilder('iu')
+      .addSelect('iu.institutePassword')
+      .where('iu.userId = :userId', { userId: currentUserId })
+      .andWhere('iu.instituteId = :instituteId', { instituteId: dto.instituteId })
+      .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
+      .getOne();
+
+    if (!instituteUser) throw new NotFoundException('Institute profile not found.');
+    if (instituteUser.institutePassword) {
+      throw new BadRequestException('Institute password already set. Use change-password to update it.');
+    }
+
+    const { contactValue, contactType, isParentContact } = await this.resolveContactInfo(
+      currentUserId,
+      instituteUser.instituteUserType,
+      dto.selectedContactId,
+    );
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayCount = await this.otpRepository.count({
+      where: { userId: currentUserId, otpPurpose: OtpPurpose.INSTITUTE_ACTIVATION, createdDate: todayStr },
+    });
+    if (todayCount >= MAX_OTP_REQUESTS_PER_DAY) {
+      throw new BadRequestException('Maximum OTP requests reached for today.');
+    }
+
+    await this.otpRepository.update(
+      { userId: currentUserId, otpPurpose: OtpPurpose.INSTITUTE_ACTIVATION, isVerified: false },
+      { isVerified: true },
+    );
+
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.otpRepository.save(
+      this.otpRepository.create({
+        userId: currentUserId,
+        email: contactType === OtpType.EMAIL ? contactValue : undefined,
+        phoneNumber: contactType === OtpType.PHONE ? contactValue : undefined,
+        otpCode,
+        otpType: contactType,
+        otpPurpose: OtpPurpose.INSTITUTE_ACTIVATION,
+        expiresAt,
+        createdAt: now(),
+        createdDate: todayStr,
+        ipAddress: ipAddress || null,
+      }),
+    );
+
+    let sentTo: string;
+    if (contactType === OtpType.EMAIL) {
+      const user = await this.userRepository.findOne({ where: { id: currentUserId }, select: ['firstName', 'lastName'] });
+      await this.enhancedEmailService.sendOTP({
+        email: contactValue,
+        otp: otpCode,
+        userName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'User',
+        expiryMinutes: String(OTP_EXPIRY_MINUTES),
+        requestType: 'Institute Profile Activation',
+        ipAddress,
+      });
+      sentTo = this.maskEmail(contactValue);
+    } else {
+      const normalized = normalizeSriLankanPhone(contactValue) || contactValue;
+      await this.smslenzProvider.sendSms({
+        senderId: 'Suraksha',
+        contact: normalized,
+        message: `Your institute profile activation code is: ${otpCode}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share.`,
+      });
+      sentTo = this.maskPhone(normalized);
+    }
+
+    this.logger.log(`✅ Institute activation OTP sent: user=${currentUserId}, institute=${dto.instituteId}, isParent=${isParentContact}`);
+    return { message: 'OTP sent successfully', sentTo, type: contactType === OtpType.EMAIL ? 'EMAIL' : 'PHONE' };
+  }
+
+  /**
+   * Verify activation OTP and set institute password (first time only).
+   * Optionally fills empty extraData fields.
+   */
+  async selfActivateVerifyAndSetPassword(
+    currentUserId: string,
+    dto: SelfActivateVerifyDto,
+  ): Promise<{ message: string }> {
+    const instituteUser = await this.instituteUserRepository
+      .createQueryBuilder('iu')
+      .addSelect('iu.institutePassword')
+      .where('iu.userId = :userId', { userId: currentUserId })
+      .andWhere('iu.instituteId = :instituteId', { instituteId: dto.instituteId })
+      .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
+      .getOne();
+
+    if (!instituteUser) throw new NotFoundException('Institute profile not found.');
+    if (instituteUser.institutePassword) {
+      throw new BadRequestException('Institute password already set. Use change-password to update it.');
+    }
+
+    const otpRecord = await this.otpRepository.findOne({
+      where: { userId: currentUserId, otpPurpose: OtpPurpose.INSTITUTE_ACTIVATION, isVerified: false },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otpRecord) throw new BadRequestException('No pending OTP found. Please request a new one.');
+    if (new Date() > otpRecord.expiresAt) throw new BadRequestException('OTP has expired. Please request a new one.');
+    if (otpRecord.attempts >= 5) throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+    if (otpRecord.otpCode !== dto.otpCode) {
+      await this.otpRepository.update(otpRecord.id, { attempts: otpRecord.attempts + 1 });
+      throw new UnauthorizedException('Invalid OTP code.');
+    }
+
+    await this.otpRepository.update(otpRecord.id, { isVerified: true, verifiedAt: now() });
+
+    const hashedPassword = await this.authService.hashPassword(dto.newPassword);
+    const timestamp = now();
+
+    const updateData: Record<string, any> = {
+      institutePassword: hashedPassword,
+      institutePasswordSetAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    // Merge provided extraData into empty fields only (cannot overwrite existing values)
+    if (dto.extraData && Object.keys(dto.extraData).length > 0) {
+      const current = instituteUser.extraData || {};
+      const merged = { ...current };
+      for (const [key, value] of Object.entries(dto.extraData)) {
+        if (!(key in merged) || merged[key] === null || merged[key] === '') {
+          merged[key] = value;
+        }
+      }
+      updateData.extraData = merged;
+    }
+
+    await this.instituteUserRepository.update(
+      { userId: currentUserId, instituteId: dto.instituteId },
+      updateData,
+    );
+
+    this.logger.log(`✅ Institute activation complete: user=${currentUserId}, institute=${dto.instituteId}`);
+    return { message: 'Institute password set successfully. You can now login with your institute credentials.' };
   }
 }

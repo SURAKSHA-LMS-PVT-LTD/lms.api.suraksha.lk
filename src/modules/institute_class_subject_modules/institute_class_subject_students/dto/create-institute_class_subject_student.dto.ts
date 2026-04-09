@@ -1,6 +1,6 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsBoolean } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
 export class CreateInstituteClassSubjectStudentDto {
   @ApiProperty({ description: 'ID of the institute', example: '1' })
   @IsNotEmpty()
@@ -26,4 +26,12 @@ export class CreateInstituteClassSubjectStudentDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Custom key-value data for this subject enrollment (e.g. phone, notes). Stored as plain JSON — visible to admins, not encrypted.',
+    example: { phoneNumber: '0771234567', notes: 'Scholarship student' }
+  })
+  @IsOptional()
+  @IsObject()
+  extraData?: Record<string, any>;
 }

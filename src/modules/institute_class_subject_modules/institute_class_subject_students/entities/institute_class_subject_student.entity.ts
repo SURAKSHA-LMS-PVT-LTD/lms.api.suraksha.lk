@@ -89,6 +89,11 @@ export class InstituteClassSubjectStudent {
   @Column({ name: 'enrollment_payment_id', type: 'bigint', nullable: true, comment: 'FK to institute_class_subject_payment_submissions if payment-gated' })
   enrollmentPaymentId?: string;
 
+  // Institute-defined custom key-value metadata (e.g. phone, notes).
+  // Stored as plain JSON — fully visible to admins, no encryption.
+  @Column({ name: 'extra_data', type: 'json', nullable: true, comment: 'Institute-defined custom key-value data for this subject enrollment. Visible to admins, not encrypted.' })
+  extraData?: Record<string, any>;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

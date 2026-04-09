@@ -78,6 +78,7 @@ export class InstituteClassSubjectStudentsService {
         isActive: createDto.isActive ?? true,
         enrollmentMethod: 'teacher_assigned' as const,
         verificationStatus: 'verified' as const,
+        extraData: createDto.extraData,
         createdAt: timestamp,
         updatedAt: timestamp,
       };
