@@ -53,4 +53,7 @@ export class AdminUserDataResponseDto {
 
   @ApiProperty({ description: 'Institute assignment last update date' })
   updatedAt: Date;
+
+  @ApiPropertyOptional({ description: 'Institute subscription tier (FREE, BASIC, PROFESSIONAL, ENTERPRISE, ISOLATED)' })
+  instituteTier?: string;
 }

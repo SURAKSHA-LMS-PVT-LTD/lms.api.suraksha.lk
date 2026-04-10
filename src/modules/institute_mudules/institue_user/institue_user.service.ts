@@ -3887,6 +3887,8 @@ export class InstitueUserService {
       const instituteUser = await this.instituteUserRepository
         .createQueryBuilder('iu')
         .leftJoinAndSelect('iu.user', 'user')
+        .leftJoin('iu.institute', 'inst')
+        .addSelect(['inst.tier'])
         .where('iu.institute_id = :instituteId', { instituteId })
         .andWhere('iu.user_id = :userId', { userId })
         .getOne();
@@ -3915,7 +3917,8 @@ export class InstitueUserService {
         imageVerifiedBy: instituteUser.imageVerifiedBy,
         isActive: instituteUser.user.isActive,
         createdAt: instituteUser.createdAt,
-        updatedAt: instituteUser.updatedAt
+        updatedAt: instituteUser.updatedAt,
+        instituteTier: (instituteUser as any).institute?.tier ?? 'FREE',
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ForbiddenException) {
