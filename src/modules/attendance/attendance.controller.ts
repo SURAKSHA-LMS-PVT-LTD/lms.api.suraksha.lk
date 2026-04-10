@@ -822,19 +822,17 @@ export class AttendanceController {
         );
       }
 
-      // Validate date range: 30 days max when filtering by studentId, 5 days otherwise
+      // Validate date range: 31 days max
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       
-      const maxDays = studentId ? 30 : 5;
+      const maxDays = 31;
       if (daysDiff > maxDays) {
         throw new HttpException(
           {
             success: false,
-            message: studentId 
-              ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 5 days for class-wide queries. Add studentId parameter to query up to 30 days.',
+            message: 'Date range cannot exceed 31 days for class-wide queries.',
           },
           HttpStatus.BAD_REQUEST
         );
@@ -1345,19 +1343,17 @@ export class AttendanceController {
         );
       }
 
-      // Validate date range: 30 days max when filtering by studentId, 5 days otherwise
+      // Validate date range: 31 days max
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       
-      const maxDays = studentId ? 30 : 5;
+      const maxDays = 31;
       if (daysDiff > maxDays) {
         throw new HttpException(
           {
             success: false,
-            message: studentId 
-              ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 5 days for subject-wide queries. Add studentId parameter to query up to 30 days.',
+            message: 'Date range cannot exceed 31 days for subject-wide queries.',
           },
           HttpStatus.BAD_REQUEST
         );
