@@ -586,13 +586,57 @@ export class InstituteClassSubjectPaymentService {
 
     const [payments, total] = await this.paymentRepository.findAndCount({
       where: whereConditions,
-      relations: ['creator'],
+      relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
 
-    const responseData = payments.map(payment => this.mapPaymentToResponse(payment));
+    const now = Date.now();
+    const responseData = payments.map(payment => {
+      const base: any = this.mapPaymentToResponse(payment);
+
+      // Inline this user's own submissions so the frontend needs no extra call
+      const userSubs = (payment.submissions || [])
+        .filter(sub => sub.userId === user.s)
+        .sort((a, b) => {
+          const aT = a.uploadedAt instanceof Date ? a.uploadedAt.getTime() : new Date(a.uploadedAt || 0).getTime();
+          const bT = b.uploadedAt instanceof Date ? b.uploadedAt.getTime() : new Date(b.uploadedAt || 0).getTime();
+          return bT - aT; // newest first
+        });
+
+      if (userSubs.length > 0) {
+        const latest = userSubs[0];
+        base.mySubmissionStatus = latest.status;
+        base.mySubmissionId = latest.id;
+        base.hasSubmitted = true;
+        base.mySubmissions = userSubs.map(sub => ({
+          id: sub.id,
+          paymentId: sub.paymentId,
+          submittedAmount: sub.submittedAmount,
+          transactionId: sub.transactionId,
+          paymentDate: sub.paymentDate instanceof Date ? sub.paymentDate.toISOString() : sub.paymentDate || null,
+          status: sub.status,
+          verifiedAt: sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : sub.verifiedAt || null,
+          rejectionReason: sub.rejectionReason,
+          notes: sub.notes,
+          receiptUrl: sub.receiptUrl ? this.cloudStorageService.getFullUrl(sub.receiptUrl) : null,
+          receiptFilename: sub.receiptFilename,
+          uploadedAt: sub.uploadedAt instanceof Date ? sub.uploadedAt.toISOString() : sub.uploadedAt || null,
+          canResubmit: sub.status === SubmissionStatus.REJECTED && payment.status === PaymentStatus.ACTIVE,
+          daysSinceSubmission: sub.uploadedAt
+            ? Math.floor((now - (sub.uploadedAt instanceof Date ? sub.uploadedAt.getTime() : new Date(sub.uploadedAt || 0).getTime())) / 86400000)
+            : null,
+        }));
+      } else {
+        base.mySubmissionStatus = null;
+        base.mySubmissionId = null;
+        base.hasSubmitted = false;
+        base.mySubmissions = [];
+      }
+
+      return base;
+    });
 
     return {
       data: responseData,
