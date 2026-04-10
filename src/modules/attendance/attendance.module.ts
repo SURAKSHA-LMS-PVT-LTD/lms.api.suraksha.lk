@@ -30,6 +30,7 @@ import { AttendanceRecordEntity } from './entities/attendance-record.entity';
 import { InstituteEntity } from '../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../subject/entities/subject.entity';
+import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { SubjectEntity } from '../subject/entities/subject.entity';
       InstituteEntity,
       InstituteClassEntity,
       SubjectEntity,
+      InstituteClassStudentEntity,
     ])
   ],
   controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController],
