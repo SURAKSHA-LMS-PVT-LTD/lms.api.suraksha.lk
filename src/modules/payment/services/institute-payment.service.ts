@@ -335,6 +335,41 @@ export class InstitutePaymentService {
             note: sub.notes || null,
           }));
         }
+        // For non-admin users (students/parents): include their own submissions per payment
+        if (userAccessLevel !== UserAccessLevel.ADMIN && payment.submissions?.length) {
+          const userSubs = payment.submissions
+            .filter(sub => sub.submittedBy === user.s)
+            .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+          if (userSubs.length > 0) {
+            const latest = userSubs[0];
+            base.mySubmissionStatus = latest.status;
+            base.mySubmissionId = latest.id;
+            base.hasSubmitted = true;
+            base.mySubmissions = userSubs.map(sub => ({
+              id: sub.id,
+              paymentAmount: parseFloat(String(sub.paymentAmount || 0)),
+              paymentMethod: sub.paymentMethod,
+              transactionReference: sub.transactionReference,
+              paymentDate: sub.paymentDate?.toISOString() || null,
+              status: sub.status,
+              verifiedAt: sub.verifiedAt?.toISOString() || null,
+              rejectionReason: sub.rejectionReason,
+              paymentRemarks: sub.paymentRemarks || sub.notes || null,
+              lateFeeApplied: parseFloat(String(sub.lateFeeApplied || 0)),
+              totalAmountPaid: parseFloat(String(sub.totalAmountPaid || 0)),
+              receiptFileUrl: sub.receiptFileUrl,
+              receiptFileName: sub.receiptFileName,
+              createdAt: sub.createdAt?.toISOString() || null,
+              canResubmit: sub.status === SubmissionStatus.REJECTED && payment.isActive,
+              daysSinceSubmission: sub.createdAt ? Math.floor((nowTimestamp() - sub.createdAt.getTime()) / (24 * 60 * 60 * 1000)) : null,
+            }));
+          } else {
+            base.mySubmissionStatus = null;
+            base.mySubmissionId = null;
+            base.hasSubmitted = false;
+            base.mySubmissions = [];
+          }
+        }
         return base;
       });
 
