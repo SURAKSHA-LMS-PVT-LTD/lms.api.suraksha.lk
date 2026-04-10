@@ -3461,7 +3461,7 @@ export class AttendanceService {
         );
 
         for (const studentId of ids) {
-          const r = bulkResultsMap.get(studentId);
+          const r = bulkResultsMap.get(studentId) as any;
           allResults.push({
             studentId,
             studentName: r?.name ?? studentId,
