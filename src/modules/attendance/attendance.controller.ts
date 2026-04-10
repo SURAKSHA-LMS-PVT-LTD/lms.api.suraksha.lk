@@ -6,6 +6,7 @@ import { MarkAttendanceDto, BulkAttendanceDto, AttendanceResponseDto, GetStudent
 import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto } from './dto/card-attendance.dto';
 import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteCardUserResponseDto } from './dto/institute-card-attendance.dto';
 import { GetClassStudentsInstituteAttendanceQueryDto, BulkMarkClassFromInstituteDto } from './dto/class-attendance-from-institute.dto';
+import { GetSubjectStudentsClassAttendanceQueryDto, BulkMarkSubjectFromClassDto } from './dto/subject-attendance-from-class.dto';
 import { UserType } from '../user/enums/user-type.enum';
 import { Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -1043,6 +1044,194 @@ export class AttendanceController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         { success: false, message: error.message || 'Failed to bulk-mark class attendance' },
+        error.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SUBJECT ATTENDANCE FROM CLASS — new endpoints
+  // ───────────────────────────────────────────────────────────────────────────
+
+  @Get('institute/:instituteId/class/:classId/subject/:subjectId/students-with-class-status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get subject students with their class-level attendance status',
+    description:
+      'Returns all active+verified students enrolled in a subject along with their '
+      + 'class-level attendance and any existing subject-level attendance '
+      + 'for the given date. Use this to decide who to bulk-mark present/absent at subject level.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Student list with class & subject attendance snapshots',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        date: { type: 'string', example: '2026-04-10' },
+        summary: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            presentInClass: { type: 'number' },
+            absentInClass: { type: 'number' },
+            notMarkedInClass: { type: 'number' },
+            alreadyMarkedInSubject: { type: 'number' },
+          },
+        },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              studentId: { type: 'string' },
+              studentName: { type: 'string' },
+              studentImageUrl: { type: 'string', nullable: true },
+              classAttendance: {
+                nullable: true,
+                type: 'object',
+                properties: {
+                  statusCode: { type: 'number' },
+                  status: { type: 'string' },
+                  date: { type: 'string' },
+                  time: { type: 'string' },
+                  timestamp: { type: 'string' },
+                  remarks: { type: 'string', nullable: true },
+                },
+              },
+              subjectAttendance: {
+                nullable: true,
+                type: 'object',
+                properties: {
+                  statusCode: { type: 'number' },
+                  status: { type: 'string' },
+                  date: { type: 'string' },
+                  time: { type: 'string' },
+                  timestamp: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async getSubjectStudentsWithClassStatus(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Query() query: GetSubjectStudentsClassAttendanceQueryDto,
+    @Req() _req: Request,
+  ) {
+    try {
+      return await this.attendanceService.getSubjectStudentsWithClassAttendance(
+        instituteId,
+        classId,
+        subjectId,
+        query.date,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to retrieve subject student class attendance status' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post('institute/:instituteId/class/:classId/subject/:subjectId/bulk-mark-from-class')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Bulk-mark subject attendance derived from class-level attendance',
+    description:
+      'Automatically marks subject-level attendance for all enrolled students based on '
+      + 'their class attendance status. Students present at class level '
+      + '(status ≠ absent) are marked PRESENT in the subject; students with no class '
+      + 'attendance are marked ABSENT. Students who already have subject attendance are '
+      + 'skipped (idempotent). Control both actions with markPresentFromClass and '
+      + 'markAbsentForUnmarked flags (both default to true).',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({
+    status: 201,
+    description: 'Subject attendance bulk-marked successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        date: { type: 'string' },
+        summary: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            markedPresent: { type: 'number' },
+            markedAbsent: { type: 'number' },
+            skipped: { type: 'number' },
+            failed: { type: 'number' },
+          },
+        },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              studentId: { type: 'string' },
+              studentName: { type: 'string' },
+              action: { type: 'string', enum: ['marked_present', 'marked_absent', 'skipped_already_marked', 'skipped_no_action'] },
+              subjectStatus: { type: 'string', nullable: true },
+              success: { type: 'boolean' },
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async bulkMarkSubjectFromClassAttendance(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('subjectId') subjectId: string,
+    @Body() dto: BulkMarkSubjectFromClassDto,
+    @Req() request: Request & { user: any },
+  ) {
+    try {
+      const markedBy = request.user?.s || request.user?.subject || request.user?.sub || request.user?.id;
+      return await this.attendanceService.bulkMarkSubjectAttendanceFromClassAttendance(
+        instituteId,
+        classId,
+        subjectId,
+        dto,
+        markedBy,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to bulk-mark subject attendance' },
         error.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

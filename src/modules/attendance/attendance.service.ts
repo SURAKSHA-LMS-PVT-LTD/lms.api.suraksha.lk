@@ -35,6 +35,8 @@ import { AttendanceSyncMode } from './enums/attendance-sync-mode.enum';
 import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { AttendanceRecordEntity } from './entities/attendance-record.entity';
 import { BulkMarkClassFromInstituteDto } from './dto/class-attendance-from-institute.dto';
+import { BulkMarkSubjectFromClassDto } from './dto/subject-attendance-from-class.dto';
+import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 
 @Injectable()
 export class AttendanceService {
@@ -77,6 +79,8 @@ export class AttendanceService {
     private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
     @InjectRepository(AttendanceRecordEntity)
     private readonly attendanceRecordRepository: Repository<AttendanceRecordEntity>,
+    @InjectRepository(InstituteClassSubjectStudent)
+    private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
   ) {
     // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
@@ -3496,6 +3500,360 @@ export class AttendanceService {
     return {
       success: failed === 0,
       message: `Class attendance bulk-marked: ${markedPresent} present, ${markedAbsent} absent, ${skipped} skipped`,
+      date: queryDate,
+      summary: {
+        total: studentIds.length,
+        markedPresent,
+        markedAbsent,
+        skipped,
+        failed,
+      },
+      results: allResults,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SUBJECT ATTENDANCE FROM CLASS — new features
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get all students enrolled in a subject (under a class) together with their
+   * class-level and subject-level attendance for a given date.
+   *
+   * GET /api/attendance/institute/:instituteId/class/:classId/subject/:subjectId/students-with-class-status
+   */
+  async getSubjectStudentsWithClassAttendance(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    date?: string,
+  ): Promise<any> {
+    if (!instituteId || !classId || !subjectId) {
+      throw new BadRequestException('instituteId, classId and subjectId are required');
+    }
+
+    const queryDate = date || getCurrentSriLankaDate();
+
+    // ── 1. All active+verified students enrolled in this subject ──────────
+    const enrolled = await this.subjectStudentRepository.find({
+      where: {
+        instituteId,
+        classId,
+        subjectId,
+        isActive: true,
+        verificationStatus: 'verified' as any,
+      },
+      select: { instituteId: true, classId: true, subjectId: true, studentId: true },
+    });
+
+    if (enrolled.length === 0) {
+      return {
+        success: true,
+        date: queryDate,
+        data: [],
+        summary: { total: 0, presentInClass: 0, absentInClass: 0, notMarkedInClass: 0, alreadyMarkedInSubject: 0 },
+      };
+    }
+
+    const studentIds = enrolled.map(e => e.studentId);
+
+    // ── 2. Fetch user names + images ──────────────────────────────────────
+    const [users, instituteUsers] = await Promise.all([
+      this.userRepository.find({
+        where: { id: In(studentIds) as any },
+        select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
+      }),
+      this.instituteUserRepository.find({
+        where: { instituteId, userId: In(studentIds) },
+        select: ['userId', 'instituteUserImageUrl', 'imageVerificationStatus'],
+      }),
+    ]);
+
+    const userMap = new Map(users.map(u => [String(u.id), u]));
+    const instituteUserMap = new Map(instituteUsers.map(iu => [String(iu.userId), iu]));
+
+    // ── 3. Class-level attendance (classId set, subjectId IS NULL) for date ──
+    const classAttendanceRecords = await this.attendanceRecordRepository
+      .createQueryBuilder('ar')
+      .where('ar.institute_id = :instituteId', { instituteId })
+      .andWhere('ar.student_id IN (:...studentIds)', { studentIds })
+      .andWhere('ar.date = :date', { date: queryDate })
+      .andWhere('ar.class_id = :classId', { classId })
+      .andWhere('ar.subject_id IS NULL')
+      .orderBy('ar.timestamp', 'DESC')
+      .getMany();
+
+    const classAttMap = new Map<string, AttendanceRecordEntity>();
+    for (const rec of classAttendanceRecords) {
+      if (!classAttMap.has(rec.studentId)) {
+        classAttMap.set(rec.studentId, rec);
+      }
+    }
+
+    // ── 4. Subject-level attendance for these students ──────────────────
+    const subjectAttendanceRecords = await this.attendanceRecordRepository
+      .createQueryBuilder('ar')
+      .where('ar.institute_id = :instituteId', { instituteId })
+      .andWhere('ar.student_id IN (:...studentIds)', { studentIds })
+      .andWhere('ar.date = :date', { date: queryDate })
+      .andWhere('ar.class_id = :classId', { classId })
+      .andWhere('ar.subject_id = :subjectId', { subjectId })
+      .orderBy('ar.timestamp', 'DESC')
+      .getMany();
+
+    const subjectAttMap = new Map<string, AttendanceRecordEntity>();
+    for (const rec of subjectAttendanceRecords) {
+      if (!subjectAttMap.has(rec.studentId)) {
+        subjectAttMap.set(rec.studentId, rec);
+      }
+    }
+
+    // ── 5. Build response items ────────────────────────────────────────
+    const data = studentIds.map(studentId => {
+      const user = userMap.get(studentId);
+      const iu = instituteUserMap.get(studentId);
+      const name = user
+        ? (user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim())
+        : studentId;
+
+      const resolvedImage = this.resolveImageUrl(
+        iu as any,
+        user?.imageUrl || null,
+        instituteId,
+      );
+
+      const clsRec = classAttMap.get(studentId);
+      const subRec = subjectAttMap.get(studentId);
+
+      const classAttendance = clsRec
+        ? {
+            statusCode: clsRec.status,
+            status: AttendanceService.ATTENDANCE_STATUS_MAP[clsRec.status] ?? 'unknown',
+            date: clsRec.date,
+            time: formatSriLankaTime(new Date(parseInt(clsRec.timestamp))),
+            timestamp: clsRec.timestamp,
+            remarks: clsRec.remarks,
+          }
+        : null;
+
+      const subjectAttendance = subRec
+        ? {
+            statusCode: subRec.status,
+            status: AttendanceService.ATTENDANCE_STATUS_MAP[subRec.status] ?? 'unknown',
+            date: subRec.date,
+            time: formatSriLankaTime(new Date(parseInt(subRec.timestamp))),
+            timestamp: subRec.timestamp,
+          }
+        : null;
+
+      return { studentId, studentName: name, studentImageUrl: resolvedImage, classAttendance, subjectAttendance };
+    });
+
+    // ── 6. Summary stats ──────────────────────────────────────────────
+    const presentInClass = data.filter(
+      d => d.classAttendance !== null && d.classAttendance.statusCode !== 0,
+    ).length;
+    const absentInClass = data.filter(
+      d => d.classAttendance !== null && d.classAttendance.statusCode === 0,
+    ).length;
+    const notMarkedInClass = data.filter(d => d.classAttendance === null).length;
+    const alreadyMarkedInSubject = data.filter(d => d.subjectAttendance !== null).length;
+
+    return {
+      success: true,
+      date: queryDate,
+      data,
+      summary: {
+        total: data.length,
+        presentInClass,
+        absentInClass,
+        notMarkedInClass,
+        alreadyMarkedInSubject,
+      },
+    };
+  }
+
+  /**
+   * Bulk-mark subject-level attendance derived from class-level attendance.
+   *
+   * Strategy:
+   *   - Student has class attendance with status != ABSENT (codes 1-5)
+   *     → mark PRESENT at subject level  (if markPresentFromClass: true, default)
+   *   - Student has NO class attendance, OR class status is ABSENT (0)
+   *     → mark ABSENT at subject level   (if markAbsentForUnmarked: true, default)
+   *   - Student already has subject-level attendance → always skipped (idempotent)
+   *
+   * POST /api/attendance/institute/:instituteId/class/:classId/subject/:subjectId/bulk-mark-from-class
+   */
+  async bulkMarkSubjectAttendanceFromClassAttendance(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    dto: BulkMarkSubjectFromClassDto,
+    markedBy: string,
+  ): Promise<any> {
+    if (!instituteId || !classId || !subjectId) {
+      throw new BadRequestException('instituteId, classId and subjectId are required');
+    }
+    if (!dto.instituteName) throw new BadRequestException('instituteName is required');
+    if (!dto.className) throw new BadRequestException('className is required');
+    if (!dto.subjectName) throw new BadRequestException('subjectName is required');
+
+    const markPresentFromClass = dto.markPresentFromClass !== false; // default true
+    const markAbsentForUnmarked = dto.markAbsentForUnmarked !== false; // default true
+    const queryDate = dto.date || getCurrentSriLankaDate();
+
+    // ── 1. All active+verified students in this subject ──────────────────
+    const enrolled = await this.subjectStudentRepository.find({
+      where: {
+        instituteId,
+        classId,
+        subjectId,
+        isActive: true,
+        verificationStatus: 'verified' as any,
+      },
+      select: { instituteId: true, classId: true, subjectId: true, studentId: true },
+    });
+
+    if (enrolled.length === 0) {
+      return {
+        success: true,
+        message: 'No enrolled students found in this subject',
+        summary: { total: 0, markedPresent: 0, markedAbsent: 0, skipped: 0 },
+        results: [],
+      };
+    }
+
+    const studentIds = enrolled.map(e => e.studentId);
+
+    // ── 2. Class-level attendance (classId set, subjectId IS NULL) ────────
+    const classAttendanceRecords = await this.attendanceRecordRepository
+      .createQueryBuilder('ar')
+      .where('ar.institute_id = :instituteId', { instituteId })
+      .andWhere('ar.student_id IN (:...studentIds)', { studentIds })
+      .andWhere('ar.date = :date', { date: queryDate })
+      .andWhere('ar.class_id = :classId', { classId })
+      .andWhere('ar.subject_id IS NULL')
+      .orderBy('ar.timestamp', 'DESC')
+      .getMany();
+
+    const classAttMap = new Map<string, AttendanceRecordEntity>();
+    for (const rec of classAttendanceRecords) {
+      if (!classAttMap.has(rec.studentId)) {
+        classAttMap.set(rec.studentId, rec);
+      }
+    }
+
+    // ── 3. Existing subject-level attendance (skip already-marked) ────────
+    const existingSubjectRecords = await this.attendanceRecordRepository
+      .createQueryBuilder('ar')
+      .where('ar.institute_id = :instituteId', { instituteId })
+      .andWhere('ar.student_id IN (:...studentIds)', { studentIds })
+      .andWhere('ar.date = :date', { date: queryDate })
+      .andWhere('ar.class_id = :classId', { classId })
+      .andWhere('ar.subject_id = :subjectId', { subjectId })
+      .getMany();
+
+    const alreadyMarkedSet = new Set(existingSubjectRecords.map(r => r.studentId));
+
+    // ── 4. Classify each student ─────────────────────────────────────────
+    const toMarkPresent: string[] = [];
+    const toMarkAbsent: string[] = [];
+    const skippedResults: any[] = [];
+
+    for (const studentId of studentIds) {
+      if (alreadyMarkedSet.has(studentId)) {
+        skippedResults.push({
+          studentId,
+          action: 'skipped_already_marked',
+          subjectStatus: null,
+          success: true,
+        });
+        continue;
+      }
+
+      const clsRec = classAttMap.get(studentId);
+      const isPresentInClass = clsRec !== undefined && clsRec.status !== 0;
+
+      if (isPresentInClass && markPresentFromClass) {
+        toMarkPresent.push(studentId);
+      } else if (!isPresentInClass && markAbsentForUnmarked) {
+        toMarkAbsent.push(studentId);
+      } else {
+        skippedResults.push({
+          studentId,
+          action: 'skipped_no_action',
+          subjectStatus: null,
+          success: true,
+        });
+      }
+    }
+
+    // ── 5. Build and execute bulk mark ────────────────────────────────────
+    const allResults: any[] = [...skippedResults];
+
+    const buildAndMark = async (ids: string[], status: AttendanceStatus): Promise<void> => {
+      if (ids.length === 0) return;
+
+      const bulkDto: BulkAttendanceDto = {
+        instituteId,
+        instituteName: dto.instituteName,
+        classId,
+        className: dto.className,
+        subjectId,
+        subjectName: dto.subjectName,
+        date: queryDate,
+        markingMethod: dto.markingMethod ?? MarkingMethod.SYSTEM,
+        eventId: dto.eventId,
+        students: ids.map(studentId => ({
+          studentId,
+          status,
+        })),
+      };
+
+      try {
+        const bulkResult = await this.markBulkAttendance(bulkDto, markedBy);
+        const action = status === AttendanceStatus.PRESENT ? 'marked_present' : 'marked_absent';
+        const bulkResultsMap = new Map(
+          (bulkResult?.results ?? []).map((r: any) => [String(r.studentId ?? r.userId), r]),
+        );
+
+        for (const studentId of ids) {
+          const r = bulkResultsMap.get(studentId) as any;
+          allResults.push({
+            studentId,
+            studentName: r?.name ?? studentId,
+            action,
+            subjectStatus: status,
+            success: r?.success !== false,
+            ...(r?.error ? { error: r.error } : {}),
+          });
+        }
+      } catch (err) {
+        this.logger.error(`bulkMarkSubjectAttendanceFromClassAttendance: bulk ${status} failed — ${err.message}`);
+        for (const studentId of ids) {
+          allResults.push({
+            studentId,
+            action: status === AttendanceStatus.PRESENT ? 'marked_present' : 'marked_absent',
+            subjectStatus: status,
+            success: false,
+            error: err.message,
+          });
+        }
+      }
+    };
+
+    await buildAndMark(toMarkPresent, AttendanceStatus.PRESENT);
+    await buildAndMark(toMarkAbsent, AttendanceStatus.ABSENT);
+
+    const markedPresent = allResults.filter(r => r.action === 'marked_present' && r.success).length;
+    const markedAbsent = allResults.filter(r => r.action === 'marked_absent' && r.success).length;
+    const failed = allResults.filter(r => !r.success).length;
+    const skipped = allResults.filter(r => r.action?.startsWith('skipped')).length;
+
+    return {
+      success: failed === 0,
+      message: `Subject attendance bulk-marked: ${markedPresent} present, ${markedAbsent} absent, ${skipped} skipped`,
       date: queryDate,
       summary: {
         total: studentIds.length,
