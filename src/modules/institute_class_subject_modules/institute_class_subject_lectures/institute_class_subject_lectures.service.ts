@@ -70,6 +70,7 @@ export class InstituteClassSubjectLecturesService {
         maxParticipants: createDto.maxParticipants,
         isActive: createDto.isActive ?? true,
         materials: createDto.materials ?? undefined,
+        thumbnailUrl: createDto.thumbnailUrl ?? undefined,
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -227,7 +228,8 @@ export class InstituteClassSubjectLecturesService {
         'lecture.meetingLink',
         'lecture.meetingId',
         'lecture.maxParticipants',
-        'lecture.isRecorded'
+        'lecture.isRecorded',
+        'lecture.thumbnailUrl'
       ])
       .leftJoin('lecture.institute', 'institute')
       .addSelect([
@@ -294,6 +296,7 @@ export class InstituteClassSubjectLecturesService {
       if (updateDto.maxParticipants !== undefined) updateData.maxParticipants = updateDto.maxParticipants;
       if (updateDto.isActive !== undefined) updateData.isActive = updateDto.isActive;
       if (updateDto.materials !== undefined) updateData.materials = updateDto.materials;
+      if (updateDto.thumbnailUrl !== undefined) updateData.thumbnailUrl = updateDto.thumbnailUrl;
 
       await this.lectureRepository.update(id, updateData);
       
@@ -465,7 +468,8 @@ export class InstituteClassSubjectLecturesService {
         'lecture.location',
         'lecture.status',
         'lecture.lectureType',
-        'lecture.isActive'
+        'lecture.isActive',
+        'lecture.thumbnailUrl'
       ])
       .leftJoin('lecture.institute', 'institute')
       .addSelect([
