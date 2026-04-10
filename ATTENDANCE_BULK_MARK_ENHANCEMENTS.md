@@ -9,6 +9,7 @@ Three features added to the **Class** and **Subject** bulk-mark attendance flow:
 | 1 | Per-student status change (student-wise) | Class bulk mark + Subject bulk mark |
 | 2 | Past & future date blocking | Class bulk mark + Subject bulk mark |
 | 3 | Frontend Override dropdown per student | ManualClassAttendance page |
+| 4 | **Instant per-student status update (no Bulk Mark needed)** | ManualClassAttendance page |
 
 ---
 
@@ -201,6 +202,72 @@ A new **Override** column is added to the student table (desktop and mobile):
 - The preview summary shows **Overrides** and **Status Changed** count badges
 - Bulk mark button works with overrides only (mark rules can be off if overrides are set)
 
+---
+
+## Feature 4 — Instant Per-Student Status Update
+
+### Overview
+
+When a student **already has attendance marked**, changing their override dropdown triggers an **immediate PATCH API call** — no need to click the Bulk Mark button. The status is updated in real time on a per-student basis.
+
+For students **not yet marked**, the dropdown still sets an override that gets applied when Bulk Mark is clicked.
+
+### Endpoint
+
+```
+PATCH /api/attendance/institute/:instituteId/class/:classId/student/:studentId/status
+```
+
+### Request Body
+
+```json
+{
+  "status": "late",
+  "subjectId": "subject-001"   // optional — omit for class-level attendance
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `status` | string | Yes | One of: `present`, `absent`, `late`, `left`, `left_early`, `left_lately` |
+| `subjectId` | string | No | If provided, updates the subject-level attendance record. If omitted, updates the class-level record. |
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Status updated to late for student student-001",
+  "studentId": "student-001",
+  "newStatus": "late"
+}
+```
+
+### Error Responses
+
+| Status | Scenario | Message |
+|---|---|---|
+| 400 | Invalid status value | `"Invalid status: xyz. Valid values: present, absent, late, left, left_early, left_lately"` |
+| 404 | No existing record found | `"No attendance record found for this student on today's date"` |
+
+### Frontend Behavior
+
+1. Teacher selects a status from the dropdown for an **already-marked** student
+2. Dropdown is **disabled** (loading state) while API call is in flight
+3. On success: toast shows `"Status updated"`, data refreshes automatically, override is cleared
+4. On error: toast shows the error message, dropdown re-enables
+5. For **not-yet-marked** students: dropdown only sets the override (old behavior, requires Bulk Mark)
+
+### How It Differs from Bulk Mark Overrides
+
+| Aspect | Instant Update (Feature 4) | Bulk Mark Override (Feature 1) |
+|---|---|---|
+| Trigger | Dropdown selection | Bulk Mark button click |
+| Applies to | Already-marked students only | All students |
+| API call | `PATCH .../student/:studentId/status` | `POST .../bulk-mark-from-institute` or `.../bulk-mark-from-class` |
+| When it fires | Immediately on selection | On Bulk Mark button click |
+| Records affected | Single student | All students in the class/subject |
+
 ### Frontend API Payloads
 
 **`BulkMarkFromInstitutePayload`** — send with class bulk mark:
@@ -270,11 +337,12 @@ summary: {
 |---|---|
 | `src/modules/attendance/dto/class-attendance-from-institute.dto.ts` | Added `StudentStatusOverrideItem` class + `studentOverrides` field |
 | `src/modules/attendance/dto/subject-attendance-from-class.dto.ts` | Added `SubjectStudentStatusOverrideItem` class + `studentOverrides` field |
-| `src/modules/attendance/attendance.service.ts` | Date validation (today-only) + override map logic + status UPDATE for already-marked students in both bulk mark methods |
+| `src/modules/attendance/attendance.service.ts` | Date validation (today-only) + override map logic + status UPDATE for already-marked students in both bulk mark methods + new `updateStudentAttendanceStatus` method for instant single-student updates |
+| `src/modules/attendance/attendance.controller.ts` | Added `PATCH institute/:instituteId/class/:classId/student/:studentId/status` endpoint for instant per-student status update |
 
 ## Frontend Files Changed
 
 | File | What Changed |
 |---|---|
-| `src/api/attendance.api.ts` | Added `studentOverrides` to payloads + `markedOverride` to response summaries |
-| `src/pages/ManualClassAttendance.tsx` | Date warning + Override dropdown for all students + preview badges (Change/Override) + status changed count + override-only bulk mark support |
+| `src/api/attendance.api.ts` | Added `studentOverrides` to payloads + `markedOverride` to response summaries + `patchAttendance` helper + `updateStudentStatus` method |
+| `src/pages/ManualClassAttendance.tsx` | Date warning + Override dropdown for all students + preview badges (Change/Override) + status changed count + override-only bulk mark support + **instant per-student status change** via `handleStatusChange` (calls PATCH API immediately for already-marked students, disables dropdown during update) |

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Query, Param, Body, HttpException, HttpStatus, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Query, Param, Body, HttpException, HttpStatus, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AttendanceService } from './attendance.service';
@@ -1043,6 +1043,50 @@ export class AttendanceController {
       throw new HttpException(
         { success: false, message: error.message || 'Failed to bulk-mark class attendance' },
         error.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SINGLE STUDENT STATUS UPDATE — inline status change
+  // ───────────────────────────────────────────────────────────────────────────
+
+  @Patch('institute/:instituteId/class/:classId/student/:studentId/status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Update a single student attendance status for today',
+    description: 'Change the attendance status of an already-marked student. Only works for today\'s date.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'studentId', description: 'Student user ID' })
+  @ApiResponse({ status: 200, description: 'Status updated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request — no existing record or invalid status' })
+  async updateStudentAttendanceStatus(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Param('studentId') studentId: string,
+    @Body() body: { status: string; subjectId?: string },
+  ) {
+    try {
+      return await this.attendanceService.updateStudentAttendanceStatus(
+        instituteId,
+        classId,
+        studentId,
+        body.status as any,
+        body.subjectId,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to update student attendance status' },
+        error.message?.includes('not found') ? HttpStatus.BAD_REQUEST : HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
