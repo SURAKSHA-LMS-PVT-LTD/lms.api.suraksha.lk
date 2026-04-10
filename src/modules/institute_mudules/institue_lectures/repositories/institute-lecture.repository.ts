@@ -78,6 +78,9 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         if (filters.status) {
           queryBuilder.andWhere('lecture.status = :status', { status: filters.status });
         }
+        if ((filters as any).lectureType) {
+          queryBuilder.andWhere('lecture.lectureType = :lectureType', { lectureType: (filters as any).lectureType });
+        }
       }
 
       const results = await queryBuilder.getMany();
@@ -381,6 +384,78 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
         throw error;
       }
       throw new BadRequestException(`Failed to reschedule lecture: ${error.message}`);
+    }
+  }
+
+  async findBySchedule(date: string, filters?: Partial<IInstituteLecture>): Promise<IInstituteLecture[]> {
+    try {
+      const dayStart = new Date(`${date}T00:00:00.000Z`);
+      const dayEnd = new Date(`${date}T23:59:59.999Z`);
+
+      if (isNaN(dayStart.getTime())) {
+        throw new BadRequestException('Invalid date format. Use YYYY-MM-DD');
+      }
+
+      const qb = this.lectureRepository.createQueryBuilder('lecture')
+        .leftJoin('lecture.class', 'class')
+        .addSelect(['class.id', 'class.name', 'class.grade'])
+        .leftJoin('lecture.instructor', 'instructor')
+        .addSelect(['instructor.id', 'instructor.firstName', 'instructor.lastName', 'instructor.nameWithInitials', 'instructor.email', 'instructor.imageUrl'])
+        .where('lecture.startTime >= :dayStart', { dayStart })
+        .andWhere('lecture.startTime <= :dayEnd', { dayEnd })
+        .orderBy('lecture.startTime', 'ASC');
+
+      if (filters?.instituteId) {
+        qb.andWhere('lecture.instituteId = :instituteId', { instituteId: filters.instituteId });
+      }
+      if (filters?.classId) {
+        qb.andWhere('lecture.classId = :classId', { classId: filters.classId });
+      }
+      if (filters?.instructorId) {
+        qb.andWhere('lecture.instructorId = :instructorId', { instructorId: filters.instructorId });
+      }
+      if ((filters as any)?.status) {
+        qb.andWhere('lecture.status = :status', { status: (filters as any).status });
+      }
+      if ((filters as any)?.lectureType) {
+        qb.andWhere('lecture.lectureType = :lectureType', { lectureType: (filters as any).lectureType });
+      }
+
+      const results = await qb.getMany();
+      return JSON.parse(JSON.stringify(results));
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to fetch schedule: ${error.message}`);
+    }
+  }
+
+  async createBulk(lectures: Partial<IInstituteLecture>[]): Promise<IInstituteLecture[]> {
+    try {
+      if (!Array.isArray(lectures) || lectures.length === 0) {
+        throw new BadRequestException('Lectures array must not be empty');
+      }
+
+      const entities = lectures.map(l => this.lectureRepository.create({
+        ...l,
+        title: l.title?.trim(),
+        description: l.description?.trim() || null,
+        venue: l.venue?.trim() || null,
+        subject: l.subject?.trim() || null,
+        meetingLink: l.meetingLink?.trim() || null,
+        meetingId: l.meetingId?.trim() || null,
+        meetingPassword: l.meetingPassword?.trim() || null,
+        recordingUrl: l.recordingUrl?.trim() || null,
+      }));
+
+      const saved = await this.lectureRepository.save(entities);
+      return JSON.parse(JSON.stringify(saved));
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to bulk create lectures: ${error.message}`);
     }
   }
 }

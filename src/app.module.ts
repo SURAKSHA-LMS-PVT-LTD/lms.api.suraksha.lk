@@ -24,6 +24,7 @@ import { InstituteEntity } from './modules/institute/entities/institute.entity';
 import { InstitueUserModule } from './modules/institute_mudules/institue_user/institue_user.module';
 import { InstitueClassModule } from './modules/institute_mudules/institue_class/institue_class.module';
 import { InstitueLecturesModule } from './modules/institute_mudules/institue_lectures/institue_lectures.module';
+import { InstituteClassLecturesModule } from './modules/institute_mudules/institute_class_lectures/institute_class_lectures.module';
 import { InstituteClassStudentModule } from './modules/institute_class_modules/institute_class_student/institute_class_student.module';
 import { InstituteClassSubjectModule } from './modules/institute_class_modules/institute_class_subject/institute_class_subject.module';
 import { InstituteClassSubjectExamsModule } from './modules/institute_class_subject_modules/institute_class_subject_exams/institute_class_subject_exams.module';
@@ -150,6 +151,7 @@ import { AppService } from './app.service';
     InstitueUserModule,
     InstitueClassModule,
     InstitueLecturesModule,
+    InstituteClassLecturesModule,
     InstituteClassStudentModule,
     InstituteClassSubjectModule,
     InstituteClassSubjectExamsModule,
