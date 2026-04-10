@@ -70,6 +70,7 @@ export class InstituteClassSubjectLecturesService {
         maxParticipants: createDto.maxParticipants,
         isActive: createDto.isActive ?? true,
         materials: createDto.materials ?? undefined,
+        thumbnailUrl: createDto.thumbnailUrl ?? undefined,
         createdAt: timestamp,
         updatedAt: timestamp,
       };

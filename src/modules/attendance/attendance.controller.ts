@@ -1072,7 +1072,7 @@ export class AttendanceController {
     @Param('instituteId') instituteId: string,
     @Param('classId') classId: string,
     @Param('studentId') studentId: string,
-    @Body() body: { status: string; subjectId?: string },
+    @Body() body: { status: string; subjectId?: string; instituteName?: string; className?: string; subjectName?: string },
   ) {
     try {
       return await this.attendanceService.updateStudentAttendanceStatus(
@@ -1081,6 +1081,9 @@ export class AttendanceController {
         studentId,
         body.status as any,
         body.subjectId,
+        body.instituteName,
+        body.className,
+        body.subjectName,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

@@ -222,6 +222,11 @@ export class LectureDataDto {
   @IsNumber()
   @Transform(({ value }) => value ? parseInt(value) : undefined)
   maxParticipants?: number;
+
+  @ApiProperty({ description: 'Thumbnail image URL or S3 relative path', required: false })
+  @IsOptional()
+  @IsString()
+  thumbnailUrl?: string;
 }
 
 export class BulkCreateLecturesDto {

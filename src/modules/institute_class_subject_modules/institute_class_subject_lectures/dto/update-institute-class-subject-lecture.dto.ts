@@ -78,6 +78,11 @@ export class UpdateInstituteClassSubjectLectureDto {
   @ValidateNested({ each: true })
   @Type(() => LectureMaterialDto)
   materials?: LectureMaterialDto[];
+
+  @ApiProperty({ description: 'Thumbnail image URL or S3 relative path', required: false })
+  @IsOptional()
+  @IsString()
+  thumbnailUrl?: string;
 }
 
 // export class LectureScheduleDto {

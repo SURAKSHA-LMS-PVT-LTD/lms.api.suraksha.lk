@@ -1804,6 +1804,11 @@ export class AttendanceService {
   }
 
   private scheduleAttendanceNotification(markAttendanceDto: MarkAttendanceDto, attendanceResult: any, studentData?: any): void {
+    // Only send notifications for absent and late statuses — present/left/etc. don't notify
+    const status = markAttendanceDto.status;
+    if (status !== AttendanceStatus.ABSENT && status !== AttendanceStatus.LATE) {
+      return;
+    }
     // Fire-and-forget notification - no blocking, no waiting
     this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));
   }
@@ -3636,6 +3641,9 @@ export class AttendanceService {
     studentId: string,
     status: AttendanceStatus,
     subjectId?: string,
+    instituteName?: string,
+    className?: string,
+    subjectName?: string,
   ): Promise<{ success: boolean; message: string; studentId: string; newStatus: string }> {
     const todayDate = getCurrentSriLankaDate();
 
@@ -3662,9 +3670,43 @@ export class AttendanceService {
     const existingRecord = await qb.getOne();
 
     if (!existingRecord) {
-      throw new BadRequestException(
-        `No attendance record found for student ${studentId} on ${todayDate}. Mark attendance first before changing status.`,
-      );
+      // No existing record — create a new one via bulk mark (single student)
+      // Look up names if not provided
+      const [institute, clazz] = await Promise.all([
+        instituteName ? null : this.instituteRepository.findOne({ where: { id: instituteId as any }, select: { id: true, name: true } }),
+        className ? null : this.classRepository.findOne({ where: { id: classId as any }, select: { id: true, name: true } }),
+      ]);
+      let resolvedSubjectName = subjectName;
+      if (subjectId && !resolvedSubjectName) {
+        const rows = await this.dataSource.query('SELECT name FROM institute_class_subjects WHERE id = ? LIMIT 1', [subjectId]);
+        resolvedSubjectName = rows?.[0]?.name;
+      }
+
+      const bulkDto: BulkAttendanceDto = {
+        instituteId,
+        instituteName: instituteName || institute?.name || instituteId,
+        classId,
+        className: className || clazz?.name || classId,
+        subjectId: subjectId || undefined,
+        subjectName: resolvedSubjectName || undefined,
+        date: todayDate,
+        markingMethod: MarkingMethod.MANUAL,
+        students: [{ studentId, status }],
+      };
+
+      const bulkResult = await this.markBulkAttendance(bulkDto, 'system');
+      const anyFailed = bulkResult?.results?.some((r: any) => r.success === false);
+      if (anyFailed) {
+        throw new BadRequestException(`Failed to create attendance record for student ${studentId}`);
+      }
+
+      const scope = subjectId ? 'subject' : 'class';
+      return {
+        success: true,
+        message: `Student marked ${status} in ${scope}`,
+        studentId,
+        newStatus: status,
+      };
     }
 
     const newStatusCode = statusToCode(status);
@@ -3674,6 +3716,48 @@ export class AttendanceService {
       'UPDATE attendance_records SET status = ?, timestamp = ? WHERE id = ?',
       [newStatusCode, String(Date.now()), existingRecord.id],
     );
+
+    // Send notification if status changed to absent or late
+    if (status === AttendanceStatus.ABSENT || status === AttendanceStatus.LATE) {
+      try {
+        // Look up names for notification
+        const [institute, clazz] = await Promise.all([
+          this.instituteRepository.findOne({ where: { id: instituteId as any }, select: { id: true, name: true } }),
+          this.classRepository.findOne({ where: { id: classId as any }, select: { id: true, name: true } }),
+        ]);
+        let subjectName: string | undefined;
+        if (subjectId) {
+          const subjectRows = await this.dataSource.query(
+            'SELECT name FROM institute_class_subjects WHERE id = ? LIMIT 1',
+            [subjectId],
+          );
+          subjectName = subjectRows?.[0]?.name;
+        }
+        const studentData = await this.fetchStudentWithParentData(studentId);
+        const studentName = studentData.student?.user
+          ? (studentData.student.user.nameWithInitials || `${studentData.student.user.firstName} ${studentData.student.user.lastName || ''}`.trim())
+          : studentId;
+
+        const markDto: MarkAttendanceDto = {
+          studentId,
+          studentName,
+          instituteId,
+          instituteName: institute?.name || instituteId,
+          classId,
+          className: clazz?.name || classId,
+          subjectId: subjectId || undefined,
+          subjectName: subjectName || undefined,
+          date: todayDate,
+          status,
+          markingMethod: 'manual',
+          userType: AttendanceUserType.STUDENT,
+        };
+
+        this.scheduleAttendanceNotification(markDto, { id: existingRecord.id }, studentData);
+      } catch (notifErr) {
+        this.logger.warn(`Status change notification failed: ${notifErr.message}`);
+      }
+    }
 
     const scope = subjectId ? 'subject' : 'class';
     return {
