@@ -3621,6 +3621,70 @@ export class AttendanceService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // SINGLE STUDENT STATUS UPDATE — inline status change
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Update the attendance status of a single student for today.
+   * Works for both class-level and subject-level attendance.
+   *
+   * PATCH /api/attendance/institute/:instituteId/class/:classId/student/:studentId/status
+   */
+  async updateStudentAttendanceStatus(
+    instituteId: string,
+    classId: string,
+    studentId: string,
+    status: AttendanceStatus,
+    subjectId?: string,
+  ): Promise<{ success: boolean; message: string; studentId: string; newStatus: string }> {
+    const todayDate = getCurrentSriLankaDate();
+
+    // Status string → numeric code
+    const statusToCode = (s: AttendanceStatus): number => {
+      const map: Record<string, number> = { present: 1, absent: 0, late: 2, left: 3, left_early: 4, left_lately: 5 };
+      return map[s] ?? 1;
+    };
+
+    // Find the existing attendance record
+    const qb = this.attendanceRecordRepository
+      .createQueryBuilder('ar')
+      .where('ar.institute_id = :instituteId', { instituteId })
+      .andWhere('ar.class_id = :classId', { classId })
+      .andWhere('ar.student_id = :studentId', { studentId })
+      .andWhere('ar.date = :date', { date: todayDate });
+
+    if (subjectId) {
+      qb.andWhere('ar.subject_id = :subjectId', { subjectId });
+    } else {
+      qb.andWhere('ar.subject_id IS NULL');
+    }
+
+    const existingRecord = await qb.getOne();
+
+    if (!existingRecord) {
+      throw new BadRequestException(
+        `No attendance record found for student ${studentId} on ${todayDate}. Mark attendance first before changing status.`,
+      );
+    }
+
+    const newStatusCode = statusToCode(status);
+
+    // Update via raw SQL to ensure correct column mapping
+    await this.attendanceRecordRepository.query(
+      'UPDATE attendance_records SET status = ?, timestamp = ? WHERE id = ?',
+      [newStatusCode, String(Date.now()), existingRecord.id],
+    );
+
+    const scope = subjectId ? 'subject' : 'class';
+    return {
+      success: true,
+      message: `Student ${scope} attendance status changed to ${status}`,
+      studentId,
+      newStatus: status,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // SUBJECT ATTENDANCE FROM CLASS — new features
   // ─────────────────────────────────────────────────────────────────────────────
 
