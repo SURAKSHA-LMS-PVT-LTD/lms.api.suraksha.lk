@@ -169,3 +169,11 @@ export class CreateInstitueLectureDto {
   @MaxLength(500, { message: 'Thumbnail URL cannot exceed 500 characters' })
   thumbnailUrl?: string;
 }
+
+export class BulkCreateInstitueLectureDto {
+  @ApiProperty({ description: 'Array of lectures to create', type: [CreateInstitueLectureDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateInstitueLectureDto)
+  lectures: CreateInstitueLectureDto[];
+}

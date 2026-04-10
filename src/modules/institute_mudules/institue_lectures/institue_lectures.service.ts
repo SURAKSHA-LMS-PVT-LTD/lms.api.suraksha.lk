@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { now } from '../../../common/utils/timezone.util';
-import { CreateInstitueLectureDto } from './dto/create-institue_lecture.dto';
+import { CreateInstitueLectureDto, BulkCreateInstitueLectureDto } from './dto/create-institue_lecture.dto';
 import { UpdateInstitueLectureDto } from './dto/update-institue_lecture.dto';
 import { InstituteLectureRepository } from './repositories/institute-lecture.repository';
 import { LectureFilterDto } from './dto/lecture-filter.dto';
@@ -185,5 +185,21 @@ export class InstitueLecturesService {
   async findByDateRange(startDate: Date, endDate: Date) {
     const lectures = await this.lectureRepository.findByDateRange(startDate, endDate);
     return this.transformLectures(lectures);
+  }
+
+  async findBySchedule(date: string, filters?: any) {
+    const lectures = await this.lectureRepository.findBySchedule(date, filters);
+    return this.transformLectures(lectures);
+  }
+
+  async createBulk(bulkDto: BulkCreateInstitueLectureDto) {
+    const timestamp = now();
+    const withTimestamps = bulkDto.lectures.map(l => ({
+      ...l,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    const created = await this.lectureRepository.createBulk(withTimestamps);
+    return this.transformLectures(created);
   }
 }

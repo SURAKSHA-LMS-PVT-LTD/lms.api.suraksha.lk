@@ -2,7 +2,7 @@ import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { InstitueLecturesService } from './institue_lectures.service';
-import { CreateInstitueLectureDto } from './dto/create-institue_lecture.dto';
+import { CreateInstitueLectureDto, BulkCreateInstitueLectureDto } from './dto/create-institue_lecture.dto';
 import { UpdateInstitueLectureDto } from './dto/update-institue_lecture.dto';
 import { LectureFilterDto } from './dto/lecture-filter.dto';
 import { UpdateLectureStatusDto } from './dto/update-lecture-status.dto';
@@ -31,6 +31,18 @@ export class InstitueLecturesController {
   @UsePipes(new ValidationPipe(), LectureTimePipe)
   create(@Body() createInstitueLectureDto: CreateInstitueLectureDto) {
     return this.institueLecturesService.create(createInstitueLectureDto);
+  }
+
+  @Post('bulk')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: {}
+  })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  createBulk(@Body() bulkDto: BulkCreateInstitueLectureDto) {
+    return this.institueLecturesService.createBulk(bulkDto);
   }
 
   @Get()
@@ -100,6 +112,18 @@ export class InstitueLecturesController {
     @Query('limit') limit?: number
   ) {
     return this.institueLecturesService.findCompleted(instituteId, limit);
+  }
+
+  @Get('schedule/:date')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    anyInstituteRole: true
+  })
+  findBySchedule(
+    @Param('date') date: string,
+    @Query() filterDto: LectureFilterDto
+  ) {
+    return this.institueLecturesService.findBySchedule(date, filterDto);
   }
 
   @Get(':id')
