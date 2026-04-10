@@ -30,21 +30,40 @@ export class InstitutesService {
 
   // Check for code/email conflicts before creating
   async checkConflicts(createInstituteDto: CreateInstituteDto): Promise<void> {
-    const existingInstitute = await this.instituteRepository.findOne({
-      where: [
-        { code: createInstituteDto.code },
-        { email: createInstituteDto.email }
-      ]
-    });
+    const conditions: FindOptionsWhere<InstituteEntity>[] = [
+      { email: createInstituteDto.email },
+    ];
+    if (createInstituteDto.code) {
+      conditions.push({ code: createInstituteDto.code });
+    }
+    const existingInstitute = await this.instituteRepository.findOne({ where: conditions });
 
     if (existingInstitute) {
-      if (existingInstitute.code === createInstituteDto.code) {
+      if (createInstituteDto.code && existingInstitute.code === createInstituteDto.code) {
         throw new ConflictException('Institute with this code already exists');
       }
       if (existingInstitute.email === createInstituteDto.email) {
         throw new ConflictException('Institute with this email already exists');
       }
     }
+  }
+
+  /** Generate a unique institute code like INST-20260411-001 */
+  private async generateInstituteCode(): Promise<string> {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `INST-${dateStr}-`;
+    // Find highest sequence for today
+    const existing = await this.instituteRepository
+      .createQueryBuilder('i')
+      .select('i.code', 'code')
+      .where('i.code LIKE :pattern', { pattern: `${prefix}%` })
+      .getRawMany<{ code: string }>();
+    let max = 0;
+    for (const { code } of existing) {
+      const seq = parseInt(code.slice(prefix.length), 10);
+      if (!isNaN(seq) && seq > max) max = seq;
+    }
+    return `${prefix}${String(max + 1).padStart(3, '0')}`;
   }
 
   async create(
@@ -63,8 +82,12 @@ export class InstitutesService {
       logoUrl: dtoLogoUrl,
       loadingGifUrl: dtoLoadingGifUrl,
       subdomain: dtoSubdomain,
+      code: dtoCode,
       ...instituteData
     } = createInstituteDto;
+
+    // Auto-generate code if not provided by caller
+    const resolvedCode = dtoCode || await this.generateInstituteCode();
 
     // Validate subdomain requires at least STARTER tier
     if (dtoSubdomain && (!instituteData.tier || instituteData.tier === 'FREE')) {
@@ -88,6 +111,7 @@ export class InstitutesService {
     const timestamp = now();
     const institute = this.instituteRepository.create({
       ...instituteData,
+      code: resolvedCode,
       // Only set subdomain if tier allows it (STARTER+)
       subdomain: (dtoSubdomain && instituteData.tier && instituteData.tier !== 'FREE') ? dtoSubdomain.toLowerCase() : null,
       customLoginEnabled: !!(dtoSubdomain && instituteData.tier && instituteData.tier !== 'FREE'),

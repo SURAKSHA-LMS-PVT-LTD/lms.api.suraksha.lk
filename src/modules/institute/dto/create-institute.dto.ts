@@ -73,19 +73,19 @@ export class CreateInstituteDto {
   @MaxLength(50)
   shortName?: string;
 
-  @ApiProperty({
-    description: 'Unique institute code',
-    example: 'CIS001',
+  @ApiPropertyOptional({
+    description: 'Unique institute code (auto-generated if omitted, format: INST-YYYYMMDD-NNN)',
+    example: 'INST-20260411-001',
     maxLength: 50
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(50)
   @MinLength(3)
   @Matches(/^[A-Z0-9_-]+$/, {
     message: 'Code must contain only uppercase letters, numbers, hyphens, and underscores'
   })
-  code: string;
+  code?: string;
 
   @ApiProperty({
     description: 'Institute email address',
