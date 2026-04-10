@@ -33,6 +33,7 @@ import { InstituteClassSubjectResaultsModule } from './modules/institute_class_s
 import { InstituteClassSubjectStudentsModule } from './modules/institute_class_subject_modules/institute_class_subject_students/institute_class_subject_students.module';
 import { InstituteClassSubjectHomeworksModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks/institute_class_subject_homeworks.module';
 import { InstituteClassSubjectHomeworksSubmissionsModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks_submissions/institute_class_subject_homeworks_submissions.module';
+import { StudyMaterialsModule } from './modules/institute_class_subject_modules/institute_class_subject_study_materials/study_materials.module';
 import { InstituteClassSubjectEntity } from './modules/institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteClassEntity } from './modules/institute_mudules/institue_class/entities/institue_class.entity';
 import { UserOtpEntity } from './modules/user/entities/user-otp.entity';
@@ -160,6 +161,7 @@ import { AppService } from './app.service';
     InstituteClassSubjectStudentsModule,
     InstituteClassSubjectHomeworksModule,
     InstituteClassSubjectHomeworksSubmissionsModule,
+    StudyMaterialsModule,
     GoogleAuthModule, // Add Google OAuth 2.0 for Drive integration (legacy - online tokens)
     UserDriveAccessModule, // Secure Google Drive access with persistent encrypted tokens
     InstituteDriveModule,   // Institute-owned Google Drive (persists across staff changes)
