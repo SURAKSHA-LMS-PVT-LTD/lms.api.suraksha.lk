@@ -3356,7 +3356,15 @@ export class AttendanceService {
 
     const markPresentFromInstitute = dto.markPresentFromInstitute !== false; // default true
     const markAbsentForUnmarked = dto.markAbsentForUnmarked !== false;       // default true
-    const queryDate = dto.date || getCurrentSriLankaDate();
+    const todayDate = getCurrentSriLankaDate();
+    const queryDate = dto.date || todayDate;
+
+    // ── 0. Date validation: only today's date is allowed ──────────────────
+    if (queryDate !== todayDate) {
+      throw new BadRequestException(
+        `Attendance can only be marked for today (${todayDate}). Received date: ${queryDate}`,
+      );
+    }
 
     // ── 1. All active+verified students in this class ──────────────────────
     const enrolled = await this.classStudentRepository.find({
@@ -3400,23 +3408,69 @@ export class AttendanceService {
       .andWhere('ar.student_id IN (:...studentIds)', { studentIds })
       .andWhere('ar.date = :date', { date: queryDate })
       .andWhere('ar.class_id = :classId', { classId })
+      .andWhere('ar.subject_id IS NULL')
       .getMany();
 
     const alreadyMarkedSet = new Set(existingClassRecords.map(r => r.studentId));
+    const existingClassMap = new Map<string, AttendanceRecordEntity>();
+    for (const rec of existingClassRecords) {
+      if (!existingClassMap.has(rec.studentId)) {
+        existingClassMap.set(rec.studentId, rec);
+      }
+    }
 
-    // ── 4. Classify each student ──────────────────────────────────────────
+    // ── 4. Build student overrides map ──────────────────────────────────
+    const overridesMap = new Map<string, AttendanceStatus>();
+    if (dto.studentOverrides && dto.studentOverrides.length > 0) {
+      for (const override of dto.studentOverrides) {
+        overridesMap.set(override.studentId, override.status);
+      }
+    }
+
+    // Status string → numeric code helper
+    const statusToCode = (s: AttendanceStatus): number => {
+      const map: Record<string, number> = { present: 1, absent: 0, late: 2, left: 3, left_early: 4, left_lately: 5 };
+      return map[s] ?? 1;
+    };
+
+    // ── 5. Classify each student ──────────────────────────────────────────
     const toMarkPresent: string[] = [];
     const toMarkAbsent: string[] = [];
+    const toMarkOther: { studentId: string; status: AttendanceStatus }[] = [];
     const skippedResults: any[] = [];
 
+    // Already-marked students that need a status UPDATE (not re-mark)
+    const toUpdateStatus: { studentId: string; status: AttendanceStatus; record: AttendanceRecordEntity }[] = [];
+
     for (const studentId of studentIds) {
+      const overrideStatus = overridesMap.get(studentId);
+
       if (alreadyMarkedSet.has(studentId)) {
-        skippedResults.push({
-          studentId,
-          action: 'skipped_already_marked',
-          classStatus: null,
-          success: true,
-        });
+        if (overrideStatus) {
+          // Student is already marked but has an override → UPDATE existing record's status
+          const existingRecord = existingClassMap.get(studentId);
+          if (existingRecord) {
+            toUpdateStatus.push({ studentId, status: overrideStatus, record: existingRecord });
+          }
+        } else {
+          skippedResults.push({
+            studentId,
+            action: 'skipped_already_marked',
+            classStatus: null,
+            success: true,
+          });
+        }
+        continue;
+      }
+
+      if (overrideStatus) {
+        if (overrideStatus === AttendanceStatus.PRESENT) {
+          toMarkPresent.push(studentId);
+        } else if (overrideStatus === AttendanceStatus.ABSENT) {
+          toMarkAbsent.push(studentId);
+        } else {
+          toMarkOther.push({ studentId, status: overrideStatus });
+        }
         continue;
       }
 
@@ -3437,7 +3491,43 @@ export class AttendanceService {
       }
     }
 
-    // ── 5. Build and execute bulk mark ────────────────────────────────────
+    // ── 5b. Update status of already-marked students (override = status change only) ──
+    const updatedResults: any[] = [];
+    for (const item of toUpdateStatus) {
+      try {
+        const newStatusCode = statusToCode(item.status);
+        await this.attendanceRecordRepository
+          .createQueryBuilder()
+          .update(AttendanceRecordEntity)
+          .set({ status: newStatusCode as any, timestamp: String(Date.now()) })
+          .where('id = :id', { id: item.record.id })
+          .execute();
+
+        // Also update via raw query as fallback to ensure the column is set
+        await this.attendanceRecordRepository.query(
+          'UPDATE attendance_records SET status = ?, timestamp = ? WHERE id = ?',
+          [newStatusCode, String(Date.now()), item.record.id],
+        );
+
+        updatedResults.push({
+          studentId: item.studentId,
+          action: `marked_${item.status}`,
+          classStatus: item.status,
+          success: true,
+        });
+      } catch (err) {
+        this.logger.error(`bulkMarkClass: status update failed for ${item.studentId} — ${err.message}`);
+        updatedResults.push({
+          studentId: item.studentId,
+          action: `marked_${item.status}`,
+          classStatus: item.status,
+          success: false,
+          error: err.message,
+        });
+      }
+    }
+
+    // ── 6. Build and execute bulk mark ────────────────────────────────────
     const allResults: any[] = [...skippedResults];
 
     const buildAndMark = async (ids: string[], status: AttendanceStatus): Promise<void> => {
@@ -3459,7 +3549,7 @@ export class AttendanceService {
 
       try {
         const bulkResult = await this.markBulkAttendance(bulkDto, markedBy);
-        const action = status === AttendanceStatus.PRESENT ? 'marked_present' : 'marked_absent';
+        const action = `marked_${status}`;
         const bulkResultsMap = new Map(
           (bulkResult?.results ?? []).map((r: any) => [String(r.studentId ?? r.userId), r]),
         );
@@ -3480,7 +3570,7 @@ export class AttendanceService {
         for (const studentId of ids) {
           allResults.push({
             studentId,
-            action: status === AttendanceStatus.PRESENT ? 'marked_present' : 'marked_absent',
+            action: `marked_${status}`,
             classStatus: status,
             success: false,
             error: err.message,
@@ -3492,19 +3582,37 @@ export class AttendanceService {
     await buildAndMark(toMarkPresent, AttendanceStatus.PRESENT);
     await buildAndMark(toMarkAbsent, AttendanceStatus.ABSENT);
 
+    // Mark students with custom override statuses (late, left, left_early, left_lately)
+    const otherStatusGroups = new Map<AttendanceStatus, string[]>();
+    for (const item of toMarkOther) {
+      if (!otherStatusGroups.has(item.status)) {
+        otherStatusGroups.set(item.status, []);
+      }
+      otherStatusGroups.get(item.status)!.push(item.studentId);
+    }
+    for (const [status, ids] of otherStatusGroups) {
+      await buildAndMark(ids, status);
+    }
+
+    // Include status-update results for already-marked students
+    allResults.push(...updatedResults);
+
     const markedPresent = allResults.filter(r => r.action === 'marked_present' && r.success).length;
     const markedAbsent = allResults.filter(r => r.action === 'marked_absent' && r.success).length;
+    const statusChanged = updatedResults.filter(r => r.success).length;
+    const markedOverride = allResults.filter(r => r.action?.startsWith('marked_') && r.action !== 'marked_present' && r.action !== 'marked_absent' && r.success).length;
     const failed = allResults.filter(r => !r.success).length;
     const skipped = allResults.filter(r => r.action?.startsWith('skipped')).length;
 
     return {
       success: failed === 0,
-      message: `Class attendance bulk-marked: ${markedPresent} present, ${markedAbsent} absent, ${skipped} skipped`,
+      message: `Class attendance bulk-marked: ${markedPresent} present, ${markedAbsent} absent, ${markedOverride} overridden, ${statusChanged} status changed, ${skipped} skipped`,
       date: queryDate,
       summary: {
         total: studentIds.length,
         markedPresent,
         markedAbsent,
+        markedOverride,
         skipped,
         failed,
       },
@@ -3701,7 +3809,15 @@ export class AttendanceService {
 
     const markPresentFromClass = dto.markPresentFromClass !== false; // default true
     const markAbsentForUnmarked = dto.markAbsentForUnmarked !== false; // default true
-    const queryDate = dto.date || getCurrentSriLankaDate();
+    const todayDate = getCurrentSriLankaDate();
+    const queryDate = dto.date || todayDate;
+
+    // ── 0. Date validation: only today's date is allowed ──────────────────
+    if (queryDate !== todayDate) {
+      throw new BadRequestException(
+        `Attendance can only be marked for today (${todayDate}). Received date: ${queryDate}`,
+      );
+    }
 
     // ── 1. All active+verified students in this subject ──────────────────
     const enrolled = await this.subjectStudentRepository.find({
@@ -3755,20 +3871,65 @@ export class AttendanceService {
       .getMany();
 
     const alreadyMarkedSet = new Set(existingSubjectRecords.map(r => r.studentId));
+    const existingSubjectMap = new Map<string, AttendanceRecordEntity>();
+    for (const rec of existingSubjectRecords) {
+      if (!existingSubjectMap.has(rec.studentId)) {
+        existingSubjectMap.set(rec.studentId, rec);
+      }
+    }
 
-    // ── 4. Classify each student ─────────────────────────────────────────
+    // ── 4. Build student overrides map ──────────────────────────────────
+    const overridesMap = new Map<string, AttendanceStatus>();
+    if (dto.studentOverrides && dto.studentOverrides.length > 0) {
+      for (const override of dto.studentOverrides) {
+        overridesMap.set(override.studentId, override.status);
+      }
+    }
+
+    // Status string → numeric code helper
+    const statusToCode = (s: AttendanceStatus): number => {
+      const map: Record<string, number> = { present: 1, absent: 0, late: 2, left: 3, left_early: 4, left_lately: 5 };
+      return map[s] ?? 1;
+    };
+
+    // ── 5. Classify each student ─────────────────────────────────────────
     const toMarkPresent: string[] = [];
     const toMarkAbsent: string[] = [];
+    const toMarkOther: { studentId: string; status: AttendanceStatus }[] = [];
     const skippedResults: any[] = [];
 
+    // Already-marked students that need a status UPDATE (not re-mark)
+    const toUpdateStatus: { studentId: string; status: AttendanceStatus; record: AttendanceRecordEntity }[] = [];
+
     for (const studentId of studentIds) {
+      const overrideStatus = overridesMap.get(studentId);
+
       if (alreadyMarkedSet.has(studentId)) {
-        skippedResults.push({
-          studentId,
-          action: 'skipped_already_marked',
-          subjectStatus: null,
-          success: true,
-        });
+        if (overrideStatus) {
+          // Student is already marked but has an override → UPDATE existing record's status
+          const existingRecord = existingSubjectMap.get(studentId);
+          if (existingRecord) {
+            toUpdateStatus.push({ studentId, status: overrideStatus, record: existingRecord });
+          }
+        } else {
+          skippedResults.push({
+            studentId,
+            action: 'skipped_already_marked',
+            subjectStatus: null,
+            success: true,
+          });
+        }
+        continue;
+      }
+
+      if (overrideStatus) {
+        if (overrideStatus === AttendanceStatus.PRESENT) {
+          toMarkPresent.push(studentId);
+        } else if (overrideStatus === AttendanceStatus.ABSENT) {
+          toMarkAbsent.push(studentId);
+        } else {
+          toMarkOther.push({ studentId, status: overrideStatus });
+        }
         continue;
       }
 
@@ -3789,7 +3950,43 @@ export class AttendanceService {
       }
     }
 
-    // ── 5. Build and execute bulk mark ────────────────────────────────────
+    // ── 5b. Update status of already-marked students (override = status change only) ──
+    const updatedResults: any[] = [];
+    for (const item of toUpdateStatus) {
+      try {
+        const newStatusCode = statusToCode(item.status);
+        await this.attendanceRecordRepository
+          .createQueryBuilder()
+          .update(AttendanceRecordEntity)
+          .set({ status: newStatusCode as any, timestamp: String(Date.now()) })
+          .where('id = :id', { id: item.record.id })
+          .execute();
+
+        // Also update via raw query as fallback to ensure the column is set
+        await this.attendanceRecordRepository.query(
+          'UPDATE attendance_records SET status = ?, timestamp = ? WHERE id = ?',
+          [newStatusCode, String(Date.now()), item.record.id],
+        );
+
+        updatedResults.push({
+          studentId: item.studentId,
+          action: `marked_${item.status}`,
+          subjectStatus: item.status,
+          success: true,
+        });
+      } catch (err) {
+        this.logger.error(`bulkMarkSubject: status update failed for ${item.studentId} — ${err.message}`);
+        updatedResults.push({
+          studentId: item.studentId,
+          action: `marked_${item.status}`,
+          subjectStatus: item.status,
+          success: false,
+          error: err.message,
+        });
+      }
+    }
+
+    // ── 6. Build and execute bulk mark ────────────────────────────────────
     const allResults: any[] = [...skippedResults];
 
     const buildAndMark = async (ids: string[], status: AttendanceStatus): Promise<void> => {
@@ -3813,7 +4010,7 @@ export class AttendanceService {
 
       try {
         const bulkResult = await this.markBulkAttendance(bulkDto, markedBy);
-        const action = status === AttendanceStatus.PRESENT ? 'marked_present' : 'marked_absent';
+        const action = `marked_${status}`;
         const bulkResultsMap = new Map(
           (bulkResult?.results ?? []).map((r: any) => [String(r.studentId ?? r.userId), r]),
         );
@@ -3834,7 +4031,7 @@ export class AttendanceService {
         for (const studentId of ids) {
           allResults.push({
             studentId,
-            action: status === AttendanceStatus.PRESENT ? 'marked_present' : 'marked_absent',
+            action: `marked_${status}`,
             subjectStatus: status,
             success: false,
             error: err.message,
@@ -3846,19 +4043,37 @@ export class AttendanceService {
     await buildAndMark(toMarkPresent, AttendanceStatus.PRESENT);
     await buildAndMark(toMarkAbsent, AttendanceStatus.ABSENT);
 
+    // Mark students with custom override statuses (late, left, left_early, left_lately)
+    const otherSubjectStatusGroups = new Map<AttendanceStatus, string[]>();
+    for (const item of toMarkOther) {
+      if (!otherSubjectStatusGroups.has(item.status)) {
+        otherSubjectStatusGroups.set(item.status, []);
+      }
+      otherSubjectStatusGroups.get(item.status)!.push(item.studentId);
+    }
+    for (const [status, ids] of otherSubjectStatusGroups) {
+      await buildAndMark(ids, status);
+    }
+
+    // Include status-update results for already-marked students
+    allResults.push(...updatedResults);
+
     const markedPresent = allResults.filter(r => r.action === 'marked_present' && r.success).length;
     const markedAbsent = allResults.filter(r => r.action === 'marked_absent' && r.success).length;
+    const statusChanged = updatedResults.filter(r => r.success).length;
+    const markedOverride = allResults.filter(r => r.action?.startsWith('marked_') && r.action !== 'marked_present' && r.action !== 'marked_absent' && r.success).length;
     const failed = allResults.filter(r => !r.success).length;
     const skipped = allResults.filter(r => r.action?.startsWith('skipped')).length;
 
     return {
       success: failed === 0,
-      message: `Subject attendance bulk-marked: ${markedPresent} present, ${markedAbsent} absent, ${skipped} skipped`,
+      message: `Subject attendance bulk-marked: ${markedPresent} present, ${markedAbsent} absent, ${markedOverride} overridden, ${statusChanged} status changed, ${skipped} skipped`,
       date: queryDate,
       summary: {
         total: studentIds.length,
         markedPresent,
         markedAbsent,
+        markedOverride,
         skipped,
         failed,
       },

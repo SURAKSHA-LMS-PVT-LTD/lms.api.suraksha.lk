@@ -5,10 +5,12 @@ import {
   IsEnum,
   IsBoolean,
   IsDateString,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { MarkingMethod } from './attendance.dto';
+import { Transform, Type } from 'class-transformer';
+import { MarkingMethod, AttendanceStatus } from './attendance.dto';
 
 // ─────────────────────────────────────────────────────────────────
 // GET  /institute/:instituteId/class/:classId/students-with-institute-status
@@ -142,6 +144,36 @@ export class BulkMarkClassFromInstituteDto {
     return value;
   })
   markPresentFromInstitute?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Per-student status overrides. When provided, these students will be marked with the specified status '
+      + 'instead of the auto-determined status from institute attendance. Students already marked at class level are still skipped.',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        studentId: { type: 'string' },
+        status: { type: 'string', enum: ['present', 'absent', 'late', 'left', 'left_early', 'left_lately'] },
+      },
+    },
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StudentStatusOverrideItem)
+  @IsOptional()
+  studentOverrides?: StudentStatusOverrideItem[];
+}
+
+export class StudentStatusOverrideItem {
+  @ApiProperty({ description: 'Student user ID' })
+  @IsString()
+  @IsNotEmpty()
+  studentId: string;
+
+  @ApiProperty({ description: 'Override attendance status', enum: AttendanceStatus })
+  @IsEnum(AttendanceStatus)
+  status: AttendanceStatus;
 }
 
 /** Per-student result inside the bulk-mark response */

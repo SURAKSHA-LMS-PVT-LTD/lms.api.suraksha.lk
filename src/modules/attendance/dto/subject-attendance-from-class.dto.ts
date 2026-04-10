@@ -5,10 +5,12 @@ import {
   IsEnum,
   IsBoolean,
   IsDateString,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { MarkingMethod } from './attendance.dto';
+import { Transform, Type } from 'class-transformer';
+import { MarkingMethod, AttendanceStatus } from './attendance.dto';
 
 // ─────────────────────────────────────────────────────────────────
 // GET  /institute/:instituteId/class/:classId/subject/:subjectId/students-with-class-status
@@ -141,4 +143,34 @@ export class BulkMarkSubjectFromClassDto {
     return value;
   })
   markPresentFromClass?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Per-student status overrides. When provided, these students will be marked with the specified status '
+      + 'instead of the auto-determined status from class attendance. Students already marked at subject level are still skipped.',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        studentId: { type: 'string' },
+        status: { type: 'string', enum: ['present', 'absent', 'late', 'left', 'left_early', 'left_lately'] },
+      },
+    },
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SubjectStudentStatusOverrideItem)
+  @IsOptional()
+  studentOverrides?: SubjectStudentStatusOverrideItem[];
+}
+
+export class SubjectStudentStatusOverrideItem {
+  @ApiProperty({ description: 'Student user ID' })
+  @IsString()
+  @IsNotEmpty()
+  studentId: string;
+
+  @ApiProperty({ description: 'Override attendance status', enum: AttendanceStatus })
+  @IsEnum(AttendanceStatus)
+  status: AttendanceStatus;
 }
