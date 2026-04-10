@@ -39,8 +39,7 @@ export class StudyMaterialsController {
   })
   @ApiOperation({ summary: 'Create a study material' })
   create(@Body() dto: CreateStudyMaterialDto, @Request() req: any) {
-    const userId = req.user?.id || req.user?.userId;
-    return this.service.create(dto, userId);
+    return this.service.create(dto, req.user);
   }
 
   @Get()
@@ -70,8 +69,9 @@ export class StudyMaterialsController {
   update(
     @Param('id', ParseBigIntPipe) id: string,
     @Body() dto: UpdateStudyMaterialDto,
+    @Request() req: any,
   ) {
-    return this.service.update(id, dto);
+    return this.service.update(id, dto, req.user);
   }
 
   @Delete(':id')
@@ -83,8 +83,8 @@ export class StudyMaterialsController {
   })
   @ApiOperation({ summary: 'Delete a study material permanently' })
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', ParseBigIntPipe) id: string) {
-    return this.service.remove(id);
+  remove(@Param('id', ParseBigIntPipe) id: string, @Request() req: any) {
+    return this.service.remove(id, req.user);
   }
 
   @Patch(':id/toggle-active')
@@ -95,8 +95,8 @@ export class StudyMaterialsController {
     teacher: {},
   })
   @ApiOperation({ summary: 'Toggle active/hidden status' })
-  toggleActive(@Param('id', ParseBigIntPipe) id: string) {
-    return this.service.toggleActive(id);
+  toggleActive(@Param('id', ParseBigIntPipe) id: string, @Request() req: any) {
+    return this.service.toggleActive(id, req.user);
   }
 
   @Post('reorder')

@@ -6,9 +6,13 @@ import {
   IsEnum,
   IsBoolean,
   IsInt,
+  IsIn,
   Min,
   MaxLength,
   MinLength,
+  Matches,
+  IsUrl,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -73,19 +77,27 @@ export class CreateStudyMaterialDto {
   @MaxLength(100)
   mimeType?: string;
 
-  @ApiPropertyOptional({ description: 'Storage source', default: 'S3' })
+  @ApiPropertyOptional({
+    description: 'Storage source',
+    enum: ['GOOGLE_DRIVE', 'GOOGLE_DRIVE_INSTITUTE', 'EXTERNAL_LINK'],
+    default: 'GOOGLE_DRIVE',
+  })
   @IsOptional()
-  @IsString()
+  @IsIn(['GOOGLE_DRIVE', 'GOOGLE_DRIVE_INSTITUTE', 'EXTERNAL_LINK'])
   source?: string;
 
   @ApiPropertyOptional({ description: 'Google Drive file ID' })
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  @Matches(/^[a-zA-Z0-9_-]+$/, { message: 'Invalid Google Drive file ID format' })
   driveFileId?: string;
 
   @ApiPropertyOptional({ description: 'Google Drive web view link' })
   @IsOptional()
   @IsString()
+  @ValidateIf(o => o.driveWebViewLink && o.driveWebViewLink.length > 0)
+  @Matches(/^https:\/\/drive\.google\.com\//, { message: 'Must be a Google Drive URL' })
   driveWebViewLink?: string;
 
   @ApiPropertyOptional({ description: 'Thumbnail URL' })

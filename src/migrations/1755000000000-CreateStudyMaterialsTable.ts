@@ -43,7 +43,7 @@ export class CreateStudyMaterialsTable1755000000000 implements MigrationInterfac
           { name: 'file_name', type: 'varchar', length: '500', isNullable: true },
           { name: 'file_size', type: 'bigint', isNullable: true },
           { name: 'mime_type', type: 'varchar', length: '100', isNullable: true },
-          { name: 'source', type: 'varchar', length: '50', default: "'S3'" },
+          { name: 'source', type: 'varchar', length: '50', default: "'GOOGLE_DRIVE'" },
           { name: 'drive_file_id', type: 'varchar', length: '255', isNullable: true },
           { name: 'drive_web_view_link', type: 'text', isNullable: true },
           { name: 'thumbnail_url', type: 'varchar', length: '500', isNullable: true },

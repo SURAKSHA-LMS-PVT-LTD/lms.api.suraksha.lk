@@ -79,9 +79,9 @@ export class StudyMaterialEntity {
   mimeType?: string;
 
   /**
-   * Where the file lives: S3, GOOGLE_DRIVE, GOOGLE_DRIVE_INSTITUTE, EXTERNAL_LINK
+   * Where the file lives: GOOGLE_DRIVE, GOOGLE_DRIVE_INSTITUTE, EXTERNAL_LINK
    */
-  @Column({ name: 'source', type: 'varchar', length: 50, default: 'S3' })
+  @Column({ name: 'source', type: 'varchar', length: 50, default: 'GOOGLE_DRIVE' })
   source: string;
 
   @Column({ name: 'drive_file_id', type: 'varchar', length: 255, nullable: true })

@@ -1,45 +1,49 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StudyMaterialEntity } from './entities/study_material.entity';
 import { CreateStudyMaterialDto } from './dto/create-study-material.dto';
 import { UpdateStudyMaterialDto } from './dto/update-study-material.dto';
 import { QueryStudyMaterialDto } from './dto/query-study-material.dto';
-import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { InstituteAccessValidator } from '../../../common/helpers/institute-access-validator.helper';
 
 @Injectable()
 export class StudyMaterialsService {
   constructor(
     @InjectRepository(StudyMaterialEntity)
     private readonly repo: Repository<StudyMaterialEntity>,
-    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
-  /** Resolve S3 relative paths into full public URLs. */
-  private transformUrls(item: StudyMaterialEntity): StudyMaterialEntity {
-    if (item.fileUrl && item.source === 'S3') {
-      item.fileUrl = this.cloudStorageService.getFullUrl(item.fileUrl);
-    }
-    if (item.thumbnailUrl) {
-      item.thumbnailUrl = this.cloudStorageService.getFullUrl(item.thumbnailUrl);
-    }
-    return item;
-  }
-
-  async create(dto: CreateStudyMaterialDto, userId?: string): Promise<StudyMaterialEntity> {
+  async create(dto: CreateStudyMaterialDto, user?: any): Promise<StudyMaterialEntity> {
     if (!dto.instituteId) throw new BadRequestException('instituteId is required');
     if (!dto.subjectId) throw new BadRequestException('subjectId is required');
     if (!dto.title?.trim()) throw new BadRequestException('title is required');
+
+    // Validate user has access to this institute
+    if (user) {
+      InstituteAccessValidator.validateInstituteAccess(user, dto.instituteId);
+    }
+
+    // Validate FILE type has a fileUrl
+    if (dto.materialType === 'FILE' && !dto.fileUrl) {
+      throw new BadRequestException('fileUrl is required for FILE type materials');
+    }
+    // Validate LINK type has a URL
+    if (dto.materialType === 'LINK' && !dto.fileUrl) {
+      throw new BadRequestException('fileUrl is required for LINK type materials');
+    }
+
+    const userId = user?.s || user?.id || user?.userId || null;
 
     const entity = this.repo.create({
       ...dto,
       title: dto.title.trim(),
       description: dto.description?.trim() || null,
-      createdById: userId || null,
+      createdById: userId,
     });
 
     const saved = await this.repo.save(entity);
-    return this.transformUrls(saved);
+    return saved;
   }
 
   async findAll(query: QueryStudyMaterialDto): Promise<{ data: StudyMaterialEntity[]; total: number }> {
@@ -70,7 +74,6 @@ export class StudyMaterialsService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
-    data.forEach(d => this.transformUrls(d));
     return { data, total };
   }
 
@@ -80,12 +83,17 @@ export class StudyMaterialsService {
       relations: ['createdBy'],
     });
     if (!item) throw new NotFoundException('Study material not found');
-    return this.transformUrls(item);
+    return item;
   }
 
-  async update(id: string, dto: UpdateStudyMaterialDto): Promise<StudyMaterialEntity> {
+  async update(id: string, dto: UpdateStudyMaterialDto, user?: any): Promise<StudyMaterialEntity> {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Study material not found');
+
+    // Validate user has access to this material's institute
+    if (user) {
+      InstituteAccessValidator.validateInstituteAccess(user, item.instituteId);
+    }
 
     // Merge only provided fields
     Object.assign(item, {
@@ -95,21 +103,33 @@ export class StudyMaterialsService {
     });
 
     const saved = await this.repo.save(item);
-    return this.transformUrls(saved);
+    return saved;
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, user?: any): Promise<void> {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Study material not found');
+
+    // Validate user has access to this material's institute
+    if (user) {
+      InstituteAccessValidator.validateInstituteAccess(user, item.instituteId);
+    }
+
     await this.repo.remove(item);
   }
 
-  async toggleActive(id: string): Promise<StudyMaterialEntity> {
+  async toggleActive(id: string, user?: any): Promise<StudyMaterialEntity> {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Study material not found');
+
+    // Validate user has access to this material's institute
+    if (user) {
+      InstituteAccessValidator.validateInstituteAccess(user, item.instituteId);
+    }
+
     item.isActive = !item.isActive;
     const saved = await this.repo.save(item);
-    return this.transformUrls(saved);
+    return saved;
   }
 
   async reorder(ids: string[]): Promise<void> {
