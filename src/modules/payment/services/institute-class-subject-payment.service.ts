@@ -266,11 +266,19 @@ export class InstituteClassSubjectPaymentService {
     });
 
     if (existingSubmission) {
-      throw new BadRequestException({
-        success: false,
-        message: 'You have already submitted a payment for this request',
-        error: 'DUPLICATE_SUBMISSION'
-      });
+      // Allow re-submission only if the existing submission is a partial payment (student pays remaining balance)
+      const allowResubmit = [
+        SubmissionStatus.REJECTED,
+        SubmissionStatus.HALF_VERIFIED,
+        SubmissionStatus.QUARTER_VERIFIED,
+      ].includes(existingSubmission.status);
+      if (!allowResubmit) {
+        throw new BadRequestException({
+          success: false,
+          message: 'You have already submitted a payment for this request',
+          error: 'DUPLICATE_SUBMISSION'
+        });
+      }
     }
 
     // Get user details and institute user type
@@ -398,12 +406,13 @@ export class InstituteClassSubjectPaymentService {
     // Validate access permissions
     this.validatePaymentCreationAccess(user, submission.payment.instituteId, submission.payment.classId, submission.payment.subjectId);
 
-    // CRITICAL SECURITY: Only PENDING submissions can be processed
-    // This prevents double-verification and ensures manual human review
-    if (submission.status !== SubmissionStatus.PENDING) {
+    // CRITICAL SECURITY: Only PENDING and partially-verified submissions can be (re-)processed
+    // PENDING = initial review; HALF_VERIFIED/QUARTER_VERIFIED = admin can complete or change tier
+    const processableStatuses = [SubmissionStatus.PENDING, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
+    if (!processableStatuses.includes(submission.status)) {
       throw new BadRequestException({
         success: false,
-        message: 'Submission has already been processed',
+        message: 'Submission has already been fully processed',
         error: 'SUBMISSION_ALREADY_PROCESSED'
       });
     }
@@ -623,7 +632,11 @@ export class InstituteClassSubjectPaymentService {
           receiptUrl: sub.receiptUrl ? this.cloudStorageService.getFullUrl(sub.receiptUrl) : null,
           receiptFilename: sub.receiptFilename,
           uploadedAt: sub.uploadedAt instanceof Date ? sub.uploadedAt.toISOString() : sub.uploadedAt || null,
-          canResubmit: sub.status === SubmissionStatus.REJECTED && payment.status === PaymentStatus.ACTIVE,
+          canResubmit: [
+            SubmissionStatus.REJECTED,
+            SubmissionStatus.HALF_VERIFIED,
+            SubmissionStatus.QUARTER_VERIFIED,
+          ].includes(sub.status) && payment.status === PaymentStatus.ACTIVE,
           daysSinceSubmission: sub.uploadedAt
             ? Math.floor((now - (sub.uploadedAt instanceof Date ? sub.uploadedAt.getTime() : new Date(sub.uploadedAt || 0).getTime())) / 86400000)
             : null,
@@ -921,7 +934,11 @@ export class InstituteClassSubjectPaymentService {
         isPending: submission.status === SubmissionStatus.PENDING,
         isVerified: submission.status === SubmissionStatus.VERIFIED,
         isRejected: submission.status === SubmissionStatus.REJECTED,
-        canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
+        canResubmit: [
+            SubmissionStatus.REJECTED,
+            SubmissionStatus.HALF_VERIFIED,
+            SubmissionStatus.QUARTER_VERIFIED,
+          ].includes(submission.status) && submission.payment.isActive,
         paymentIsActive: submission.payment.isActive,
         isOverdue: submission.payment.lastDate < new Date(),
       },
@@ -930,7 +947,11 @@ export class InstituteClassSubjectPaymentService {
       availableActions: {
         canView: true,
         canDownloadReceipt: !!submission.receiptUrl,
-        canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
+        canResubmit: [
+            SubmissionStatus.REJECTED,
+            SubmissionStatus.HALF_VERIFIED,
+            SubmissionStatus.QUARTER_VERIFIED,
+          ].includes(submission.status) && submission.payment.isActive,
         canDelete: submission.status === SubmissionStatus.PENDING, // Can only delete pending submissions
       }
     }));
@@ -1055,7 +1076,11 @@ export class InstituteClassSubjectPaymentService {
           isPending: submission.status === SubmissionStatus.PENDING,
           isVerified: submission.status === SubmissionStatus.VERIFIED,
           isRejected: submission.status === SubmissionStatus.REJECTED,
-          canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
+          canResubmit: [
+              SubmissionStatus.REJECTED,
+              SubmissionStatus.HALF_VERIFIED,
+              SubmissionStatus.QUARTER_VERIFIED,
+            ].includes(submission.status) && submission.payment.isActive,
           paymentIsActive: submission.payment.isActive,
           isOverdue: submission.payment.lastDate < new Date(),
           timeline: [
@@ -1087,8 +1112,16 @@ export class InstituteClassSubjectPaymentService {
           canDownloadReceipt: !!submission.receiptUrl,
           canEdit: submission.status === SubmissionStatus.PENDING,
           canDelete: submission.status === SubmissionStatus.PENDING && user.s === submission.userId,
-          canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
-          canAppeal: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
+          canResubmit: [
+              SubmissionStatus.REJECTED,
+              SubmissionStatus.HALF_VERIFIED,
+              SubmissionStatus.QUARTER_VERIFIED,
+            ].includes(submission.status) && submission.payment.isActive,
+          canAppeal: [
+              SubmissionStatus.REJECTED,
+              SubmissionStatus.HALF_VERIFIED,
+              SubmissionStatus.QUARTER_VERIFIED,
+            ].includes(submission.status) && submission.payment.isActive,
         }
       }
     };
@@ -1546,7 +1579,11 @@ export class InstituteClassSubjectPaymentService {
       receiptUrl: '',
       receiptFilename: '',
       submittedAmount: dto.amount,
-      status: SubmissionStatus.VERIFIED,
+      status: dto.paymentTier === 'half'
+        ? SubmissionStatus.HALF_VERIFIED
+        : dto.paymentTier === 'quarter'
+        ? SubmissionStatus.QUARTER_VERIFIED
+        : SubmissionStatus.VERIFIED,
       verifiedBy: user.s,
       verifiedAt: timestamp,
       notes: dto.notes || null,

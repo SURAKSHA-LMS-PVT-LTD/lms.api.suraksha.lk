@@ -10,6 +10,8 @@ import { UserType } from '../../user/enums/user-type.enum';
 export enum SubmissionStatus {
   PENDING = 'PENDING',
   VERIFIED = 'VERIFIED',
+  HALF_VERIFIED = 'HALF_VERIFIED',
+  QUARTER_VERIFIED = 'QUARTER_VERIFIED',
   REJECTED = 'REJECTED'
 }
 

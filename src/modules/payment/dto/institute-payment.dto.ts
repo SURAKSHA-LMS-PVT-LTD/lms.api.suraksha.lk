@@ -1,4 +1,4 @@
-﻿import { IsNotEmpty, IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsBoolean, IsInt, Min, Max, ValidateNested, Length, Matches, IsEmail, IsUrl, MaxLength } from 'class-validator';
+﻿import { IsNotEmpty, IsString, IsNumber, IsOptional, IsEnum, IsIn, IsDateString, IsBoolean, IsInt, Min, Max, ValidateNested, Length, Matches, IsEmail, IsUrl, MaxLength } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { PaymentTargetType, PaymentPriority } from '../entities/institute-payment.entity';
 import { PaymentMethodType } from '../entities/institute-payment-submission.entity';
@@ -301,17 +301,14 @@ export class CreateInstitutePaymentSubmissionDto {
 // Enhanced Verify Payment Submission DTO
 export class VerifyInstitutePaymentSubmissionDto {
   @IsNotEmpty()
-  @IsEnum(['VERIFIED', 'REJECTED'])
+  @IsIn(['VERIFIED', 'HALF_VERIFIED', 'QUARTER_VERIFIED', 'REJECTED'])
   @Transform(({ value }) => {
     if (typeof value === 'string') {
-      const upperValue = value.toUpperCase();
-      if (upperValue === 'VERIFIED' || upperValue === 'REJECTED') {
-        return upperValue;
-      }
+      return value.toUpperCase();
     }
     return value;
   })
-  status: 'VERIFIED' | 'REJECTED';
+  status: 'VERIFIED' | 'HALF_VERIFIED' | 'QUARTER_VERIFIED' | 'REJECTED';
 
   @IsOptional()
   @IsString()
@@ -404,9 +401,9 @@ export class GetInstitutePaymentSubmissionsQueryDto {
 
   // Status filtering
   @IsOptional()
-  @IsEnum(['PENDING', 'VERIFIED', 'REJECTED'])
+  @IsIn(['PENDING', 'VERIFIED', 'HALF_VERIFIED', 'QUARTER_VERIFIED', 'REJECTED'])
   @Transform(({ value }) => typeof value === 'string' ? value.toUpperCase() : value)
-  status?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  status?: 'PENDING' | 'VERIFIED' | 'HALF_VERIFIED' | 'QUARTER_VERIFIED' | 'REJECTED';
 
   // Payment method filtering
   @IsOptional()
@@ -589,4 +586,8 @@ export class AdminVerifyStudentPaymentDto {
   @Length(0, 500)
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   notes?: string;
+
+  @IsOptional()
+  @IsIn(['full', 'half', 'quarter'])
+  paymentTier?: 'full' | 'half' | 'quarter';
 }

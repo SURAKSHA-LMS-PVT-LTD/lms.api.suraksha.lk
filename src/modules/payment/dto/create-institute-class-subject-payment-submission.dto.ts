@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsDateString, IsNumber, MaxLength, IsEnum, Min, Max, IsUrl } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsIn, IsDateString, IsNumber, MaxLength, IsEnum, Min, Max, IsUrl } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
@@ -108,4 +108,9 @@ export class AdminVerifyStudentCspPaymentDto {
   @MaxLength(500)
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   notes?: string;
+
+  @ApiPropertyOptional({ description: "Payment tier: 'full' (VERIFIED), 'half' (HALF_VERIFIED), 'quarter' (QUARTER_VERIFIED)", enum: ['full', 'half', 'quarter'] })
+  @IsOptional()
+  @IsIn(['full', 'half', 'quarter'])
+  paymentTier?: 'full' | 'half' | 'quarter';
 }

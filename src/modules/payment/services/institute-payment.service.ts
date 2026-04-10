@@ -360,7 +360,11 @@ export class InstitutePaymentService {
               receiptFileUrl: sub.receiptFileUrl,
               receiptFileName: sub.receiptFileName,
               createdAt: sub.createdAt?.toISOString() || null,
-              canResubmit: sub.status === SubmissionStatus.REJECTED && payment.isActive,
+              canResubmit: [
+                SubmissionStatus.REJECTED,
+                SubmissionStatus.HALF_VERIFIED,
+                SubmissionStatus.QUARTER_VERIFIED,
+              ].includes(sub.status) && payment.isActive,
               daysSinceSubmission: sub.createdAt ? Math.floor((nowTimestamp() - sub.createdAt.getTime()) / (24 * 60 * 60 * 1000)) : null,
             }));
           } else {
@@ -1315,11 +1319,12 @@ export class InstitutePaymentService {
       });
     }
 
-    // Check if submission is already verified or rejected
-    if (submission.status !== 'PENDING') {
+    // Check if submission is already fully processed
+    const processableStatuses = ['PENDING', 'HALF_VERIFIED', 'QUARTER_VERIFIED'];
+    if (!processableStatuses.includes(submission.status)) {
       throw new BadRequestException({
         success: false,
-        message: `Submission is already ${submission.status.toLowerCase()}`,
+        message: `Submission has already been fully processed`,
         error: 'SUBMISSION_ALREADY_PROCESSED',
         data: {
           currentStatus: submission.status,
@@ -1349,7 +1354,7 @@ export class InstitutePaymentService {
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (!lockedSubmission || lockedSubmission.status !== 'PENDING') {
+      if (!lockedSubmission || !['PENDING', 'HALF_VERIFIED', 'QUARTER_VERIFIED'].includes(lockedSubmission.status)) {
         throw new BadRequestException({
           success: false,
           message: `Submission is already ${lockedSubmission?.status?.toLowerCase() || 'processed'}`,
@@ -1508,7 +1513,11 @@ export class InstitutePaymentService {
         paymentRemarks: submission.paymentRemarks || submission.notes || null,
         createdAt: submission.createdAt?.toISOString() || null,
         // Minimal additional fields
-        canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
+        canResubmit: [
+          SubmissionStatus.REJECTED,
+          SubmissionStatus.HALF_VERIFIED,
+          SubmissionStatus.QUARTER_VERIFIED,
+        ].includes(submission.status) && submission.payment.isActive,
         canDelete: submission.status === SubmissionStatus.PENDING,
         daysSinceSubmission: Math.floor((nowTimestamp() - submission.createdAt.getTime()) / (24 * 60 * 60 * 1000))
       }));
@@ -1642,9 +1651,17 @@ export class InstitutePaymentService {
         actions: {
           canView: true,
           canDownloadReceipt: !!submission.receiptFileUrl,
-          canResubmit: submission.status === SubmissionStatus.REJECTED && submission.payment.isActive,
+          canResubmit: [
+            SubmissionStatus.REJECTED,
+            SubmissionStatus.HALF_VERIFIED,
+            SubmissionStatus.QUARTER_VERIFIED,
+          ].includes(submission.status) && submission.payment.isActive,
           canDelete: submission.status === SubmissionStatus.PENDING && (userAccessLevel === UserAccessLevel.ADMIN || submission.submittedBy === user.s),
-          canVerify: userAccessLevel === UserAccessLevel.ADMIN && submission.status === SubmissionStatus.PENDING
+          canVerify: userAccessLevel === UserAccessLevel.ADMIN && [
+            SubmissionStatus.PENDING,
+            SubmissionStatus.HALF_VERIFIED,
+            SubmissionStatus.QUARTER_VERIFIED,
+          ].includes(submission.status)
         },
         // Add payment context
         paymentContext: {
@@ -2002,7 +2019,11 @@ export class InstitutePaymentService {
       paymentAmount: dto.amount,
       paymentMethod: PaymentMethodType.CASH_DEPOSIT,
       paymentDate: new Date(dto.date),
-      status: SubmissionStatus.VERIFIED,
+      status: dto.paymentTier === 'half'
+        ? SubmissionStatus.HALF_VERIFIED
+        : dto.paymentTier === 'quarter'
+        ? SubmissionStatus.QUARTER_VERIFIED
+        : SubmissionStatus.VERIFIED,
       verifiedBy: user.s,
       verifiedAt: timestamp,
       notes: dto.notes || null,
