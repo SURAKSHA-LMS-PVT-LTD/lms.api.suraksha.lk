@@ -3749,7 +3749,7 @@ export class AttendanceService {
           subjectName: subjectName || undefined,
           date: todayDate,
           status,
-          markingMethod: 'manual',
+          markingMethod: MarkingMethod.MANUAL,
           userType: AttendanceUserType.STUDENT,
         };
 

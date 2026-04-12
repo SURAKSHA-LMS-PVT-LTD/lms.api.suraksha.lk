@@ -440,6 +440,7 @@ export class InstituteClassSubjectLecturesService {
           maxParticipants: dto.maxParticipants,
           isActive: dto.isActive ?? true,
           materials: dto.materials ?? undefined,
+          thumbnailUrl: dto.thumbnailUrl ?? undefined,
           createdAt: timestamp,
           updatedAt: timestamp,
         };

@@ -1337,6 +1337,7 @@ export class CloudStorageService implements OnModuleInit {
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
       'lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 5) * 1024 * 1024,
       'service-payment-receipts': this.configService.get<number>('MAX_SERVICE_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
       'structured-lecture-covers': this.configService.get<number>('MAX_LECTURE_COVER_SIZE_MB', 5) * 1024 * 1024,
@@ -1447,6 +1448,13 @@ export class CloudStorageService implements OnModuleInit {
         'image/jpg',
         'image/png',
         'image/webp'
+      ],
+      'lecture-thumbnails': [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+        'image/gif'
       ],
       'lecture-covers': [
         'image/jpeg',
