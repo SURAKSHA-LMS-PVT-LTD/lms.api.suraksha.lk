@@ -78,6 +78,15 @@ export class InstituteClassSubjectPayment {
   @Column({ type: 'text', nullable: true })
   notes?: string;
 
+  @Column({ name: 'bank_name', type: 'varchar', length: 100, nullable: false })
+  bankName: string;
+
+  @Column({ name: 'account_holder_name', type: 'varchar', length: 150, nullable: false })
+  accountHolderName: string;
+
+  @Column({ name: 'account_holder_number', type: 'varchar', length: 50, nullable: false })
+  accountHolderNumber: string;
+
   @Column({ name: 'created_at', type: 'timestamp', transformer: dateTransformer })
   createdAt: Date;
 

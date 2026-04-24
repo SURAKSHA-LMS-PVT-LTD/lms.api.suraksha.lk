@@ -78,4 +78,34 @@ export class CreateInstituteClassSubjectPaymentDto {
   @IsString()
   @MaxLength(255)
   notes?: string;
+
+  @ApiProperty({ 
+    description: 'Bank name for payment transfer',
+    example: 'Bank of Ceylon',
+    maxLength: 100
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(100)
+  bankName: string;
+
+  @ApiProperty({ 
+    description: 'Account holder name',
+    example: 'Sri Lanka Institute',
+    maxLength: 150
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(150)
+  accountHolderName: string;
+
+  @ApiProperty({ 
+    description: 'Account holder number / Account ID',
+    example: '1234567890123456',
+    maxLength: 50
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(50)
+  accountHolderNumber: string;
 }

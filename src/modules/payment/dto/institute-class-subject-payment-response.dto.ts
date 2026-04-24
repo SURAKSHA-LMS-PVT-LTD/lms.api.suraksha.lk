@@ -46,6 +46,15 @@ export class InstituteClassSubjectPaymentResponseDto {
   @ApiPropertyOptional({ description: 'Additional notes' })
   notes?: string;
 
+  @ApiProperty({ description: 'Bank name for payment transfer' })
+  bankName: string;
+
+  @ApiProperty({ description: 'Account holder name' })
+  accountHolderName: string;
+
+  @ApiProperty({ description: 'Account holder number / Account ID' })
+  accountHolderNumber: string;
+
   @ApiProperty({ description: 'Created at' })
   createdAt: Date;
 
