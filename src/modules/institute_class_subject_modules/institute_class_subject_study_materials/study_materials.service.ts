@@ -48,8 +48,7 @@ export class StudyMaterialsService {
 
   async findAll(query: QueryStudyMaterialDto): Promise<{ data: StudyMaterialEntity[]; total: number }> {
     const qb = this.repo.createQueryBuilder('sm')
-      .leftJoin('sm.createdBy', 'creator')
-      .addSelect(['creator.id', 'creator.firstName', 'creator.lastName'])
+      .leftJoinAndSelect('sm.createdBy', 'creator')
       .orderBy('sm.sortOrder', 'ASC')
       .addOrderBy('sm.createdAt', 'DESC');
 
