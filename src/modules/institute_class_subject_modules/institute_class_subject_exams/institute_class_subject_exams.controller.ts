@@ -119,9 +119,6 @@ export class InstituteClassSubjectExamsController {
   @ApiQuery({ name: 'teacherId', required: false, description: 'Filter by teacher ID (alias for createdBy)', example: '50' })
   @HttpCode(HttpStatus.OK)
   async findAll(@Query() query: QueryInstituteClassSubjectExamDto, @Request() req: any): Promise<PaginatedInstituteClassSubjectExamResponseDto> {
-    process.stdout.write('🔥 CONTROLLER STDOUT: findAll called\n');
-    process.stderr.write('🔥 CONTROLLER STDERR: findAll called\n');
-    
     const result = await this.instituteClassSubjectExamsService.findAll(query, req.user);
     return result;
   }

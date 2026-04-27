@@ -135,9 +135,6 @@ export class InstituteClassSubjectExamsService {
   }
 
   async findAll(query: QueryInstituteClassSubjectExamDto, user?: any): Promise<PaginatedInstituteClassSubjectExamResponseDto> {
-    process.stdout.write('🔥 SERVICE STDOUT: findAll called\n');
-    process.stderr.write('🔥 SERVICE STDERR: findAll called\n');
-    
     try {
       
       // SECURITY: Validate user has access to requested institute, class, and subject

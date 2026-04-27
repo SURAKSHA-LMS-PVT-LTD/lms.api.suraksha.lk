@@ -69,7 +69,7 @@ async function bootstrap() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'"],
           scriptSrc: ["'self'"],
           imgSrc: ["'self'", 'data:', 'https:'],
         },
@@ -169,9 +169,15 @@ async function bootstrap() {
 
     app.enableCors({
       origin: (origin, callback) => {
-        // ✅ Allow all in development mode
+        // ✅ Development: only allow local origins (never a blanket pass-all)
         if (isDevelopment) {
-          return callback(null, true);
+          const devAllowed = !origin || [
+            'http://localhost:5173',
+            'http://localhost:3000',
+            'http://127.0.0.1:5173',
+            'http://127.0.0.1:3000',
+          ].includes(origin);
+          if (devAllowed) return callback(null, true);
         }
 
         // 🔒 PRODUCTION MODE: Allow requests without origin (server-to-server, mobile apps)

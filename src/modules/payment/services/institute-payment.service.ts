@@ -1868,9 +1868,12 @@ export class InstitutePaymentService {
       });
     }
 
-    // Find the student's membership in this institute (any status)
+    // Find the student's membership in this institute — accept system userId OR institute-assigned userIdByInstitute
     const membership = await this.instituteUserRepository.findOne({
-      where: { userId: studentId, instituteId },
+      where: [
+        { userId: studentId, instituteId },
+        { userIdByInstitute: studentId, instituteId },
+      ] as any,
     });
 
     if (!membership) {
@@ -1881,9 +1884,12 @@ export class InstitutePaymentService {
       });
     }
 
+    // Resolve the canonical user UUID (membership may have been found via userIdByInstitute)
+    const resolvedUserId = membership.userId;
+
     // Get user details
     const student = await this.userRepository.findOne({
-      where: { id: studentId },
+      where: { id: resolvedUserId },
       select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'phoneNumber', 'isActive', 'imageUrl'],
     });
 
@@ -1896,7 +1902,7 @@ export class InstitutePaymentService {
     }
 
     // Get payment submissions for this student - filter by paymentId if provided
-    const submissionWhere: any = { submittedBy: studentId, payment: { instituteId } };
+    const submissionWhere: any = { submittedBy: resolvedUserId, payment: { instituteId } };
     if (paymentId) {
       submissionWhere.paymentId = paymentId;
     }
