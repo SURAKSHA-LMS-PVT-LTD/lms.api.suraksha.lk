@@ -247,6 +247,14 @@ export class AttendanceRecordEntity {
   syncedAt: Date | null;
 
   @Column({
+    name: 'class_session_id',
+    type: 'bigint',
+    nullable: true,
+    comment: 'Links to institute_class_attendance_sessions.id',
+  })
+  classSessionId: string | null;
+
+  @Column({
     name: 'created_at',
     type: 'timestamp',
     default: () => 'CURRENT_TIMESTAMP',

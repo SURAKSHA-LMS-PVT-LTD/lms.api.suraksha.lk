@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AttendanceController } from './attendance.controller';
 import { AttendanceAliasController } from './attendance-alias.controller';
 import { CalendarAttendanceController } from './calendar-attendance.controller';
+import { ClassAttendanceSessionController } from './class-attendance-session.controller';
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
@@ -11,6 +12,9 @@ import { AttendanceNotificationService } from './services/attendance-notificatio
 import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
 import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
 import { MysqlAttendanceService } from './services/mysql-attendance.service';
+import { ClassAttendanceSessionService } from './services/class-attendance-session.service';
+import { InstituteClassAttendanceSessionEntity } from './entities/institute-class-attendance-session.entity';
+import { InstituteClassAttendanceSessionGroupEntity } from './entities/institute-class-attendance-session-group.entity';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { FcmNotificationService } from '../../common/services/fcm-notification.service';
 import { CacheModule } from '../../common/modules/cache.module';
@@ -55,9 +59,11 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
       SubjectEntity,
       InstituteClassStudentEntity,
       InstituteClassSubjectStudent,
+      InstituteClassAttendanceSessionEntity,
+      InstituteClassAttendanceSessionGroupEntity,
     ])
   ],
-  controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController],
+  controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController, ClassAttendanceSessionController],
   providers: [
     AttendanceService,
     DynamoDBAttendanceService,
@@ -66,6 +72,7 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
     AttendanceNotificationService,
     AttendanceSyncConfigService,
     AttendanceSyncSchedulerService,
+    ClassAttendanceSessionService,
     CloudStorageService,
     FcmNotificationService,
     EnhancedEmailService,
