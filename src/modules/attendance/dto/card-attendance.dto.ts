@@ -51,6 +51,11 @@ export class MarkAttendanceByCardDto {
   @ApiProperty({ description: 'Attendance status', enum: AttendanceStatus, example: AttendanceStatus.PRESENT })
   @IsEnum(AttendanceStatus)
   status: AttendanceStatus;
+
+  @ApiPropertyOptional({ description: 'Class session ID — links this attendance record to a specific session' })
+  @IsOptional()
+  @IsString()
+  classSessionId?: string;
 }
 
 export class StudentCardAttendanceDto {

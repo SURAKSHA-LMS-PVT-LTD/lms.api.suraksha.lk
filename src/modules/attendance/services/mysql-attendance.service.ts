@@ -287,6 +287,7 @@ export class MysqlAttendanceService {
     entity.subjectId = dto.subjectId || null;
     entity.calendarDayId = (dto as any).calendarDayId || null;
     entity.eventId = (dto as any).eventId || null;
+    entity.classSessionId = (dto as any).classSessionId || null;
     entity.location = dto.location || null;
     entity.latitude = dto.address?.latitude ?? null;
     entity.longitude = dto.address?.longitude ?? null;
@@ -321,7 +322,7 @@ export class MysqlAttendanceService {
       .orUpdate(
         [
           'status', 'class_id',
-          'subject_id', 'calendar_day_id', 'event_id',
+          'subject_id', 'calendar_day_id', 'event_id', 'class_session_id',
           'location', 'latitude', 'longitude', 'remarks', 'marking_method',
           'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
         ],
@@ -383,7 +384,7 @@ export class MysqlAttendanceService {
           .orUpdate(
             [
               'status', 'class_id',
-              'subject_id', 'calendar_day_id', 'event_id',
+              'subject_id', 'calendar_day_id', 'event_id', 'class_session_id',
               'location', 'latitude', 'longitude', 'remarks', 'marking_method',
               'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
             ],

@@ -95,6 +95,40 @@ export class CreateSessionDto {
   sessionGroupId?: string;
 }
 
+export class UpdateSessionDto {
+  @ApiPropertyOptional({ example: 'Period 2 – Physics' })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ example: '08:30' })
+  @IsString()
+  @IsOptional()
+  startTime?: string;
+
+  @ApiPropertyOptional({ example: '10:00' })
+  @IsString()
+  @IsOptional()
+  endTime?: string;
+
+  @ApiPropertyOptional({ example: 15 })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  lateAfterMinutes?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  leftEarlyBeforeMinutes?: number;
+
+  @ApiPropertyOptional({ description: 'Set to null to remove from group' })
+  @IsString()
+  @IsOptional()
+  sessionGroupId?: string | null;
+}
+
 export class CloseSessionDto {
   @ApiProperty({
     enum: CloseUnmarkAction,
@@ -141,6 +175,16 @@ export class GetSessionsQueryDto {
   @IsDateString()
   @IsOptional()
   date?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by start date (YYYY-MM-DD) — use with endDate for range' })
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by end date (YYYY-MM-DD) — use with startDate for range' })
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
 
   @ApiPropertyOptional({ description: 'Filter by session group ID' })
   @IsString()
@@ -213,6 +257,7 @@ export interface SessionStudentRecord {
   statusLabel: string;
   markedAt: string | null;
   remarks: string | null;
+  isFromOtherSource: boolean;
 }
 
 export interface SessionDetailResponse extends SessionResponse {

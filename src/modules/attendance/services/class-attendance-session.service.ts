@@ -15,6 +15,7 @@ import {
   CreateSessionGroupDto,
   UpdateSessionGroupDto,
   CreateSessionDto,
+  UpdateSessionDto,
   CloseSessionDto,
   MarkSessionAttendanceDto,
   BulkMarkSessionAttendanceDto,
@@ -186,7 +187,7 @@ export class ClassAttendanceSessionService {
     const date = dto.date ?? getCurrentSriLankaDate();
 
     const totalStudents = await this.classStudentRepo.count({
-      where: { instituteId, classId, isActive: true },
+      where: { instituteId, classId, isActive: true, isVerified: true },
     });
 
     const timestamp = now();
@@ -212,21 +213,52 @@ export class ClassAttendanceSessionService {
     return mapSession(saved);
   }
 
+  async updateSession(
+    sessionId: string,
+    instituteId: string,
+    dto: UpdateSessionDto,
+  ): Promise<SessionResponse> {
+    const session = await this.getSessionById(sessionId, instituteId);
+    if (dto.name !== undefined)                 session.name = dto.name;
+    if (dto.startTime !== undefined)            session.startTime = dto.startTime;
+    if (dto.endTime !== undefined)              session.endTime = dto.endTime;
+    if (dto.lateAfterMinutes !== undefined)     session.lateAfterMinutes = dto.lateAfterMinutes;
+    if (dto.leftEarlyBeforeMinutes !== undefined) session.leftEarlyBeforeMinutes = dto.leftEarlyBeforeMinutes;
+    if ('sessionGroupId' in dto)               session.sessionGroupId = dto.sessionGroupId ?? undefined;
+    session.updatedAt = now();
+    const saved = await this.sessionRepo.save(session);
+    return mapSession(saved);
+  }
+
   async getSessions(
     instituteId: string,
     classId: string,
     query: GetSessionsQueryDto,
   ): Promise<SessionResponse[]> {
-    const where: Record<string, any> = { instituteId, classId };
-    if (query.date) where.date = query.date;
-    if (query.sessionGroupId) where.sessionGroupId = query.sessionGroupId;
-    if (query.includeClosed === false) where.isClosed = false;
+    const qb = this.sessionRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.group', 'group')
+      .where('s.instituteId = :instituteId', { instituteId })
+      .andWhere('s.classId = :classId', { classId });
 
-    const sessions = await this.sessionRepo.find({
-      where,
-      relations: ['group'],
-      order: { date: 'DESC', startTime: 'ASC' },
-    });
+    if (query.date) {
+      qb.andWhere('s.date = :date', { date: query.date });
+    } else if (query.startDate && query.endDate) {
+      qb.andWhere('s.date BETWEEN :startDate AND :endDate', {
+        startDate: query.startDate,
+        endDate: query.endDate,
+      });
+    }
+
+    if (query.sessionGroupId) {
+      qb.andWhere('s.sessionGroupId = :groupId', { groupId: query.sessionGroupId });
+    }
+    if (query.includeClosed === false) {
+      qb.andWhere('s.isClosed = false');
+    }
+
+    qb.orderBy('s.date', 'DESC').addOrderBy('s.startTime', 'ASC');
+    const sessions = await qb.getMany();
     return sessions.map(mapSession);
   }
 
@@ -247,11 +279,12 @@ export class ClassAttendanceSessionService {
     const session = await this.getSessionById(sessionId, instituteId);
 
     const students = await this.classStudentRepo.find({
-      where: { instituteId, classId: session.classId, isActive: true },
+      where: { instituteId, classId: session.classId, isActive: true, isVerified: true },
     });
     const studentIds = students.map(s => s.studentUserId);
 
-    const [records, instituteUsers, users] = await Promise.all([
+    const [sessionRecords, instituteUsers, users] = await Promise.all([
+      // Records linked to THIS session
       studentIds.length
         ? this.recordRepo.find({
             where: { classSessionId: sessionId, studentId: In(studentIds) },
@@ -272,18 +305,43 @@ export class ClassAttendanceSessionService {
         : Promise.resolve([]),
     ]);
 
-    const recordMap = new Map(records.map(r => [r.studentId, r]));
+    // Records for same class+date but NOT from this session
+    let otherRecordSet = new Set<string>();
+    if (studentIds.length) {
+      const rawRows = await this.recordRepo
+        .createQueryBuilder('r')
+        .select('DISTINCT r.student_id', 'sid')
+        .where('r.institute_id = :instituteId', { instituteId })
+        .andWhere('r.class_id = :classId', { classId: session.classId })
+        .andWhere('r.date = :date', { date: session.date })
+        .andWhere('r.student_id IN (:...ids)', { ids: studentIds })
+        .andWhere('(r.class_session_id IS NULL OR r.class_session_id != :sessionId)', { sessionId })
+        .getRawMany();
+      otherRecordSet = new Set(rawRows.map(r => String(r.sid)));
+    }
+
+    const sessionRecordMap = new Map(sessionRecords.map(r => [r.studentId, r]));
     const iuMap = new Map(instituteUsers.map(u => [u.userId, u]));
     const userMap = new Map(users.map(u => [u.id, u]));
 
     let presentCount = 0, absentCount = 0, lateCount = 0, notMarkedCount = 0;
 
     const studentRows: SessionStudentRecord[] = students.map(s => {
-      const rec  = recordMap.get(s.studentUserId);
+      const rec  = sessionRecordMap.get(s.studentUserId);
       const iu   = iuMap.get(s.studentUserId);
       const user = userMap.get(s.studentUserId);
 
-      const statusCode = rec ? Number(rec.status) : null;
+      let statusCode: number | null = null;
+      let isFromOtherSource = false;
+
+      if (rec) {
+        statusCode = Number(rec.status);
+        isFromOtherSource = false;
+      } else if (otherRecordSet.has(String(s.studentUserId))) {
+        isFromOtherSource = true;
+        // statusCode remains null — we don't expose the other-source status code here
+      }
+
       const label = statusCode !== null ? (STATUS_LABEL[statusCode] ?? 'Unknown') : 'NotMarked';
 
       if (statusCode === 1) presentCount++;
@@ -301,6 +359,7 @@ export class ClassAttendanceSessionService {
         statusLabel: label,
         markedAt: rec ? toSLTimeString(rec.createdAt) : null,
         remarks: rec?.remarks ?? null,
+        isFromOtherSource,
       };
     });
 
@@ -326,6 +385,14 @@ export class ClassAttendanceSessionService {
   ): Promise<{ success: boolean; record: any }> {
     const session = await this.getSessionById(sessionId, instituteId);
     if (session.isClosed) throw new ForbiddenException('Session is closed');
+
+    const today = getCurrentSriLankaDate();
+    if (session.date < today) {
+      throw new ForbiddenException('Cannot mark attendance for past sessions');
+    }
+    if (session.date > today) {
+      throw new ForbiddenException('Cannot mark attendance for future sessions');
+    }
 
     const autoStatus = dto.status ?? resolveAutoStatus(session);
     const timestamp = now();
@@ -419,7 +486,7 @@ export class ClassAttendanceSessionService {
         .then(rows => rows.map(r => r.studentId));
 
       const allStudents = await this.classStudentRepo.find({
-        where: { instituteId, classId: session.classId, isActive: true },
+        where: { instituteId, classId: session.classId, isActive: true, isVerified: true },
         select: ['studentUserId'],
       });
 
@@ -487,7 +554,7 @@ export class ClassAttendanceSessionService {
     if (!sessions.length) throw new NotFoundException('No sessions found');
 
     const students = await this.classStudentRepo.find({
-      where: { instituteId, classId, isActive: true },
+      where: { instituteId, classId, isActive: true, isVerified: true },
     });
     const studentIds = students.map(s => s.studentUserId);
 

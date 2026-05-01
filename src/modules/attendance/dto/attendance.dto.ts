@@ -157,6 +157,11 @@ export class MarkAttendanceDto {
   @IsString()
   @IsOptional()
   advertisementId?: string;
+
+  @ApiPropertyOptional({ description: 'Class session ID — links this attendance record to a specific session' })
+  @IsString()
+  @IsOptional()
+  classSessionId?: string;
 }
 
 export class StudentAttendanceItem {

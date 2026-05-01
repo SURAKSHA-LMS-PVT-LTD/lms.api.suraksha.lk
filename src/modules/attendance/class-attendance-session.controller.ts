@@ -12,6 +12,7 @@ import {
   CreateSessionGroupDto,
   UpdateSessionGroupDto,
   CreateSessionDto,
+  UpdateSessionDto,
   CloseSessionDto,
   MarkSessionAttendanceDto,
   BulkMarkSessionAttendanceDto,
@@ -127,6 +128,17 @@ export class ClassAttendanceSessionController {
     @Param('sessionId') sessionId: string,
   ) {
     return this.svc.getSessionDetail(sessionId, instituteId);
+  }
+
+  @Patch(':sessionId')
+  @RequireAnyOfRoles(ROLES)
+  @ApiOperation({ summary: 'Update session name, time, or group assignment' })
+  updateSession(
+    @Param('instituteId') instituteId: string,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: UpdateSessionDto,
+  ) {
+    return this.svc.updateSession(sessionId, instituteId, dto);
   }
 
   @Post(':sessionId/mark')
