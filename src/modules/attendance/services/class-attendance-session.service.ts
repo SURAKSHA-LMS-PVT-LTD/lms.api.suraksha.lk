@@ -306,18 +306,32 @@ export class ClassAttendanceSessionService {
     ]);
 
     // Records for same class+date but NOT from this session
-    let otherRecordSet = new Set<string>();
+    const otherRecordMap = new Map<string, AttendanceRecordEntity>();
     if (studentIds.length) {
-      const rawRows = await this.recordRepo
+      const otherRecords = await this.recordRepo
         .createQueryBuilder('r')
-        .select('DISTINCT r.student_id', 'sid')
-        .where('r.institute_id = :instituteId', { instituteId })
-        .andWhere('r.class_id = :classId', { classId: session.classId })
+        .select([
+          'r.studentId',
+          'r.status',
+          'r.createdAt',
+          'r.remarks',
+          'r.markingMethod',
+          'r.classSessionId',
+        ])
+        .where('r.instituteId = :instituteId', { instituteId })
+        .andWhere('r.classId = :classId', { classId: session.classId })
         .andWhere('r.date = :date', { date: session.date })
-        .andWhere('r.student_id IN (:...ids)', { ids: studentIds })
-        .andWhere('(r.class_session_id IS NULL OR r.class_session_id != :sessionId)', { sessionId })
-        .getRawMany();
-      otherRecordSet = new Set(rawRows.map(r => String(r.sid)));
+        .andWhere('r.studentId IN (:...ids)', { ids: studentIds })
+        .andWhere('(r.classSessionId IS NULL OR r.classSessionId != :sessionId)', { sessionId })
+        .orderBy('r.studentId', 'ASC')
+        .addOrderBy('r.createdAt', 'DESC')
+        .getMany();
+
+      for (const rec of otherRecords) {
+        if (!otherRecordMap.has(rec.studentId)) {
+          otherRecordMap.set(rec.studentId, rec);
+        }
+      }
     }
 
     const sessionRecordMap = new Map(sessionRecords.map(r => [r.studentId, r]));
@@ -333,13 +347,14 @@ export class ClassAttendanceSessionService {
 
       let statusCode: number | null = null;
       let isFromOtherSource = false;
+      const otherRecord = otherRecordMap.get(s.studentUserId) ?? null;
 
       if (rec) {
         statusCode = Number(rec.status);
         isFromOtherSource = false;
-      } else if (otherRecordSet.has(String(s.studentUserId))) {
+      } else if (otherRecord) {
+        statusCode = Number(otherRecord.status);
         isFromOtherSource = true;
-        // statusCode remains null — we don't expose the other-source status code here
       }
 
       const label = statusCode !== null ? (STATUS_LABEL[statusCode] ?? 'Unknown') : 'NotMarked';
@@ -357,8 +372,8 @@ export class ClassAttendanceSessionService {
         cardId: iu?.instituteCardId ?? null,
         statusCode,
         statusLabel: label,
-        markedAt: rec ? toSLTimeString(rec.createdAt) : null,
-        remarks: rec?.remarks ?? null,
+        markedAt: rec ? toSLTimeString(rec.createdAt) : otherRecord ? toSLTimeString(otherRecord.createdAt) : null,
+        remarks: rec?.remarks ?? otherRecord?.remarks ?? null,
         isFromOtherSource,
       };
     });
@@ -392,6 +407,20 @@ export class ClassAttendanceSessionService {
     }
     if (session.date > today) {
       throw new ForbiddenException('Cannot mark attendance for future sessions');
+    }
+
+    const otherSourceRecord = await this.recordRepo
+      .createQueryBuilder('r')
+      .where('r.instituteId = :instituteId', { instituteId })
+      .andWhere('r.classId = :classId', { classId: session.classId })
+      .andWhere('r.date = :date', { date: session.date })
+      .andWhere('r.studentId = :studentId', { studentId: dto.studentId })
+      .andWhere('(r.classSessionId IS NULL OR r.classSessionId != :sessionId)', { sessionId })
+      .orderBy('r.createdAt', 'DESC')
+      .getOne();
+
+    if (otherSourceRecord) {
+      throw new ForbiddenException('Student already has attendance marked from another source for this date');
     }
 
     const autoStatus = dto.status ?? resolveAutoStatus(session);
