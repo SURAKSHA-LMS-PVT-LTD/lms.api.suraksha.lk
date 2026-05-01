@@ -126,7 +126,7 @@ export class InstantSmsResponseDto {
 /**
  * Response DTO for credit balance
  */
-export class CreditBalanceResponseDto {
+export class InstantSmsCreditBalanceResponseDto {
   @ApiProperty({ example: '1' })
   instituteId: string;
 

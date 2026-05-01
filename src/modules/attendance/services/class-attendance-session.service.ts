@@ -267,7 +267,7 @@ export class ClassAttendanceSessionService {
       studentIds.length
         ? this.userRepo.find({
             where: { id: In(studentIds) },
-            select: ['id', 'name', 'imageUrl'],
+            select: ['id', 'nameWithInitials', 'imageUrl'],
           })
         : Promise.resolve([]),
     ]);
@@ -293,7 +293,7 @@ export class ClassAttendanceSessionService {
 
       return {
         studentId: s.studentUserId,
-        studentName: user?.name ?? 'Unknown',
+        studentName: user?.nameWithInitials ?? 'Unknown',
         imageUrl: iu?.instituteUserImageUrl ?? user?.imageUrl ?? null,
         userIdInstitute: iu?.userIdByInstitute ?? null,
         cardId: iu?.instituteCardId ?? null,
@@ -507,7 +507,7 @@ export class ClassAttendanceSessionService {
       studentIds.length
         ? this.userRepo.find({
             where: { id: In(studentIds) },
-            select: ['id', 'name', 'imageUrl'],
+            select: ['id', 'nameWithInitials', 'imageUrl'],
           })
         : Promise.resolve([]),
     ]);
@@ -539,7 +539,7 @@ export class ClassAttendanceSessionService {
 
       return {
         studentId: s.studentUserId,
-        studentName: user?.name ?? 'Unknown',
+        studentName: user?.nameWithInitials ?? 'Unknown',
         imageUrl: iu?.instituteUserImageUrl ?? user?.imageUrl ?? null,
         userIdInstitute: iu?.userIdByInstitute ?? null,
         cardId: iu?.instituteCardId ?? null,

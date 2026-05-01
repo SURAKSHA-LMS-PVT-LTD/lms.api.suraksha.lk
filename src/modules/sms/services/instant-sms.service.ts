@@ -4,7 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { SmsCampaignEntity, SmsCampaignStatus, SmsCampaignType } from '../entities/sms-campaign.entity';
 import { SmslenzProvider } from '../providers/smslenz.provider';
-import { SendSingleSmsDto, SendInstantBulkSmsDto, InstantSmsResponseDto, CreditBalanceResponseDto } from '../dto/instant-sms.dto';
+import { SendSingleSmsDto, SendInstantBulkSmsDto, InstantSmsResponseDto, InstantSmsCreditBalanceResponseDto } from '../dto/instant-sms.dto';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { SenderMaskValidationService } from './sender-mask-validation.service';
@@ -365,7 +365,7 @@ export class InstantSmsService {
   /**
    * Get credit balance for an institute via centralized credits service.
    */
-  async getCreditBalance(instituteId: string): Promise<CreditBalanceResponseDto> {
+  async getCreditBalance(instituteId: string): Promise<InstantSmsCreditBalanceResponseDto> {
     const balance = await this.instituteCreditsService.getBalance(instituteId);
     return {
       instituteId: balance.instituteId,
@@ -378,7 +378,7 @@ export class InstantSmsService {
   /**
    * Top up credits for an institute via centralized credits service.
    */
-  async topupCredits(instituteId: string, amount: number): Promise<CreditBalanceResponseDto> {
+  async topupCredits(instituteId: string, amount: number): Promise<InstantSmsCreditBalanceResponseDto> {
     const result = await this.instituteCreditsService.grantCredits(instituteId, {
       amount,
       type: CreditTransactionType.TOP_UP,

@@ -2,7 +2,7 @@ import { Controller, Post, Get, Body, Param, UseGuards, Req, HttpCode, HttpStatu
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InstantSmsService } from '../services/instant-sms.service';
-import { SendSingleSmsDto, SendInstantBulkSmsDto, TopupCreditsDto, InstantSmsResponseDto, CreditBalanceResponseDto } from '../dto/instant-sms.dto';
+import { SendSingleSmsDto, SendInstantBulkSmsDto, TopupCreditsDto, InstantSmsResponseDto, InstantSmsCreditBalanceResponseDto } from '../dto/instant-sms.dto';
 import { JwtRequest } from '../../../common/interfaces/jwt-request.interface';
 import { JwtAuthGuard, FlexibleAccessGuard, RequireAnyOfRoles, UserType } from '../../../auth/guards';
 
@@ -56,8 +56,8 @@ export class InstantSmsController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Get SMS credit balance for an institute (SUPERADMIN or Institute Admin)' })
-  @ApiResponse({ status: 200, description: 'Credit balance retrieved', type: CreditBalanceResponseDto })
-  async getCreditBalance(@Param('instituteId') instituteId: string): Promise<CreditBalanceResponseDto> {
+  @ApiResponse({ status: 200, description: 'Credit balance retrieved', type: InstantSmsCreditBalanceResponseDto })
+  async getCreditBalance(@Param('instituteId') instituteId: string): Promise<InstantSmsCreditBalanceResponseDto> {
     return this.smsService.getCreditBalance(instituteId);
   }
 
@@ -66,8 +66,8 @@ export class InstantSmsController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Top up SMS credits for an institute (SUPERADMIN only)' })
-  @ApiResponse({ status: 200, description: 'Credits added successfully', type: CreditBalanceResponseDto })
-  async topupCredits(@Body() dto: TopupCreditsDto): Promise<CreditBalanceResponseDto> {
+  @ApiResponse({ status: 200, description: 'Credits added successfully', type: InstantSmsCreditBalanceResponseDto })
+  async topupCredits(@Body() dto: TopupCreditsDto): Promise<InstantSmsCreditBalanceResponseDto> {
     return this.smsService.topupCredits(dto.instituteId, dto.amount);
   }
 
