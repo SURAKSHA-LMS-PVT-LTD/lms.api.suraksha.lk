@@ -53,12 +53,12 @@ export class InstituteClassSubjectLecture {
   @JoinColumn([{ name: 'class_id'  }])
   class?: InstituteClassEntity;
 
-  @Column({ name: 'subject_id', type: 'bigint' })
-  subjectId: string;
+  @Column({ name: 'subject_id', type: 'bigint', nullable: true })
+  subjectId?: string;
 
-  @ManyToOne(() => SubjectEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => SubjectEntity, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'subject_id'  }])
-  subject: SubjectEntity;
+  subject?: SubjectEntity;
 
   @Column({ name: 'instructor_id', type: 'bigint', nullable: true })
   instructorId?: string;
@@ -121,6 +121,74 @@ export class InstituteClassSubjectLecture {
     driveWebViewLink?: string;
     source?: string;
   }>;
+
+  // --- Live Lecture Access & Tracking Settings ---
+  @Column({ name: 'live_attendance_enabled', type: 'boolean', default: false })
+  liveAttendanceEnabled: boolean;
+
+  @Column({ name: 'live_url_id', type: 'varchar', length: 100, unique: true, nullable: true })
+  liveUrlId?: string;
+
+  @Column({ name: 'live_access_level', type: 'enum', enum: ['ANYONE', 'SURAKSHA_USERS', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
+  liveAccessLevel: 'ANYONE' | 'SURAKSHA_USERS' | 'ENROLLED_ONLY' | 'PAID_ONLY';
+
+  @Column({ name: 'live_payment_id', type: 'varchar', length: 100, nullable: true })
+  livePaymentId?: string;
+
+  @Column({ name: 'live_payment_statuses', type: 'json', nullable: true })
+  livePaymentStatuses?: string[]; // e.g., ['VERIFIED', 'HALF_PAID', 'FREE_CARD']
+
+  @Column({ name: 'live_entry_bg_url', type: 'varchar', length: 500, nullable: true })
+  liveEntryBgUrl?: string;
+
+  @Column({ name: 'live_card_image_url', type: 'varchar', length: 500, nullable: true })
+  liveCardImageUrl?: string;
+
+  @Column({ name: 'live_card_image_ttl', type: 'datetime', nullable: true })
+  liveCardImageTtl?: Date;
+
+  @Column({ name: 'live_bg_image_ttl', type: 'datetime', nullable: true })
+  liveBgImageTtl?: Date;
+
+  @Column({ name: 'live_url_expires_at', type: 'datetime', nullable: true })
+  liveUrlExpiresAt?: Date;
+
+  // --- Recording Access & Tracking Settings ---
+  @Column({ name: 'rec_attendance_enabled', type: 'boolean', default: false })
+  recAttendanceEnabled: boolean;
+
+  @Column({ name: 'rec_url_id', type: 'varchar', length: 100, unique: true, nullable: true })
+  recUrlId?: string;
+
+  @Column({ name: 'rec_platform', type: 'enum', enum: ['SYSTEM', 'YOUTUBE', 'GOOGLE_DRIVE'], default: 'SYSTEM' })
+  recPlatform: 'SYSTEM' | 'YOUTUBE' | 'GOOGLE_DRIVE';
+
+  @Column({ name: 'rec_access_level', type: 'enum', enum: ['ANYONE', 'SURAKSHA_USERS', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
+  recAccessLevel: 'ANYONE' | 'SURAKSHA_USERS' | 'ENROLLED_ONLY' | 'PAID_ONLY';
+
+  @Column({ name: 'rec_payment_id', type: 'varchar', length: 100, nullable: true })
+  recPaymentId?: string;
+
+  @Column({ name: 'rec_payment_statuses', type: 'json', nullable: true })
+  recPaymentStatuses?: string[];
+
+  @Column({ name: 'rec_entry_bg_url', type: 'varchar', length: 500, nullable: true })
+  recEntryBgUrl?: string;
+
+  @Column({ name: 'rec_card_image_url', type: 'varchar', length: 500, nullable: true })
+  recCardImageUrl?: string;
+
+  @Column({ name: 'rec_card_image_ttl', type: 'datetime', nullable: true })
+  recCardImageTtl?: Date;
+
+  @Column({ name: 'rec_bg_image_ttl', type: 'datetime', nullable: true })
+  recBgImageTtl?: Date;
+
+  @Column({ name: 'rec_url_expires_at', type: 'datetime', nullable: true })
+  recUrlExpiresAt?: Date;
+
+  @Column({ name: 'rec_duration_seconds', type: 'int', nullable: true })
+  recDurationSeconds?: number;
 
   @Column({ name: 'created_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
   createdAt?: Date;

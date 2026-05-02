@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { now } from '../../../common/utils/timezone.util';
@@ -71,6 +72,23 @@ export class InstituteClassSubjectLecturesService {
         isActive: createDto.isActive ?? true,
         materials: createDto.materials ?? undefined,
         thumbnailUrl: createDto.thumbnailUrl ?? undefined,
+        
+        // --- Live Attendance Settings ---
+        liveAttendanceEnabled: createDto.liveAttendanceEnabled ?? false,
+        liveUrlId: createDto.liveAttendanceEnabled ? (createDto.liveUrlId || uuidv4().replace(/-/g, '').substring(0, 10)) : null,
+        liveAccessLevel: createDto.liveAccessLevel ?? 'ENROLLED_ONLY',
+        livePaymentId: createDto.livePaymentId,
+        livePaymentStatuses: createDto.livePaymentStatuses,
+        liveEntryBgUrl: createDto.liveEntryBgUrl,
+
+        // --- Recording Attendance Settings ---
+        recAttendanceEnabled: createDto.recAttendanceEnabled ?? false,
+        recUrlId: createDto.recAttendanceEnabled ? (createDto.recUrlId || uuidv4().replace(/-/g, '').substring(0, 10)) : null,
+        recPlatform: createDto.recPlatform ?? 'SYSTEM',
+        recAccessLevel: createDto.recAccessLevel ?? 'ENROLLED_ONLY',
+        recPaymentId: createDto.recPaymentId,
+        recPaymentStatuses: createDto.recPaymentStatuses,
+
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -298,6 +316,32 @@ export class InstituteClassSubjectLecturesService {
       if (updateDto.materials !== undefined) updateData.materials = updateDto.materials;
       if (updateDto.thumbnailUrl !== undefined) updateData.thumbnailUrl = updateDto.thumbnailUrl;
 
+      // --- Live Attendance Updates ---
+      if (updateDto.liveAttendanceEnabled !== undefined) {
+        updateData.liveAttendanceEnabled = updateDto.liveAttendanceEnabled;
+        if (updateDto.liveAttendanceEnabled && !lecture.liveUrlId && !updateDto.liveUrlId) {
+          updateData.liveUrlId = uuidv4().replace(/-/g, '').substring(0, 10);
+        }
+      }
+      if (updateDto.liveUrlId !== undefined) updateData.liveUrlId = updateDto.liveUrlId;
+      if (updateDto.liveAccessLevel !== undefined) updateData.liveAccessLevel = updateDto.liveAccessLevel;
+      if (updateDto.livePaymentId !== undefined) updateData.livePaymentId = updateDto.livePaymentId;
+      if (updateDto.livePaymentStatuses !== undefined) updateData.livePaymentStatuses = updateDto.livePaymentStatuses;
+      if (updateDto.liveEntryBgUrl !== undefined) updateData.liveEntryBgUrl = updateDto.liveEntryBgUrl;
+
+      // --- Recording Attendance Updates ---
+      if (updateDto.recAttendanceEnabled !== undefined) {
+        updateData.recAttendanceEnabled = updateDto.recAttendanceEnabled;
+        if (updateDto.recAttendanceEnabled && !lecture.recUrlId && !updateDto.recUrlId) {
+          updateData.recUrlId = uuidv4().replace(/-/g, '').substring(0, 10);
+        }
+      }
+      if (updateDto.recUrlId !== undefined) updateData.recUrlId = updateDto.recUrlId;
+      if (updateDto.recPlatform !== undefined) updateData.recPlatform = updateDto.recPlatform;
+      if (updateDto.recAccessLevel !== undefined) updateData.recAccessLevel = updateDto.recAccessLevel;
+      if (updateDto.recPaymentId !== undefined) updateData.recPaymentId = updateDto.recPaymentId;
+      if (updateDto.recPaymentStatuses !== undefined) updateData.recPaymentStatuses = updateDto.recPaymentStatuses;
+
       await this.lectureRepository.update(id, updateData);
       
       const updatedLecture = await this.lectureRepository.findOne({ where: { id } });
@@ -441,6 +485,21 @@ export class InstituteClassSubjectLecturesService {
           isActive: dto.isActive ?? true,
           materials: dto.materials ?? undefined,
           thumbnailUrl: dto.thumbnailUrl ?? undefined,
+          
+          liveAttendanceEnabled: dto.liveAttendanceEnabled ?? false,
+          liveUrlId: dto.liveAttendanceEnabled ? (dto.liveUrlId || uuidv4().replace(/-/g, '').substring(0, 10)) : null,
+          liveAccessLevel: dto.liveAccessLevel ?? 'ENROLLED_ONLY',
+          livePaymentId: dto.livePaymentId,
+          livePaymentStatuses: dto.livePaymentStatuses,
+          liveEntryBgUrl: dto.liveEntryBgUrl,
+
+          recAttendanceEnabled: dto.recAttendanceEnabled ?? false,
+          recUrlId: dto.recAttendanceEnabled ? (dto.recUrlId || uuidv4().replace(/-/g, '').substring(0, 10)) : null,
+          recPlatform: dto.recPlatform ?? 'SYSTEM',
+          recAccessLevel: dto.recAccessLevel ?? 'ENROLLED_ONLY',
+          recPaymentId: dto.recPaymentId,
+          recPaymentStatuses: dto.recPaymentStatuses,
+
           createdAt: timestamp,
           updatedAt: timestamp,
         };

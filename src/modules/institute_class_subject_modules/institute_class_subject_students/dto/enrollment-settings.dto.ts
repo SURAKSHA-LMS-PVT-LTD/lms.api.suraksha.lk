@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { IsBoolean, IsOptional, IsNumber, IsString, IsArray, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpdateEnrollmentSettingsDto {
@@ -31,6 +31,16 @@ export class UpdateEnrollmentSettingsDto {
     return isNaN(num) ? value : Math.round(num * 100) / 100;
   })
   enrollmentFeeAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Class-level payment ID that gates self-enrollment', example: '42' })
+  @IsOptional()
+  @IsString()
+  enrollmentPaymentRefId?: string;
+
+  @ApiPropertyOptional({ description: 'Allowed submission statuses for payment-gated enrollment', example: ['VERIFIED', 'HALF_VERIFIED'] })
+  @IsOptional()
+  @IsArray()
+  enrollmentPaymentStatuses?: string[];
 }
 
 export class EnrollmentSettingsResponseDto {
@@ -101,4 +111,10 @@ export class EnrollmentSettingsResponseDto {
     example: 5000.00
   })
   enrollmentFeeAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Class-level payment ID that gates self-enrollment' })
+  enrollmentPaymentRefId?: string;
+
+  @ApiPropertyOptional({ description: 'Allowed submission statuses for payment-gated enrollment' })
+  enrollmentPaymentStatuses?: string[];
 }

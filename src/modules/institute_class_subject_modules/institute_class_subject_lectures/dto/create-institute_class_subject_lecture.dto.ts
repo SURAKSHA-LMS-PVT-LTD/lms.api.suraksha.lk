@@ -57,10 +57,9 @@ export class CreateInstituteClassSubjectLectureDto {
   @IsOptionalBigIntId()
   classId?: string;
 
-  @ApiProperty({ description: 'Subject ID' })
-  @IsString()
-  @IsNotEmpty()
-  subjectId: string;
+  @ApiProperty({ description: 'Subject ID', required: false })
+  @IsOptionalBigIntId()
+  subjectId?: string;
 
   @ApiProperty({ description: 'Instructor/Teacher ID' })
   @IsString()
@@ -156,6 +155,56 @@ export class CreateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsString()
   thumbnailUrl?: string;
+
+  // --- Live Lecture Access & Tracking Settings ---
+  @ApiProperty({ description: 'Enable live attendance tracking', default: false })
+  @IsOptional()
+  @IsBoolean()
+  liveAttendanceEnabled?: boolean;
+
+  @ApiProperty({ description: 'Live access level', enum: ['ANYONE', 'SURAKSHA_USERS', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
+  @IsOptional()
+  @IsString()
+  liveAccessLevel?: 'ANYONE' | 'SURAKSHA_USERS' | 'ENROLLED_ONLY' | 'PAID_ONLY';
+
+  @ApiProperty({ description: 'Payment ID required for live access', required: false })
+  @IsOptionalBigIntId()
+  livePaymentId?: string;
+
+  @ApiProperty({ description: 'Allowed payment statuses for live access', required: false })
+  @IsOptional()
+  @IsArray()
+  livePaymentStatuses?: string[];
+
+  @ApiProperty({ description: 'Background image URL for live entry page', required: false })
+  @IsOptional()
+  @IsString()
+  liveEntryBgUrl?: string;
+
+  // --- Recording Access & Tracking Settings ---
+  @ApiProperty({ description: 'Enable recording tracking', default: false })
+  @IsOptional()
+  @IsBoolean()
+  recAttendanceEnabled?: boolean;
+
+  @ApiProperty({ description: 'Recording platform', enum: ['SYSTEM', 'YOUTUBE', 'GOOGLE_DRIVE'], default: 'SYSTEM' })
+  @IsOptional()
+  @IsString()
+  recPlatform?: 'SYSTEM' | 'YOUTUBE' | 'GOOGLE_DRIVE';
+
+  @ApiProperty({ description: 'Recording access level', enum: ['ANYONE', 'SURAKSHA_USERS', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
+  @IsOptional()
+  @IsString()
+  recAccessLevel?: 'ANYONE' | 'SURAKSHA_USERS' | 'ENROLLED_ONLY' | 'PAID_ONLY';
+
+  @ApiProperty({ description: 'Payment ID required for recording access', required: false })
+  @IsOptionalBigIntId()
+  recPaymentId?: string;
+
+  @ApiProperty({ description: 'Allowed payment statuses for recording access', required: false })
+  @IsOptional()
+  @IsArray()
+  recPaymentStatuses?: string[];
 }
 
 export class LectureDataDto {
@@ -239,10 +288,9 @@ export class BulkCreateLecturesDto {
   @IsOptionalBigIntId()
   classId?: string;
 
-  @ApiProperty({ description: 'Subject ID' })
-  @IsString()
-  @IsNotEmpty()
-  subjectId: string;
+  @ApiProperty({ description: 'Subject ID', required: false })
+  @IsOptionalBigIntId()
+  subjectId?: string;
 
   @ApiProperty({ description: 'Instructor/Teacher ID' })
   @IsString()
@@ -266,10 +314,9 @@ export class CreateSingleLectureDto {
   @IsOptionalBigIntId()
   classId?: string;
 
-  @ApiProperty({ description: 'Subject ID' })
-  @IsString()
-  @IsNotEmpty()
-  subjectId: string;
+  @ApiProperty({ description: 'Subject ID', required: false })
+  @IsOptionalBigIntId()
+  subjectId?: string;
 
   @ApiProperty({ description: 'Instructor/Teacher ID' })
   @IsString()

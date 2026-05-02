@@ -67,6 +67,13 @@ export class InstituteClassSubjectEntity {
   @Column({ name: 'enrollment_fee_amount', type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Monthly/enrollment fee amount' })
   enrollmentFeeAmount?: number;
 
+  // Payment-gated enrollment: require student to have paid a specific class-level payment
+  @Column({ name: 'enrollment_payment_ref_id', type: 'bigint', nullable: true, comment: 'Class-level payment that gates self-enrollment' })
+  enrollmentPaymentRefId?: string;
+
+  @Column({ name: 'enrollment_payment_statuses', type: 'varchar', length: 500, nullable: true, comment: 'Comma-separated allowed submission statuses e.g. VERIFIED,HALF_VERIFIED' })
+  enrollmentPaymentStatuses?: string;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

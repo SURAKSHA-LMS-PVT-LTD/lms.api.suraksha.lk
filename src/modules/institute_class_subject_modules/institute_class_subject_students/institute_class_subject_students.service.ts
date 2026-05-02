@@ -24,6 +24,7 @@ import { SubjectResponseDto } from '../../subject/dto/subject-response.dto';
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType, PaymentPriority } from '../../payment/entities/institute-class-subject-payment.entity';
+import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
@@ -49,6 +50,8 @@ export class InstituteClassSubjectStudentsService {
     private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
     @InjectRepository(InstituteClassSubjectPayment)
     private readonly paymentRepository: Repository<InstituteClassSubjectPayment>,
+    @InjectRepository(InstituteClassSubjectPaymentSubmission)
+    private readonly submissionRepository: Repository<InstituteClassSubjectPaymentSubmission>,
     private readonly userManagementService: UserManagementService,
     private readonly cloudStorageService: CloudStorageService,
   ) {}
@@ -987,6 +990,24 @@ export class InstituteClassSubjectStudentsService {
       // skip payment slip and verification — enroll immediately as free_card verified.
       const isClassFreeCard = classEnrollment.studentType === 'free_card';
 
+      // ✅ PAYMENT-GATED ENROLLMENT CHECK:
+      // If a specific class-level payment is configured, verify the student already paid.
+      let hasValidPayment = false;
+      if (!isClassFreeCard && classSubject.enrollmentPaymentRefId) {
+        const allowedStatuses: string[] = classSubject.enrollmentPaymentStatuses
+          ? classSubject.enrollmentPaymentStatuses.split(',').map(s => s.trim())
+          : [SubmissionStatus.VERIFIED];
+        const submission = await this.submissionRepository.findOne({
+          where: {
+            paymentId: classSubject.enrollmentPaymentRefId,
+            userId: studentId,
+          },
+        });
+        if (submission && allowedStatuses.includes(submission.status)) {
+          hasValidPayment = true;
+        }
+      }
+
       let verificationStatus: string;
       let enrollmentStudentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
 
@@ -994,6 +1015,14 @@ export class InstituteClassSubjectStudentsService {
         // Admin pre-approved at class level — enroll as verified immediately so student can attend
         verificationStatus = 'verified';
         enrollmentStudentType = 'free_card';
+      } else if (classSubject.enrollmentPaymentRefId && hasValidPayment) {
+        // Student has paid the required class payment — enroll immediately as paid
+        verificationStatus = 'verified';
+        enrollmentStudentType = 'paid';
+      } else if (classSubject.enrollmentPaymentRefId && !hasValidPayment) {
+        // Payment required but not found — put in pending_payment, return payment ID
+        verificationStatus = 'pending_payment';
+        enrollmentStudentType = 'normal';
       } else if (paymentRequired) {
         verificationStatus = 'pending_payment';
         enrollmentStudentType = 'normal';
@@ -1063,11 +1092,18 @@ export class InstituteClassSubjectStudentsService {
       let message: string;
       if (isClassFreeCard) {
         message = `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. You are enrolled as a free card student — no payment required.`;
+      } else if (classSubject.enrollmentPaymentRefId && hasValidPayment) {
+        message = `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Payment verified.`;
+      } else if (classSubject.enrollmentPaymentRefId && !hasValidPayment) {
+        message = `Enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Please complete the required payment to activate your enrollment.`;
       } else if (paymentRequired) {
         message = `Enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Please upload your payment slip (Rs. ${classSubject.enrollmentFeeAmount}).`;
       } else {
         message = `Successfully enrolled in ${classSubject.subject.name} for ${classSubject.class.name}. Awaiting verification by teacher or admin.`;
       }
+
+      const needsPayment = (!isClassFreeCard && classSubject.enrollmentPaymentRefId && !hasValidPayment) ||
+                           (!isClassFreeCard && paymentRequired && !classSubject.enrollmentPaymentRefId);
 
       return {
         message,
@@ -1079,9 +1115,10 @@ export class InstituteClassSubjectStudentsService {
         enrollmentMethod: 'self_enrolled',
         verificationStatus,
         enrolledAt: new Date(),
-        paymentRequired: paymentRequired && !isClassFreeCard,
-        feeAmount: (paymentRequired && !isClassFreeCard) ? Number(classSubject.enrollmentFeeAmount) : undefined,
-        enrollmentPaymentId,
+        paymentRequired: needsPayment,
+        feeAmount: (paymentRequired && !isClassFreeCard && !classSubject.enrollmentPaymentRefId)
+          ? Number(classSubject.enrollmentFeeAmount) : undefined,
+        enrollmentPaymentId: classSubject.enrollmentPaymentRefId || enrollmentPaymentId,
         studentType: enrollmentStudentType,
       };
     } catch (error) {
@@ -1367,9 +1404,20 @@ export class InstituteClassSubjectStudentsService {
       if (updateDto.enrollmentFeeAmount !== undefined) {
         updateData.enrollmentFeeAmount = updateDto.enrollmentFeeAmount;
       }
-      // If fee is disabled, clear the amount
+      // If fee is disabled, clear the amount and payment ref
       if (updateDto.enrollmentFeeRequired === false) {
         updateData.enrollmentFeeAmount = null;
+        updateData.enrollmentPaymentRefId = null;
+        updateData.enrollmentPaymentStatuses = null;
+      }
+      // Payment-gated enrollment fields
+      if (updateDto.enrollmentPaymentRefId !== undefined) {
+        updateData.enrollmentPaymentRefId = updateDto.enrollmentPaymentRefId || null;
+      }
+      if (updateDto.enrollmentPaymentStatuses !== undefined) {
+        updateData.enrollmentPaymentStatuses = updateDto.enrollmentPaymentStatuses?.length
+          ? updateDto.enrollmentPaymentStatuses.join(',')
+          : null;
       }
 
       await this.classSubjectRepository.update(
@@ -1399,6 +1447,12 @@ export class InstituteClassSubjectStudentsService {
         updatedAt: new Date(),
         enrollmentFeeRequired: updateDto.enrollmentFeeRequired ?? classSubject.enrollmentFeeRequired,
         enrollmentFeeAmount: updateDto.enrollmentFeeAmount ?? (classSubject.enrollmentFeeAmount ? Number(classSubject.enrollmentFeeAmount) : undefined),
+        enrollmentPaymentRefId: updateData.enrollmentPaymentRefId !== undefined
+          ? updateData.enrollmentPaymentRefId
+          : (classSubject.enrollmentPaymentRefId ?? undefined),
+        enrollmentPaymentStatuses: updateData.enrollmentPaymentStatuses !== undefined
+          ? (updateData.enrollmentPaymentStatuses ? updateData.enrollmentPaymentStatuses.split(',') : undefined)
+          : (classSubject.enrollmentPaymentStatuses ? classSubject.enrollmentPaymentStatuses.split(',') : undefined),
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {
@@ -1454,6 +1508,12 @@ export class InstituteClassSubjectStudentsService {
         enrollmentKey: classSubject.enrollmentEnabled ? classSubject.enrollmentKey : undefined,
         currentEnrollmentCount: enrollmentCount,
         updatedAt: classSubject.updatedAt,
+        enrollmentFeeRequired: classSubject.enrollmentFeeRequired,
+        enrollmentFeeAmount: classSubject.enrollmentFeeAmount ? Number(classSubject.enrollmentFeeAmount) : undefined,
+        enrollmentPaymentRefId: classSubject.enrollmentPaymentRefId ?? undefined,
+        enrollmentPaymentStatuses: classSubject.enrollmentPaymentStatuses
+          ? classSubject.enrollmentPaymentStatuses.split(',').map(s => s.trim())
+          : undefined,
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {
