@@ -6,6 +6,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { LectureTrackingService } from './lecture_tracking.service';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../../auth/guards/optional-jwt-auth.guard';
+import { Public } from '../../../common/decorators/public.decorator';
 
 @ApiTags('Lecture Tracking & Access')
 @Controller('lecture-tracking')
@@ -15,6 +16,7 @@ export class LectureTrackingController {
   // ─── Public access validation (optional auth) ───────────────────────────
 
   @Get('live/access/:urlId')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Validate access and get live lecture details for a URL token' })
   async getLiveAccess(@Param('urlId') urlId: string, @Req() req: any) {
@@ -22,6 +24,7 @@ export class LectureTrackingController {
   }
 
   @Get('recording/access/:urlId')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Validate access and get recording details for a URL token' })
   async getRecordingAccess(@Param('urlId') urlId: string, @Req() req: any) {
@@ -31,6 +34,7 @@ export class LectureTrackingController {
   // ─── Live attendance ────────────────────────────────────────────────────
 
   @Post('live/join')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Record user joining a live lecture; returns attendanceId' })
   async joinLive(
@@ -54,6 +58,7 @@ export class LectureTrackingController {
   }
 
   @Post('live/leave')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Record user leaving a live lecture' })
   async leaveLive(@Body() body: { attendanceId: string }) {
@@ -63,6 +68,7 @@ export class LectureTrackingController {
   // ─── Recording session ──────────────────────────────────────────────────
 
   @Post('recording/session/start')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Start a recording tracking session; returns sessionId' })
   async startRecordingSession(
@@ -86,6 +92,7 @@ export class LectureTrackingController {
   }
 
   @Post('recording/session/end')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'End a recording session; optionally sets last position' })
   async endRecordingSession(
@@ -98,6 +105,7 @@ export class LectureTrackingController {
   }
 
   @Post('recording/heartbeat')
+  @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Batch-send PLAY / PAUSE / SEEK / HEARTBEAT activity events' })
   async recordHeartbeat(
