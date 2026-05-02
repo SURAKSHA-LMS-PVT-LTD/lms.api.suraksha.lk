@@ -90,6 +90,11 @@ export class UpdateInstituteClassSubjectLectureDto {
   @IsBoolean()
   liveAttendanceEnabled?: boolean;
 
+  @ApiProperty({ description: 'URL ID for live page (auto-generated if not provided)', required: false })
+  @IsOptional()
+  @IsString()
+  liveUrlId?: string;
+
   @ApiProperty({ description: 'Live access level', enum: ['ANYONE', 'SURAKSHA_USERS', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
   @IsOptional()
   @IsString()
@@ -114,6 +119,11 @@ export class UpdateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsBoolean()
   recAttendanceEnabled?: boolean;
+
+  @ApiProperty({ description: 'URL ID for recording page (auto-generated if not provided)', required: false })
+  @IsOptional()
+  @IsString()
+  recUrlId?: string;
 
   @ApiProperty({ description: 'Recording platform', enum: ['SYSTEM', 'YOUTUBE', 'GOOGLE_DRIVE'], default: 'SYSTEM' })
   @IsOptional()

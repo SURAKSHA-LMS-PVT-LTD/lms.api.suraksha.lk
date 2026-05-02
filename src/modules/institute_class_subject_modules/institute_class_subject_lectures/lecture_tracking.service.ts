@@ -6,8 +6,8 @@ import { LectureLiveAttendance } from './entities/lecture_live_attendance.entity
 import { LectureRecordingSession } from './entities/lecture_recording_session.entity';
 import { LectureRecordingActivity } from './entities/lecture_recording_activity.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
-import { InstituteClassSubjectStudentEntity } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
-import { InstituteClassSubjectPaymentSubmissionEntity } from '../../../payment/entities/institute-class-subject-payment-submission.entity';
+import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 
 const BASE_DOMAIN = 'lms.suraksha.lk';
 
@@ -34,10 +34,10 @@ export class LectureTrackingService {
     private readonly recActivityRepo: Repository<LectureRecordingActivity>,
     @InjectRepository(InstituteClassStudentEntity)
     private readonly classStudentRepo: Repository<InstituteClassStudentEntity>,
-    @InjectRepository(InstituteClassSubjectStudentEntity)
-    private readonly subjectStudentRepo: Repository<InstituteClassSubjectStudentEntity>,
-    @InjectRepository(InstituteClassSubjectPaymentSubmissionEntity)
-    private readonly paymentSubmissionRepo: Repository<InstituteClassSubjectPaymentSubmissionEntity>,
+    @InjectRepository(InstituteClassSubjectStudent)
+    private readonly subjectStudentRepo: Repository<InstituteClassSubjectStudent>,
+    @InjectRepository(InstituteClassSubjectPaymentSubmission)
+    private readonly paymentSubmissionRepo: Repository<InstituteClassSubjectPaymentSubmission>,
   ) {}
 
   // ─────────────────────────────────────────────────────────────
@@ -498,8 +498,8 @@ export class LectureTrackingService {
       id: s.studentUserId,
       name:
         (s as any).student?.name ??
-        `${(s as any).student?.firstName ?? ''} ${(s as any).student?.lastName ?? ''}`.trim() ||
-        s.studentUserId,
+        (`${(s as any).student?.firstName ?? ''} ${(s as any).student?.lastName ?? ''}`.trim() ||
+        s.studentUserId),
       imageUrl: (s as any).student?.imageUrl ?? null,
     }));
 

@@ -9,8 +9,8 @@ import { LectureRecordingActivity } from './entities/lecture_recording_activity.
 import { LectureTrackingController } from './lecture_tracking.controller';
 import { LectureTrackingService } from './lecture_tracking.service';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
-import { InstituteClassSubjectStudentEntity } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
-import { InstituteClassSubjectPaymentSubmissionEntity } from '../../../payment/entities/institute-class-subject-payment-submission.entity';
+import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
+import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 
 @Module({
   imports: [
@@ -21,8 +21,8 @@ import { InstituteClassSubjectPaymentSubmissionEntity } from '../../../payment/e
       LectureRecordingActivity,
       // Needed for access validation
       InstituteClassStudentEntity,
-      InstituteClassSubjectStudentEntity,
-      InstituteClassSubjectPaymentSubmissionEntity,
+      InstituteClassSubjectStudent,
+      InstituteClassSubjectPaymentSubmission,
     ]),
   ],
   controllers: [InstituteClassSubjectLecturesController, LectureTrackingController],
