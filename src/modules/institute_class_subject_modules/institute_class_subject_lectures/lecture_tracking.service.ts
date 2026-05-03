@@ -323,6 +323,7 @@ export class LectureTrackingService {
       notPaidPaymentId,
       paymentId: lecture.recPaymentId,
       paymentStatuses: lecture.recPaymentStatuses,
+      materials: lecture.materials,
       // Only expose recording URL when access granted
       recordingUrl: hasAccess ? lecture.recordingUrl : undefined,
     };

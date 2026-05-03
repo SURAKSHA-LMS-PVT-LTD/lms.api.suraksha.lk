@@ -225,5 +225,20 @@ export class InstituteEntity {
   @Column({ name: 'email_sender_name', type: 'varchar', length: 100, nullable: true })
   emailSenderName?: string;
 
+  // Institute-defined custom column definitions for institute_user.extra_data.
+  // Array of { key, label, type, applicableTo } objects — stored as JSON.
+  @Column({
+    name: 'user_extra_data_schema',
+    type: 'json',
+    nullable: true,
+    comment: 'Array of custom column definitions for institute_user.extra_data: [{key,label,type,applicableTo}]',
+  })
+  userExtraDataSchema?: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'date' | 'email' | 'phone';
+    applicableTo?: string[]; // e.g. ['Student','Teacher'] — empty = all roles
+  }>;
+
 }
 

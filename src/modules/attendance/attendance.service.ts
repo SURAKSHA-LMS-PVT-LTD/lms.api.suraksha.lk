@@ -871,17 +871,33 @@ export class AttendanceService {
     const { studentId, startDate, endDate, page = 1, limit = 20, status } = getStudentAttendanceDto;
     
     // SECURITY: Validate access - student themselves OR parent with child in JWT
+    // Privileged roles (SUPERADMIN, Institute Admin, Teacher, Attendance Marker) bypass this check
+    // because they have already been authorized by FlexibleAccessGuard at the controller level.
     if (user) {
-      const isOwnData = user.s === studentId;
-      const children = Array.isArray(user.c) ? user.c : [];
-      const isParentOfStudent = children.includes(studentId);
-      
-      if (!isOwnData && !isParentOfStudent) {
-        this.logger.warn(`Access denied: User ${user.s} attempted to access attendance for student ${studentId}`);
-        throw new ForbiddenException('You can only access your own attendance data or your children\'s attendance data.');
+      const isSuperAdmin = user.u === 0; // user type 0 = SUPERADMIN
+      const isGlobalAccess = user.i === 999999; // global institute access flag
+      const instituteAccess = Array.isArray(user.i) ? user.i : [];
+      // IA=8, TE=4, AM=1 — any of these bitmask flags means a privileged role
+      const isPrivilegedInstituteRole = instituteAccess.some(
+        (entry: any) => (entry.r & (8 | 4 | 1)) !== 0
+      );
+      const isPrivileged = isSuperAdmin || isGlobalAccess || isPrivilegedInstituteRole;
+
+      if (!isPrivileged) {
+        // Only students and parents reach this block — enforce ownership restriction
+        const isOwnData = String(user.s) === String(studentId);
+        const children = Array.isArray(user.c) ? user.c.map(String) : [];
+        const isParentOfStudent = children.includes(String(studentId));
+
+        if (!isOwnData && !isParentOfStudent) {
+          this.logger.warn(`Access denied: User ${user.s} attempted to access attendance for student ${studentId}`);
+          throw new ForbiddenException('You can only access your own attendance data or your children\'s attendance data.');
+        }
+
+        this.logger.debug(`✅ Attendance access granted: ${isOwnData ? 'Own data' : 'Parent accessing child data'}`);
+      } else {
+        this.logger.debug(`✅ Attendance access granted: Privileged role (superAdmin=${isSuperAdmin}, globalAccess=${isGlobalAccess}, instituteRole=${isPrivilegedInstituteRole})`);
       }
-      
-      this.logger.debug(`✅ Attendance access granted: ${isOwnData ? 'Own data' : 'Parent accessing child data'}`);
     }
     
     // ✅ Get all attendance records for the student in the date range

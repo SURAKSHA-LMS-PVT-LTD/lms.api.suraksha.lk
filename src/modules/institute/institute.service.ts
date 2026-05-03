@@ -653,6 +653,49 @@ export class InstitutesService {
   }
 
   // ───────────────────────────────────────────────────
+  // User Extra Data Schema (Institute Admin)
+  // ───────────────────────────────────────────────────
+
+  /**
+   * Get the institute-wide custom user column schema.
+   * Returns empty array if not yet configured.
+   */
+  async getUserExtraDataSchema(
+    instituteId: string,
+    user: any,
+  ): Promise<Array<{ key: string; label: string; type: string; applicableTo?: string[] }>> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+      select: ['id', 'userExtraDataSchema'],
+    });
+    if (!institute) throw new NotFoundException(`Institute ${instituteId} not found`);
+    return Array.isArray(institute.userExtraDataSchema) ? institute.userExtraDataSchema : [];
+  }
+
+  /**
+   * Replace the institute-wide custom user column schema.
+   * Pass an empty array to clear all custom columns.
+   */
+  async updateUserExtraDataSchema(
+    instituteId: string,
+    schema: Array<{ key: string; label: string; type: string; applicableTo?: string[] }>,
+    user: any,
+  ): Promise<Array<{ key: string; label: string; type: string; applicableTo?: string[] }>> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+    });
+    if (!institute) throw new NotFoundException(`Institute ${instituteId} not found`);
+    await this.instituteRepository.update(instituteId, {
+      userExtraDataSchema: schema as any,
+      updatedAt: now(),
+    });
+
+    return schema;
+  }
+
+  // ───────────────────────────────────────────────────
   // Institute Profile (All institute members — minimal view)
   // ───────────────────────────────────────────────────
 

@@ -616,4 +616,42 @@ export class InstitutesController {
   ): Promise<InstituteProfileResponseDto> {
     return this.institutesService.getProfile(id, req.user);
   }
+
+  // ═══════════════════════════════════════════════════
+  // User Extra Data Schema (Institute Admin)
+  // ═══════════════════════════════════════════════════
+
+  @Get(':id/user-extra-data-schema')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiOperation({
+    summary: 'Get custom user column schema (Admin/Teacher)',
+    description: 'Returns the array of custom column definitions for institute user extra data. Empty array if not configured.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Schema array returned' })
+  async getUserExtraDataSchema(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.institutesService.getUserExtraDataSchema(id, req.user);
+  }
+
+  @Patch(':id/user-extra-data-schema')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Update custom user column schema (Institute Admin only)',
+    description: 'Replaces the institute-wide custom column definitions. Pass empty array to clear.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Schema updated' })
+  async updateUserExtraDataSchema(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Body() body: { schema: Array<{ key: string; label: string; type: string; applicableTo?: string[] }> },
+    @Request() req: JwtRequest,
+  ) {
+    return this.institutesService.updateUserExtraDataSchema(id, body.schema ?? [], req.user);
+  }
 }
+
