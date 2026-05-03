@@ -22,15 +22,21 @@ import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { DeprecatedGuard } from '../../../auth/guards/deprecated.guard';
 import { UserType } from '../../user/enums/user-type.enum';
 import { InstituteClassSubjectPaymentService } from '../services/institute-class-subject-payment.service';
 import { CreateInstituteClassSubjectPaymentDto } from '../dto/create-institute-class-subject-payment.dto';
 import { PaymentCreationSuccessResponseDto, PaginatedPaymentsResponseDto, InstituteClassSubjectPaymentResponseDto } from '../dto/institute-class-subject-payment-response.dto';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 
-@ApiTags('Institute Class Subject Payments')
+/**
+ * @deprecated Subject-level payments are DISABLED.
+ * All subject enrollment payment tracking is now handled via the class-level payments system.
+ * This controller returns HTTP 410 Gone for all endpoints.
+ */
+@ApiTags('Institute Class Subject Payments [DEPRECATED]')
 @Controller('institute-class-subject-payments')
-@UseGuards(JwtAuthGuard)
+@UseGuards(DeprecatedGuard, JwtAuthGuard)
 @ApiBearerAuth()
 @UseInterceptors(SerializeDatesInterceptor)
 export class InstituteClassSubjectPaymentController {
