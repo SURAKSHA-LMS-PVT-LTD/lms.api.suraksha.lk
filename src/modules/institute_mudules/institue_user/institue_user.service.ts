@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   Injectable, 
   ConflictException, 
   NotFoundException, 
@@ -1737,6 +1737,7 @@ export class InstitueUserService {
         imageUrl: finalImageUrl, // Use the verified imageUrl logic
         house_id: raw.house_id,
         house_name: raw.house_name,
+        extra_data: raw.extra_data,
       };
 
       if (userType === InstituteUserType.STUDENT) {
