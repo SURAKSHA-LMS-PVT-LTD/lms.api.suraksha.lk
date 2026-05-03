@@ -10,6 +10,11 @@ export class UpdateEnrollmentSettingsDto {
   @IsBoolean()
   enrollmentEnabled: boolean;
 
+  @ApiPropertyOptional({ description: 'Explicit enrollment key to set (null to clear key). When provided, overrides auto-generation.', example: 'MATH2026' })
+  @IsOptional()
+  @IsString()
+  enrollmentKey?: string | null;
+
   @ApiPropertyOptional({
     description: 'Whether payment is required for enrollment',
     example: true

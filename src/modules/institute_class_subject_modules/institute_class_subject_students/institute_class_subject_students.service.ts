@@ -1,4 +1,4 @@
-﻿import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, In } from 'typeorm';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
@@ -1385,13 +1385,22 @@ export class InstituteClassSubjectStudentsService {
         throw new ForbiddenException('You do not have permission to modify settings for this subject');
       }
 
-      // Generate or remove enrollment key based on enabled status
-      let enrollmentKey = classSubject.enrollmentKey;
-      if (updateDto.enrollmentEnabled && !enrollmentKey) {
+      // === ENROLLMENT KEY LOGIC ===
+      // Priority: explicit enrollmentKey in DTO > auto-generate if needed > preserve existing
+      let enrollmentKey: string | null = classSubject.enrollmentKey ?? null;
+
+      if (updateDto.enrollmentKey !== undefined) {
+        // Caller explicitly set the key (or explicitly cleared it with null/'')
+        enrollmentKey = updateDto.enrollmentKey?.trim() || null;
+      } else if (updateDto.enrollmentEnabled && !enrollmentKey && updateDto.enrollmentFeeRequired !== true) {
+        // Enrollment enabled, no existing key, not payment-only → auto-generate a key
         enrollmentKey = this.generateEnrollmentKey(classSubject.subject.name);
       } else if (!updateDto.enrollmentEnabled) {
+        // Enrollment fully disabled — clear key
         enrollmentKey = null;
       }
+      // If payment-only mode (enrollmentEnabled=true, enrollmentKey=null, enrollmentFeeRequired=true)
+      // the key stays null intentionally — no change needed.
 
       // Update settings (including fee fields if provided)
       const updateData: any = {
