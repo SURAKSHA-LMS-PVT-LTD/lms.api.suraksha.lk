@@ -25,6 +25,8 @@ import { InstituteClassSubjectEntity } from '../../institute_class_modules/insti
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType, PaymentPriority } from '../../payment/entities/institute-class-subject-payment.entity';
 import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../../payment/entities/institute-class-subject-payment-submission.entity';
+import { InstituteClassPayment } from '../../payment/entities/institute-class-payment.entity';
+import { InstituteClassPaymentSubmission } from '../../payment/entities/institute-class-payment-submission.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
@@ -52,6 +54,10 @@ export class InstituteClassSubjectStudentsService {
     private readonly paymentRepository: Repository<InstituteClassSubjectPayment>,
     @InjectRepository(InstituteClassSubjectPaymentSubmission)
     private readonly submissionRepository: Repository<InstituteClassSubjectPaymentSubmission>,
+    @InjectRepository(InstituteClassPayment)
+    private readonly classPaymentRepository: Repository<InstituteClassPayment>,
+    @InjectRepository(InstituteClassPaymentSubmission)
+    private readonly classPaymentSubmissionRepository: Repository<InstituteClassPaymentSubmission>,
     private readonly userManagementService: UserManagementService,
     private readonly cloudStorageService: CloudStorageService,
   ) {}
@@ -883,13 +889,21 @@ export class InstituteClassSubjectStudentsService {
         throw new NotFoundException('Subject not found or self-enrollment is disabled for this subject');
       }
 
-      // Validate enrollment key
-      if (classSubject.enrollmentKey && classSubject.enrollmentKey !== enrollDto.enrollmentKey) {
-        throw new BadRequestException('Invalid enrollment key');
+      // Validate enrollment key:
+      // - If a key is configured AND the student provided one → must match
+      // - If a key is configured AND the student provided none → only skip if a payment gate is also configured (payment-mode covers it)
+      // - If no key configured → open/payment enrollment; no key needed
+      if (classSubject.enrollmentKey) {
+        if (!enrollDto.enrollmentKey) {
+          // No key provided — only acceptable if payment gate is configured (payment enrolls them)
+          if (!classSubject.enrollmentPaymentRefId) {
+            throw new BadRequestException('Enrollment key is required for this subject');
+          }
+          // If payment gate is configured, lack of key is fine — payment check handles access
+        } else if (classSubject.enrollmentKey !== enrollDto.enrollmentKey) {
+          throw new BadRequestException('Invalid enrollment key');
+        }
       }
-
-      // If no enrollment key is set but enrollment is enabled, allow open enrollment
-      // (enrollmentKey is null means open enrollment)
 
       // Check if student is enrolled in the class
       const classEnrollment = await this.classStudentRepository.findOne({
@@ -992,12 +1006,14 @@ export class InstituteClassSubjectStudentsService {
 
       // ✅ PAYMENT-GATED ENROLLMENT CHECK:
       // If a specific class-level payment is configured, verify the student already paid.
+      // Uses institute_class_payment_submissions (class-level), NOT subject payment submissions.
       let hasValidPayment = false;
+      let gatedPaymentRecord: InstituteClassPayment | null = null;
       if (!isClassFreeCard && classSubject.enrollmentPaymentRefId) {
         const allowedStatuses: string[] = classSubject.enrollmentPaymentStatuses
           ? classSubject.enrollmentPaymentStatuses.split(',').map(s => s.trim())
           : [SubmissionStatus.VERIFIED];
-        const submission = await this.submissionRepository.findOne({
+        const submission = await this.classPaymentSubmissionRepository.findOne({
           where: {
             paymentId: classSubject.enrollmentPaymentRefId,
             userId: studentId,
@@ -1006,6 +1022,10 @@ export class InstituteClassSubjectStudentsService {
         if (submission && allowedStatuses.includes(submission.status)) {
           hasValidPayment = true;
         }
+        // Load the payment record so we can return title/amount/dueDate to the student
+        gatedPaymentRecord = await this.classPaymentRepository.findOne({
+          where: { id: classSubject.enrollmentPaymentRefId },
+        });
       }
 
       let verificationStatus: string;
@@ -1120,6 +1140,10 @@ export class InstituteClassSubjectStudentsService {
           ? Number(classSubject.enrollmentFeeAmount) : undefined,
         enrollmentPaymentId: classSubject.enrollmentPaymentRefId || enrollmentPaymentId,
         studentType: enrollmentStudentType,
+        // Class-level payment gate details so the student knows exactly what to pay
+        enrollmentPaymentTitle: gatedPaymentRecord?.title ?? undefined,
+        enrollmentPaymentAmount: gatedPaymentRecord?.amount ? Number(gatedPaymentRecord.amount) : undefined,
+        enrollmentPaymentDueDate: gatedPaymentRecord?.lastDate ? new Date(gatedPaymentRecord.lastDate).toISOString() : undefined,
       };
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof ConflictException || error instanceof ForbiddenException) {

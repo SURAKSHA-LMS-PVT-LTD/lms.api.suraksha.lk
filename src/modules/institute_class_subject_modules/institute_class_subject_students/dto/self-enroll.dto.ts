@@ -26,16 +26,16 @@ export class SelfEnrollDto {
   @IsNotEmpty()
   subjectId: string;
 
-  @ApiProperty({
-    description: 'Enrollment key for the subject',
+  @ApiPropertyOptional({
+    description: 'Enrollment key for the subject (not required when payment-gated enrollment is configured without a key)',
     example: 'MATH10-ABC123',
     minLength: 3,
     maxLength: 50
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Length(3, 50)
-  enrollmentKey: string;
+  enrollmentKey?: string;
 
   @ApiPropertyOptional({
     description: 'Target student user ID (for parents enrolling on behalf of their child)',
@@ -126,4 +126,13 @@ export class SelfEnrollResponseDto {
     enum: ['normal', 'paid', 'free_card', 'half_paid', 'quarter_paid']
   })
   studentType?: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
+
+  @ApiPropertyOptional({ description: 'Title of the class-level payment required for enrollment', example: 'Monthly Class Fee – January' })
+  enrollmentPaymentTitle?: string;
+
+  @ApiPropertyOptional({ description: 'Amount of the required class payment in LKR', example: 2500 })
+  enrollmentPaymentAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Due date of the required class payment (ISO 8601)', example: '2026-01-31T00:00:00.000Z' })
+  enrollmentPaymentDueDate?: string;
 }

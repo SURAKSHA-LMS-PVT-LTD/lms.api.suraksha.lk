@@ -11,6 +11,8 @@ import { InstituteClassSubjectEntity } from '../../institute_class_modules/insti
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectPayment } from '../../payment/entities/institute-class-subject-payment.entity';
 import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
+import { InstituteClassPayment } from '../../payment/entities/institute-class-payment.entity';
+import { InstituteClassPaymentSubmission } from '../../payment/entities/institute-class-payment-submission.entity';
 import { CacheModule } from '../../../common/modules/cache.module';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
@@ -26,6 +28,8 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
       InstituteClassStudentEntity,
       InstituteClassSubjectPayment,
       InstituteClassSubjectPaymentSubmission,
+      InstituteClassPayment,
+      InstituteClassPaymentSubmission,
     ]),
     CacheModule
   ],
