@@ -221,16 +221,6 @@ export class AttendanceController {
 
       const result = await this.attendanceService.getStudentAttendance(fullQueryDto, req.user);
       
-      if (result.data.length === 0 && fullQueryDto.page === 1) {
-        throw new HttpException(
-          {
-            success: false,
-            message: 'No attendance records found for the specified criteria',
-          },
-          HttpStatus.NOT_FOUND
-        );
-      }
-
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -539,16 +529,6 @@ export class AttendanceController {
 
       const result = await this.attendanceService.getAttendanceByCard(fullQueryDto);
       
-      if (result.data.length === 0 && (fullQueryDto.page || 1) === 1) {
-        throw new HttpException(
-          {
-            success: false,
-            message: 'No attendance records found for the specified card ID and criteria',
-          },
-          HttpStatus.NOT_FOUND
-        );
-      }
-
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
