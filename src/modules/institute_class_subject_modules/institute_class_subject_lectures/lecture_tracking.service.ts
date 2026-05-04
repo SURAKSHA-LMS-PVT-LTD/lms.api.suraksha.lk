@@ -466,13 +466,39 @@ export class LectureTrackingService {
       
       if (!lectures.length) return { lectures: [], students: [], grid: {} };
 
-      // 2. Load enrolled students for this class
+      // 2. Load enrolled students for the correct scope
+      const subjectId = lectures.every(l => l.subjectId && String(l.subjectId) === String(lectures[0]?.subjectId))
+        ? lectures[0]?.subjectId
+        : null;
+
       let classStudents = [];
       try {
-        classStudents = await this.classStudentRepo.find({
-          where: { classId, instituteId, isActive: true, isVerified: true },
-          relations: ['student'],
-        });
+        if (subjectId) {
+          classStudents = await this.subjectStudentRepo.find({
+            where: {
+              instituteId,
+              classId,
+              subjectId,
+              isActive: true,
+              verificationStatus: In(['verified', 'enrolled_free_card'] as any),
+            },
+            relations: ['student'],
+            order: { createdAt: 'ASC' },
+          });
+
+          // If the subject roster is empty, fall back to the class roster so the report still renders.
+          if (!classStudents.length) {
+            classStudents = await this.classStudentRepo.find({
+              where: { classId, instituteId, isActive: true, isVerified: true },
+              relations: ['student'],
+            });
+          }
+        } else {
+          classStudents = await this.classStudentRepo.find({
+            where: { classId, instituteId, isActive: true, isVerified: true },
+            relations: ['student'],
+          });
+        }
       } catch (dbError) {
         console.error('❌ Error loading students:', dbError);
         classStudents = [];
@@ -483,6 +509,7 @@ export class LectureTrackingService {
       try {
         attRows = await this.liveAttRepo.find({
           where: { lectureId: In(validIds) },
+          order: { joinTime: 'ASC', createdAt: 'ASC', id: 'ASC' } as any,
         });
       } catch (dbError) {
         console.error('❌ Error loading attendance rows:', dbError);
@@ -511,12 +538,26 @@ export class LectureTrackingService {
           const leave = row.leaveTime ? new Date(row.leaveTime) : null;
           const durationMinutes = join && leave && join.getTime() < leave.getTime()
             ? Math.round((leave.getTime() - join.getTime()) / 60000)
-            : undefined;
+            : 0;
+
+          const existing = grid[sid][row.lectureId];
+          const existingJoin = existing?.joinTime ? new Date(existing.joinTime) : null;
+          const existingLeave = existing?.leaveTime ? new Date(existing.leaveTime) : null;
+
+          const nextJoin = existingJoin && join
+            ? (join.getTime() < existingJoin.getTime() ? join : existingJoin)
+            : (join ?? existingJoin);
+          const nextLeave = existingLeave && leave
+            ? (leave.getTime() > existingLeave.getTime() ? leave : existingLeave)
+            : (leave ?? existingLeave);
+
+          const accumulatedDuration = (existing?.durationMinutes ?? 0) + durationMinutes;
+
           grid[sid][row.lectureId] = {
             attended: true,
-            joinTime: join?.toISOString() || undefined,
-            leaveTime: leave?.toISOString() || undefined,
-            durationMinutes,
+            joinTime: nextJoin?.toISOString() || undefined,
+            leaveTime: nextLeave?.toISOString() || undefined,
+            durationMinutes: accumulatedDuration > 0 ? accumulatedDuration : undefined,
           };
         } catch (timeError) {
           console.error('❌ Error processing attendance row times:', timeError);
