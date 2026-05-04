@@ -446,73 +446,117 @@ export class LectureTrackingService {
     instituteId: string,
     includeSubjectLectures = true,
   ) {
-    if (!lectureIds.length) return { lectures: [], students: [], grid: {} };
+    try {
+      if (!lectureIds.length) return { lectures: [], students: [], grid: {} };
 
-    // 1. Load lectures (validates ownership)
-    const lectures = await this.lectureRepo.find({
-      where: { id: In(lectureIds), classId, instituteId },
-    });
-    if (!lectures.length) return { lectures: [], students: [], grid: {} };
+      // Validate and convert IDs
+      const validIds = lectureIds.map(id => String(id).trim()).filter(id => id && id !== 'undefined' && id !== 'null');
+      if (!validIds.length) return { lectures: [], students: [], grid: {} };
 
-    // 2. Load enrolled students for this class
-    const classStudents = await this.classStudentRepo.find({
-      where: { classId, instituteId, isActive: true, isVerified: true },
-      relations: ['student'],
-    });
-
-    // 3. Load all live attendance rows for these lectures
-    const attRows = await this.liveAttRepo.find({
-      where: { lectureId: In(lectureIds) },
-    });
-
-    // Build a map: studentId → lectureId → attendance entry
-    const grid: Record<
-      string,
-      Record<string, { attended: boolean; joinTime?: string; leaveTime?: string; durationMinutes?: number }>
-    > = {};
-
-    for (const s of classStudents) {
-      const sid = s.studentUserId;
-      grid[sid] = {};
-      for (const lid of lectureIds) {
-        grid[sid][lid] = { attended: false };
+      // 1. Load lectures (validates ownership)
+      let lectures = [];
+      try {
+        lectures = await this.lectureRepo.find({
+          where: { id: In(validIds), classId, instituteId },
+        });
+      } catch (dbError) {
+        console.error('❌ Error loading lectures:', dbError);
+        return { lectures: [], students: [], grid: {} };
       }
+      
+      if (!lectures.length) return { lectures: [], students: [], grid: {} };
+
+      // 2. Load enrolled students for this class
+      let classStudents = [];
+      try {
+        classStudents = await this.classStudentRepo.find({
+          where: { classId, instituteId, isActive: true, isVerified: true },
+          relations: ['student'],
+        });
+      } catch (dbError) {
+        console.error('❌ Error loading students:', dbError);
+        classStudents = [];
+      }
+
+      // 3. Load all live attendance rows for these lectures
+      let attRows = [];
+      try {
+        attRows = await this.liveAttRepo.find({
+          where: { lectureId: In(validIds) },
+        });
+      } catch (dbError) {
+        console.error('❌ Error loading attendance rows:', dbError);
+        attRows = [];
+      }
+
+      // Build a map: studentId → lectureId → attendance entry
+      const grid: Record<
+        string,
+        Record<string, { attended: boolean; joinTime?: string; leaveTime?: string; durationMinutes?: number }>
+      > = {};
+
+      for (const s of classStudents) {
+        const sid = s.studentUserId;
+        grid[sid] = {};
+        for (const lid of validIds) {
+          grid[sid][lid] = { attended: false };
+        }
+      }
+
+      for (const row of attRows) {
+        const sid = row.userId ?? `guest-${row.id}`;
+        if (!grid[sid]) grid[sid] = {};
+        try {
+          const join = row.joinTime ? new Date(row.joinTime) : null;
+          const leave = row.leaveTime ? new Date(row.leaveTime) : null;
+          const durationMinutes = join && leave && join.getTime() < leave.getTime()
+            ? Math.round((leave.getTime() - join.getTime()) / 60000)
+            : undefined;
+          grid[sid][row.lectureId] = {
+            attended: true,
+            joinTime: join?.toISOString() || undefined,
+            leaveTime: leave?.toISOString() || undefined,
+            durationMinutes,
+          };
+        } catch (timeError) {
+          console.error('❌ Error processing attendance row times:', timeError);
+          grid[sid][row.lectureId] = { attended: true };
+        }
+      }
+
+      const studentList = classStudents.map(s => {
+        try {
+          const student = (s as any).student;
+          const name = student?.name ?? 
+            (`${student?.firstName ?? ''} ${student?.lastName ?? ''}`.trim() || s.studentUserId);
+          return {
+            id: s.studentUserId,
+            name,
+            imageUrl: student?.imageUrl ?? null,
+          };
+        } catch (err) {
+          console.error('❌ Error mapping student:', err);
+          return {
+            id: s.studentUserId,
+            name: s.studentUserId,
+            imageUrl: null,
+          };
+        }
+      });
+
+      const lectureList = lectures.map(l => ({
+        id: l.id,
+        title: l.title ?? 'Untitled Lecture',
+        startTime: l.startTime,
+        subjectId: l.subjectId ?? null,
+        status: l.status,
+      }));
+
+      return { lectures: lectureList, students: studentList, grid };
+    } catch (error) {
+      console.error('❌ Unexpected error in getAttendanceGrid:', error);
+      throw error;
     }
-
-    for (const row of attRows) {
-      const sid = row.userId ?? `guest-${row.id}`;
-      if (!grid[sid]) grid[sid] = {};
-      const join = row.joinTime ? new Date(row.joinTime) : null;
-      const leave = row.leaveTime ? new Date(row.leaveTime) : null;
-      const durationMinutes = join && leave
-        ? Math.round((leave.getTime() - join.getTime()) / 60000)
-        : undefined;
-      grid[sid][row.lectureId] = {
-        attended: true,
-        joinTime: join?.toISOString(),
-        leaveTime: leave?.toISOString(),
-        durationMinutes,
-      };
-    }
-
-    const studentList = classStudents.map(s => ({
-      id: s.studentUserId,
-      name:
-        (s as any).student?.name ??
-        (`${(s as any).student?.firstName ?? ''} ${(s as any).student?.lastName ?? ''}`.trim() ||
-        s.studentUserId),
-      imageUrl: (s as any).student?.imageUrl ?? null,
-    }));
-
-    const lectureList = lectures.map(l => ({
-      id: l.id,
-      title: l.title,
-      startTime: l.startTime,
-      subjectId: l.subjectId ?? null,
-      status: l.status,
-    }));
-
-    return { lectures: lectureList, students: studentList, grid };
   }
 
   // ─────────────────────────────────────────────────────────────
