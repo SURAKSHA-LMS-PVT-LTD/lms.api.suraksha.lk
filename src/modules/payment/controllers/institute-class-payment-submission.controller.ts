@@ -231,4 +231,48 @@ export class InstituteClassPaymentSubmissionController {
   ) {
     return this.paymentService.adminVerifyStudentClassPayment(paymentId, studentId, dto, req.user);
   }
+
+  /**
+   * PATCH /institute-class-payment-submissions/institute/:instituteId/class/:classId/submission/:submissionId/verify
+   * Verify a class payment submission
+   */
+  @Patch('institute/:instituteId/class/:classId/submission/:submissionId/verify')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true }, attendanceMarker: {} })
+  @ApiOperation({ summary: 'Verify a class payment submission (Admin/Teacher)' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async verifyClassPaymentSubmission(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Body() dto: VerifyClassPaymentSubmissionDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.verifySubmission(submissionId, dto, req.user);
+  }
+
+  /**
+   * PATCH /institute-class-payment-submissions/institute/:instituteId/class/:classId/submission/:submissionId/reject
+   * Reject a class payment submission
+   */
+  @Patch('institute/:instituteId/class/:classId/submission/:submissionId/reject')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true }, attendanceMarker: {} })
+  @ApiOperation({ summary: 'Reject a class payment submission (Admin/Teacher)' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async rejectClassPaymentSubmission(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Body() dto: { rejectionReason: string; notes?: string },
+    @Request() req: JwtRequest,
+  ) {
+    const verifyDto: VerifyClassPaymentSubmissionDto = {
+      status: 'REJECTED',
+      rejectionReason: dto.rejectionReason,
+      notes: dto.notes,
+    };
+    return this.paymentService.verifySubmission(submissionId, verifyDto, req.user);
+  }
 }
+
