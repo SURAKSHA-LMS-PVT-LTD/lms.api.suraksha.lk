@@ -419,72 +419,132 @@ export class InstituteClassPaymentService {
     limit: number = 20,
     user: JwtPayload,
   ) {
-    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
-    if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+    try {
+      const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
+      if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
-    const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER ||
-      user.u === 0 || user.u === 1 ||
-      instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER || instituteRole === InstituteUserType.ATTENDANCE_MARKER;
-    if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can view the student payment list', error: 'INSUFFICIENT_PERMISSIONS' });
+      const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER ||
+        user.u === 0 || user.u === 1 ||
+        instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER || instituteRole === InstituteUserType.ATTENDANCE_MARKER;
+      if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can view the student payment list', error: 'INSUFFICIENT_PERMISSIONS' });
 
-    const payment = await this.paymentRepository.findOne({ where: { id: paymentId, instituteId, classId } });
-    if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
+      const payment = await this.paymentRepository.findOne({ where: { id: paymentId, instituteId, classId } });
+      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
 
-    const [enrollments, totalStudents] = await this.classStudentRepository.findAndCount({
-      where: { instituteId, classId, isActive: true },
-      relations: ['student', 'student.user'],
-      order: { createdAt: 'DESC' } as any,
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+      let enrollments: any[] = [];
+      let totalStudents = 0;
+      try {
+        [enrollments, totalStudents] = await this.classStudentRepository.findAndCount({
+          where: { instituteId, classId, isActive: true },
+          relations: ['student', 'student.user'],
+          order: { createdAt: 'DESC' } as any,
+          skip: (page - 1) * limit,
+          take: limit,
+        });
+      } catch (dbError: any) {
+        this.logger.error(`Error loading class students: ${dbError?.message}`);
+        enrollments = [];
+        totalStudents = 0;
+      }
 
-    const enrolledUserIds = enrollments.map(e => e.studentUserId);
-    const memberships = enrolledUserIds.length > 0
-      ? await this.instituteUserRepository.find({ where: { userId: In(enrolledUserIds), instituteId } })
-      : [];
-    const membershipMap = new Map(memberships.map(m => [m.userId, m]));
+      if (!enrollments || enrollments.length === 0) {
+        return {
+          success: true,
+          data: {
+            paymentId,
+            paymentTitle: payment.title,
+            paymentAmount: parseFloat(String(payment.amount)),
+            students: [],
+            summary: {
+              total: totalStudents,
+              verified: 0,
+              pending: 0,
+              rejected: 0,
+              notSubmitted: totalStudents,
+            },
+            pagination: { currentPage: page, totalPages: Math.ceil(totalStudents / limit), totalItems: totalStudents, itemsPerPage: limit, hasNextPage: page < Math.ceil(totalStudents / limit), hasPreviousPage: page > 1 },
+          },
+        };
+      }
 
-    const submissions = await this.submissionRepository.find({ where: { paymentId } });
-    const submissionMap = new Map(submissions.map(s => [s.userId, s]));
+      const enrolledUserIds = enrollments.map(e => e.studentUserId).filter(Boolean);
+      let memberships: any[] = [];
+      if (enrolledUserIds.length > 0) {
+        try {
+          memberships = await this.instituteUserRepository.find({ where: { userId: In(enrolledUserIds), instituteId } });
+        } catch (dbError: any) {
+          this.logger.error(`Error loading institute users: ${dbError?.message}`);
+          memberships = [];
+        }
+      }
+      const membershipMap = new Map(memberships.map(m => [m.userId, m]));
 
-    const students = enrollments.map(enrollment => {
-      const studentUserId = enrollment.studentUserId;
-      const studentUser = enrollment.student?.user;
-      const membership = membershipMap.get(studentUserId);
-      const sub = submissionMap.get(studentUserId);
-      const rawInstituteImage = membership?.instituteUserImageUrl || null;
-      const rawGlobalImage = studentUser?.imageUrl || null;
+      let submissions: any[] = [];
+      try {
+        submissions = await this.submissionRepository.find({ where: { paymentId } });
+      } catch (dbError: any) {
+        this.logger.error(`Error loading submissions: ${dbError?.message}`);
+        submissions = [];
+      }
+      const submissionMap = new Map(submissions.map(s => [s.userId, s]));
+
+      const students = enrollments.map(enrollment => {
+        try {
+          const studentUserId = enrollment.studentUserId;
+          const studentUser = enrollment.student?.user;
+          const membership = membershipMap.get(studentUserId);
+          const sub = submissionMap.get(studentUserId);
+          const rawInstituteImage = membership?.instituteUserImageUrl || null;
+          const rawGlobalImage = studentUser?.imageUrl || null;
+
+          return {
+            userId: studentUserId,
+            nameWithInitials: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : 'Unknown',
+            instituteStudentId: membership?.userIdByInstitute || null,
+            cardId: membership?.instituteCardId || null,
+            instituteUserImage: rawInstituteImage ? this.cloudStorageService.getFullUrl(rawInstituteImage) : (rawGlobalImage ? this.cloudStorageService.getFullUrl(rawGlobalImage) : null),
+            paymentStatus: sub ? sub.status : 'NOT_SUBMITTED',
+            submissionId: sub?.id || null,
+            verifiedAt: sub?.verifiedAt ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : sub.verifiedAt) : null,
+            amount: sub ? parseFloat(String(sub.submittedAmount)) : null,
+          };
+        } catch (mapError: any) {
+          this.logger.error(`Error mapping student data: ${mapError?.message}`);
+          return {
+            userId: enrollment.studentUserId,
+            nameWithInitials: 'Error Loading',
+            instituteStudentId: null,
+            cardId: null,
+            instituteUserImage: null,
+            paymentStatus: 'ERROR',
+            submissionId: null,
+            verifiedAt: null,
+            amount: null,
+          };
+        }
+      });
 
       return {
-        userId: studentUserId,
-        nameWithInitials: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : null,
-        instituteStudentId: membership?.userIdByInstitute || null,
-        cardId: membership?.instituteCardId || null,
-        instituteUserImage: rawInstituteImage ? this.cloudStorageService.getFullUrl(rawInstituteImage) : (rawGlobalImage ? this.cloudStorageService.getFullUrl(rawGlobalImage) : null),
-        paymentStatus: sub ? sub.status : 'NOT_SUBMITTED',
-        submissionId: sub?.id || null,
-        verifiedAt: sub?.verifiedAt ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : sub.verifiedAt) : null,
-        amount: sub ? parseFloat(String(sub.submittedAmount)) : null,
-      };
-    });
-
-    return {
-      success: true,
-      data: {
-        paymentId,
-        paymentTitle: payment.title,
-        paymentAmount: parseFloat(String(payment.amount)),
-        students,
-        summary: {
-          total: totalStudents,
-          verified: submissions.filter(s => s.status === SubmissionStatus.VERIFIED).length,
-          pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
-          rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
-          notSubmitted: Math.max(totalStudents - submissions.length, 0),
+        success: true,
+        data: {
+          paymentId,
+          paymentTitle: payment.title,
+          paymentAmount: parseFloat(String(payment.amount)),
+          students,
+          summary: {
+            total: totalStudents,
+            verified: submissions.filter(s => s.status === SubmissionStatus.VERIFIED).length,
+            pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
+            rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
+            notSubmitted: Math.max(totalStudents - submissions.length, 0),
+          },
+          pagination: { currentPage: page, totalPages: Math.ceil(totalStudents / limit), totalItems: totalStudents, itemsPerPage: limit, hasNextPage: page < Math.ceil(totalStudents / limit), hasPreviousPage: page > 1 },
         },
-        pagination: { currentPage: page, totalPages: Math.ceil(totalStudents / limit), totalItems: totalStudents, itemsPerPage: limit, hasNextPage: page < Math.ceil(totalStudents / limit), hasPreviousPage: page > 1 },
-      },
-    };
+      };
+    } catch (error: any) {
+      this.logger.error(`Unexpected error in getStudentsByInstituteClass: ${error?.message}`, error?.stack);
+      throw error;
+    }
   }
 
   async adminVerifyStudentClassPayment(paymentId: string, studentId: string, dto: AdminVerifyStudentClassPaymentDto, user: JwtPayload) {
