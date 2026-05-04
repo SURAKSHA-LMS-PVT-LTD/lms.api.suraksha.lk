@@ -836,18 +836,21 @@ export class InstituteClassSubjectStudentsController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
-    instituteAdmin: true
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
   })
   @ApiOperation({ 
-    summary: 'Update enrollment settings for a subject (Institute Admin Only)',
+    summary: 'Update enrollment settings for a subject (Institute Admin or Teacher)',
     description: `
     **Enrollment Settings Management:**
     - Institute admins can enable/disable self-enrollment for subjects
+    - Teachers assigned to the subject can manage enrollment settings
     - Automatically generates unique enrollment keys when enabled
-    - Returns enrollment key only to authorized admins
+    - Returns enrollment key only to authorized admins/teachers
     
     **Authorization:**
-    - Only institute admins can modify settings
+    - Institute admins can modify any subject settings
+    - Teachers can modify settings for their assigned subjects
     - Must have access to the specified institute
     `
   })
