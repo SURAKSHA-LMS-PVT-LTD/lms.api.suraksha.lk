@@ -147,6 +147,29 @@ export class InstituteClassPaymentSubmissionController {
   }
 
   /**
+   * GET /institute-class-payment-submissions/institute/:instituteId/class/:classId/payment/:paymentId/submissions
+   * Get all submissions for a class payment
+   */
+  @Get('institute/:instituteId/class/:classId/payment/:paymentId/submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true }, attendanceMarker: {} })
+  @ApiOperation({ summary: 'Get all submissions for a class payment (Admin/Teacher)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getClassPaymentSubmissions(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getSubmissionsForClassPayment(instituteId, classId, paymentId, page, limit, req.user);
+  }
+
+  /**
    * GET /institute-class-payment-submissions/institute/:instituteId/class/:classId/payment/:paymentId/users/STUDENT
    * Get students with payment status for a specific class payment
    */
@@ -163,6 +186,28 @@ export class InstituteClassPaymentSubmissionController {
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user);
+  }
+
+  /**
+   * GET /institute-class-payment-submissions/institute/:instituteId/class/:classId/payment/:paymentId/students-details
+   * Get students with payment details (alias for getStudentsByInstituteClass)
+   */
+  @Get('institute/:instituteId/class/:classId/payment/:paymentId/students-details')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true }, attendanceMarker: {} })
+  @ApiOperation({ summary: 'Get students with payment details for a class payment (Admin/Teacher)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getStudentsWithPaymentDetails(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
   ) {
     return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user);

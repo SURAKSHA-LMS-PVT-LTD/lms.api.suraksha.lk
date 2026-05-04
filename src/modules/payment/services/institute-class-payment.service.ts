@@ -280,6 +280,32 @@ export class InstituteClassPaymentService {
     return { data: submissions.map(s => this.mapSubmissionToResponse(s)), total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  async getSubmissionsForClassPayment(
+    instituteId: string,
+    classId: string,
+    paymentId: string,
+    page: number = 1,
+    limit: number = 10,
+    user: JwtPayload,
+  ): Promise<PaginatedClassSubmissionsResponseDto> {
+    const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
+    if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+
+    const payment = await this.paymentRepository.findOne({
+      where: { id: paymentId, instituteId, classId },
+    });
+    if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
+
+    const [submissions, total] = await this.submissionRepository.findAndCount({
+      where: { paymentId },
+      relations: ['user', 'verifier'],
+      order: { uploadedAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { data: submissions.map(s => this.mapSubmissionToResponse(s)), total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
   async verifySubmission(submissionId: string, dto: VerifyClassPaymentSubmissionDto, user: JwtPayload): Promise<{ success: boolean; message: string }> {
     const submission = await this.submissionRepository.findOne({ where: { id: submissionId }, relations: ['payment'] });
     if (!submission) throw new NotFoundException({ success: false, message: 'Submission not found', error: 'SUBMISSION_NOT_FOUND' });
