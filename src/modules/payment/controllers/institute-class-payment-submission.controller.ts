@@ -13,6 +13,7 @@ import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.deco
 import { UserType } from '../../user/enums/user-type.enum';
 import { InstituteClassPaymentService } from '../services/institute-class-payment.service';
 import { CreateInstituteClassPaymentSubmissionDto, VerifyClassPaymentSubmissionDto, AdminVerifyStudentClassPaymentDto } from '../dto/create-institute-class-payment-submission.dto';
+import { SubmissionStatus } from '../entities/institute-class-payment-submission.entity';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 
 @ApiTags('Institute Class Payment Submissions')
@@ -268,7 +269,7 @@ export class InstituteClassPaymentSubmissionController {
     @Request() req: JwtRequest,
   ) {
     const verifyDto: VerifyClassPaymentSubmissionDto = {
-      status: 'REJECTED',
+      status: SubmissionStatus.REJECTED,
       rejectionReason: dto.rejectionReason,
       notes: dto.notes,
     };
