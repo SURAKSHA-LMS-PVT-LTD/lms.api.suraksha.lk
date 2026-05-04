@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Body, Param, Req,
-  UseGuards, Query,
+  UseGuards, Query, BadRequestException, InternalServerErrorException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LectureTrackingService } from './lecture_tracking.service';
@@ -141,13 +141,28 @@ export class LectureTrackingController {
     @Query('instituteId') instituteId: string,
     @Query('includeSubjectLectures') includeSubjectLectures?: string,
   ) {
+    // Validate required parameters
+    if (!lectureIdsStr || !classId || !instituteId) {
+      throw new BadRequestException('Missing required parameters: lectureIds, classId, instituteId');
+    }
+
     const ids = (lectureIdsStr ?? '').split(',').map(s => s.trim()).filter(Boolean);
-    return this.trackingService.getAttendanceGrid(
-      ids,
-      classId,
-      instituteId,
-      includeSubjectLectures === 'true',
-    );
+    
+    if (ids.length === 0) {
+      throw new BadRequestException('lectureIds cannot be empty');
+    }
+
+    try {
+      return await this.trackingService.getAttendanceGrid(
+        ids,
+        classId,
+        instituteId,
+        includeSubjectLectures === 'true',
+      );
+    } catch (error) {
+      console.error('❌ Attendance grid error:', error);
+      throw new InternalServerErrorException('Failed to fetch attendance grid. Please check the lecture IDs and try again.');
+    }
   }
 
   // ─── Reports ────────────────────────────────────────────────────────────
