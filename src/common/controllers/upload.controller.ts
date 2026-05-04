@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 
 class GenerateUploadUrlDto {
   @ApiProperty()
-  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'])
-  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails';
+  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'])
+  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'class-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails';
   
   @ApiProperty()
   @IsString()
@@ -163,7 +163,7 @@ export class UploadController {
     })();
 
     // Validate folder type
-    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'];
+    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'];
     if (!validFolders.includes(folder)) {
       throw new BadRequestException(`Invalid folder. Must be one of: ${validFolders.join(', ')}`);
     }

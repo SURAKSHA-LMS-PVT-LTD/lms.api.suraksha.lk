@@ -1334,6 +1334,7 @@ export class CloudStorageService implements OnModuleInit {
       'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
       'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
       'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'class-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
@@ -1463,6 +1464,12 @@ export class CloudStorageService implements OnModuleInit {
         'image/webp',
       ],
       'service-payment-receipts': [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'application/pdf'
+      ],
+      'class-payment-receipts': [
         'image/jpeg',
         'image/jpg',
         'image/png',
