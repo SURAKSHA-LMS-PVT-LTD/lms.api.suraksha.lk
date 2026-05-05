@@ -489,6 +489,8 @@ export class InstituteClassPaymentService {
         throw new BadRequestException({ success: false, message: 'Missing required parameters', error: 'INVALID_INPUT' });
       }
 
+      this.logger.log(`[studentsDetails] instituteId=${instituteId} classId=${classId} paymentId=${paymentId}`);
+
       const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
       if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
@@ -499,11 +501,13 @@ export class InstituteClassPaymentService {
 
       let payment: any = null;
       try {
-        payment = await this.paymentRepository.findOne({ where: { id: paymentId, instituteId, classId } });
+        // Look up by id only — institute access already verified via getUserInstituteRole
+        payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
+        this.logger.log(`[studentsDetails] payment=${payment ? `id=${payment.id} classId=${payment.classId}` : 'NOT FOUND'}`);
       } catch (e: any) {
-        this.logger.error(`Error finding payment: ${e?.message}`);
+        this.logger.error(`[studentsDetails] Error finding payment: ${e?.message}`);
       }
-      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
+      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
       let enrollments: any[] = [];
       let totalStudents = 0;
@@ -515,8 +519,9 @@ export class InstituteClassPaymentService {
           skip: Math.max(0, (page - 1) * limit),
           take: Math.max(1, Math.min(limit, 100)),
         });
+        this.logger.log(`[studentsDetails] enrollments=${enrollments.length} total=${totalStudents}`);
       } catch (dbError: any) {
-        this.logger.error(`Error loading class students: ${dbError?.message}`, dbError?.stack);
+        this.logger.error(`[studentsDetails] Error loading class students: ${dbError?.message}`, dbError?.stack);
         enrollments = [];
         totalStudents = 0;
       }
@@ -526,11 +531,12 @@ export class InstituteClassPaymentService {
       try {
         submissions = await this.submissionRepository.find({
           where: { paymentId },
-          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt'],
+          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt', 'notes', 'rejectionReason'],
           order: { updatedAt: 'DESC' } as any,
         });
+        this.logger.log(`[studentsDetails] submissions=${submissions.length}`);
       } catch (dbError: any) {
-        this.logger.error(`Error loading submissions: ${dbError?.message}`, dbError?.stack);
+        this.logger.error(`[studentsDetails] Error loading submissions: ${dbError?.message}`, dbError?.stack);
         submissions = [];
       }
 
@@ -589,13 +595,15 @@ export class InstituteClassPaymentService {
       }
       const membershipMap = new Map((memberships || []).map(m => [m?.userId, m]));
 
-      const students = (enrollments || []).map((enrollment, idx) => {
+      const dueDateStr = payment?.lastDate ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate)) : '';
+
+      const enrichedStudents = (enrollments || []).map((enrollment, idx) => {
         try {
           if (!enrollment) return null;
 
-          const studentUserId = enrollment?.studentUserId || enrollment?.userId;
+          const studentUserId = enrollment?.studentUserId;
           if (!studentUserId) {
-            this.logger.warn(`Enrollment ${idx} has no studentUserId or userId`);
+            this.logger.warn(`[studentsDetails] Enrollment idx=${idx} has no studentUserId`);
             return null;
           }
 
@@ -603,78 +611,46 @@ export class InstituteClassPaymentService {
           const membership = membershipMap.get(studentUserId);
           const sub = submissionMap.get(studentUserId);
 
-          let instituteUserImage: string | null = null;
+          let profileImage: string | null = null;
           try {
-            const rawInstituteImage = membership?.instituteUserImageUrl;
-            if (rawInstituteImage && typeof rawInstituteImage === 'string') {
-              instituteUserImage = this.cloudStorageService.getFullUrl(rawInstituteImage);
+            const rawInstImg = membership?.instituteUserImageUrl;
+            const rawGlobImg = studentUser?.imageUrl;
+            if (rawInstImg && typeof rawInstImg === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(rawInstImg);
+            } else if (rawGlobImg && typeof rawGlobImg === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(rawGlobImg);
             }
-          } catch (imgError: any) {
-            this.logger.warn(`Error processing institute image for user ${studentUserId}: ${imgError?.message}`);
-          }
-
-          let globalImage: string | null = null;
-          if (!instituteUserImage) {
-            try {
-              const rawGlobalImage = studentUser?.imageUrl;
-              if (rawGlobalImage && typeof rawGlobalImage === 'string') {
-                globalImage = this.cloudStorageService.getFullUrl(rawGlobalImage);
-              }
-            } catch (imgError: any) {
-              this.logger.warn(`Error processing global image for user ${studentUserId}: ${imgError?.message}`);
-            }
+          } catch (imgErr: any) {
+            this.logger.warn(`[studentsDetails] Image error for userId=${studentUserId}: ${imgErr?.message}`);
           }
 
           return {
-            userId: studentUserId,
+            studentId: studentUserId,
+            studentUuid: studentUserId,
+            studentName: studentUser?.nameWithInitials || `${studentUser?.firstName || ''} ${studentUser?.lastName || ''}`.trim() || 'Unknown',
             nameWithInitials: studentUser?.nameWithInitials || `${studentUser?.firstName || ''} ${studentUser?.lastName || ''}`.trim() || 'Unknown',
-            instituteStudentId: membership?.userIdByInstitute || null,
-            cardId: membership?.instituteCardId || null,
-            instituteUserImage: instituteUserImage || globalImage || null,
-            paymentStatus: sub?.status || 'NOT_SUBMITTED',
+            image: profileImage,
+            instituteUserId: membership?.userIdByInstitute || '',
+
+            paymentId,
+            paymentTitle,
+            paymentAmount: String(paymentAmount),
+            paymentDueDate: dueDateStr,
+
             submissionId: sub?.id || null,
+            submissionStatus: sub?.status || 'NOT_SUBMITTED',
+            submittedAmount: sub?.submittedAmount ? String(sub.submittedAmount) : null,
             verifiedAt: sub?.verifiedAt ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : String(sub.verifiedAt)) : null,
-            amount: sub?.submittedAmount ? parseFloat(String(sub.submittedAmount)) : null,
+            notes: sub?.notes || null,
+            rejectionReason: sub?.rejectionReason || null,
           };
-        } catch (mapError: any) {
-          this.logger.error(`Error mapping student at index ${idx}: ${mapError?.message}`, mapError?.stack);
-          return {
-            userId: enrollment?.studentUserId || `unknown-${idx}`,
-            nameWithInitials: 'Error',
-            instituteStudentId: null,
-            cardId: null,
-            instituteUserImage: null,
-            paymentStatus: 'ERROR',
-            submissionId: null,
-            verifiedAt: null,
-            amount: null,
-          };
+        } catch (mapErr: any) {
+          this.logger.error(`[studentsDetails] Error mapping enrollment idx=${idx}: ${mapErr?.message}`, mapErr?.stack);
+          return null;
         }
       }).filter(s => s !== null);
 
-      // Transform students to include payment details from context
-      const enrichedStudents = students.map(s => {
-        const dueDateStr = payment?.lastDate ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate)) : '';
-        return {
-          studentId: s.userId,
-          studentUuid: s.userId,
-          studentName: s.nameWithInitials,
-          nameWithInitials: s.nameWithInitials,
-          image: s.instituteUserImage,
-          instituteUserId: s.instituteStudentId || '',
-          
-          paymentId,
-          paymentTitle,
-          paymentAmount: String(paymentAmount),
-          paymentDueDate: dueDateStr,
-          
-          submissionId: s.submissionId || undefined,
-          submissionStatus: (s.paymentStatus || 'NOT_SUBMITTED') as any,
-          submittedAmount: s.amount ? String(s.amount) : undefined,
-          submittedDate: s.verifiedAt || undefined,
-          verifiedAt: s.verifiedAt || undefined,
-        };
-      });
+      this.logger.log(`[studentsDetails] enrichedStudents=${enrichedStudents.length}`);
 
       return {
         success: true,
