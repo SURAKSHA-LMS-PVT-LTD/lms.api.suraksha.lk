@@ -58,7 +58,7 @@ export class VerifyClassPaymentSubmissionDto {
 }
 
 export class AdminVerifyStudentClassPaymentDto {
-  @ApiProperty({ description: 'Payment amount verified by admin', example: 5000.00 })
+  @ApiProperty({ description: 'Payment amount verified by admin (e.g., 5000.00)', example: 5000.00 })
   @IsNotEmpty()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
@@ -69,19 +69,23 @@ export class AdminVerifyStudentClassPaymentDto {
   })
   amount: number;
 
-  @ApiProperty({ description: 'Date of payment', example: '2024-01-15T10:30:00Z' })
+  @ApiProperty({ description: 'Date when payment was made (ISO 8601 format: YYYY-MM-DD or full timestamp)', example: '2024-01-15T10:30:00Z' })
   @IsNotEmpty()
   @IsDateString()
   date: string;
 
-  @ApiPropertyOptional({ description: 'Optional notes from admin', maxLength: 500 })
+  @ApiPropertyOptional({ description: 'Optional notes or remarks from admin about the verification', maxLength: 500 })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   notes?: string;
 
-  @ApiPropertyOptional({ description: "Payment tier: 'full' (VERIFIED), 'half' (HALF_VERIFIED), 'quarter' (QUARTER_VERIFIED)", enum: ['full', 'half', 'quarter'] })
+  @ApiPropertyOptional({ 
+    description: "Payment tier for partial verification. 'full' = VERIFIED (100%), 'half' = HALF_VERIFIED (50%), 'quarter' = QUARTER_VERIFIED (25%)", 
+    enum: ['full', 'half', 'quarter'],
+    example: 'full'
+  })
   @IsOptional()
   @IsIn(['full', 'half', 'quarter'])
   paymentTier?: 'full' | 'half' | 'quarter';
