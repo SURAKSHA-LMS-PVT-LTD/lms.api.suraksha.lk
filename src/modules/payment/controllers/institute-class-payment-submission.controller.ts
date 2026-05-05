@@ -235,6 +235,23 @@ export class InstituteClassPaymentSubmissionController {
   }
 
   /**
+   * GET /institute-class-payment-submissions/institute/:instituteId/class/:classId/my-submissions
+   * Get current user's submissions for a specific class
+   */
+  @Get('institute/:instituteId/class/:classId/my-submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ student: {}, parent: {}, anyInstituteRole: true })
+  @ApiOperation({ summary: 'Get my submissions for all payments in a class (Student/Parent)' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getMyClassSubmissions(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.getMyClassSubmissions(instituteId, classId, req.user);
+  }
+
+  /**
    * POST /institute-class-payment-submissions/payment/:paymentId/student/:studentId/admin-verify
    * Admin manually verifies/records a payment for a specific student
    */

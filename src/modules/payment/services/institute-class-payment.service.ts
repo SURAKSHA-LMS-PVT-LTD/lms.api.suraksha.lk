@@ -160,7 +160,7 @@ export class InstituteClassPaymentService {
     const responseData = payments.map(payment => {
       const base: any = this.mapPaymentToResponse(payment);
       const userSubs = (payment.submissions || [])
-        .filter(sub => sub.userId === user.s)
+        .filter(sub => String(sub.userId) === String(user.s))
         .sort((a, b) => {
           const aT = a.uploadedAt instanceof Date ? a.uploadedAt.getTime() : new Date(a.uploadedAt || 0).getTime();
           const bT = b.uploadedAt instanceof Date ? b.uploadedAt.getTime() : new Date(b.uploadedAt || 0).getTime();
@@ -355,8 +355,9 @@ export class InstituteClassPaymentService {
     const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
     if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
+    // Look up payment by id + instituteId only; classId check is redundant and causes type-mismatch failures
     const payment = await this.paymentRepository.findOne({
-      where: { id: paymentId, instituteId, classId },
+      where: { id: paymentId, instituteId },
     });
     if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
 
@@ -430,7 +431,7 @@ export class InstituteClassPaymentService {
   async getMySubmissionStatus(paymentId: string, user: JwtPayload) {
     const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
     if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
-    const submission = await this.submissionRepository.findOne({ where: { paymentId, userId: user.s } });
+    const submission = await this.submissionRepository.findOne({ where: { paymentId, userId: String(user.s) } });
     return { hasSubmission: !!submission, submission: submission ? this.mapSubmissionToResponse(submission) : null, payment: this.mapPaymentToResponse(payment) };
   }
 
@@ -794,5 +795,81 @@ export class InstituteClassPaymentService {
       uploadedAt: submission.uploadedAt ? (submission.uploadedAt instanceof Date ? submission.uploadedAt.toISOString() : submission.uploadedAt) : null,
       updatedAt: submission.updatedAt ? (submission.updatedAt instanceof Date ? submission.updatedAt.toISOString() : submission.updatedAt) : null,
     };
+  }
+
+  /**
+   * Get current user's submissions for a specific class
+   * Returns all submissions the user has made for all payments in this class
+   */
+  async getMyClassSubmissions(
+    instituteId: string,
+    classId: string,
+    user: JwtPayload,
+  ) {
+    try {
+      const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
+      if (!hasAccess) {
+        throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+      }
+
+      // Get all active payments for this class
+      const payments = await this.paymentRepository.find({
+        where: { instituteId, classId, isActive: true, status: PaymentStatus.ACTIVE },
+        order: { createdAt: 'DESC' },
+      });
+
+      if (payments.length === 0) {
+        return {
+          success: true,
+          data: {
+            submissions: [],
+            total: 0,
+            payments: [],
+          },
+        };
+      }
+
+      // Get all submissions from this user for these payments
+      const paymentIds = payments.map(p => p.id);
+      const submissions = await this.submissionRepository.find({
+        where: {
+          paymentId: In(paymentIds),
+          userId: String(user.s),
+        },
+        order: { uploadedAt: 'DESC' },
+      });
+
+      // Map submissions with payment info
+      const submissionsWithPayments = submissions.map(sub => {
+        const payment = payments.find(p => p.id === sub.paymentId);
+        return {
+          ...this.mapSubmissionToResponse(sub),
+          paymentId: sub.paymentId,
+          paymentTitle: payment?.title,
+          paymentAmount: payment?.amount,
+          paymentLastDate: payment?.lastDate,
+          paymentDescription: payment?.description,
+        };
+      });
+
+      return {
+        success: true,
+        data: {
+          submissions: submissionsWithPayments,
+          total: submissionsWithPayments.length,
+          payments: payments.map(p => ({
+            id: p.id,
+            title: p.title,
+            amount: p.amount,
+            lastDate: p.lastDate,
+            description: p.description,
+            status: p.status,
+          })),
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to get my class submissions for institute ${instituteId}, class ${classId}: ${error?.message}`);
+      throw error;
+    }
   }
 }
