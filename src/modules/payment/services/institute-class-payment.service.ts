@@ -561,13 +561,20 @@ export class InstituteClassPaymentService {
       try {
         submissions = await this.submissionRepository.find({
           where: { paymentId },
-          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt'],
+          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt'],
+          order: { updatedAt: 'DESC' } as any,
         });
       } catch (dbError: any) {
         this.logger.error(`Error loading submissions: ${dbError?.message}`, dbError?.stack);
         submissions = [];
       }
-      const submissionMap = new Map((submissions || []).map(s => [s?.userId, s]));
+      // Create map of latest submission per user (submissions ordered by updatedAt DESC ensures we get the most recent)
+      const submissionMap = new Map<string, any>();
+      for (const s of (submissions || [])) {
+        if (s?.userId && !submissionMap.has(s.userId)) {
+          submissionMap.set(s.userId, s);
+        }
+      }
 
       const students = (enrollments || []).map((enrollment, idx) => {
         try {
@@ -682,8 +689,17 @@ export class InstituteClassPaymentService {
     const membership = await this.instituteUserRepository.findOne({ where: { userId: studentId, instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE } });
     if (!membership) throw new NotFoundException({ success: false, message: 'Student not found in this institute', error: 'STUDENT_NOT_FOUND' });
 
-    const existingVerified = await this.submissionRepository.findOne({ where: { paymentId, userId: studentId, status: SubmissionStatus.VERIFIED } });
-    if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id } });
+    // Check if student already has a verified payment (any verified status)
+    const verifiedStatuses = [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
+    const existingVerified = await this.submissionRepository.findOne({
+      where: [
+        { paymentId, userId: studentId, status: SubmissionStatus.VERIFIED },
+        { paymentId, userId: studentId, status: SubmissionStatus.HALF_VERIFIED },
+        { paymentId, userId: studentId, status: SubmissionStatus.QUARTER_VERIFIED },
+      ],
+      order: { verifiedAt: 'DESC' } as any,
+    });
+    if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
 
     const studentUser = await this.userRepository.findOne({ where: { id: studentId }, select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'] });
 
