@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { InstituteClassPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-payment.entity';
@@ -160,7 +160,7 @@ export class InstituteClassPaymentService {
     const responseData = payments.map(payment => {
       const base: any = this.mapPaymentToResponse(payment);
       const userSubs = (payment.submissions || [])
-        .filter(sub => sub.userId === user.s)
+        .filter(sub => String(sub.userId) === String(user.s))
         .sort((a, b) => {
           const aT = a.uploadedAt instanceof Date ? a.uploadedAt.getTime() : new Date(a.uploadedAt || 0).getTime();
           const bT = b.uploadedAt instanceof Date ? b.uploadedAt.getTime() : new Date(b.uploadedAt || 0).getTime();
@@ -355,8 +355,9 @@ export class InstituteClassPaymentService {
     const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
     if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
+    // Look up payment by id + instituteId only; classId check is redundant and causes type-mismatch failures
     const payment = await this.paymentRepository.findOne({
-      where: { id: paymentId, instituteId, classId },
+      where: { id: paymentId, instituteId },
     });
     if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
 
@@ -430,7 +431,7 @@ export class InstituteClassPaymentService {
   async getMySubmissionStatus(paymentId: string, user: JwtPayload) {
     const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
     if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
-    const submission = await this.submissionRepository.findOne({ where: { paymentId, userId: user.s } });
+    const submission = await this.submissionRepository.findOne({ where: { paymentId, userId: String(user.s) } });
     return { hasSubmission: !!submission, submission: submission ? this.mapSubmissionToResponse(submission) : null, payment: this.mapPaymentToResponse(payment) };
   }
 
@@ -560,6 +561,8 @@ export class InstituteClassPaymentService {
         throw new BadRequestException({ success: false, message: 'Missing required parameters', error: 'INVALID_INPUT' });
       }
 
+      this.logger.log(`[studentsDetails] instituteId=${instituteId} classId=${classId} paymentId=${paymentId}`);
+
       const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
       if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
@@ -570,26 +573,68 @@ export class InstituteClassPaymentService {
 
       let payment: any = null;
       try {
-        payment = await this.paymentRepository.findOne({ where: { id: paymentId, instituteId, classId } });
+        // Look up by id only — institute access already verified via getUserInstituteRole
+        payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
+        this.logger.log(`[studentsDetails] payment=${payment ? `id=${payment.id} classId=${payment.classId}` : 'NOT FOUND'}`);
       } catch (e: any) {
-        this.logger.error(`Error finding payment: ${e?.message}`);
+        this.logger.error(`[studentsDetails] Error finding payment: ${e?.message}`);
       }
-      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
+      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
-      let enrollments: any[] = [];
+      // ── Load class students via QueryBuilder with proper entity joins ──────────────────────────
       let totalStudents = 0;
+      let classStudents: any[] = [];
+      let userMap = new Map<string, any>();
+      let instituteUserMap = new Map<string, any>();
+      
       try {
-        [enrollments, totalStudents] = await this.classStudentRepository.findAndCount({
-          where: { instituteId, classId, isActive: true },
-          relations: ['student', 'student.user'],
-          order: { createdAt: 'DESC' } as any,
-          skip: Math.max(0, (page - 1) * limit),
-          take: Math.max(1, Math.min(limit, 100)),
+        const rawCount = await this.classStudentRepository.count({ where: { instituteId, classId } });
+        this.logger.log(`[studentsDetails] raw count for class=${classId} institute=${instituteId}: ${rawCount}`);
+        totalStudents = rawCount;
+
+        const pageSize = Math.max(1, Math.min(limit, 100));
+        const offset  = Math.max(0, (page - 1) * pageSize);
+
+        // Load class students
+        classStudents = await this.classStudentRepository.find({
+          where: { instituteId, classId },
+          order: { createdAt: 'DESC' },
+          skip: offset,
+          take: pageSize,
         });
+
+        this.logger.log(`[studentsDetails] classStudents=${classStudents.length} totalStudents=${totalStudents}`);
+        
+        if (classStudents.length > 0) {
+          // Collect all student user IDs for batch loading
+          const studentUserIds = classStudents.map(cs => cs.studentUserId).filter(Boolean);
+          this.logger.log(`[studentsDetails] studentUserIds to load: ${studentUserIds.join(',')}`);
+
+          // Batch load all users
+          if (studentUserIds.length > 0) {
+            const users = await this.userRepository.find({
+              where: { id: In(studentUserIds) },
+              select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
+            });
+            users.forEach(u => userMap.set(String(u.id), u));
+            this.logger.log(`[studentsDetails] loaded ${users.length} users`);
+          }
+
+          // Batch load all institute users
+          if (studentUserIds.length > 0) {
+            const instituteUsers = await this.instituteUserRepository.find({
+              where: { userId: In(studentUserIds), instituteId },
+              select: ['userId', 'userIdByInstitute', 'instituteCardId', 'instituteUserImageUrl'],
+            });
+            instituteUsers.forEach(iu => instituteUserMap.set(String(iu.userId), iu));
+            this.logger.log(`[studentsDetails] loaded ${instituteUsers.length} institute users`);
+          }
+        }
       } catch (dbError: any) {
-        this.logger.error(`Error loading class students: ${dbError?.message}`, dbError?.stack);
-        enrollments = [];
+        this.logger.error(`[studentsDetails] Error loading class students: ${dbError?.message}`, dbError?.stack);
+        this.logger.error(`[studentsDetails] Error stack: ${dbError?.stack}`);
         totalStudents = 0;
+        classStudents = [];
       }
 
       // Load submissions FIRST to calculate summary counts for all cases
@@ -597,19 +642,21 @@ export class InstituteClassPaymentService {
       try {
         submissions = await this.submissionRepository.find({
           where: { paymentId },
-          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt'],
+          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt', 'notes', 'rejectionReason'],
           order: { updatedAt: 'DESC' } as any,
         });
+        this.logger.log(`[studentsDetails] submissions=${submissions.length}`);
       } catch (dbError: any) {
-        this.logger.error(`Error loading submissions: ${dbError?.message}`, dbError?.stack);
+        this.logger.error(`[studentsDetails] Error loading submissions: ${dbError?.message}`, dbError?.stack);
         submissions = [];
       }
 
-      // Create map of latest submission per user
+      // Create map of latest submission per user — key as String() to avoid bigint/string mismatch
       const submissionMap = new Map<string, any>();
       for (const s of (submissions || [])) {
-        if (s?.userId && !submissionMap.has(s.userId)) {
-          submissionMap.set(s.userId, s);
+        const key = s?.userId ? String(s.userId) : null;
+        if (key && !submissionMap.has(key)) {
+          submissionMap.set(key, s);
         }
       }
 
@@ -624,8 +671,9 @@ export class InstituteClassPaymentService {
       const paymentTitle = payment?.title || 'Payment';
       const paymentAmount = payment ? parseFloat(String(payment.amount || 0)) : 0;
 
-      // Return early if no students with consistent structure
-      if (!enrollments || enrollments.length === 0) {
+      // Return early if no students
+      if (classStudents.length === 0) {
+        this.logger.log(`[studentsDetails] No students found for class=${classId}, returning empty array`);
         return {
           success: true,
           data: [],
@@ -645,107 +693,72 @@ export class InstituteClassPaymentService {
         };
       }
 
-      const enrolledUserIds = enrollments.map(e => e?.studentUserId || e?.userId).filter(id => id && typeof id === 'string' && id.trim());
-      let memberships: any[] = [];
-      if (enrolledUserIds.length > 0) {
-        try {
-          memberships = await this.instituteUserRepository.find({
-            where: { userId: In(enrolledUserIds), instituteId },
-            select: ['userId', 'instituteUserImageUrl', 'userIdByInstitute', 'instituteCardId'],
-          });
-        } catch (dbError: any) {
-          this.logger.error(`Error loading institute users: ${dbError?.message}`, dbError?.stack);
-          memberships = [];
-        }
-      }
-      const membershipMap = new Map((memberships || []).map(m => [m?.userId, m]));
+      const dueDateStr = payment?.lastDate
+        ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate))
+        : '';
 
-      const students = (enrollments || []).map((enrollment, idx) => {
+      const enrichedStudents = classStudents.map((classStudent: any, idx: number) => {
         try {
-          if (!enrollment) return null;
-
-          const studentUserId = enrollment?.studentUserId || enrollment?.userId;
+          const studentUserId = classStudent?.studentUserId ? String(classStudent.studentUserId) : null;
           if (!studentUserId) {
-            this.logger.warn(`Enrollment ${idx} has no studentUserId or userId`);
+            this.logger.warn(`[studentsDetails] classStudent idx=${idx} has no studentUserId`);
             return null;
           }
 
-          const studentUser = enrollment?.student?.user;
-          const membership = membershipMap.get(studentUserId);
+          // Get submission for this student
           const sub = submissionMap.get(studentUserId);
 
-          let instituteUserImage: string | null = null;
+          // Get user data from the map
+          const user = userMap.get(studentUserId);
+          const instituteUser = instituteUserMap.get(studentUserId);
+          
+          const nameWithInitials = user?.nameWithInitials || 
+            (user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '') ||
+            'Unknown';
+
+          let profileImage: string | null = null;
           try {
-            const rawInstituteImage = membership?.instituteUserImageUrl;
-            if (rawInstituteImage && typeof rawInstituteImage === 'string') {
-              instituteUserImage = this.cloudStorageService.getFullUrl(rawInstituteImage);
+            const instituteImageUrl = instituteUser?.instituteUserImageUrl;
+            const userImageUrl = user?.imageUrl;
+            
+            if (instituteImageUrl && typeof instituteImageUrl === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(instituteImageUrl);
+            } else if (userImageUrl && typeof userImageUrl === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(userImageUrl);
             }
-          } catch (imgError: any) {
-            this.logger.warn(`Error processing institute image for user ${studentUserId}: ${imgError?.message}`);
-          }
-
-          let globalImage: string | null = null;
-          if (!instituteUserImage) {
-            try {
-              const rawGlobalImage = studentUser?.imageUrl;
-              if (rawGlobalImage && typeof rawGlobalImage === 'string') {
-                globalImage = this.cloudStorageService.getFullUrl(rawGlobalImage);
-              }
-            } catch (imgError: any) {
-              this.logger.warn(`Error processing global image for user ${studentUserId}: ${imgError?.message}`);
-            }
+          } catch (imgErr: any) {
+            this.logger.warn(`[studentsDetails] Image error userId=${studentUserId}: ${imgErr?.message}`);
           }
 
           return {
-            userId: studentUserId,
-            nameWithInitials: studentUser?.nameWithInitials || `${studentUser?.firstName || ''} ${studentUser?.lastName || ''}`.trim() || 'Unknown',
-            instituteStudentId: membership?.userIdByInstitute || null,
-            cardId: membership?.instituteCardId || null,
-            instituteUserImage: instituteUserImage || globalImage || null,
-            paymentStatus: sub?.status || 'NOT_SUBMITTED',
+            studentId: studentUserId,
+            studentUuid: studentUserId,
+            studentName: nameWithInitials,
+            nameWithInitials,
+            image: profileImage,
+            instituteUserId: instituteUser?.userIdByInstitute || '',
+
+            paymentId,
+            paymentTitle,
+            paymentAmount: String(paymentAmount),
+            paymentDueDate: dueDateStr,
+
             submissionId: sub?.id || null,
-            verifiedAt: sub?.verifiedAt ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : String(sub.verifiedAt)) : null,
-            amount: sub?.submittedAmount ? parseFloat(String(sub.submittedAmount)) : null,
+            submissionStatus: sub?.status || 'NOT_SUBMITTED',
+            submittedAmount: sub?.submittedAmount ? String(sub.submittedAmount) : null,
+            verifiedAt: sub?.verifiedAt
+              ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : String(sub.verifiedAt))
+              : null,
+            notes: sub?.notes || null,
+            rejectionReason: sub?.rejectionReason || null,
           };
-        } catch (mapError: any) {
-          this.logger.error(`Error mapping student at index ${idx}: ${mapError?.message}`, mapError?.stack);
-          return {
-            userId: enrollment?.studentUserId || `unknown-${idx}`,
-            nameWithInitials: 'Error',
-            instituteStudentId: null,
-            cardId: null,
-            instituteUserImage: null,
-            paymentStatus: 'ERROR',
-            submissionId: null,
-            verifiedAt: null,
-            amount: null,
-          };
+        } catch (mapErr: any) {
+          this.logger.error(`[studentsDetails] Error mapping student idx=${idx}: ${mapErr?.message}`, mapErr?.stack);
+          return null;
         }
       }).filter(s => s !== null);
 
-      // Transform students to include payment details from context
-      const enrichedStudents = students.map(s => {
-        const dueDateStr = payment?.lastDate ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate)) : '';
-        return {
-          studentId: s.userId,
-          studentUuid: s.userId,
-          studentName: s.nameWithInitials,
-          nameWithInitials: s.nameWithInitials,
-          image: s.instituteUserImage,
-          instituteUserId: s.instituteStudentId || '',
-          
-          paymentId,
-          paymentTitle,
-          paymentAmount: String(paymentAmount),
-          paymentDueDate: dueDateStr,
-          
-          submissionId: s.submissionId || undefined,
-          submissionStatus: (s.paymentStatus || 'NOT_SUBMITTED') as any,
-          submittedAmount: s.amount ? String(s.amount) : undefined,
-          submittedDate: s.verifiedAt || undefined,
-          verifiedAt: s.verifiedAt || undefined,
-        };
-      });
+      this.logger.log(`[studentsDetails] enrichedStudents=${enrichedStudents.length}`);
 
       return {
         success: true,
@@ -889,5 +902,81 @@ export class InstituteClassPaymentService {
       uploadedAt: submission.uploadedAt ? (submission.uploadedAt instanceof Date ? submission.uploadedAt.toISOString() : submission.uploadedAt) : null,
       updatedAt: submission.updatedAt ? (submission.updatedAt instanceof Date ? submission.updatedAt.toISOString() : submission.updatedAt) : null,
     };
+  }
+
+  /**
+   * Get current user's submissions for a specific class
+   * Returns all submissions the user has made for all payments in this class
+   */
+  async getMyClassSubmissions(
+    instituteId: string,
+    classId: string,
+    user: JwtPayload,
+  ) {
+    try {
+      const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
+      if (!hasAccess) {
+        throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+      }
+
+      // Get all active payments for this class
+      const payments = await this.paymentRepository.find({
+        where: { instituteId, classId, isActive: true, status: PaymentStatus.ACTIVE },
+        order: { createdAt: 'DESC' },
+      });
+
+      if (payments.length === 0) {
+        return {
+          success: true,
+          data: {
+            submissions: [],
+            total: 0,
+            payments: [],
+          },
+        };
+      }
+
+      // Get all submissions from this user for these payments
+      const paymentIds = payments.map(p => p.id);
+      const submissions = await this.submissionRepository.find({
+        where: {
+          paymentId: In(paymentIds),
+          userId: String(user.s),
+        },
+        order: { uploadedAt: 'DESC' },
+      });
+
+      // Map submissions with payment info
+      const submissionsWithPayments = submissions.map(sub => {
+        const payment = payments.find(p => p.id === sub.paymentId);
+        return {
+          ...this.mapSubmissionToResponse(sub),
+          paymentId: sub.paymentId,
+          paymentTitle: payment?.title,
+          paymentAmount: payment?.amount,
+          paymentLastDate: payment?.lastDate,
+          paymentDescription: payment?.description,
+        };
+      });
+
+      return {
+        success: true,
+        data: {
+          submissions: submissionsWithPayments,
+          total: submissionsWithPayments.length,
+          payments: payments.map(p => ({
+            id: p.id,
+            title: p.title,
+            amount: p.amount,
+            lastDate: p.lastDate,
+            description: p.description,
+            status: p.status,
+          })),
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to get my class submissions for institute ${instituteId}, class ${classId}: ${error?.message}`);
+      throw error;
+    }
   }
 }

@@ -402,11 +402,19 @@ export class ClassAttendanceSessionService {
     if (session.isClosed) throw new ForbiddenException('Session is closed');
 
     const today = getCurrentSriLankaDate();
-    if (session.date < today) {
-      throw new ForbiddenException('Cannot mark attendance for past sessions');
+    // Normalize session.date to YYYY-MM-DD string
+    // Cast to any: entity types date as string, but TypeORM may return a Date object at runtime
+    const rawDate: any = session.date;
+    const sessionDate: string =
+      rawDate instanceof Date
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(rawDate as Date)
+        : String(rawDate).substring(0, 10);
+
+    if (sessionDate < today) {
+      throw new BadRequestException('Cannot mark attendance for past sessions');
     }
-    if (session.date > today) {
-      throw new ForbiddenException('Cannot mark attendance for future sessions');
+    if (sessionDate > today) {
+      throw new BadRequestException('Cannot mark attendance for future sessions');
     }
 
     const otherSourceRecord = await this.recordRepo
@@ -420,7 +428,7 @@ export class ClassAttendanceSessionService {
       .getOne();
 
     if (otherSourceRecord) {
-      throw new ForbiddenException('Student already has attendance marked from another source for this date');
+      throw new BadRequestException('Student already has attendance marked from another source for this date');
     }
 
     const autoStatus = dto.status ?? resolveAutoStatus(session);
