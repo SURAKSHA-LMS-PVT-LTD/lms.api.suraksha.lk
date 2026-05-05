@@ -44,22 +44,22 @@ export class AttendanceAliasController {
   @ApiResponse({ status: 400, description: 'Missing required date parameters' })
   async getInstituteAttendance(
     @Param('instituteId') instituteId: string,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
     @Query('studentId') studentId?: string,
   ) {
     try {
+      // Default to last 7 days if dates not provided
       if (!startDate || !endDate) {
-        throw new HttpException(
-          {
-            success: false,
-            message: 'startDate and endDate are required parameters',
-          },
-          HttpStatus.BAD_REQUEST,
-        );
+        const now = new Date();
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(now.getDate() - 7);
+        
+        startDate = startDate || sevenDaysAgo.toISOString().split('T')[0];
+        endDate = endDate || now.toISOString().split('T')[0];
       }
 
       const start = new Date(startDate);

@@ -393,6 +393,77 @@ export class InstituteClassPaymentService {
     return { data: submissions.map(s => this.mapSubmissionToResponse(s)), total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  async getStudentAllClassSubmissions(instituteId: string, studentId: string, limit: number = 20, user: JwtPayload) {
+    const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
+    if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+
+    // Fetch classes the student is enrolled in for this institute
+    const enrollments = await this.classStudentRepository.find({
+      where: { instituteId, studentUserId: studentId, isActive: true },
+      relations: ['class'],
+    });
+
+    if (!enrollments.length) {
+      return { data: [], total: 0, limit };
+    }
+
+    const classIds = enrollments.map(e => e.classId);
+
+    const qb = this.submissionRepository.createQueryBuilder('submission')
+      .innerJoinAndSelect('submission.payment', 'payment')
+      .where('payment.instituteId = :instituteId', { instituteId })
+      .andWhere('payment.classId IN (:...classIds)', { classIds })
+      .andWhere('submission.userId = :studentId', { studentId });
+
+    qb.orderBy('submission.uploadedAt', 'DESC').take(limit);
+    const submissions = await qb.getMany();
+    
+    // Attach class details
+    const mapped = submissions.map(s => {
+      const resp: any = this.mapSubmissionToResponse(s);
+      resp.amount = s.payment?.amount;
+      resp.dueDate = s.payment?.lastDate;
+      resp.paymentTitle = s.payment?.title;
+      const cls = enrollments.find(e => e.classId === s.payment?.classId)?.class;
+      resp.className = cls?.name;
+      resp.grade = cls?.grade;
+      return resp;
+    });
+
+    return { data: mapped, total: submissions.length, limit };
+  }
+
+  async getStudentClassSubmissions(
+    instituteId: string,
+    classId: string,
+    studentId: string,
+    page: number = 1,
+    limit: number = 20,
+    user: JwtPayload,
+  ): Promise<PaginatedClassSubmissionsResponseDto> {
+    const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
+    if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+
+    const qb = this.submissionRepository.createQueryBuilder('submission')
+      .innerJoinAndSelect('submission.payment', 'payment')
+      .where('payment.instituteId = :instituteId', { instituteId })
+      .andWhere('payment.classId = :classId', { classId })
+      .andWhere('submission.userId = :studentId', { studentId });
+
+    qb.orderBy('submission.uploadedAt', 'DESC').skip((page - 1) * limit).take(limit);
+    const [submissions, total] = await qb.getManyAndCount();
+
+    const mapped = submissions.map(s => {
+      const resp: any = this.mapSubmissionToResponse(s);
+      resp.amount = s.payment?.amount;
+      resp.paymentTitle = s.payment?.title;
+      resp.dueDate = s.payment?.lastDate;
+      return resp;
+    });
+
+    return { data: mapped, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
   async getSubmissionStats(instituteId: string, classId: string, user: JwtPayload) {
     const stats = await this.submissionRepository.createQueryBuilder('submission')
       .innerJoin('submission.payment', 'payment')

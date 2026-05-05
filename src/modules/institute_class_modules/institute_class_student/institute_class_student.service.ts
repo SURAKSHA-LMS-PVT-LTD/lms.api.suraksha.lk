@@ -214,13 +214,13 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
   }
 
   async findOne(criteria: IInstituteClassStudentCriteria, requestingUser?: any): Promise<InstituteClassStudentEntity> {
-    // SECURITY: Validate parent access if studentUserId is being queried
     if (requestingUser && criteria.studentUserId) {
       const isOwnData = requestingUser.s === criteria.studentUserId;
       const children = Array.isArray(requestingUser.c) ? requestingUser.c : [];
       const isParentOfStudent = children.includes(criteria.studentUserId);
+      const isStaff = requestingUser.userType === 'superadmin' || requestingUser.userType === 'institute_admin' || requestingUser.role === 'teacher';
       
-      if (!isOwnData && !isParentOfStudent) {
+      if (!isOwnData && !isParentOfStudent && !isStaff) {
         throw new ForbiddenException('You can only access your own class assignments or your children\'s class assignments.');
       }
     }

@@ -948,13 +948,15 @@ export class InstitueUserController {
   async uploadInstituteUserImage(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() body: ImageUrlDto
+    @Body() body: ImageUrlDto,
+    @Req() req: JwtRequest
   ): Promise<InstituteUserImageResponseDto> {
     if (!body.imageUrl) {
       throw new BadRequestException('imageUrl is required');
     }
-    
-    return this.institueUserService.uploadInstituteUserImage(body.imageUrl, instituteId, userId);
+    // When an admin/teacher uploads an image directly, auto-verify it immediately
+    const adminId = req.user?.s;
+    return this.institueUserService.uploadInstituteUserImage(body.imageUrl, instituteId, userId, adminId);
   }
 
   @Post('institute/:instituteId/users/:userId/assign-card-id')

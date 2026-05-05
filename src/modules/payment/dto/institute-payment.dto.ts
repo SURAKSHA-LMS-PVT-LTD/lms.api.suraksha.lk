@@ -395,7 +395,7 @@ export class GetInstitutePaymentSubmissionsQueryDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(200)
   @Transform(({ value }) => parseInt(value) || 10)
   limit?: number = 10;
 

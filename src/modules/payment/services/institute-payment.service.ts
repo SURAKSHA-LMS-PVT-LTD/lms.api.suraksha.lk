@@ -1937,8 +1937,10 @@ export class InstitutePaymentService {
       student: {
         uuid: student.id,
         nameWithInitials: student.nameWithInitials || `${student.firstName || ''} ${student.lastName || ''}`.trim(),
-        image: student.imageUrl ? this.cloudStorageService.getFullUrl(student.imageUrl) : null,
+        imageUrl: student.imageUrl ? this.cloudStorageService.getFullUrl(student.imageUrl) : null,
+        studentInstituteImageUrl: membership.instituteUserImageUrl ? this.cloudStorageService.getFullUrl(membership.instituteUserImageUrl) : null,
         instituteUserId: membership.userIdByInstitute || null,
+        instituteUserType: membership.instituteUserType || null,
       },
       ...(paymentDetails && { payment: paymentDetails }),
       paymentHistory: submissions.map(sub => ({

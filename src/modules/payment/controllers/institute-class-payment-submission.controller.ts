@@ -21,7 +21,7 @@ import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class InstituteClassPaymentSubmissionController {
-  constructor(private readonly paymentService: InstituteClassPaymentService) {}
+  constructor(private readonly paymentService: InstituteClassPaymentService) { }
 
   /**
    * POST /institute-class-payment-submissions/payment/:paymentId/submit
@@ -129,6 +129,47 @@ export class InstituteClassPaymentSubmissionController {
     @Request() req?: any,
   ) {
     return this.paymentService.getAllSubmissions(instituteId, classId, page, limit, req.user, status);
+  }
+
+  /**
+   * GET /institute-class-payment-submissions/institute/:instituteId/student/:studentId/all-submissions
+   * Get all class submissions for a student across all classes in the institute
+   */
+  @Get('institute/:instituteId/student/:studentId/all-submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: {}, attendanceMarker: {} })
+  @ApiOperation({ summary: 'Get all class submissions for a student in an institute (Admin/Teacher only)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getStudentAllClassSubmissions(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('studentId') studentId: string,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Request() req?: any,
+  ) {
+    return this.paymentService.getStudentAllClassSubmissions(instituteId, studentId, limit, req.user);
+  }
+
+  /**
+   * GET /institute-class-payment-submissions/institute/:instituteId/class/:classId/student/:studentId/submissions
+   * Get all submissions for a student in a specific class
+   */
+  @Get('institute/:instituteId/class/:classId/student/:studentId/submissions')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true }, attendanceMarker: {} })
+  @ApiOperation({ summary: 'Get all submissions for a student in a specific class (Admin/Teacher)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async getStudentClassSubmissions(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('studentId') studentId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Request() req?: any,
+  ) {
+    return this.paymentService.getStudentClassSubmissions(instituteId, classId, studentId, page, limit, req.user);
   }
 
   /**
