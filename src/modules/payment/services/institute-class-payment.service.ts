@@ -510,12 +510,9 @@ export class InstituteClassPaymentService {
       }
       if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
-      // ── Load class students via raw QueryBuilder ──────────────────────────
-      // Using QueryBuilder instead of findAndCount+relations because:
-      // 1. StudentEntity row may not exist for every user (would silently drop them)
-      // 2. Gives us direct control over which columns we fetch
+      // ── Load class students via QueryBuilder with proper entity joins ──────────────────────────
       let totalStudents = 0;
-      let rawRows: any[] = [];
+      let classStudents: any[] = [];
       try {
         const rawCount = await this.classStudentRepository.count({ where: { instituteId, classId } });
         this.logger.log(`[studentsDetails] raw count for class=${classId} institute=${instituteId}: ${rawCount}`);
@@ -524,41 +521,27 @@ export class InstituteClassPaymentService {
         const pageSize = Math.max(1, Math.min(limit, 100));
         const offset  = Math.max(0, (page - 1) * pageSize);
 
-        rawRows = await this.classStudentRepository
+        // Use proper entity-based relationships
+        classStudents = await this.classStudentRepository
           .createQueryBuilder('ics')
-          .select([
-            'ics.studentUserId  AS studentUserId',
-            'ics.isActive        AS isActive',
-            'u.nameWithInitials  AS nameWithInitials',
-            'u.firstName         AS firstName',
-            'u.lastName          AS lastName',
-            'u.imageUrl          AS userImageUrl',
-            'iu.userIdByInstitute AS userIdByInstitute',
-            'iu.instituteCardId   AS instituteCardId',
-            'iu.instituteUserImageUrl AS instituteUserImageUrl',
-          ])
-          .leftJoin('user', 'u', 'u.id = ics.studentUserId')
-          .leftJoin(
-            'institute_users',
-            'iu',
-            'iu.user_id = ics.studentUserId AND iu.institute_id = :iid',
-            { iid: instituteId },
-          )
+          .leftJoinAndSelect(UserEntity, 'u', 'u.id = ics.studentUserId')
+          .leftJoinAndSelect(InstituteUserEntity, 'iu', 'iu.userId = ics.studentUserId AND iu.instituteId = :iid', { iid: instituteId })
           .where('ics.instituteId = :instituteId', { instituteId })
           .andWhere('ics.classId = :classId', { classId })
           .orderBy('ics.createdAt', 'DESC')
           .offset(offset)
           .limit(pageSize)
-          .getRawMany();
+          .getMany();
 
-        this.logger.log(`[studentsDetails] rawRows=${rawRows.length} totalStudents=${totalStudents}`);
-        if (rawRows.length > 0) {
-          this.logger.log(`[studentsDetails] sample row: ${JSON.stringify(rawRows[0])}`);
+        this.logger.log(`[studentsDetails] classStudents=${classStudents.length} totalStudents=${totalStudents}`);
+        if (classStudents.length > 0) {
+          this.logger.log(`[studentsDetails] First student ID: ${classStudents[0].studentUserId}`);
         }
       } catch (dbError: any) {
         this.logger.error(`[studentsDetails] Error loading class students: ${dbError?.message}`, dbError?.stack);
+        this.logger.error(`[studentsDetails] Error stack: ${dbError?.stack}`);
         totalStudents = 0;
-        rawRows = [];
+        classStudents = [];
       }
 
       // Load submissions FIRST to calculate summary counts for all cases
@@ -596,7 +579,8 @@ export class InstituteClassPaymentService {
       const paymentAmount = payment ? parseFloat(String(payment.amount || 0)) : 0;
 
       // Return early if no students
-      if (rawRows.length === 0) {
+      if (classStudents.length === 0) {
+        this.logger.log(`[studentsDetails] No students found for class=${classId}, returning empty array`);
         return {
           success: true,
           data: [],
@@ -620,30 +604,32 @@ export class InstituteClassPaymentService {
         ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate))
         : '';
 
-      const enrichedStudents = rawRows.map((row, idx) => {
+      const enrichedStudents = classStudents.map((classStudent: any, idx: number) => {
         try {
-          const studentUserId = row?.studentUserId ? String(row.studentUserId) : null;
+          const studentUserId = classStudent?.studentUserId ? String(classStudent.studentUserId) : null;
           if (!studentUserId) {
-            this.logger.warn(`[studentsDetails] row idx=${idx} has no studentUserId`);
+            this.logger.warn(`[studentsDetails] classStudent idx=${idx} has no studentUserId`);
             return null;
           }
 
-          // submissionMap keys may be string or bigint — use String() for safe match
-          const sub = submissionMap.get(studentUserId) ?? submissionMap.get(studentUserId as any);
+          // Get submission for this student
+          const sub = submissionMap.get(studentUserId);
 
+          // Extract student user data
+          const user = classStudent?.user || {};
+          const instituteUser = classStudent?.instituteUser || {};
+          
           const nameWithInitials =
-            row.nameWithInitials ||
-            `${row.firstName || ''} ${row.lastName || ''}`.trim() ||
+            user?.nameWithInitials ||
+            `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
             'Unknown';
 
           let profileImage: string | null = null;
           try {
-            const rawInstImg = row.instituteUserImageUrl;
-            const rawGlobImg = row.userImageUrl;
-            if (rawInstImg && typeof rawInstImg === 'string') {
-              profileImage = this.cloudStorageService.getFullUrl(rawInstImg);
-            } else if (rawGlobImg && typeof rawGlobImg === 'string') {
-              profileImage = this.cloudStorageService.getFullUrl(rawGlobImg);
+            if (instituteUser?.instituteUserImageUrl && typeof instituteUser.instituteUserImageUrl === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(instituteUser.instituteUserImageUrl);
+            } else if (user?.imageUrl && typeof user.imageUrl === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(user.imageUrl);
             }
           } catch (imgErr: any) {
             this.logger.warn(`[studentsDetails] Image error userId=${studentUserId}: ${imgErr?.message}`);
@@ -655,7 +641,7 @@ export class InstituteClassPaymentService {
             studentName: nameWithInitials,
             nameWithInitials,
             image: profileImage,
-            instituteUserId: row.userIdByInstitute || '',
+            instituteUserId: instituteUser?.userIdByInstitute || '',
 
             paymentId,
             paymentTitle,
@@ -672,7 +658,7 @@ export class InstituteClassPaymentService {
             rejectionReason: sub?.rejectionReason || null,
           };
         } catch (mapErr: any) {
-          this.logger.error(`[studentsDetails] Error mapping row idx=${idx}: ${mapErr?.message}`, mapErr?.stack);
+          this.logger.error(`[studentsDetails] Error mapping student idx=${idx}: ${mapErr?.message}`, mapErr?.stack);
           return null;
         }
       }).filter(s => s !== null);
