@@ -639,21 +639,50 @@ export class InstituteClassPaymentService {
       const paymentTitle = payment?.title || 'Payment';
       const paymentAmount = payment ? parseFloat(String(payment.amount || 0)) : 0;
 
+      // Transform students to include payment details from context
+      const enrichedStudents = students.map(s => ({
+        studentId: s.userId,
+        studentUuid: s.userId,
+        studentName: s.nameWithInitials,
+        nameWithInitials: s.nameWithInitials,
+        image: s.instituteUserImage,
+        instituteUserId: s.instituteStudentId || '',
+        
+        paymentId,
+        paymentTitle,
+        paymentAmount: String(paymentAmount),
+        paymentDueDate: payment?.lastDate ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate)) : '',
+        
+        submissionId: s.submissionId || undefined,
+        submissionStatus: (s.paymentStatus || 'NOT_SUBMITTED') as any,
+        submittedAmount: s.amount ? String(s.amount) : undefined,
+        submittedDate: s.verifiedAt || undefined,
+        verifiedAt: s.verifiedAt || undefined,
+      }));
+
+      // Calculate summary counts
+      const verifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.VERIFIED).length;
+      const halfVerifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.HALF_VERIFIED).length;
+      const quarterVerifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.QUARTER_VERIFIED).length;
+      const pendingCount = (submissions || []).filter(s => s?.status === SubmissionStatus.PENDING).length;
+      const rejectedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.REJECTED).length;
+      const notSubmittedCount = Math.max(totalStudents - (submissions || []).length, 0);
+
       return {
         success: true,
-        data: {
-          paymentId,
-          paymentTitle,
-          paymentAmount,
-          students,
-          summary: {
-            total: totalStudents,
-            verified: (submissions || []).filter(s => s?.status === SubmissionStatus.VERIFIED).length,
-            pending: (submissions || []).filter(s => s?.status === SubmissionStatus.PENDING).length,
-            rejected: (submissions || []).filter(s => s?.status === SubmissionStatus.REJECTED).length,
-            notSubmitted: Math.max(totalStudents - (submissions || []).length, 0),
-          },
-          pagination: { currentPage: page, totalPages: Math.ceil(totalStudents / limit), totalItems: totalStudents, itemsPerPage: limit, hasNextPage: page < Math.ceil(totalStudents / limit), hasPreviousPage: page > 1 },
+        data: enrichedStudents,
+        total: totalStudents,
+        page,
+        limit,
+        totalPages: Math.ceil(totalStudents / limit),
+        summary: {
+          totalStudents,
+          verified: verifiedCount,
+          halfVerified: halfVerifiedCount,
+          quarterVerified: quarterVerifiedCount,
+          pending: pendingCount,
+          rejected: rejectedCount,
+          totalVerifiedAmount: String(paymentAmount * verifiedCount),
         },
       };
     } catch (error: any) {
@@ -663,13 +692,19 @@ export class InstituteClassPaymentService {
         success: false,
         error: error?.response?.error || 'INTERNAL_ERROR',
         message: error?.message || 'Failed to load student payment details',
-        data: {
-          paymentId,
-          paymentTitle: '',
-          paymentAmount: 0,
-          students: [],
-          summary: { total: 0, verified: 0, pending: 0, rejected: 0, notSubmitted: 0 },
-          pagination: { currentPage: page, totalPages: 0, totalItems: 0, itemsPerPage: limit, hasNextPage: false, hasPreviousPage: false },
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        summary: {
+          totalStudents: 0,
+          verified: 0,
+          halfVerified: 0,
+          quarterVerified: 0,
+          pending: 0,
+          rejected: 0,
+          totalVerifiedAmount: '0',
         },
       };
     }

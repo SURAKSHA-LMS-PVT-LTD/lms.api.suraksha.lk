@@ -42,6 +42,26 @@ export class InstituteClassPaymentSubmissionController {
   }
 
   /**
+   * POST /institute-class-payment-submissions/institute/:instituteId/class/:classId/payment/:paymentId/submit
+   * Submit payment (Student/Parent) - full path variant for admin UI
+   */
+  @Post('institute/:instituteId/class/:classId/payment/:paymentId/submit')
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ student: {}, parent: {} })
+  @ApiOperation({ summary: 'Submit payment receipt with institute/class context (Student/Parent only)' })
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async submitPaymentWithContext(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('paymentId', ParseBigIntPipe) paymentId: string,
+    @Body() dto: CreateInstituteClassPaymentSubmissionDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.paymentService.submitPayment(paymentId, dto, dto.receiptUrl, req.user);
+  }
+
+  /**
    * GET /institute-class-payment-submissions/payment/:paymentId/submissions
    * Get all submissions for a payment
    */
