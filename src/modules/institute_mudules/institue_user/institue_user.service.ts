@@ -1,7 +1,7 @@
-import { 
-  Injectable, 
-  ConflictException, 
-  NotFoundException, 
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
   BadRequestException,
   UnauthorizedException,
   ForbiddenException,
@@ -20,10 +20,10 @@ import { AssignUserToInstituteDto } from './dto/assign-user-institute.dto';
 import { QueryInstituteUserDto } from './dto/query-institute-user.dto';
 import { SecureUserQueryDto, SecureClassUserQueryDto, SecureSubjectUserQueryDto } from './dto/secure-query.dto';
 import { BulkVerificationDto, VerifyUserDto, VerificationResponseDto } from './dto/bulk-verification.dto';
-import { 
-  AssignUserByPhoneDto, 
-  AssignParentByPhoneDto, 
-  AssignStudentByRfidDto, 
+import {
+  AssignUserByPhoneDto,
+  AssignParentByPhoneDto,
+  AssignStudentByRfidDto,
   BulkAssignUsersDto,
   AssignmentResponseDto,
   BulkAssignmentResponseDto,
@@ -36,11 +36,11 @@ import {
   BulkEnhancedAssignDto,
   BulkEnhancedAssignmentResponseDto
 } from './dto/enhanced-assign-user.dto';
-import { 
-  UploadInstituteUserImageDto, 
-  UpdateInstituteCardIdDto, 
-  VerifyInstituteUserImageDto, 
-  InstituteUserImageResponseDto 
+import {
+  UploadInstituteUserImageDto,
+  UpdateInstituteCardIdDto,
+  VerifyInstituteUserImageDto,
+  InstituteUserImageResponseDto
 } from './dto/upload-institute-user-image.dto';
 import { AdminUserDataResponseDto } from './dto/admin-user-data-response.dto';
 
@@ -100,28 +100,28 @@ export class InstitueUserService {
   constructor(
     @InjectRepository(InstituteUserEntity)
     private readonly instituteUserRepository: Repository<InstituteUserEntity>,
-    
+
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
-    
+
     @InjectRepository(InstituteEntity)
     private readonly instituteRepository: Repository<InstituteEntity>,
-    
+
     @InjectRepository(StudentEntity)
     private readonly studentRepository: Repository<StudentEntity>,
-    
+
     @InjectRepository(ParentEntity)
     private readonly parentRepository: Repository<ParentEntity>,
-    
+
     @InjectRepository(InstituteClassStudentEntity)
     private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
-    
+
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
 
     @InjectRepository(UserImageEntity)
     private readonly userImageRepository: Repository<UserImageEntity>,
-    
+
     private readonly cloudStorageService: CloudStorageService,
     // ✅ CACHING SERVICES
     private readonly userManagementService: UserManagementService,
@@ -131,7 +131,7 @@ export class InstitueUserService {
   ) {
     // Initialize caching flag based on environment variable
     this.isCachingEnabled = this.configService.get<string>('CACHE_ENABLED') === 'true';
-    
+
     // ✅ Initialize masking based on environment variables
     // If either phone or email masking is enabled, we should mask sensitive data
     const isPhoneMasked = this.configService.get<string>('IS_PHONENUMBERS_MASKED') === 'true';
@@ -166,7 +166,7 @@ export class InstitueUserService {
       if (existingRelationship) {
         // Get user details for response
         const userDetails = existingRelationship.user;
-        const userName = userDetails.firstName && userDetails.lastName 
+        const userName = userDetails.firstName && userDetails.lastName
           ? `${userDetails.firstName} ${userDetails.lastName}`.trim()
           : userDetails.firstName || userDetails.email || 'Unknown User';
 
@@ -227,7 +227,7 @@ export class InstitueUserService {
       await this.instituteUserRepository.save(newInstituteUser);
 
       // Prepare user name for response
-      const userName = user.firstName && user.lastName 
+      const userName = user.firstName && user.lastName
         ? `${user.firstName} ${user.lastName}`.trim()
         : user.firstName || user.email || 'Unknown User';
 
@@ -242,13 +242,13 @@ export class InstitueUserService {
       };
 
     } catch (error) {
-      if (error instanceof UnauthorizedException || 
-          error instanceof ForbiddenException || 
-          error instanceof NotFoundException || 
-          error instanceof BadRequestException) {
+      if (error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException) {
         throw error;
       }
-      
+
       throw new InternalServerErrorException('Failed to create institute user assignment');
     }
   }
@@ -310,10 +310,10 @@ export class InstitueUserService {
     const safeUserType = SecurityUtils.validateInstituteUserType(userType);
     const { page, limit, skip } = SecurityUtils.validatePagination(query.page, query.limit);
     const { sortBy, sortOrder } = SecurityUtils.validateSortParams(query.sortBy, query.sortOrder);
-    
+
     // Sanitize search input
     const safeSearch = query.search ? SecurityUtils.sanitizeSearchInput(query.search) : null;
-    
+
     // Check if parent details should be included (only for STUDENT type)
     // Note: children array is excluded from parent data for performance
     const includeParentDetails = userType === InstituteUserType.STUDENT && query.parent === 'true';
@@ -322,7 +322,8 @@ export class InstitueUserService {
     const baseFields = [
       'u.id as user_id',
       'u.first_name',
-      'u.last_name', 
+      'u.last_name',
+      'u.name_with_initials as nameWithInitials',
       'u.email as email',  // ✅ Always include email with alias (will be unmasked for admin users)
       'u.phone_number',
       'u.image_url as user_image_url',  // User's global image
@@ -346,8 +347,8 @@ export class InstitueUserService {
     // Add student-specific fields only if needed
     if (userType === InstituteUserType.STUDENT) {
       baseFields.push(
-        's.father_id as father_id', 
-        's.mother_id as mother_id', 
+        's.father_id as father_id',
+        's.mother_id as mother_id',
         's.guardian_id as guardian_id',
         's.emergency_contact as emergency_contact',
         's.medical_conditions as medical_conditions',
@@ -416,14 +417,14 @@ export class InstitueUserService {
     // Apply age filters if provided (all user types)
     if (query.minAge || query.maxAge) {
       const currentDate = new Date();
-      
+
       if (query.minAge) {
         const minAge = parseInt(query.minAge);
         const maxBirthDate = new Date(currentDate.getFullYear() - minAge, currentDate.getMonth(), currentDate.getDate());
         queryBuilder.andWhere('u.date_of_birth <= :maxBirthDate', { maxBirthDate: maxBirthDate.toISOString().split('T')[0] });
         countQueryBuilder.andWhere('u.date_of_birth <= :maxBirthDate', { maxBirthDate: maxBirthDate.toISOString().split('T')[0] });
       }
-      
+
       if (query.maxAge) {
         const maxAge = parseInt(query.maxAge);
         const minBirthDate = new Date(currentDate.getFullYear() - maxAge - 1, currentDate.getMonth(), currentDate.getDate());
@@ -589,8 +590,8 @@ export class InstitueUserService {
       .leftJoin(ParentEntity, 'p', 'p.userId = u.id')
       .select([
         'u.id as user_id',
-        'u.first_name',
-        'u.last_name',
+        'u.name_with_initials as name_with_initials',
+        'u.name_with_initials as name', // Alias as name for easier frontend consumption if needed
         'u.email as email',
         'u.phone_number',
         'u.image_url as user_image_url',
@@ -638,7 +639,7 @@ export class InstitueUserService {
     let studentDataMap = new Map<string, any[]>();
     if (query.students === 'true') {
       const studentIds = Array.from(new Set(students.map(s => s.user_id)));
-      
+
       if (studentIds.length > 0 && rawParents.length > 0) {
         const studentDetails = await this.instituteUserRepository
           .createQueryBuilder('iu')
@@ -648,6 +649,7 @@ export class InstitueUserService {
             'u.id as user_id',
             'u.first_name',
             'u.last_name',
+            'u.name_with_initials as name_with_initials',
             'u.email',
             'u.phone_number',
             'u.image_url as user_image_url',
@@ -894,7 +896,7 @@ export class InstitueUserService {
     let studentDataMap = new Map<string, any[]>();
     if (query.students === 'true') {
       const studentIds = Array.from(new Set(students.map(s => s.user_id)));
-      
+
       if (studentIds.length > 0) {
         const studentDetails = await this.instituteUserRepository
           .createQueryBuilder('iu')
@@ -1184,7 +1186,7 @@ export class InstitueUserService {
     let studentDataMap = new Map<string, any[]>();
     if (query.students === 'true') {
       const studentIds = Array.from(new Set(students.map(s => s.user_id)));
-      
+
       if (studentIds.length > 0 && rawParents.length > 0) {
         const studentDetails = await this.instituteUserRepository
           .createQueryBuilder('iu')
@@ -1301,7 +1303,7 @@ export class InstitueUserService {
 
     // Sanitize search input
     const safeSearch = query.search ? SecurityUtils.sanitizeSearchInput(query.search) : null;
-    
+
     // Check if parent details should be included
     const includeParentDetails = userType === InstituteUserType.STUDENT && query.parent === 'true';
 
@@ -1315,7 +1317,7 @@ export class InstitueUserService {
         'u.id as user_id',
         'u.first_name',
         'u.last_name',
-        'u.email as email', 
+        'u.email as email',
         'u.phone_number',
         'u.image_url as user_image_url',  // User's global image
         'u.gender',
@@ -1369,7 +1371,7 @@ export class InstitueUserService {
         .leftJoin(ParentEntity, 'p_father', 'p_father.userId = s.fatherId')
         .leftJoin(ParentEntity, 'p_mother', 'p_mother.userId = s.motherId')
         .leftJoin(ParentEntity, 'p_guardian', 'p_guardian.userId = s.guardianId');
-      
+
       countQueryBuilder
         .leftJoin(ParentEntity, 'p_father', 'p_father.userId = s.fatherId')
         .leftJoin(ParentEntity, 'p_mother', 'p_mother.userId = s.motherId')
@@ -1495,7 +1497,7 @@ export class InstitueUserService {
 
     // Sanitize search input
     const safeSearch = query.search ? SecurityUtils.sanitizeSearchInput(query.search) : null;
-    
+
     // Check if parent details should be included
     const includeParentDetails = userType === InstituteUserType.STUDENT && query.parent === 'true';
 
@@ -1510,7 +1512,7 @@ export class InstitueUserService {
         'u.first_name',
         'u.last_name',
         'u.email as email',
-        'u.phone_number', 
+        'u.phone_number',
         'u.image_url as user_image_url',  // User's global image
         'u.gender',
         'u.date_of_birth',
@@ -1566,7 +1568,7 @@ export class InstitueUserService {
         .leftJoin(ParentEntity, 'p_father', 'p_father.userId = s.fatherId')
         .leftJoin(ParentEntity, 'p_mother', 'p_mother.userId = s.motherId')
         .leftJoin(ParentEntity, 'p_guardian', 'p_guardian.userId = s.guardianId');
-      
+
       countQueryBuilder
         .leftJoin(ParentEntity, 'p_father', 'p_father.userId = s.fatherId')
         .leftJoin(ParentEntity, 'p_mother', 'p_mother.userId = s.motherId')
@@ -1672,7 +1674,7 @@ export class InstitueUserService {
   private mapSortFieldForRaw(sortBy: string): string {
     const mapping: Record<string, string> = {
       'createdAt': 'iu.created_at',
-      'name': 'u.first_name', 
+      'name': 'u.first_name',
       'email': 'u.email',
       'dateOfBirth': 'u.date_of_birth'
     };
@@ -1720,8 +1722,8 @@ export class InstitueUserService {
       // 1. If institute_user_image_url exists AND imageVerificationStatus is VERIFIED, use it
       // 2. Otherwise, fall back to user.imageUrl from global user table
       const isInstituteImageVerified = raw.image_verification_status === 'VERIFIED';
-      let finalImageUrl = (raw.institute_user_image_url && isInstituteImageVerified) 
-        ? raw.institute_user_image_url 
+      let finalImageUrl = (raw.institute_user_image_url && isInstituteImageVerified)
+        ? raw.institute_user_image_url
         : raw.user_image_url;
 
       // ✅ Transform imageUrl to full URL if it exists
@@ -1742,10 +1744,10 @@ export class InstitueUserService {
 
       if (userType === InstituteUserType.STUDENT) {
         // ✅ Student data is already available in raw results (no additional queries needed)
-        
+
         // ✅ Get parent details from pre-loaded map (student data already in raw results)
         let parentDetails: any = {};
-        
+
         if (includeParentDetails) {
           // ✅ Safely handle null parent IDs - only add to parentDetails if ID exists and parent data found
           if (raw.father_id) {
@@ -1754,14 +1756,14 @@ export class InstitueUserService {
               parentDetails.father = fatherData;
             }
           }
-          
+
           if (raw.mother_id) {
             const motherData = parentsMap.get(raw.mother_id);
             if (motherData) {
               parentDetails.mother = motherData;
             }
           }
-          
+
           if (raw.guardian_id && raw.guardian_id !== raw.father_id && raw.guardian_id !== raw.mother_id) {
             const guardianData = parentsMap.get(raw.guardian_id);
             if (guardianData) {
@@ -1769,7 +1771,7 @@ export class InstitueUserService {
             }
           }
         }
-        
+
         // ✅ Create student object from raw data with null safety
         const studentData = {
           userId: raw.user_id || null,
@@ -1782,7 +1784,7 @@ export class InstitueUserService {
           studentId: raw.student_id || null,
           studentType: raw.student_type || 'normal',
         };
-        
+
         const dto = new SecureStudentResponseDto(raw, studentData, raw.userIdByInstitute, parentDetails, instituteUserData, maskSensitiveData);
         dtos.push(dto);
       } else {
@@ -1863,23 +1865,33 @@ export class InstitueUserService {
       parentsMap.set(parent.userId, parent);
     });
 
-    // ✅ PERFORMANCE: Return only parent data without children to optimize query performance
+    // ✅ PERFORMANCE: Return only parent data with formatted name initials for security
     return users.map(user => {
       const parent = parentsMap.get(user.id);
-      
-      // ✅ Transform imageUrl to full URL if it exists
-      const imageUrl = user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null;
-      
-      const phoneNumber = user.phoneNumber ?? null;
-      
+
+      // Format name with initials for security (hide full name from payload)
+      const firstName = user.firstName || '';
+      const lastName = user.lastName || '';
+      const parts = firstName.trim().split(/\s+/);
+      const initials = parts.map(p => p.charAt(0).toUpperCase() + '.').join('');
+      const formattedLast = lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase();
+      const nameWithInitials = `${initials} ${formattedLast}`.trim();
+
+      // ✅ Resolve full image URL the same way the single-parent sibling method does
+      const resolvedImageUrl = user.imageUrl
+        ? this.cloudStorageService.getFullUrl(user.imageUrl)
+        : null;
+
       return {
         userId: user.id,
         id: user.id,
+        name: nameWithInitials,
         first_name: user.firstName || '',
         last_name: user.lastName || '',
         email: user.email || '',
-        phone_number: phoneNumber,
-        image_url: imageUrl,
+        phone_number: user.phoneNumber || null,
+        image_url: resolvedImageUrl,
+        imageUrl: resolvedImageUrl,
         occupation: parent?.occupation || null,
         workplace: parent?.workplace || null
         // children array removed for performance optimization
@@ -1903,7 +1915,7 @@ export class InstitueUserService {
     const safeUserType = SecurityUtils.validateInstituteUserType(userType);
     const { page, limit, skip } = SecurityUtils.validatePagination(query.page, query.limit);
     const { sortBy, sortOrder } = SecurityUtils.validateSortParams(query.sortBy, query.sortOrder);
-    
+
     // Sanitize search input
     const safeSearch = query.search ? SecurityUtils.sanitizeSearchInput(query.search) : null;
 
@@ -1914,7 +1926,7 @@ export class InstitueUserService {
       .select([
         'u.id as user_id',
         'u.first_name',
-        'u.last_name', 
+        'u.last_name',
         'u.email as email',
         'u.phone_number',
         'u.image_url',
@@ -1989,7 +2001,7 @@ export class InstitueUserService {
   ): Promise<VerificationResponseDto> {
     const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
     const safeVerifierId = SecurityUtils.validateBigIntId(verifierId, 'verifierId');
-    
+
     const response: VerificationResponseDto = {
       verifiedUsers: [],
       failedUsers: [],
@@ -2002,7 +2014,7 @@ export class InstitueUserService {
     // ✅ OPTIMIZED: Eliminate N+1 queries by using bulk operations
     try {
       // Validate all user IDs first
-      const safeUserIds = bulkVerificationDto.userIds.map(userId => 
+      const safeUserIds = bulkVerificationDto.userIds.map(userId =>
         SecurityUtils.validateBigIntId(userId, 'userId')
       );
 
@@ -2027,7 +2039,7 @@ export class InstitueUserService {
 
       for (const userId of bulkVerificationDto.userIds) {
         const safeUserId = SecurityUtils.validateBigIntId(userId, 'userId');
-        
+
         if (pendingUsersMap.has(safeUserId.toString())) {
           validUserIds.push(userId);
           validUserIdsForBulkUpdate.push(safeUserId.toString());
@@ -2060,7 +2072,7 @@ export class InstitueUserService {
         response.verifiedUsers = validUserIds;
         response.successCount = validUserIds.length;
       }
-      
+
     } catch (error) {
       // If bulk operation fails, mark all as failed
       response.failedUsers = bulkVerificationDto.userIds;
@@ -2353,8 +2365,8 @@ export class InstitueUserService {
 
       // Filter by institute user type
       if (query.isActive) {
-        queryBuilder.andWhere('user.isActive = :isActive', { 
-          isActive: query.isActive === 'true' 
+        queryBuilder.andWhere('user.isActive = :isActive', {
+          isActive: query.isActive === 'true'
         });
       }
 
@@ -2387,16 +2399,16 @@ export class InstitueUserService {
       // Student-specific filters - only join if needed
       if (query.studentId || query.emergencyContact || query.hasMedicalConditions || query.hasAllergies) {
         queryBuilder.leftJoinAndSelect('user.student', 'student');
-        
+
         if (query.studentId) {
-          queryBuilder.andWhere('student.studentId LIKE :studentId', { 
-            studentId: `%${query.studentId}%` 
+          queryBuilder.andWhere('student.studentId LIKE :studentId', {
+            studentId: `%${query.studentId}%`
           });
         }
 
         if (query.emergencyContact) {
-          queryBuilder.andWhere('student.emergencyContact LIKE :emergencyContact', { 
-            emergencyContact: `%${query.emergencyContact}%` 
+          queryBuilder.andWhere('student.emergencyContact LIKE :emergencyContact', {
+            emergencyContact: `%${query.emergencyContact}%`
           });
         }
 
@@ -2416,16 +2428,16 @@ export class InstitueUserService {
       // Parent-specific filters - only join if needed
       if (query.occupation || query.workplace) {
         queryBuilder.leftJoinAndSelect('user.parent', 'parent');
-        
+
         if (query.occupation) {
-          queryBuilder.andWhere('parent.occupation LIKE :occupation', { 
-            occupation: `%${query.occupation}%` 
+          queryBuilder.andWhere('parent.occupation LIKE :occupation', {
+            occupation: `%${query.occupation}%`
           });
         }
 
         if (query.workplace) {
-          queryBuilder.andWhere('parent.workplace LIKE :workplace', { 
-            workplace: `%${query.workplace}%` 
+          queryBuilder.andWhere('parent.workplace LIKE :workplace', {
+            workplace: `%${query.workplace}%`
           });
         }
       }
@@ -2433,7 +2445,7 @@ export class InstitueUserService {
       // Sorting
       const sortBy = query.sortBy || 'createdAt';
       const sortOrder = (query.sortOrder?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
-      
+
       if (sortBy === 'name') {
         queryBuilder.orderBy('user.firstName', sortOrder);
         queryBuilder.addOrderBy('user.lastName', sortOrder);
@@ -2494,14 +2506,14 @@ export class InstitueUserService {
         stack: error.stack,
         instituteId: safeInstituteId
       });
-      
+
       // Don't expose internal errors to client
-      if (error instanceof BadRequestException || 
-          error instanceof NotFoundException ||
-          error instanceof ForbiddenException) {
+      if (error instanceof BadRequestException ||
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException) {
         throw error;
       }
-      
+
       throw new BadRequestException(
         'Failed to retrieve inactive users. Please try again or contact support.'
       );
@@ -2590,7 +2602,7 @@ export class InstitueUserService {
       // 🖼️ Use imageUrl from DTO if provided (already verified via signed URL)
       let imageUrl: string | null = null;
       let imageStatus: ImageVerificationStatus = ImageVerificationStatus.PENDING;
-      
+
       if (assignDto.imageUrl) {
         imageUrl = assignDto.imageUrl;
         imageStatus = verifiedById ? ImageVerificationStatus.VERIFIED : ImageVerificationStatus.PENDING;
@@ -2651,7 +2663,7 @@ export class InstitueUserService {
     try {
       // 🚀 STEP 1: Check if parent user exists (pure existence check - no data retrieval)
       const parentUserExists = await this.userRepository.exists({
-        where: { 
+        where: {
           phoneNumber: assignDto.phoneNumber,
           userType: UserType.USER_WITHOUT_STUDENT,
           isActive: true
@@ -2666,7 +2678,7 @@ export class InstitueUserService {
 
       // 🚀 STEP 2: Get only parent user ID (minimal data for assignment)
       const parentUser = await this.userRepository.findOne({
-        where: { 
+        where: {
           phoneNumber: assignDto.phoneNumber,
           userType: UserType.USER_WITHOUT_STUDENT,
           isActive: true
@@ -2819,7 +2831,7 @@ export class InstitueUserService {
       // 🖼️ OPTIMIZED: Upload image FIRST if provided
       let imageUrl: string | null = null;
       let imageStatus: ImageVerificationStatus = ImageVerificationStatus.PENDING;
-      
+
       if (image) {
         if (typeof image === 'string') {
           // URL from /upload/verify-and-publish
@@ -2933,7 +2945,7 @@ export class InstitueUserService {
       // 🖼️ OPTIMIZED: Upload image FIRST if provided
       let imageUrl: string | null = null;
       let imageStatus: ImageVerificationStatus = ImageVerificationStatus.PENDING;
-      
+
       if (image) {
         if (typeof image === 'string') {
           // URL from /upload/verify-and-publish
@@ -3046,7 +3058,7 @@ export class InstitueUserService {
       // 🖼️ OPTIMIZED: Upload image FIRST if provided
       let imageUrl: string | null = null;
       let imageStatus: ImageVerificationStatus = ImageVerificationStatus.PENDING;
-      
+
       if (image) {
         if (typeof image === 'string') {
           // URL from /upload/verify-and-publish
@@ -3099,7 +3111,7 @@ export class InstitueUserService {
     bulkAssignDto: BulkAssignUsersDto
   ): Promise<BulkAssignmentResponseDto> {
     const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
-    
+
     const response: BulkAssignmentResponseDto = {
       success: true,
       successfulAssignments: [],
@@ -3132,7 +3144,7 @@ export class InstitueUserService {
       const userIds = existingUsers.map(u => u.id);
       const existingAssignments = new Map(); // Map of userId -> Set of roles
       const studentRelations = new Set(); // Set of userIds who are students
-      
+
       if (userIds.length > 0) {
         const assignments = await this.instituteUserRepository.find({
           where: {
@@ -3141,14 +3153,14 @@ export class InstitueUserService {
           },
           select: ['userId', 'instituteUserType']
         });
-        
+
         assignments.forEach(a => {
           const userId = a.userId.toString();
           if (!existingAssignments.has(userId)) {
             existingAssignments.set(userId, new Set());
           }
           existingAssignments.get(userId).add(a.instituteUserType);
-          
+
           // Track student relations
           if (a.instituteUserType === InstituteUserType.STUDENT) {
             studentRelations.add(userId);
@@ -3158,11 +3170,11 @@ export class InstitueUserService {
 
       // Process assignments with batch validation
       const newAssignments = [];
-      
+
       for (const assignment of bulkAssignDto.assignments) {
         try {
           const user = usersByPhone.get(assignment.phoneNumber);
-          
+
           if (!user) {
             response.failedAssignments.push({
               phoneNumber: assignment.phoneNumber,
@@ -3323,7 +3335,7 @@ export class InstitueUserService {
    */
   private async getUsersByPhoneNumbers(phoneNumbers: string[]): Promise<UserEntity[]> {
     if (!phoneNumbers || phoneNumbers.length === 0) return [];
-    
+
     return await this.userRepository
       .createQueryBuilder('user')
       .select(['user.id', 'user.userType', 'user.firstName', 'user.lastName', 'user.phoneNumber'])
@@ -3439,9 +3451,9 @@ export class InstitueUserService {
 
       // Check if card ID is already in use
       const existingCardUser = await this.instituteUserRepository.findOne({
-        where: { 
-          instituteId, 
-          instituteCardId: updateCardDto.cardId 
+        where: {
+          instituteId,
+          instituteCardId: updateCardDto.cardId
         }
       });
 
@@ -3579,10 +3591,10 @@ export class InstitueUserService {
         updatedAt: decisionAt,
       });
 
-      const statusMessage = verifyImageDto.status === ImageVerificationStatus.VERIFIED 
-        ? 'approved' 
-        : verifyImageDto.status === ImageVerificationStatus.REJECTED 
-          ? 'rejected and deleted from cloud' 
+      const statusMessage = verifyImageDto.status === ImageVerificationStatus.VERIFIED
+        ? 'approved'
+        : verifyImageDto.status === ImageVerificationStatus.REJECTED
+          ? 'rejected and deleted from cloud'
           : 'set to pending';
 
       return {

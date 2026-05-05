@@ -191,4 +191,20 @@ export class LectureTrackingController {
   async getRecordingReport(@Param('lectureId') lectureId: string) {
     return this.trackingService.getRecordingActivityReport(lectureId);
   }
+
+  @Get('student/:studentId/activities')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all live and recording activities for a student across lectures' })
+  async getStudentActivities(
+    @Param('studentId') studentId: string,
+    @Query('instituteId') instituteId: string,
+    @Query('classId') classId: string,
+    @Query('subjectId') subjectId?: string,
+  ) {
+    if (!instituteId || !classId) {
+      throw new BadRequestException('instituteId and classId are required');
+    }
+    return this.trackingService.getStudentLectureActivities(studentId, instituteId, classId, subjectId);
+  }
 }

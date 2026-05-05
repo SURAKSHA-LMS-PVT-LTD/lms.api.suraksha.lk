@@ -673,4 +673,67 @@ export class LectureTrackingService {
     }
     return result;
   }
+
+  async getStudentLectureActivities(studentId: string, instituteId: string, classId: string, subjectId?: string) {
+    const whereClause: any = { instituteId, classId };
+    if (subjectId) {
+      whereClause.subjectId = subjectId;
+    }
+    
+    // Get all lectures for this scope
+    const lectures = await this.lectureRepo.find({
+      where: whereClause,
+      order: { startTime: 'DESC' }
+    });
+    
+    if (!lectures.length) return [];
+    
+    const lectureIds = lectures.map(l => l.id);
+    
+    // Get live attendance for this student
+    const liveAtt = await this.liveAttRepo.find({
+      where: { userId: studentId, lectureId: In(lectureIds) },
+      order: { joinTime: 'ASC' }
+    });
+    
+    // Get recording sessions for this student
+    const recSessions = await this.recSessionRepo.find({
+      where: { userId: studentId, lectureId: In(lectureIds) },
+      order: { startTime: 'ASC' }
+    });
+    
+    return lectures.map(lecture => {
+      const live = liveAtt.filter(l => String(l.lectureId) === String(lecture.id));
+      const rec = recSessions.filter(r => String(r.lectureId) === String(lecture.id));
+      
+      const liveDurationMinutes = live.reduce((acc, curr) => {
+        if (curr.joinTime && curr.leaveTime) {
+          return acc + Math.round((new Date(curr.leaveTime).getTime() - new Date(curr.joinTime).getTime()) / 60000);
+        }
+        return acc;
+      }, 0);
+      
+      const recWatchedSeconds = rec.reduce((acc, curr) => acc + (curr.totalWatchedSeconds || 0), 0);
+      
+      return {
+        lecture: {
+          id: lecture.id,
+          title: lecture.title,
+          startTime: lecture.startTime,
+          endTime: lecture.endTime,
+          liveAttendanceEnabled: lecture.liveAttendanceEnabled,
+          recAttendanceEnabled: lecture.recAttendanceEnabled,
+        },
+        live: live.length > 0 ? {
+          sessions: live.map(l => ({ joinTime: l.joinTime, leaveTime: l.leaveTime })),
+          totalDurationMinutes: liveDurationMinutes
+        } : null,
+        recording: rec.length > 0 ? {
+          sessions: rec.map(r => ({ startTime: r.startTime, endTime: r.endTime, watchedSeconds: r.totalWatchedSeconds, lastPosition: r.lastPositionSeconds })),
+          totalWatchedSeconds: recWatchedSeconds,
+          sessionCount: rec.length
+        } : null
+      };
+    });
+  }
 }

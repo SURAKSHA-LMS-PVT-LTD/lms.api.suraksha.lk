@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
@@ -82,7 +82,7 @@ export class AttendanceService {
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
   ) {
-    // ⚡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
+    // âš¡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
     this.instituteIdsRequiringCustomImages = new Set(instituteIds);
     this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
@@ -90,14 +90,14 @@ export class AttendanceService {
   }
 
   /**
-   * 🔍 AUTO-DETECT USER TYPE: Look up institute_user to determine the user's role in this institute
+   * ðŸ” AUTO-DETECT USER TYPE: Look up institute_user to determine the user's role in this institute
    * Returns the InstituteUserType or NOT_ENROLLED if not found
    */
   private async detectInstituteUserType(
     userId: string,
     instituteId: string
-  ): Promise<{ 
-    userType: AttendanceUserType; 
+  ): Promise<{
+    userType: AttendanceUserType;
     instituteUser: InstituteUserEntity | null;
   }> {
     try {
@@ -122,9 +122,9 @@ export class AttendanceService {
         [InstituteUserType.PARENT]: AttendanceUserType.PARENT,
       };
 
-      return { 
-        userType: typeMap[instituteUser.instituteUserType] || AttendanceUserType.STUDENT, 
-        instituteUser 
+      return {
+        userType: typeMap[instituteUser.instituteUserType] || AttendanceUserType.STUDENT,
+        instituteUser
       };
     } catch (error) {
       this.logger.warn(`Failed to detect user type for ${userId} in institute ${instituteId}: ${error.message}`);
@@ -133,7 +133,7 @@ export class AttendanceService {
   }
 
   /**
-   * 🖼️ RESOLVE IMAGE URL: Get the correct image for any user type
+   * ðŸ–¼ï¸ RESOLVE IMAGE URL: Get the correct image for any user type
    * Always prefers institute-specific image (if verified), falls back to global user image
    */
   private resolveImageUrl(
@@ -247,22 +247,22 @@ export class AttendanceService {
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
-    
+
     try {
-      // ✅ STEP 1: Auto-detect user type from institute_user table
+      // âœ… STEP 1: Auto-detect user type from institute_user table
       const { userType, instituteUser } = await this.detectInstituteUserType(
         markAttendanceDto.studentId,
         markAttendanceDto.instituteId
       );
 
-      // ✅ STEP 2: Validate enrollment if configured (applies to all user types)
+      // âœ… STEP 2: Validate enrollment if configured (applies to all user types)
       await this.validateUserEnrollment(
         markAttendanceDto.studentId,
         markAttendanceDto.instituteId,
         userType
       );
 
-      // ✅ STEP 3: Fetch user data based on user type
+      // âœ… STEP 3: Fetch user data based on user type
       let userName: string;
       let nameWithInitialsValue: string | null = null;
       let globalImageUrl: string | null = null;
@@ -271,7 +271,7 @@ export class AttendanceService {
       if (userType === AttendanceUserType.STUDENT) {
         // STUDENT path: Use existing student + parent data fetch (for notifications)
         studentData = await this.fetchStudentWithParentData(markAttendanceDto.studentId);
-        
+
         if (!studentData.student?.user) {
           throw new Error(`Student not found: ${markAttendanceDto.studentId}`);
         }
@@ -318,9 +318,9 @@ export class AttendanceService {
       // STEP 3.5: MANDATORY Calendar Day + Event Linkage
       // ============================================
       // calendarDayId: Resolved from the DTO's date (which defaults to today if not provided).
-      // eventId (institute-level only): If frontend sends one (special event) → use it.
+      // eventId (institute-level only): If frontend sends one (special event) â†’ use it.
       // For class/subject scoped attendance, eventId is always ignored.
-      // For institute-level attendance without explicit eventId → auto-link to default REGULAR_CLASS event.
+      // For institute-level attendance without explicit eventId â†’ auto-link to default REGULAR_CLASS event.
       // This ensures ALL attendance records are visible in the institute calendar section.
       if (hasClassOrSubjectScope && markAttendanceDto.eventId) {
         this.logger.warn(
@@ -340,27 +340,27 @@ export class AttendanceService {
           );
 
           if (calendarDay) {
-            // ✅ calendarDayId is ALWAYS system-set (today → today's day record)
+            // âœ… calendarDayId is ALWAYS system-set (today â†’ today's day record)
             (markAttendanceDto as any).calendarDayId = calendarDay.id;
 
-            // ✅ eventId for class/subject scope is always disabled.
+            // âœ… eventId for class/subject scope is always disabled.
             if (hasClassOrSubjectScope) {
               (markAttendanceDto as any).eventId = null;
             } else if (originalFrontendEventId) {
               (markAttendanceDto as any).eventId = originalFrontendEventId;
-              this.logger.log(`[${requestId}] 🎯 Special event attendance: eventId=${originalFrontendEventId}, dayId=${calendarDay.id}`);
+              this.logger.log(`[${requestId}] ðŸŽ¯ Special event attendance: eventId=${originalFrontendEventId}, dayId=${calendarDay.id}`);
             } else if (defaultEventId) {
               (markAttendanceDto as any).eventId = defaultEventId;
-              this.logger.debug(`[${requestId}] ✅ Auto-linked to default event: eventId=${defaultEventId}, dayId=${calendarDay.id}`);
+              this.logger.debug(`[${requestId}] âœ… Auto-linked to default event: eventId=${defaultEventId}, dayId=${calendarDay.id}`);
             } else {
-              this.logger.warn(`[${requestId}] ⚠️  Calendar day ${calendarDay.id} has no default event. Attendance will have dayId but no eventId.`);
+              this.logger.warn(`[${requestId}] âš ï¸  Calendar day ${calendarDay.id} has no default event. Attendance will have dayId but no eventId.`);
             }
             calendarResolved = true;
           }
         } catch (calendarError) {
-          // Retry once after invalidating cache — handles race conditions on lazy calendar day creation
+          // Retry once after invalidating cache â€” handles race conditions on lazy calendar day creation
           this.logger.warn(
-            `[${requestId}] ⚠️  Calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
+            `[${requestId}] âš ï¸  Calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
           );
           try {
             this.calendarDayCacheService.invalidate(markAttendanceDto.instituteId, markAttendanceDto.date);
@@ -378,24 +378,24 @@ export class AttendanceService {
                 (markAttendanceDto as any).eventId = defaultEventId;
               }
               calendarResolved = true;
-              this.logger.log(`[${requestId}] ✅ Calendar day recovered after retry: dayId=${calendarDay.id}`);
+              this.logger.log(`[${requestId}] âœ… Calendar day recovered after retry: dayId=${calendarDay.id}`);
             }
           } catch (retryError) {
             this.logger.error(
-              `[${requestId}] ❌ Calendar day resolution failed after retry: ${retryError.message}`
+              `[${requestId}] âŒ Calendar day resolution failed after retry: ${retryError.message}`
             );
           }
         }
 
         if (!calendarResolved) {
           this.logger.error(
-            `[${requestId}] ❌ CRITICAL: Could not resolve calendar day for institute ${markAttendanceDto.instituteId} on ${markAttendanceDto.date}. ` +
+            `[${requestId}] âŒ CRITICAL: Could not resolve calendar day for institute ${markAttendanceDto.instituteId} on ${markAttendanceDto.date}. ` +
             `Attendance will still be saved but will NOT appear in calendar views.`
           );
         }
       }
 
-      // ✅ STEP 3.6: Device validation (if marking from a registered device)
+      // âœ… STEP 3.6: Device validation (if marking from a registered device)
       if (markAttendanceDto.deviceUid) {
         const deviceValidation = await this.attendanceDeviceService.validateDeviceForMarking(markAttendanceDto.deviceUid);
         if (!deviceValidation.allowed) {
@@ -407,9 +407,9 @@ export class AttendanceService {
         // frontend-supplied special event (the user explicitly chose that event).
         if (deviceValidation.eventId) {
           if (!hasClassOrSubjectScope && !originalFrontendEventId) {
-            // No explicit frontend event → device binding overrides the auto-linked default event
+            // No explicit frontend event â†’ device binding overrides the auto-linked default event
             (markAttendanceDto as any).eventId = deviceValidation.eventId;
-            this.logger.log(`[${requestId}] 🔧 Device binding overrides default event: eventId=${deviceValidation.eventId}`);
+            this.logger.log(`[${requestId}] ðŸ”§ Device binding overrides default event: eventId=${deviceValidation.eventId}`);
           }
         }
         // Apply status override from device config/binding
@@ -425,11 +425,11 @@ export class AttendanceService {
         }
       }
 
-      // ✅ STEP 4: Resolve image once and persist it in DynamoDB for faster later reads
+      // âœ… STEP 4: Resolve image once and persist it in DynamoDB for faster later reads
       const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
       markAttendanceDto.studentImageUrl = imageUrl || undefined;
 
-      // ✅ STEP 4.1: Mark attendance based on database mode
+      // âœ… STEP 4.1: Mark attendance based on database mode
       const isMysqlOnly = this.syncConfigService.isMysqlOnly();
       let result: any;
 
@@ -440,7 +440,7 @@ export class AttendanceService {
         // Both mode: write to DynamoDB first, then sync to MySQL
         result = await this.dynamoAttendanceService.markAttendance(markAttendanceDto);
 
-        // ✅ STEP 4.5: Sync to MySQL based on system-wide sync mode
+        // âœ… STEP 4.5: Sync to MySQL based on system-wide sync mode
         // Use the actual DynamoDB result (real pk/sk/timestamp) to avoid duplicate rows
         try {
           const syncMode = this.syncConfigService.getSyncModeSync();
@@ -449,18 +449,18 @@ export class AttendanceService {
           } else if (syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
             this.syncSchedulerService.syncSingleRecordAsync(result as any);
           }
-          // BACKEND_SCHEDULE: no-op here — cron handles it
+          // BACKEND_SCHEDULE: no-op here â€” cron handles it
         } catch (syncErr) {
           this.logger.warn(`[${requestId}] MySQL sync skipped: ${syncErr.message}`);
         }
       }
 
-      // ✅ STEP 5: Send notifications ONLY for students (teachers/admins don't need parent notifications)
+      // âœ… STEP 5: Send notifications ONLY for students (teachers/admins don't need parent notifications)
       if (userType === AttendanceUserType.STUDENT && studentData) {
         this.scheduleAttendanceNotification(markAttendanceDto, result, studentData);
       }
 
-      // ✅ STEP 6: Fetch available events for this date so frontend can show event picker
+      // âœ… STEP 6: Fetch available events for this date so frontend can show event picker
       let availableEvents = [];
       try {
         const calendarDayId = (markAttendanceDto as any).calendarDayId;
@@ -490,10 +490,10 @@ export class AttendanceService {
         date: markAttendanceDto.date,
         eventId: (markAttendanceDto as any).eventId || null,
         calendarDayId: (markAttendanceDto as any).calendarDayId || null,
-        availableEvents,  // ✅ All events for this date — frontend can use for event picker
+        availableEvents,  // âœ… All events for this date â€” frontend can use for event picker
       };
     } catch (error) {
-      this.logger.error(`[${requestId}] ❌ ERROR: Failed to mark attendance - ${error.message}`, error.stack);
+      this.logger.error(`[${requestId}] âŒ ERROR: Failed to mark attendance - ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -501,13 +501,13 @@ export class AttendanceService {
   async markBulkAttendance(bulkAttendanceDto: BulkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `BULK_ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
-    
+
     try {
       bulkAttendanceDto.date = getCurrentSriLankaDate();
 
       const userIds = bulkAttendanceDto.students.map(s => s.studentId);
-      
-      // ✅ STEP 1: Batch detect user types from institute_user table
+
+      // âœ… STEP 1: Batch detect user types from institute_user table
       const instituteUsers = await this.instituteUserRepository.find({
         where: {
           userId: In(userIds),
@@ -519,18 +519,18 @@ export class AttendanceService {
         instituteUsers.map(iu => [iu.userId, iu])
       );
 
-      // ✅ STEP 2: Validate enrollment (if configured) - batch operation
+      // âœ… STEP 2: Validate enrollment (if configured) - batch operation
       await Promise.all(
         userIds.map(userId => {
           const iu = instituteUserMap.get(userId);
-          const detectedType = iu 
-            ? (AttendanceUserType[iu.instituteUserType as keyof typeof AttendanceUserType] || AttendanceUserType.STUDENT) 
+          const detectedType = iu
+            ? (AttendanceUserType[iu.instituteUserType as keyof typeof AttendanceUserType] || AttendanceUserType.STUDENT)
             : AttendanceUserType.NOT_ENROLLED;
           return this.validateUserEnrollment(userId, bulkAttendanceDto.instituteId, detectedType);
         })
       );
-      
-      // ✅ STEP 3: Separate students from non-students for different data fetch strategies
+
+      // âœ… STEP 3: Separate students from non-students for different data fetch strategies
       const studentUserIds = userIds.filter(id => {
         const iu = instituteUserMap.get(id);
         return !iu || iu.instituteUserType === InstituteUserType.STUDENT;
@@ -540,39 +540,39 @@ export class AttendanceService {
         return iu && iu.instituteUserType !== InstituteUserType.STUDENT;
       });
 
-      // ✅ STEP 4A: Fetch students from students table (with parent data for notifications)
-      const studentEntities = studentUserIds.length > 0 
+      // âœ… STEP 4A: Fetch students from students table (with parent data for notifications)
+      const studentEntities = studentUserIds.length > 0
         ? await this.studentRepository.find({
-            where: { userId: In(studentUserIds) },
-            relations: ['user'],
-            select: {
-              userId: true,
-              user: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                nameWithInitials: true,
-                email: true,
-                phoneNumber: true,
-                subscriptionPlan: true,
-                telegramId: true,
-                imageUrl: true
-              }
+          where: { userId: In(studentUserIds) },
+          relations: ['user'],
+          select: {
+            userId: true,
+            user: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              nameWithInitials: true,
+              email: true,
+              phoneNumber: true,
+              subscriptionPlan: true,
+              telegramId: true,
+              imageUrl: true
             }
-          })
+          }
+        })
         : [];
 
-      // ✅ STEP 4B: Fetch non-student users directly from users table
+      // âœ… STEP 4B: Fetch non-student users directly from users table
       const nonStudentEntities = nonStudentUserIds.length > 0
         ? await this.userRepository.find({
-            where: { id: In(nonStudentUserIds) },
-            select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
-          })
+          where: { id: In(nonStudentUserIds) },
+          select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
+        })
         : [];
 
-      // ✅ STEP 5: Build unified user map (userId -> { name, userType, imageUrl })
+      // âœ… STEP 5: Build unified user map (userId -> { name, userType, imageUrl })
       const userDataMap = new Map<string, { name: string; userType: AttendanceUserType; imageUrl?: string }>();
-      
+
       for (const student of studentEntities) {
         if (student.user) {
           const instituteUser = instituteUserMap.get(student.userId);
@@ -588,7 +588,7 @@ export class AttendanceService {
           });
         }
       }
-      
+
       for (const user of nonStudentEntities) {
         const iu = instituteUserMap.get(user.id.toString());
         const typeMap: Record<string, AttendanceUserType> = {
@@ -609,44 +609,44 @@ export class AttendanceService {
         });
       }
 
-      // ✅ STEP 6: Validate all users exist and update names
+      // âœ… STEP 6: Validate all users exist and update names
       const validatedStudents = [];
       const invalidUsers = [];
-      
+
       for (const studentItem of bulkAttendanceDto.students) {
         const userData = userDataMap.get(studentItem.studentId);
-        
+
         if (!userData) {
           invalidUsers.push({
             studentId: studentItem.studentId,
             error: `User not found: ${studentItem.studentId}`
           });
-          this.logger.warn(`[${requestId}] ⚠️  User not found: ${studentItem.studentId}`);
+          this.logger.warn(`[${requestId}] âš ï¸  User not found: ${studentItem.studentId}`);
           continue;
         }
-        
+
         // Override with database name
         studentItem.studentName = userData.name;
         (studentItem as any).studentImageUrl = userData.imageUrl;
         validatedStudents.push(studentItem);
       }
-      
-      // ✅ STEP 7: Check if any users were invalid
+
+      // âœ… STEP 7: Check if any users were invalid
       if (invalidUsers.length > 0) {
-        this.logger.error(`[${requestId}] ❌ ${invalidUsers.length} invalid users found`);
+        this.logger.error(`[${requestId}] âŒ ${invalidUsers.length} invalid users found`);
         throw new NotFoundException(
           `${invalidUsers.length} user(s) not found: ${invalidUsers.map(s => s.studentId).join(', ')}`
         );
       }
-      
-      // ✅ STEP 8: Update the DTO with only validated users
+
+      // âœ… STEP 8: Update the DTO with only validated users
       bulkAttendanceDto.students = validatedStudents;
-      
+
       // ============================================
       // STEP 8.5: MANDATORY Calendar Day + Event Linkage (Bulk)
       // ============================================
       // calendarDayId: Resolved from the DTO's date (defaults to today if not provided).
-      // eventId: if bulk DTO has a special eventId → use it. Otherwise → default REGULAR_CLASS event.
+      // eventId: if bulk DTO has a special eventId â†’ use it. Otherwise â†’ default REGULAR_CLASS event.
       {
         const hasClassOrSubjectScope = Boolean(
           (bulkAttendanceDto.classId && bulkAttendanceDto.classId !== 'default')
@@ -672,18 +672,18 @@ export class AttendanceService {
               (bulkAttendanceDto as any).eventId = null;
             } else if (frontendEventId) {
               (bulkAttendanceDto as any).defaultEventId = frontendEventId;
-              this.logger.log(`[${requestId}] 🎯 Bulk special event attendance: eventId=${frontendEventId}, dayId=${calendarDay.id}`);
+              this.logger.log(`[${requestId}] ðŸŽ¯ Bulk special event attendance: eventId=${frontendEventId}, dayId=${calendarDay.id}`);
             } else if (defaultEventId) {
               (bulkAttendanceDto as any).defaultEventId = defaultEventId;
-              this.logger.debug(`[${requestId}] ✅ Bulk auto-linked to default event: eventId=${defaultEventId}, dayId=${calendarDay.id}`);
+              this.logger.debug(`[${requestId}] âœ… Bulk auto-linked to default event: eventId=${defaultEventId}, dayId=${calendarDay.id}`);
             } else {
-              this.logger.warn(`[${requestId}] ⚠️  Bulk: calendar day ${calendarDay.id} has no default event.`);
+              this.logger.warn(`[${requestId}] âš ï¸  Bulk: calendar day ${calendarDay.id} has no default event.`);
             }
             calendarResolved = true;
           }
         } catch (calendarError) {
           this.logger.warn(
-            `[${requestId}] ⚠️  Bulk calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
+            `[${requestId}] âš ï¸  Bulk calendar day lookup failed: ${calendarError.message}. Retrying after cache invalidation...`
           );
           try {
             this.calendarDayCacheService.invalidate(bulkAttendanceDto.instituteId, bulkAttendanceDto.date);
@@ -700,24 +700,24 @@ export class AttendanceService {
                 (bulkAttendanceDto as any).defaultEventId = frontendEventId || defaultEventId;
               }
               calendarResolved = true;
-              this.logger.log(`[${requestId}] ✅ Bulk calendar day recovered after retry: dayId=${calendarDay.id}`);
+              this.logger.log(`[${requestId}] âœ… Bulk calendar day recovered after retry: dayId=${calendarDay.id}`);
             }
           } catch (retryError) {
             this.logger.error(
-              `[${requestId}] ❌ Bulk calendar day resolution failed after retry: ${retryError.message}`
+              `[${requestId}] âŒ Bulk calendar day resolution failed after retry: ${retryError.message}`
             );
           }
         }
 
         if (!calendarResolved) {
           this.logger.error(
-            `[${requestId}] ❌ CRITICAL: Could not resolve calendar day for bulk at institute ${bulkAttendanceDto.instituteId}. ` +
+            `[${requestId}] âŒ CRITICAL: Could not resolve calendar day for bulk at institute ${bulkAttendanceDto.instituteId}. ` +
             `Bulk attendance will still be saved but will NOT appear in calendar views.`
           );
         }
       }
 
-      // ✅ STEP 9: Mark attendance based on database mode
+      // âœ… STEP 9: Mark attendance based on database mode
       const isMysqlOnly = this.syncConfigService.isMysqlOnly();
       let results: MarkAttendanceDto[];
 
@@ -728,7 +728,7 @@ export class AttendanceService {
         // Both mode: write to DynamoDB first, then sync to MySQL
         results = await this.dynamoAttendanceService.markBulkAttendance(bulkAttendanceDto);
 
-        // ✅ STEP 9.5: Sync bulk results to MySQL based on system-wide sync mode
+        // âœ… STEP 9.5: Sync bulk results to MySQL based on system-wide sync mode
         try {
           const syncMode = this.syncConfigService.getSyncModeSync();
           if (syncMode === AttendanceSyncMode.IMMEDIATE || syncMode === AttendanceSyncMode.DYNAMO_FIRST) {
@@ -744,8 +744,8 @@ export class AttendanceService {
           this.logger.warn(`[${requestId}] Bulk MySQL sync error: ${syncErr.message}`);
         }
       }
-      
-      // ✅ STEP 10: Send notifications ONLY for students (teachers/admins skip parent notifications)
+
+      // âœ… STEP 10: Send notifications ONLY for students (teachers/admins skip parent notifications)
       if (this.notificationsEnabled) {
         results.forEach(result => {
           const userData = userDataMap.get(result.studentId);
@@ -772,7 +772,7 @@ export class AttendanceService {
         });
       }
 
-      // ✅ Fetch available events for this date so frontend can show event picker
+      // âœ… Fetch available events for this date so frontend can show event picker
       let availableEvents = [];
       try {
         const calendarDayId = (bulkAttendanceDto as any).calendarDayId;
@@ -800,11 +800,11 @@ export class AttendanceService {
         date: bulkAttendanceDto.date,
         eventId: (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId || null,
         calendarDayId: (bulkAttendanceDto as any).calendarDayId || null,
-        availableEvents,  // ✅ All events for this date — frontend can use for event picker
+        availableEvents,  // âœ… All events for this date â€” frontend can use for event picker
         records: results
       };
     } catch (error) {
-      this.logger.error(`[${requestId}] ❌ ERROR: Bulk attendance failed - ${error.message}`, error.stack);
+      this.logger.error(`[${requestId}] âŒ ERROR: Bulk attendance failed - ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -822,15 +822,15 @@ export class AttendanceService {
       return null;
     }
 
-    // ✅ Use DynamoDB stored image URL first (snapshot at time of marking)
+    // âœ… Use DynamoDB stored image URL first (snapshot at time of marking)
     // Falls back to current users table image if missing (for legacy records)
     let studentImageUrl: string | null = null;
-    
+
     if (record.studentImageUrl) {
       // Image was already stored in DynamoDB when attendance was marked
       studentImageUrl = this.CloudStorageService.getFullUrl(record.studentImageUrl);
     } else {
-      // ✅ Optional: Enrich with current image from users table (handles legacy records)
+      // âœ… Optional: Enrich with current image from users table (handles legacy records)
       try {
         const user = await this.userRepository.findOne({
           where: { id: record.studentId },
@@ -840,7 +840,7 @@ export class AttendanceService {
           studentImageUrl = this.CloudStorageService.getFullUrl(user.imageUrl);
         }
       } catch (_) {
-        // Image fetch is best-effort — do not fail the whole response
+        // Image fetch is best-effort â€” do not fail the whole response
       }
     }
 
@@ -869,7 +869,7 @@ export class AttendanceService {
 
   async getStudentAttendance(getStudentAttendanceDto: GetStudentAttendanceDto, user?: any): Promise<StudentAttendanceResponseDto> {
     const { studentId, startDate, endDate, page = 1, limit = 20, status } = getStudentAttendanceDto;
-    
+
     // SECURITY: Validate access - student themselves OR parent with child in JWT
     // Privileged roles (SUPERADMIN, Institute Admin, Teacher, Attendance Marker) bypass this check
     // because they have already been authorized by FlexibleAccessGuard at the controller level.
@@ -877,14 +877,14 @@ export class AttendanceService {
       const isSuperAdmin = user.u === 0; // user type 0 = SUPERADMIN
       const isGlobalAccess = user.i === 999999; // global institute access flag
       const instituteAccess = Array.isArray(user.i) ? user.i : [];
-      // IA=8, TE=4, AM=1 — any of these bitmask flags means a privileged role
+      // IA=8, TE=4, AM=1 â€” any of these bitmask flags means a privileged role
       const isPrivilegedInstituteRole = instituteAccess.some(
         (entry: any) => (entry.r & (8 | 4 | 1)) !== 0
       );
       const isPrivileged = isSuperAdmin || isGlobalAccess || isPrivilegedInstituteRole;
 
       if (!isPrivileged) {
-        // Only students and parents reach this block — enforce ownership restriction
+        // Only students and parents reach this block â€” enforce ownership restriction
         const isOwnData = String(user.s) === String(studentId);
         const children = Array.isArray(user.c) ? user.c.map(String) : [];
         const isParentOfStudent = children.includes(String(studentId));
@@ -894,30 +894,30 @@ export class AttendanceService {
           throw new ForbiddenException('You can only access your own attendance data or your children\'s attendance data.');
         }
 
-        this.logger.debug(`✅ Attendance access granted: ${isOwnData ? 'Own data' : 'Parent accessing child data'}`);
+        this.logger.debug(`âœ… Attendance access granted: ${isOwnData ? 'Own data' : 'Parent accessing child data'}`);
       } else {
-        this.logger.debug(`✅ Attendance access granted: Privileged role (superAdmin=${isSuperAdmin}, globalAccess=${isGlobalAccess}, instituteRole=${isPrivilegedInstituteRole})`);
+        this.logger.debug(`âœ… Attendance access granted: Privileged role (superAdmin=${isSuperAdmin}, globalAccess=${isGlobalAccess}, instituteRole=${isPrivilegedInstituteRole})`);
       }
     }
-    
-    // ✅ Get all attendance records for the student in the date range
-    // ✅ FIXED BUG-003: Now passes instituteId from DTO instead of empty string
+
+    // âœ… Get all attendance records for the student in the date range
+    // âœ… FIXED BUG-003: Now passes instituteId from DTO instead of empty string
     const allRecords = this.syncConfigService.isMysqlOnly()
       ? await this.mysqlAttendanceService.getStudentAttendance(
-          studentId,
-          getStudentAttendanceDto.instituteId,
-          startDate,
-          endDate
-        )
+        studentId,
+        getStudentAttendanceDto.instituteId,
+        startDate,
+        endDate
+      )
       : await this.dynamoAttendanceService.getStudentAttendance(
-          studentId,
-          getStudentAttendanceDto.instituteId,
-          startDate,
-          endDate
-        );
+        studentId,
+        getStudentAttendanceDto.instituteId,
+        startDate,
+        endDate
+      );
 
     // Filter by status if provided
-    const filteredRecords = status 
+    const filteredRecords = status
       ? allRecords.filter(record => record.status === status)
       : allRecords;
 
@@ -949,10 +949,10 @@ export class AttendanceService {
       instituteName: record.instituteName,
       className: record.className,
       subjectName: record.subjectName,
-      address: (record as any).address,  // ✅ CONSOLIDATED: Include address object with lat/lng
+      address: (record as any).address,  // âœ… CONSOLIDATED: Include address object with lat/lng
       location: record.location || this.generateAddress(record.instituteName, record.className, record.subjectName),
-      latitude: (record as any).address?.latitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
-      longitude: (record as any).address?.longitude,  // ✅ CONSOLIDATED: Extract from address for backward compatibility
+      latitude: (record as any).address?.latitude,  // âœ… CONSOLIDATED: Extract from address for backward compatibility
+      longitude: (record as any).address?.longitude,  // âœ… CONSOLIDATED: Extract from address for backward compatibility
       markedBy: 'system',
       markedAt: (record as any).timestamp ? new Date((record as any).timestamp).toISOString() : record.date,
       markingMethod: record.markingMethod,
@@ -985,7 +985,7 @@ export class AttendanceService {
   }
 
   /**
-   * ✅ CARD VALIDATION HELPER
+   * âœ… CARD VALIDATION HELPER
    * Validates card status and expiry for both RFID and normal cards
    */
   private validateCardForAttendance(
@@ -1023,19 +1023,19 @@ export class AttendanceService {
     const { studentCardId, markingMethod } = markAttendanceByCardDto;
     const isNfc = markingMethod === MarkingMethod.RFID_NFC;
 
-    // ✅ DUAL LOOKUP: NFC → rfid column, QR/Barcode → cardId column
+    // âœ… DUAL LOOKUP: NFC â†’ rfid column, QR/Barcode â†’ cardId column
     let user: UserEntity | null = null;
     let cardType: 'rfid' | 'normal';
 
     if (isNfc) {
-      // NFC/RFID scan → look up by rfid column
+      // NFC/RFID scan â†’ look up by rfid column
       user = await this.userRepository.findOne({
         where: { rfid: studentCardId },
         select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
       });
       cardType = 'rfid';
     } else {
-      // QR/Barcode scan → look up by cardId column first, fallback to rfid
+      // QR/Barcode scan â†’ look up by cardId column first, fallback to rfid
       user = await this.userRepository.findOne({
         where: { cardId: studentCardId },
         select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
@@ -1057,7 +1057,7 @@ export class AttendanceService {
         message: `Student not found with card ID: ${studentCardId}`,
         cardId: studentCardId,
         scanType: isNfc ? 'NFC/RFID' : 'QR/Barcode',
-        hint: isNfc 
+        hint: isNfc
           ? 'Ensure RFID is registered in users.rfid column'
           : 'Ensure card ID is registered in users.card_id column',
         timestamp: getCurrentSriLankaISO()
@@ -1066,7 +1066,7 @@ export class AttendanceService {
       throw new Error(errorDetails.message);
     }
 
-    // ✅ VALIDATE CARD STATUS & EXPIRY
+    // âœ… VALIDATE CARD STATUS & EXPIRY
     const validation = this.validateCardForAttendance(user, cardType, studentCardId);
     if (!validation.valid) {
       return {
@@ -1099,7 +1099,7 @@ export class AttendanceService {
 
     const result = await this.markAttendance(markAttendanceDto, markedBy);
 
-    // ✅ Enrich response with card info
+    // âœ… Enrich response with card info
     return {
       ...result,
       cardInfo: {
@@ -1116,7 +1116,7 @@ export class AttendanceService {
     const cardIds = bulkCardAttendanceDto.students.map(s => s.studentCardId);
     const isNfc = bulkCardAttendanceDto.markingMethod === MarkingMethod.RFID_NFC;
 
-    // ✅ DUAL LOOKUP: NFC → rfid, QR/Barcode → cardId
+    // âœ… DUAL LOOKUP: NFC â†’ rfid, QR/Barcode â†’ cardId
     let users: UserEntity[];
     let cardType: 'rfid' | 'normal';
 
@@ -1143,12 +1143,12 @@ export class AttendanceService {
       }
     }
 
-    // Create map: scan value → user
+    // Create map: scan value â†’ user
     const userMap = isNfc || cardType === 'rfid'
       ? new Map(users.map(u => [u.rfid, u]))
       : new Map(users.map(u => [u.cardId, u]));
 
-    // ✅ VALIDATE CARD STATUS for each student
+    // âœ… VALIDATE CARD STATUS for each student
     const invalidCards: any[] = [];
     for (const student of bulkCardAttendanceDto.students) {
       const user = userMap.get(student.studentCardId);
@@ -1222,7 +1222,7 @@ export class AttendanceService {
 
       result = await this.markBulkAttendance(bulkAttendanceDto, markedBy);
     }
-    
+
     // Override imageUrls in the response for institute card-based attendance
     if (result && result.results && Array.isArray(result.results)) {
       result.results = result.results.map(record => {
@@ -1230,7 +1230,7 @@ export class AttendanceService {
           const u = userMap.get(s.studentCardId);
           return u && u.id.toString() === record.studentId;
         })?.studentCardId);
-        
+
         if (user) {
           const instituteImage = instituteImageMap.get(user.id.toString());
           try {
@@ -1242,8 +1242,8 @@ export class AttendanceService {
         return record;
       });
     }
-    
-    // ✅ Include card validation info in response
+
+    // âœ… Include card validation info in response
     return {
       ...result,
       cardValidation: {
@@ -1259,7 +1259,7 @@ export class AttendanceService {
     const { studentCardId, startDate, endDate, page = 1, limit = 10 } = getAttendanceByCardDto;
 
     if (studentCardId) {
-      // ✅ DUAL LOOKUP: try cardId first, then rfid (backward compat)
+      // âœ… DUAL LOOKUP: try cardId first, then rfid (backward compat)
       let user = await this.userRepository.findOne({
         where: { cardId: studentCardId },
         select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'rfid', 'rfidCardStatus', 'rfidExpiryDate', 'cardId', 'cardStatus', 'cardExpiryDate']
@@ -1281,24 +1281,24 @@ export class AttendanceService {
       // Get attendance for the actual student ID
       const records = this.syncConfigService.isMysqlOnly()
         ? await this.mysqlAttendanceService.getStudentAttendance(
-            user.id.toString(),
-            '', // Institute ID needed
-            startDate,
-            endDate
-          )
+          user.id.toString(),
+          '', // Institute ID needed
+          startDate,
+          endDate
+        )
         : await this.dynamoAttendanceService.getStudentAttendance(
-            user.id.toString(),
-            '', // Institute ID needed
-            startDate,
-            endDate
-          );
+          user.id.toString(),
+          '', // Institute ID needed
+          startDate,
+          endDate
+        );
 
       const totalRecords = records.length;
       const totalPages = Math.ceil(totalRecords / limit);
       const startIndex = (page - 1) * limit;
       const paginatedRecords = records.slice(startIndex, startIndex + limit);
 
-      // ✅ Enrich records with images (uses DynamoDB image first, then institute/global images)
+      // âœ… Enrich records with images (uses DynamoDB image first, then institute/global images)
       const enrichedRecords = await this.enrichAttendanceRecordsWithImages(paginatedRecords, '');
 
       const currentCardStatus = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
@@ -1484,8 +1484,8 @@ export class AttendanceService {
     const records = this.syncConfigService.isMysqlOnly()
       ? await this.mysqlAttendanceService.getStudentAttendanceByEvent(studentId, instituteId, eventId, startDate, endDate)
       : await this.dynamoAttendanceService.getStudentAttendanceByEvent(
-          studentId, instituteId, eventId, startDate, endDate
-        );
+        studentId, instituteId, eventId, startDate, endDate
+      );
     const enriched = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
@@ -1499,15 +1499,15 @@ export class AttendanceService {
 
   private generateAddress(instituteName: string, className?: string, subjectName?: string): string {
     let address = instituteName;
-    
+
     if (className) {
       address += ` - ${className}`;
     }
-    
+
     if (subjectName) {
       address += ` - ${subjectName}`;
     }
-    
+
     return address;
   }
 
@@ -1521,7 +1521,7 @@ export class AttendanceService {
     studentId?: string;
   }): Promise<any> {
     const { instituteId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
-    
+
     // Use the attendance summary method for institute-wide data
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
@@ -1539,12 +1539,12 @@ export class AttendanceService {
     // Filter by status and studentId if provided
     let filteredRecords = summary.records || [];
     if (status) {
-      filteredRecords = filteredRecords.filter(record => 
+      filteredRecords = filteredRecords.filter(record =>
         record.status.toLowerCase() === status.toLowerCase()
       );
     }
     if (studentId) {
-      filteredRecords = filteredRecords.filter(record => 
+      filteredRecords = filteredRecords.filter(record =>
         record.studentId === studentId
       );
     }
@@ -1591,7 +1591,7 @@ export class AttendanceService {
     studentId?: string;
   }): Promise<any> {
     const { instituteId, classId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
-    
+
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
       : this.dynamoAttendanceService;
@@ -1608,12 +1608,12 @@ export class AttendanceService {
     // Filter by status and studentId if provided
     let filteredRecords = summary.records || [];
     if (status) {
-      filteredRecords = filteredRecords.filter(record => 
+      filteredRecords = filteredRecords.filter(record =>
         record.status.toLowerCase() === status.toLowerCase()
       );
     }
     if (studentId) {
-      filteredRecords = filteredRecords.filter(record => 
+      filteredRecords = filteredRecords.filter(record =>
         record.studentId === studentId
       );
     }
@@ -1661,7 +1661,7 @@ export class AttendanceService {
     studentId?: string;
   }): Promise<any> {
     const { instituteId, classId, subjectId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
-    
+
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
       : this.dynamoAttendanceService;
@@ -1674,11 +1674,11 @@ export class AttendanceService {
       undefined, // limit
       true       // includeRecords
     );
-    
+
     // Filter by status and studentId if provided
     let filteredRecords = summary.records || [];
     if (status) {
-      filteredRecords = filteredRecords.filter(record => 
+      filteredRecords = filteredRecords.filter(record =>
         record.status.toLowerCase() === status.toLowerCase()
       );
     }
@@ -1719,9 +1719,9 @@ export class AttendanceService {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // MONTHLY ATTENDANCE COUNT APIs
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async getInstituteMonthlyCount(instituteId: string, year: number, month: number): Promise<any> {
     const dbService = this.syncConfigService.isMysqlOnly()
@@ -1820,7 +1820,7 @@ export class AttendanceService {
   }
 
   private scheduleAttendanceNotification(markAttendanceDto: MarkAttendanceDto, attendanceResult: any, studentData?: any): void {
-    // Only send notifications for absent and late statuses — present/left/etc. don't notify
+    // Only send notifications for absent and late statuses â€” present/left/etc. don't notify
     const status = markAttendanceDto.status;
     if (status !== AttendanceStatus.ABSENT && status !== AttendanceStatus.LATE) {
       return;
@@ -1830,7 +1830,7 @@ export class AttendanceService {
   }
 
   /**
-   * 🎯 ADVERTISING INTEGRATION: Send attendance notification with advertising logic
+   * ðŸŽ¯ ADVERTISING INTEGRATION: Send attendance notification with advertising logic
    * This ensures that when attendance is marked, the advertising system is triggered
    * with proper subscription plan filtering and environment validation
    */
@@ -1846,7 +1846,7 @@ export class AttendanceService {
 
       // Reuse student data if already fetched, otherwise fetch it
       const data = studentData || await this.fetchStudentWithParentData(markAttendanceDto.studentId);
-      
+
       if (!data.student || (!data.parentContact && !data.parentEmail && !data.parentTelegramId)) {
         return;
       }
@@ -1859,7 +1859,7 @@ export class AttendanceService {
 
       // Prepare ad data based on config
       let advertisementData = null;
-      
+
       if (isAdsEnabled) {
         if (isAdsFromDB) {
           // Fetch from database
@@ -1886,8 +1886,8 @@ export class AttendanceService {
       const notificationData = {
         studentId: markAttendanceDto.studentId,
         studentName: data.student.user.nameWithInitials || `${data.student.user.firstName} ${data.student.user.lastName || ''}`.trim(),
-        parentName: data.primaryParent ? 
-          (data.primaryParent.nameWithInitials || `${data.primaryParent.firstName} ${data.primaryParent.lastName || ''}`.trim()) : 
+        parentName: data.primaryParent ?
+          (data.primaryParent.nameWithInitials || `${data.primaryParent.firstName} ${data.primaryParent.lastName || ''}`.trim()) :
           'Parent/Guardian',
         parentContact: data.parentContact,
         parentEmail: data.parentEmail,
@@ -1912,7 +1912,7 @@ export class AttendanceService {
 
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
 
-      // ✅ BUG-B FIX: Only increment currentSendings AFTER successful delivery
+      // âœ… BUG-B FIX: Only increment currentSendings AFTER successful delivery
       if (this.shouldTrackAdvertisementSending(advertisementData) && notificationResult.successfulChannels > 0) {
         this.advertisementRepository.increment(
           { id: advertisementData.id },
@@ -1921,15 +1921,15 @@ export class AttendanceService {
         ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
       }
 
-      // ✅ Store matched advertisement ID on the attendance record for delivery tracking
+      // âœ… Store matched advertisement ID on the attendance record for delivery tracking
       if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && advertisementData.id !== 'default-fallback' && attendanceResult?.id) {
         this.dynamoAttendanceService.patchAdvertisementId(attendanceResult.id, advertisementData.id)
           .catch(err => this.logger.warn(`Failed to patch advertisementId: ${err.message}`));
       }
 
-      // ✅ SELF-NOTIFICATION: Send notification to the student themselves
+      // âœ… SELF-NOTIFICATION: Send notification to the student themselves
       await this.sendSelfAttendanceNotification(markAttendanceDto, data.student?.user);
-      
+
     } catch (error) {
       this.logger.warn(`Attendance notification failed (non-blocking): ${error.message}`);
     }
@@ -1953,10 +1953,10 @@ export class AttendanceService {
   }
 
   /**
-   * 🔥 FIRE-AND-FORGET IMMEDIATE NOTIFICATION SENDING
+   * ðŸ”¥ FIRE-AND-FORGET IMMEDIATE NOTIFICATION SENDING
    * Sends notifications immediately with pre-loaded data (no additional queries needed)
    * Fetches matching advertisement from database and sends notification
-   * 🎯 CASCADE TO PARENTS: If ad has cascadeToParents=true, sends SAME ad to ALL parents
+   * ðŸŽ¯ CASCADE TO PARENTS: If ad has cascadeToParents=true, sends SAME ad to ALL parents
    * This method runs async and doesn't block the attendance response
    */
   private async sendImmediateNotification(params: {
@@ -2000,19 +2000,19 @@ export class AttendanceService {
       const normalizedPlan = String(subscriptionPlan || 'FREE').toUpperCase();
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
       const shouldReceiveAds = this.adsDeliveryEnabled && packageConfig?.isAds === true;
-      
+
       let advertisementData: any = null;
 
       if (shouldReceiveAds) {
         if (isAdsFromDB) {
-          // 🎯 Fetch MOST MATCHING advertisement using multi-factor profile matching
+          // ðŸŽ¯ Fetch MOST MATCHING advertisement using multi-factor profile matching
           advertisementData = await this.getMatchingAdvertisementFromDB(
             subscriptionPlan,
             studentData,
             instituteId
           );
         } else {
-          // 🏢 Use default company branding from environment
+          // ðŸ¢ Use default company branding from environment
           advertisementData = {
             id: 'default-company-ad',
             mediaUrl: process.env.DEFAULT_AD_URL || '',
@@ -2052,10 +2052,10 @@ export class AttendanceService {
         advertisementData
       };
 
-      // 🚀 Send notification immediately (fire-and-forget)
+      // ðŸš€ Send notification immediately (fire-and-forget)
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
 
-      // ✅ BUG-B FIX: Only increment currentSendings AFTER successful delivery
+      // âœ… BUG-B FIX: Only increment currentSendings AFTER successful delivery
       if (this.shouldTrackAdvertisementSending(advertisementData) && notificationResult.successfulChannels > 0) {
         this.advertisementRepository.increment(
           { id: advertisementData.id },
@@ -2064,15 +2064,15 @@ export class AttendanceService {
         ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
       }
 
-      // ✅ Store matched advertisement ID on the attendance record for delivery tracking
+      // âœ… Store matched advertisement ID on the attendance record for delivery tracking
       if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && advertisementData.id !== 'default-fallback' && attendanceId) {
         this.dynamoAttendanceService.patchAdvertisementId(attendanceId, advertisementData.id)
           .catch(err => this.logger.warn(`Failed to patch advertisementId: ${err.message}`));
       }
 
-      // ✅ SELF-NOTIFICATION: Send notification to the student themselves
+      // âœ… SELF-NOTIFICATION: Send notification to the student themselves
       await this.sendSelfAttendanceNotification(attendanceDto, studentData?.user);
-      
+
       // CASCADE TO PARENTS FEATURE
       // If ad has cascadeToParents=true, send SAME ad to ALL parents (not just primary)
       if (advertisementData?.cascadeToParents && studentData) {
@@ -2080,20 +2080,20 @@ export class AttendanceService {
       }
 
     } catch (error) {
-      this.logger.error(`❌ Notification failed: ${error.message}`, error.stack);
+      this.logger.error(`âŒ Notification failed: ${error.message}`, error.stack);
       // Don't throw - notifications are fire-and-forget
     }
   }
 
   /**
-   * 🎯 CASCADE ADVERTISEMENT TO ALL PARENTS
+   * ðŸŽ¯ CASCADE ADVERTISEMENT TO ALL PARENTS
    * When an ad matches a student and cascadeToParents=true, 
    * sends the SAME ad to ALL parents (father, mother, guardian)
    * 
    * Example: "Grade 10 girls tuition" ad matches female student
-   * → Father gets this ad
-   * → Mother gets this ad  
-   * → Guardian gets this ad
+   * â†’ Father gets this ad
+   * â†’ Mother gets this ad  
+   * â†’ Guardian gets this ad
    * All parents see the relevant ad about their child's need
    */
   private async cascadeAdToAllParents(
@@ -2103,7 +2103,7 @@ export class AttendanceService {
   ): Promise<void> {
     try {
       const studentName = studentData.user?.nameWithInitials || `${studentData.user?.firstName || ''} ${studentData.user?.lastName || ''}`.trim();
-      const allParents: Array<{type: string, user: any}> = [];
+      const allParents: Array<{ type: string, user: any }> = [];
 
       // Collect all available parents
       if (studentData.father?.user) {
@@ -2117,7 +2117,7 @@ export class AttendanceService {
       }
 
       if (allParents.length === 0) {
-        this.logger.warn(`⚠️ No parents found for cascade for student ${studentData.userId}`);
+        this.logger.warn(`âš ï¸ No parents found for cascade for student ${studentData.userId}`);
         return;
       }
 
@@ -2125,7 +2125,7 @@ export class AttendanceService {
       const cascadeResults = await Promise.allSettled(allParents.map(async (parent) => {
         try {
           const parentUser = parent.user;
-          
+
           // Check if parent has contact info
           if (!parentUser.phoneNumber && !parentUser.email && !parentUser.telegramId) {
             return;
@@ -2155,7 +2155,7 @@ export class AttendanceService {
             vehicleNumber: null,
             bookhireName: null,
             subscriptionPlan: parentSubscriptionPlan,
-            advertisementData: advertisementData  // 🎯 SAME ad for ALL parents
+            advertisementData: advertisementData  // ðŸŽ¯ SAME ad for ALL parents
           };
 
           // Send notification (fire-and-forget)
@@ -2166,9 +2166,9 @@ export class AttendanceService {
           }
 
           return false;
-          
+
         } catch (error) {
-          this.logger.error(`❌ Failed to cascade ad to ${parent.type}: ${error.message}`);
+          this.logger.error(`âŒ Failed to cascade ad to ${parent.type}: ${error.message}`);
           // Continue with other parents
           return false;
         }
@@ -2191,13 +2191,13 @@ export class AttendanceService {
       }
 
     } catch (error) {
-      this.logger.error(`❌ Cascade to parents failed: ${error.message}`, error.stack);
+      this.logger.error(`âŒ Cascade to parents failed: ${error.message}`, error.stack);
       // Don't throw - notifications are fire-and-forget
     }
   }
 
   /**
-   * 📊 Get MOST MATCHING advertisement from database for individual person
+   * ðŸ“Š Get MOST MATCHING advertisement from database for individual person
    * Uses multi-factor matching: userType, subscriptionPlan, age, gender, location, institute
    * Returns the best personalized advertisement based on complete user profile
    */
@@ -2207,7 +2207,7 @@ export class AttendanceService {
     instituteId: string
   ): Promise<any> {
     try {
-      // 🎯 Build complete user profile for sophisticated matching
+      // ðŸŽ¯ Build complete user profile for sophisticated matching
       const userProfile = {
         userId: studentData.userId,
         userType: studentData.user.userType || 'STUDENT',
@@ -2234,7 +2234,7 @@ export class AttendanceService {
         const bestMatch = matches[0];
         const advertisement = bestMatch.advertisement;
 
-        // ✅ BUG-B FIX: currentSendings increment moved to AFTER successful notification delivery
+        // âœ… BUG-B FIX: currentSendings increment moved to AFTER successful notification delivery
         // (see sendImmediateNotification and sendAttendanceNotificationWithAdvertising)
 
         return {
@@ -2248,11 +2248,11 @@ export class AttendanceService {
           modeOfSending: advertisement.modeOfSending || [],
           matchScore: bestMatch.matchScore,
           matchReasons: bestMatch.matchReasons,
-          cascadeToParents: advertisement.cascadeToParents || false  // 🎯 Include cascade flag
+          cascadeToParents: advertisement.cascadeToParents || false  // ðŸŽ¯ Include cascade flag
         };
       }
 
-      this.logger.warn(`⚠️ No matching advertisement found for user ${userProfile.userId}, using default fallback`);
+      this.logger.warn(`âš ï¸ No matching advertisement found for user ${userProfile.userId}, using default fallback`);
 
       // Fallback to default ad if no matching ad found
       return {
@@ -2269,7 +2269,7 @@ export class AttendanceService {
         cascadeToParents: false  // Default ads don't cascade
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to fetch matching advertisement: ${error.message}`, error.stack);
+      this.logger.error(`âŒ Failed to fetch matching advertisement: ${error.message}`, error.stack);
       // Return default ad on error
       return {
         id: 'default-error-fallback',
@@ -2288,9 +2288,9 @@ export class AttendanceService {
   }
 
   /**
-   * 🔔 SELF-NOTIFICATION: Send a push notification to the person whose attendance was marked.
+   * ðŸ”” SELF-NOTIFICATION: Send a push notification to the person whose attendance was marked.
    * If "I" mark attendance and I am the student, I should also receive "Your attendance marked" notification.
-   * Fire-and-forget — never blocks the response.
+   * Fire-and-forget â€” never blocks the response.
    */
   private async sendSelfAttendanceNotification(
     attendanceDto: MarkAttendanceDto,
@@ -2303,8 +2303,8 @@ export class AttendanceService {
       const userId = String(userData.id);
       const statusLabel = attendanceDto.status === AttendanceStatus.PRESENT ? 'Present'
         : attendanceDto.status === AttendanceStatus.ABSENT ? 'Absent'
-        : attendanceDto.status === AttendanceStatus.LATE ? 'Late'
-        : String(attendanceDto.status);
+          : attendanceDto.status === AttendanceStatus.LATE ? 'Late'
+            : String(attendanceDto.status);
 
       const locationParts = [
         attendanceDto.instituteName,
@@ -2314,7 +2314,7 @@ export class AttendanceService {
       const locationStr = locationParts.length > 0 ? ` at ${locationParts.join(' / ')}` : '';
       const timeStr = formatSriLankaTime(now());
 
-      const title = `✅ Attendance Marked`;
+      const title = `âœ… Attendance Marked`;
       const body = `Your attendance was marked as ${statusLabel}${locationStr} at ${timeStr} on ${attendanceDto.date}.`;
 
       // Use FCM service directly for a lightweight push to the user's own device tokens
@@ -2363,15 +2363,15 @@ export class AttendanceService {
   }
 
   /**
-   * 🏭 INDUSTRIAL-GRADE DATA FETCHING: Get real student with parent data
+   * ðŸ­ INDUSTRIAL-GRADE DATA FETCHING: Get real student with parent data
    */
   /**
-   * 👥 Fetch student names from database (bulk operation)
+   * ðŸ‘¥ Fetch student names from database (bulk operation)
    * Returns a Map of studentId -> studentName
    */
   private async fetchStudentNames(studentIds: string[]): Promise<Map<string, string>> {
     const studentNamesMap = new Map<string, string>();
-    
+
     try {
       // Batch fetch all students with their user data
       const students = await this.studentRepository.find({
@@ -2500,7 +2500,7 @@ export class AttendanceService {
       let parentEmail: string | null = null;
       let parentTelegramId: string | null = null;
 
-      // Priority: Father → Mother → Guardian
+      // Priority: Father â†’ Mother â†’ Guardian
       if (student.father?.user) {
         primaryParent = student.father.user;
       } else if (student.mother?.user) {
@@ -2533,7 +2533,7 @@ export class AttendanceService {
       };
 
     } catch (error) {
-      this.logger.error(`❌ Failed to fetch student data: ${error.message}`);
+      this.logger.error(`âŒ Failed to fetch student data: ${error.message}`);
       this.logger.error(`   Stack: ${error.stack}`);
       return {
         student: null,
@@ -2588,7 +2588,7 @@ export class AttendanceService {
   }
 
   /**
-   * 📇 GET INSTITUTE USER BY CARD ID
+   * ðŸ“‡ GET INSTITUTE USER BY CARD ID
    * Fetches institute user details including image URL logic:
    * - If imageVerificationStatus is VERIFIED, use instituteUserImageUrl
    * - Otherwise, use global user.imageUrl
@@ -2598,9 +2598,9 @@ export class AttendanceService {
 
     // Query institute_user table with card ID and institute ID
     const instituteUser = await this.instituteUserRepository.findOne({
-      where: { 
-        instituteCardId, 
-        instituteId 
+      where: {
+        instituteCardId,
+        instituteId
       },
       relations: ['user'],
       select: {
@@ -2640,8 +2640,8 @@ export class AttendanceService {
     // 1. If imageVerificationStatus is VERIFIED, use instituteUserImageUrl
     // 2. Otherwise, use global user.imageUrl
     const isVerified = instituteUser.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
-    const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl 
-      ? instituteUser.instituteUserImageUrl 
+    const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl
+      ? instituteUser.instituteUserImageUrl
       : (instituteUser.user?.imageUrl || null);
 
     let imageUrl = finalImageUrl;
@@ -2668,21 +2668,21 @@ export class AttendanceService {
   }
 
   /**
-   * 📝 MARK ATTENDANCE BY INSTITUTE CARD ID
+   * ðŸ“ MARK ATTENDANCE BY INSTITUTE CARD ID
    * Main attendance marking logic using institute card ID
    * - Looks up user via institute_user table by instituteCardId
    * - Gets user name from users table JOIN
    * - Applies image URL logic (institute verified vs global)
-   * - ✅ ENHANCED: Works for ALL user types (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.)
+   * - âœ… ENHANCED: Works for ALL user types (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.)
    * - Only fetches parent data & sends notifications for STUDENT type
    */
   async markAttendanceByInstituteCard(
-    markAttendanceDto: MarkAttendanceByInstituteCardDto, 
+    markAttendanceDto: MarkAttendanceByInstituteCardDto,
     markedBy: string
   ): Promise<any> {
     const { instituteCardId, instituteId } = markAttendanceDto;
 
-    // ✅ STEP 1: Query institute_user with user data (works for ALL user types)
+    // âœ… STEP 1: Query institute_user with user data (works for ALL user types)
     const instituteUser = await this.instituteUserRepository
       .createQueryBuilder('institute_user')
       .leftJoinAndSelect('institute_user.user', 'user')
@@ -2713,7 +2713,7 @@ export class AttendanceService {
       );
     }
 
-    // ✅ STEP 2: Determine institute user type
+    // âœ… STEP 2: Determine institute user type
     const typeMap: Record<string, AttendanceUserType> = {
       [InstituteUserType.STUDENT]: AttendanceUserType.STUDENT,
       [InstituteUserType.TEACHER]: AttendanceUserType.TEACHER,
@@ -2724,7 +2724,7 @@ export class AttendanceService {
     const detectedUserType = typeMap[instituteUser.instituteUserType] || AttendanceUserType.STUDENT;
     const isStudent = detectedUserType === AttendanceUserType.STUDENT;
 
-    // ✅ STEP 3: Fetch data based on user type
+    // âœ… STEP 3: Fetch data based on user type
     let userName: string;
     let notificationName: string = '';
     let globalImageUrl: string | null = null;
@@ -2772,7 +2772,7 @@ export class AttendanceService {
       globalImageUrl = studentData.user.imageUrl || null;
       subscriptionPlan = studentData.user.subscriptionPlan || 'FREE';
 
-      // Extract parent info (Priority: Father → Mother → Guardian)
+      // Extract parent info (Priority: Father â†’ Mother â†’ Guardian)
       if (studentData.father?.user) {
         parentContact = studentData.father.user.phoneNumber || null;
         parentEmail = studentData.father.user.email || null;
@@ -2803,13 +2803,13 @@ export class AttendanceService {
 
     const studentId = instituteUser.userId;
 
-    // ✅ STEP 4: Image URL logic (works for all user types)
+    // âœ… STEP 4: Image URL logic (works for all user types)
     const isVerified = instituteUser.imageVerificationStatus === ImageVerificationStatus.VERIFIED;
-    const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl 
-      ? instituteUser.instituteUserImageUrl 
+    const finalImageUrl = isVerified && instituteUser.instituteUserImageUrl
+      ? instituteUser.instituteUserImageUrl
       : globalImageUrl;
 
-    // ✅ STEP 5: Build attendance DTO with auto-detected userType
+    // âœ… STEP 5: Build attendance DTO with auto-detected userType
     const attendanceDto: MarkAttendanceDto = {
       studentId: studentId,
       studentName: userName,
@@ -2822,7 +2822,7 @@ export class AttendanceService {
       subjectName: markAttendanceDto.subjectName || '',
       status: markAttendanceDto.status,
       markingMethod: markAttendanceDto.markingMethod,
-      userType: detectedUserType,  // ✅ Auto-detected user type
+      userType: detectedUserType,  // âœ… Auto-detected user type
       date: getCurrentSriLankaDate(),
       location: markAttendanceDto.location || this.generateAddress(
         markAttendanceDto.instituteName,
@@ -2831,7 +2831,7 @@ export class AttendanceService {
       )
     };
 
-    // ✅ STEP 6: Mark attendance based on database mode
+    // âœ… STEP 6: Mark attendance based on database mode
     const isMysqlOnlyMode = this.syncConfigService.isMysqlOnly();
     let result: any;
 
@@ -2842,7 +2842,7 @@ export class AttendanceService {
       // Both mode: write to DynamoDB first, then sync to MySQL
       result = await this.dynamoAttendanceService.markAttendance(attendanceDto);
 
-      // ✅ STEP 6.5: Sync to MySQL based on system-wide sync mode
+      // âœ… STEP 6.5: Sync to MySQL based on system-wide sync mode
       try {
         const syncMode = this.syncConfigService.getSyncModeSync();
         if (syncMode === AttendanceSyncMode.IMMEDIATE) {
@@ -2855,10 +2855,10 @@ export class AttendanceService {
       }
     }
 
-    // ✅ STEP 7: Send notifications ONLY for students (non-blocking)
+    // âœ… STEP 7: Send notifications ONLY for students (non-blocking)
     if (isStudent && (parentContact || parentEmail || parentTelegramId)) {
       const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
-      
+
       this.sendImmediateNotification({
         studentId,
         studentName: notificationName,
@@ -2878,7 +2878,7 @@ export class AttendanceService {
       });
     }
 
-    // ✅ STEP 8: Return response with user type info
+    // âœ… STEP 8: Return response with user type info
     return {
       success: true,
       message: 'Attendance marked successfully using institute card',
@@ -2888,7 +2888,7 @@ export class AttendanceService {
       status: markAttendanceDto.status,
       name: userName,
       nameWithInitials: (isStudent ? studentData?.user?.nameWithInitials : instituteUser.user?.nameWithInitials) || null,
-      userType: detectedUserType,  // ✅ NEW: Return user type
+      userType: detectedUserType,  // âœ… NEW: Return user type
       instituteCardId: instituteCardId,
       userIdByInstitute: instituteUser.userIdByInstitute,
       data: {
@@ -2902,7 +2902,7 @@ export class AttendanceService {
         date: attendanceDto.date,
         location: attendanceDto.location,
         markingMethod: markAttendanceDto.markingMethod,
-        userType: detectedUserType,  // ✅ NEW: Include in data too
+        userType: detectedUserType,  // âœ… NEW: Include in data too
         markedAt: getCurrentSriLankaISO()
       }
     };
@@ -2920,7 +2920,7 @@ export class AttendanceService {
     // Check if enrollment validation is enabled via environment variable
     const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
     const shouldValidate = envValue === 'true';
-    
+
     if (!shouldValidate) {
       return;
     }
@@ -2980,9 +2980,9 @@ export class AttendanceService {
     return this.validateUserEnrollment(studentId, instituteId, AttendanceUserType.STUDENT);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // MY ATTENDANCE HISTORY — self-service, enriched with institute + class details
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // MY ATTENDANCE HISTORY â€” self-service, enriched with institute + class details
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Returns the calling user's own attendance history from DynamoDB.
@@ -3005,7 +3005,7 @@ export class AttendanceService {
       userIdsToFetch.push(...childrenIds);
     }
 
-    // Default date range: last 30 days → today
+    // Default date range: last 30 days â†’ today
     const today = getCurrentSriLankaDate();
     const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const startDate = query.startDate || defaultStart;
@@ -3046,21 +3046,21 @@ export class AttendanceService {
     const [classes, users, institutes] = await Promise.all([
       uniqueClassIds.length
         ? this.classRepository.find({
-            where: { id: In(uniqueClassIds) as any },
-            select: ['id', 'name'],
-          })
+          where: { id: In(uniqueClassIds) as any },
+          select: ['id', 'name'],
+        })
         : Promise.resolve([]),
       uniqueStudentIds.length
         ? this.userRepository.find({
-            where: { id: In(uniqueStudentIds) as any },
-            select: ['id', 'imageUrl'],
-          })
+          where: { id: In(uniqueStudentIds) as any },
+          select: ['id', 'imageUrl'],
+        })
         : Promise.resolve([]),
       uniqueInstituteIds.length
         ? this.instituteRepository.find({
-            where: { id: In(uniqueInstituteIds) as any },
-            select: ['id', 'logoUrl'],
-          })
+          where: { id: In(uniqueInstituteIds) as any },
+          select: ['id', 'logoUrl'],
+        })
         : Promise.resolve([]),
     ]);
 
@@ -3076,11 +3076,11 @@ export class AttendanceService {
 
     const statusLabels: Record<string, string> = {
       [AttendanceStatus.PRESENT]: 'Present',
-      [AttendanceStatus.ABSENT]:  'Absent',
-      [AttendanceStatus.LATE]:    'Late',
-      [AttendanceStatus.LEFT]:    'Left',
-      [AttendanceStatus.LEFT_EARLY]:   'Left Early',
-      [AttendanceStatus.LEFT_LATELY]:  'Left Lately',
+      [AttendanceStatus.ABSENT]: 'Absent',
+      [AttendanceStatus.LATE]: 'Late',
+      [AttendanceStatus.LEFT]: 'Left',
+      [AttendanceStatus.LEFT_EARLY]: 'Left Early',
+      [AttendanceStatus.LEFT_LATELY]: 'Left Lately',
     };
 
     const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
@@ -3090,8 +3090,8 @@ export class AttendanceService {
       const dbClass = cid ? classMap.get(cid) : undefined;
 
       const instituteName = r.instituteName || iid;
-      const className     = dbClass?.name   || r.className || undefined;
-      const studentName   = r.studentName;
+      const className = dbClass?.name || r.className || undefined;
+      const studentName = r.studentName;
 
       // Resolve student image: prefer record-level (stored at marking), fall back to user profile
       const rawStudentImg = (r as any).studentImageUrl || (r as any).imageUrl;
@@ -3106,7 +3106,7 @@ export class AttendanceService {
       if (!byInstitute[iid]) {
         byInstitute[iid] = { instituteName, instituteLogoUrl, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
       }
-      
+
       // Summary counters - by student (when children included)
       if (child && childrenIds.includes(sid)) {
         if (!byStudent[sid]) {
@@ -3116,12 +3116,12 @@ export class AttendanceService {
       }
 
       // Status counters
-      if (r.status === AttendanceStatus.PRESENT)       { totalPresent++;    byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
-      else if (r.status === AttendanceStatus.ABSENT)   { totalAbsent++;     byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
-      else if (r.status === AttendanceStatus.LATE)     { totalLate++;       byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
-      else if (r.status === AttendanceStatus.LEFT)     { totalLeft++;       byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
-      else if (r.status === AttendanceStatus.LEFT_EARLY)   { totalLeftEarly++;  byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
-      else if (r.status === AttendanceStatus.LEFT_LATELY)  { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
+      if (r.status === AttendanceStatus.PRESENT) { totalPresent++; byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
+      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++; byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
+      else if (r.status === AttendanceStatus.LATE) { totalLate++; byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
+      else if (r.status === AttendanceStatus.LEFT) { totalLeft++; byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
+      else if (r.status === AttendanceStatus.LEFT_EARLY) { totalLeftEarly++; byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
+      else if (r.status === AttendanceStatus.LEFT_LATELY) { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
 
       return {
         date: r.date,
@@ -3165,8 +3165,8 @@ export class AttendanceService {
 
     // 6. Paginate
     const totalRecords = enriched.length;
-    const totalPages   = Math.ceil(totalRecords / limit);
-    const paginated    = enriched.slice((page - 1) * limit, page * limit);
+    const totalPages = Math.ceil(totalRecords / limit);
+    const paginated = enriched.slice((page - 1) * limit, page * limit);
     const presentAbsent = totalPresent + totalAbsent;
     const attendanceRate = presentAbsent > 0
       ? parseFloat(((totalPresent / presentAbsent) * 100).toFixed(2))
@@ -3174,7 +3174,7 @@ export class AttendanceService {
 
     return {
       success: true,
-      message: child && childrenIds.length > 0 
+      message: child && childrenIds.length > 0
         ? `Attendance history retrieved successfully for you and ${childrenIds.length} child(ren)`
         : 'Attendance history retrieved successfully',
       pagination: {
@@ -3188,13 +3188,13 @@ export class AttendanceService {
       data: paginated,
       summary: { totalPresent, totalAbsent, totalLate, totalLeft, totalLeftEarly, totalLeftLately, attendanceRate },
       byInstitute,
-      ...(child && childrenIds.length > 0 && { byStudent }),  // ✅ Include per-student breakdown when children data included
+      ...(child && childrenIds.length > 0 && { byStudent }),  // âœ… Include per-student breakdown when children data included
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // CLASS ATTENDANCE FROM INSTITUTE — new features
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // CLASS ATTENDANCE FROM INSTITUTE â€” new features
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private static readonly ATTENDANCE_STATUS_MAP: Record<number, string> = {
     0: 'absent',
@@ -3220,7 +3220,7 @@ export class AttendanceService {
 
     const queryDate = date || getCurrentSriLankaDate();
 
-    // ── 1. All active+verified students in this class ──────────────────────
+    // â”€â”€ 1. All active+verified students in this class â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const enrolled = await this.classStudentRepository.find({
       where: { instituteId, classId, isActive: true, isVerified: true },
       select: { instituteId: true, classId: true, studentUserId: true },
@@ -3237,7 +3237,7 @@ export class AttendanceService {
 
     const studentIds = enrolled.map(e => e.studentUserId);
 
-    // ── 2. Fetch user names + global images ────────────────────────────────
+    // â”€â”€ 2. Fetch user names + global images â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [users, instituteUsers] = await Promise.all([
       this.userRepository.find({
         where: { id: In(studentIds) as any },
@@ -3252,7 +3252,7 @@ export class AttendanceService {
     const userMap = new Map(users.map(u => [String(u.id), u]));
     const instituteUserMap = new Map(instituteUsers.map(iu => [String(iu.userId), iu]));
 
-    // ── 3. Institute-level attendance (classId IS NULL) for these students ─
+    // â”€â”€ 3. Institute-level attendance (classId IS NULL) for these students â”€
     const instituteAttendanceRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -3271,7 +3271,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 4. Class-level attendance (classId = classId) for these students ──
+    // â”€â”€ 4. Class-level attendance (classId = classId) for these students â”€â”€
     const classAttendanceRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -3288,7 +3288,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 5. Build response items ────────────────────────────────────────────
+    // â”€â”€ 5. Build response items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const data = studentIds.map(studentId => {
       const user = userMap.get(studentId);
       const iu = instituteUserMap.get(studentId);
@@ -3307,29 +3307,29 @@ export class AttendanceService {
 
       const instituteAttendance = instRec
         ? {
-            statusCode: instRec.status,
-            status: AttendanceService.ATTENDANCE_STATUS_MAP[instRec.status] ?? 'unknown',
-            date: instRec.date,
-            time: formatSriLankaTime(new Date(parseInt(instRec.timestamp))),
-            timestamp: instRec.timestamp,
-            remarks: instRec.remarks,
-          }
+          statusCode: instRec.status,
+          status: AttendanceService.ATTENDANCE_STATUS_MAP[instRec.status] ?? 'unknown',
+          date: instRec.date,
+          time: formatSriLankaTime(new Date(parseInt(instRec.timestamp))),
+          timestamp: instRec.timestamp,
+          remarks: instRec.remarks,
+        }
         : null;
 
       const classAttendance = clsRec
         ? {
-            statusCode: clsRec.status,
-            status: AttendanceService.ATTENDANCE_STATUS_MAP[clsRec.status] ?? 'unknown',
-            date: clsRec.date,
-            time: formatSriLankaTime(new Date(parseInt(clsRec.timestamp))),
-            timestamp: clsRec.timestamp,
-          }
+          statusCode: clsRec.status,
+          status: AttendanceService.ATTENDANCE_STATUS_MAP[clsRec.status] ?? 'unknown',
+          date: clsRec.date,
+          time: formatSriLankaTime(new Date(parseInt(clsRec.timestamp))),
+          timestamp: clsRec.timestamp,
+        }
         : null;
 
       return { studentId, studentName: name, studentImageUrl: resolvedImage, instituteAttendance, classAttendance };
     });
 
-    // ── 6. Summary stats ──────────────────────────────────────────────────
+    // â”€â”€ 6. Summary stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const presentInInstitute = data.filter(
       d => d.instituteAttendance !== null && d.instituteAttendance.statusCode !== 0,
     ).length;
@@ -3358,10 +3358,10 @@ export class AttendanceService {
    *
    * Strategy:
    *   - Student has institute attendance with status != ABSENT (codes 1-5)
-   *     → mark PRESENT at class level  (if markPresentFromInstitute: true, default)
+   *     â†’ mark PRESENT at class level  (if markPresentFromInstitute: true, default)
    *   - Student has NO institute attendance, OR institute status is ABSENT (0)
-   *     → mark ABSENT at class level   (if markAbsentForUnmarked: true, default)
-   *   - Student already has class-level attendance → always skipped (idempotent)
+   *     â†’ mark ABSENT at class level   (if markAbsentForUnmarked: true, default)
+   *   - Student already has class-level attendance â†’ always skipped (idempotent)
    *
    * POST /api/attendance/institute/:instituteId/class/:classId/bulk-mark-from-institute
    */
@@ -3380,14 +3380,14 @@ export class AttendanceService {
     const todayDate = getCurrentSriLankaDate();
     const queryDate = dto.date || todayDate;
 
-    // ── 0. Date validation: only today's date is allowed ──────────────────
+    // â”€â”€ 0. Date validation: only today's date is allowed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (queryDate !== todayDate) {
       throw new BadRequestException(
         `Attendance can only be marked for today (${todayDate}). Received date: ${queryDate}`,
       );
     }
 
-    // ── 1. All active+verified students in this class ──────────────────────
+    // â”€â”€ 1. All active+verified students in this class â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const enrolled = await this.classStudentRepository.find({
       where: { instituteId, classId, isActive: true, isVerified: true },
       select: { instituteId: true, classId: true, studentUserId: true },
@@ -3404,7 +3404,7 @@ export class AttendanceService {
 
     const studentIds = enrolled.map(e => e.studentUserId);
 
-    // ── 2. Institute-level attendance ─────────────────────────────────────
+    // â”€â”€ 2. Institute-level attendance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const instituteAttendanceRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -3422,7 +3422,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 3. Existing class-level attendance (skip already-marked) ──────────
+    // â”€â”€ 3. Existing class-level attendance (skip already-marked) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const existingClassRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -3440,7 +3440,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 4. Build student overrides map ──────────────────────────────────
+    // â”€â”€ 4. Build student overrides map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const overridesMap = new Map<string, AttendanceStatus>();
     if (dto.studentOverrides && dto.studentOverrides.length > 0) {
       for (const override of dto.studentOverrides) {
@@ -3448,13 +3448,13 @@ export class AttendanceService {
       }
     }
 
-    // Status string → numeric code helper
+    // Status string â†’ numeric code helper
     const statusToCode = (s: AttendanceStatus): number => {
       const map: Record<string, number> = { present: 1, absent: 0, late: 2, left: 3, left_early: 4, left_lately: 5 };
       return map[s] ?? 1;
     };
 
-    // ── 5. Classify each student ──────────────────────────────────────────
+    // â”€â”€ 5. Classify each student â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const toMarkPresent: string[] = [];
     const toMarkAbsent: string[] = [];
     const toMarkOther: { studentId: string; status: AttendanceStatus }[] = [];
@@ -3468,7 +3468,7 @@ export class AttendanceService {
 
       if (alreadyMarkedSet.has(studentId)) {
         if (overrideStatus) {
-          // Student is already marked but has an override → UPDATE existing record's status
+          // Student is already marked but has an override â†’ UPDATE existing record's status
           const existingRecord = existingClassMap.get(studentId);
           if (existingRecord) {
             toUpdateStatus.push({ studentId, status: overrideStatus, record: existingRecord });
@@ -3512,7 +3512,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 5b. Update status of already-marked students (override = status change only) ──
+    // â”€â”€ 5b. Update status of already-marked students (override = status change only) â”€â”€
     const updatedResults: any[] = [];
     for (const item of toUpdateStatus) {
       try {
@@ -3537,7 +3537,7 @@ export class AttendanceService {
           success: true,
         });
       } catch (err) {
-        this.logger.error(`bulkMarkClass: status update failed for ${item.studentId} — ${err.message}`);
+        this.logger.error(`bulkMarkClass: status update failed for ${item.studentId} â€” ${err.message}`);
         updatedResults.push({
           studentId: item.studentId,
           action: `marked_${item.status}`,
@@ -3548,7 +3548,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 6. Build and execute bulk mark ────────────────────────────────────
+    // â”€â”€ 6. Build and execute bulk mark â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const allResults: any[] = [...skippedResults];
 
     const buildAndMark = async (ids: string[], status: AttendanceStatus): Promise<void> => {
@@ -3587,7 +3587,7 @@ export class AttendanceService {
           });
         }
       } catch (err) {
-        this.logger.error(`bulkMarkClassAttendanceFromInstituteAttendance: bulk ${status} failed — ${err.message}`);
+        this.logger.error(`bulkMarkClassAttendanceFromInstituteAttendance: bulk ${status} failed â€” ${err.message}`);
         for (const studentId of ids) {
           allResults.push({
             studentId,
@@ -3641,9 +3641,9 @@ export class AttendanceService {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // SINGLE STUDENT STATUS UPDATE — inline status change
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // SINGLE STUDENT STATUS UPDATE â€” inline status change
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Update the attendance status of a single student for today.
@@ -3663,7 +3663,7 @@ export class AttendanceService {
   ): Promise<{ success: boolean; message: string; studentId: string; newStatus: string }> {
     const todayDate = getCurrentSriLankaDate();
 
-    // Status string → numeric code
+    // Status string â†’ numeric code
     const statusToCode = (s: AttendanceStatus): number => {
       const map: Record<string, number> = { present: 1, absent: 0, late: 2, left: 3, left_early: 4, left_lately: 5 };
       return map[s] ?? 1;
@@ -3686,7 +3686,7 @@ export class AttendanceService {
     const existingRecord = await qb.getOne();
 
     if (!existingRecord) {
-      // No existing record — create a new one via bulk mark (single student)
+      // No existing record â€” create a new one via bulk mark (single student)
       // Look up names if not provided
       const [institute, clazz] = await Promise.all([
         instituteName ? null : this.instituteRepository.findOne({ where: { id: instituteId as any }, select: { id: true, name: true } }),
@@ -3784,9 +3784,9 @@ export class AttendanceService {
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // SUBJECT ATTENDANCE FROM CLASS — new features
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // SUBJECT ATTENDANCE FROM CLASS â€” new features
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Get all students enrolled in a subject (under a class) together with their
@@ -3806,7 +3806,7 @@ export class AttendanceService {
 
     const queryDate = date || getCurrentSriLankaDate();
 
-    // ── 1. All active+verified students enrolled in this subject ──────────
+    // â”€â”€ 1. All active+verified students enrolled in this subject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const enrolled = await this.subjectStudentRepository.find({
       where: {
         instituteId,
@@ -3829,7 +3829,7 @@ export class AttendanceService {
 
     const studentIds = enrolled.map(e => e.studentId);
 
-    // ── 2. Fetch user names + images ──────────────────────────────────────
+    // â”€â”€ 2. Fetch user names + images â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [users, instituteUsers] = await Promise.all([
       this.userRepository.find({
         where: { id: In(studentIds) as any },
@@ -3844,7 +3844,7 @@ export class AttendanceService {
     const userMap = new Map(users.map(u => [String(u.id), u]));
     const instituteUserMap = new Map(instituteUsers.map(iu => [String(iu.userId), iu]));
 
-    // ── 3. Class-level attendance (classId set, subjectId IS NULL) for date ──
+    // â”€â”€ 3. Class-level attendance (classId set, subjectId IS NULL) for date â”€â”€
     const classAttendanceRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -3862,7 +3862,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 4. Subject-level attendance for these students ──────────────────
+    // â”€â”€ 4. Subject-level attendance for these students â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const subjectAttendanceRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -3880,7 +3880,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 5. Build response items ────────────────────────────────────────
+    // â”€â”€ 5. Build response items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const data = studentIds.map(studentId => {
       const user = userMap.get(studentId);
       const iu = instituteUserMap.get(studentId);
@@ -3899,29 +3899,29 @@ export class AttendanceService {
 
       const classAttendance = clsRec
         ? {
-            statusCode: clsRec.status,
-            status: AttendanceService.ATTENDANCE_STATUS_MAP[clsRec.status] ?? 'unknown',
-            date: clsRec.date,
-            time: formatSriLankaTime(new Date(parseInt(clsRec.timestamp))),
-            timestamp: clsRec.timestamp,
-            remarks: clsRec.remarks,
-          }
+          statusCode: clsRec.status,
+          status: AttendanceService.ATTENDANCE_STATUS_MAP[clsRec.status] ?? 'unknown',
+          date: clsRec.date,
+          time: formatSriLankaTime(new Date(parseInt(clsRec.timestamp))),
+          timestamp: clsRec.timestamp,
+          remarks: clsRec.remarks,
+        }
         : null;
 
       const subjectAttendance = subRec
         ? {
-            statusCode: subRec.status,
-            status: AttendanceService.ATTENDANCE_STATUS_MAP[subRec.status] ?? 'unknown',
-            date: subRec.date,
-            time: formatSriLankaTime(new Date(parseInt(subRec.timestamp))),
-            timestamp: subRec.timestamp,
-          }
+          statusCode: subRec.status,
+          status: AttendanceService.ATTENDANCE_STATUS_MAP[subRec.status] ?? 'unknown',
+          date: subRec.date,
+          time: formatSriLankaTime(new Date(parseInt(subRec.timestamp))),
+          timestamp: subRec.timestamp,
+        }
         : null;
 
       return { studentId, studentName: name, studentImageUrl: resolvedImage, classAttendance, subjectAttendance };
     });
 
-    // ── 6. Summary stats ──────────────────────────────────────────────
+    // â”€â”€ 6. Summary stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const presentInClass = data.filter(
       d => d.classAttendance !== null && d.classAttendance.statusCode !== 0,
     ).length;
@@ -3950,10 +3950,10 @@ export class AttendanceService {
    *
    * Strategy:
    *   - Student has class attendance with status != ABSENT (codes 1-5)
-   *     → mark PRESENT at subject level  (if markPresentFromClass: true, default)
+   *     â†’ mark PRESENT at subject level  (if markPresentFromClass: true, default)
    *   - Student has NO class attendance, OR class status is ABSENT (0)
-   *     → mark ABSENT at subject level   (if markAbsentForUnmarked: true, default)
-   *   - Student already has subject-level attendance → always skipped (idempotent)
+   *     â†’ mark ABSENT at subject level   (if markAbsentForUnmarked: true, default)
+   *   - Student already has subject-level attendance â†’ always skipped (idempotent)
    *
    * POST /api/attendance/institute/:instituteId/class/:classId/subject/:subjectId/bulk-mark-from-class
    */
@@ -3976,14 +3976,14 @@ export class AttendanceService {
     const todayDate = getCurrentSriLankaDate();
     const queryDate = dto.date || todayDate;
 
-    // ── 0. Date validation: only today's date is allowed ──────────────────
+    // â”€â”€ 0. Date validation: only today's date is allowed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (queryDate !== todayDate) {
       throw new BadRequestException(
         `Attendance can only be marked for today (${todayDate}). Received date: ${queryDate}`,
       );
     }
 
-    // ── 1. All active+verified students in this subject ──────────────────
+    // â”€â”€ 1. All active+verified students in this subject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const enrolled = await this.subjectStudentRepository.find({
       where: {
         instituteId,
@@ -4006,7 +4006,7 @@ export class AttendanceService {
 
     const studentIds = enrolled.map(e => e.studentId);
 
-    // ── 2. Class-level attendance (classId set, subjectId IS NULL) ────────
+    // â”€â”€ 2. Class-level attendance (classId set, subjectId IS NULL) â”€â”€â”€â”€â”€â”€â”€â”€
     const classAttendanceRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -4024,7 +4024,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 3. Existing subject-level attendance (skip already-marked) ────────
+    // â”€â”€ 3. Existing subject-level attendance (skip already-marked) â”€â”€â”€â”€â”€â”€â”€â”€
     const existingSubjectRecords = await this.attendanceRecordRepository
       .createQueryBuilder('ar')
       .where('ar.institute_id = :instituteId', { instituteId })
@@ -4042,7 +4042,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 4. Build student overrides map ──────────────────────────────────
+    // â”€â”€ 4. Build student overrides map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const overridesMap = new Map<string, AttendanceStatus>();
     if (dto.studentOverrides && dto.studentOverrides.length > 0) {
       for (const override of dto.studentOverrides) {
@@ -4050,13 +4050,13 @@ export class AttendanceService {
       }
     }
 
-    // Status string → numeric code helper
+    // Status string â†’ numeric code helper
     const statusToCode = (s: AttendanceStatus): number => {
       const map: Record<string, number> = { present: 1, absent: 0, late: 2, left: 3, left_early: 4, left_lately: 5 };
       return map[s] ?? 1;
     };
 
-    // ── 5. Classify each student ─────────────────────────────────────────
+    // â”€â”€ 5. Classify each student â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const toMarkPresent: string[] = [];
     const toMarkAbsent: string[] = [];
     const toMarkOther: { studentId: string; status: AttendanceStatus }[] = [];
@@ -4070,7 +4070,7 @@ export class AttendanceService {
 
       if (alreadyMarkedSet.has(studentId)) {
         if (overrideStatus) {
-          // Student is already marked but has an override → UPDATE existing record's status
+          // Student is already marked but has an override â†’ UPDATE existing record's status
           const existingRecord = existingSubjectMap.get(studentId);
           if (existingRecord) {
             toUpdateStatus.push({ studentId, status: overrideStatus, record: existingRecord });
@@ -4114,7 +4114,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 5b. Update status of already-marked students (override = status change only) ──
+    // â”€â”€ 5b. Update status of already-marked students (override = status change only) â”€â”€
     const updatedResults: any[] = [];
     for (const item of toUpdateStatus) {
       try {
@@ -4139,7 +4139,7 @@ export class AttendanceService {
           success: true,
         });
       } catch (err) {
-        this.logger.error(`bulkMarkSubject: status update failed for ${item.studentId} — ${err.message}`);
+        this.logger.error(`bulkMarkSubject: status update failed for ${item.studentId} â€” ${err.message}`);
         updatedResults.push({
           studentId: item.studentId,
           action: `marked_${item.status}`,
@@ -4150,7 +4150,7 @@ export class AttendanceService {
       }
     }
 
-    // ── 6. Build and execute bulk mark ────────────────────────────────────
+    // â”€â”€ 6. Build and execute bulk mark â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const allResults: any[] = [...skippedResults];
 
     const buildAndMark = async (ids: string[], status: AttendanceStatus): Promise<void> => {
@@ -4191,7 +4191,7 @@ export class AttendanceService {
           });
         }
       } catch (err) {
-        this.logger.error(`bulkMarkSubjectAttendanceFromClassAttendance: bulk ${status} failed — ${err.message}`);
+        this.logger.error(`bulkMarkSubjectAttendanceFromClassAttendance: bulk ${status} failed â€” ${err.message}`);
         for (const studentId of ids) {
           allResults.push({
             studentId,
@@ -4243,6 +4243,296 @@ export class AttendanceService {
       },
       results: allResults,
     };
+  }
+
+  // ── Aggregate profile-page methods ─────────────────────────────────────────
+  // Class profile: sessions+groups JOIN; lecture live/rec per student
+  // Institute profile: calendar_events JOIN for event title/time
+
+  async getStudentClassProfile(params: {
+    instituteId: string; classId: string; studentId: string;
+    startDate: string; endDate: string; limit: number;
+  }): Promise<any> {
+    const { instituteId, classId, studentId, startDate, endDate, limit } = params;
+
+    const [membershipRows, classRows, attendanceRows, paymentRows,
+      paymentSubRows, subjectRows, lectureRows] = await Promise.all([
+        this.dataSource.query(
+          `SELECT iu.user_id_by_institute, iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
+                u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number,
+                u.date_of_birth, u.gender, u.nic, u.address_line1, u.city, u.district, u.province, u.image_url,
+                s.emergency_contact, s.medical_conditions, s.allergies, s.father_id, s.mother_id, s.guardian_id
+         FROM institute_users iu JOIN users u ON u.id = iu.user_id
+         LEFT JOIN students s ON s.user_id = iu.user_id
+         WHERE (iu.user_id = ? OR iu.user_id_by_institute = ?) AND iu.institute_id = ? LIMIT 1`,
+          [studentId, studentId, instituteId]),
+        this.dataSource.query(
+          `SELECT id, name, code, grade, specialty, academic_year academicYear, class_type classType
+         FROM institute_classes WHERE id = ? LIMIT 1`, [classId]),
+        this.dataSource.query(
+          `SELECT ar.date, ar.marked_at markedAt, ar.status, ar.marking_method markingMethod,
+                ar.class_session_id sessionId, ar.location,
+                sess.name sessionName, sess.start_time sessionStart, sess.end_time sessionEnd,
+                grp.id groupId, grp.name groupName, grp.color groupColor
+         FROM attendance_records ar
+         LEFT JOIN institute_class_attendance_sessions sess ON sess.id = ar.class_session_id
+         LEFT JOIN institute_class_attendance_session_groups grp ON grp.id = sess.session_group_id
+         WHERE ar.institute_id = ? AND ar.class_id = ? AND ar.student_id = ?
+           AND ar.date >= ? AND ar.date <= ?
+         ORDER BY ar.date DESC LIMIT ?`,
+          [instituteId, classId, studentId, startDate, endDate, limit]),
+        this.dataSource.query(
+          `SELECT id, title, description, amount, status, due_date dueDate
+         FROM institute_class_payments
+         WHERE institute_id = ? AND class_id = ? AND is_active = 1
+         ORDER BY due_date DESC LIMIT 50`, [instituteId, classId]).catch(() => []),
+        this.dataSource.query(
+          `SELECT payment_id paymentId, status, submitted_amount submittedAmount
+         FROM institute_class_payment_submissions
+         WHERE institute_id = ? AND class_id = ? AND submitted_by = ? LIMIT 200`,
+          [instituteId, classId, studentId]).catch(() => []),
+        this.dataSource.query(
+          `SELECT sub.id subjectId, sub.name, sub.code, sub.image_url imageUrl,
+                u.name_with_initials teacherName, u.image_url teacherImageUrl
+         FROM institute_class_subjects ics JOIN subjects sub ON sub.id = ics.subject_id
+         LEFT JOIN users u ON u.id = ics.teacher_id
+         WHERE ics.class_id = ? AND ics.is_active = 1 ORDER BY sub.name ASC LIMIT 50`, [classId]).catch(() => []),
+        this.dataSource.query(
+          `SELECT l.id, l.title, l.status, l.start_time startTime, l.end_time endTime,
+                l.live_attendance_enabled liveEnabled, l.rec_attendance_enabled recEnabled,
+                l.recording_url recordingUrl, l.rec_duration_seconds recDuration,
+                sub.id subjectId, sub.name subjectName
+         FROM institute_class_subject_lectures l
+         LEFT JOIN subjects sub ON sub.id = l.subject_id
+         WHERE l.class_id = ? AND l.institute_id = ? AND l.is_active = 1
+           AND (l.live_attendance_enabled = 1 OR l.rec_attendance_enabled = 1)
+         ORDER BY l.start_time DESC LIMIT 50`, [classId, instituteId]).catch(() => []),
+      ]);
+
+    const mem = membershipRows[0] ?? {};
+    const parentIds = [mem.father_id, mem.mother_id, mem.guardian_id].filter(Boolean);
+    let parentRows: any[] = [];
+    if (parentIds.length > 0) {
+      parentRows = await this.dataSource.query(
+        `SELECT u.id, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
+         FROM users u LEFT JOIN parents p ON p.user_id = u.id
+         WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch(() => []);
+    }
+    const parentMap: Record<string, any> = {};
+    for (const p of parentRows) parentMap[p.id] = p;
+    const getParent = (id?: string | null) => {
+      if (!id || !parentMap[id]) return undefined;
+      const p = parentMap[id];
+      return {
+        name: p.name_with_initials, email: p.email, phoneNumber: p.phone_number,
+        occupation: p.occupation, workPlace: p.workPlace,
+        imageUrl: p.image_url ? this.CloudStorageService.getFullUrl(p.image_url) : null
+      };
+    };
+
+    let liveSessions: any[] = [];
+    let recSessions: any[] = [];
+    if (lectureRows.length > 0) {
+      const ids = lectureRows.map((l: any) => l.id);
+      const ph = ids.map(() => '?').join(',');
+      [liveSessions, recSessions] = await Promise.all([
+        this.dataSource.query(
+          `SELECT lecture_id lectureId, join_time joinTime, leave_time leaveTime
+           FROM lecture_live_attendance WHERE lecture_id IN (${ph}) AND user_id = ?
+           ORDER BY join_time ASC`, [...ids, studentId]).catch(() => []),
+        this.dataSource.query(
+          `SELECT lecture_id lectureId, start_time startTime, end_time endTime,
+                  total_watched_seconds watchedSeconds, seek_count seekCount,
+                  total_video_duration_seconds videoDuration
+           FROM lecture_recording_sessions WHERE lecture_id IN (${ph}) AND user_id = ?
+           ORDER BY start_time ASC`, [...ids, studentId]).catch(() => []),
+      ]);
+    }
+    const liveMap: Record<string, any[]> = {};
+    for (const r of liveSessions) (liveMap[r.lectureId] ??= []).push(r);
+    const recMap: Record<string, any[]> = {};
+    for (const r of recSessions) (recMap[r.lectureId] ??= []).push(r);
+
+    const imgUrl = (p?: string | null) => p ? this.CloudStorageService.getFullUrl(p) : null;
+
+    const student = mem.first_name ? {
+      id: studentId,
+      name: mem.name_with_initials ?? `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim(),
+      nameWithInitials: mem.name_with_initials, email: mem.email, phoneNumber: mem.phone_number,
+      dateOfBirth: mem.date_of_birth, gender: mem.gender, nic: mem.nic,
+      addressLine1: mem.address_line1, city: mem.city, district: mem.district, province: mem.province,
+      imageUrl: imgUrl(mem.institute_user_image_url ?? mem.image_url),
+      instituteImageUrl: imgUrl(mem.institute_user_image_url),
+      userIdByInstitute: mem.user_id_by_institute, role: mem.institute_user_type,
+      emergencyContact: mem.emergency_contact, medicalConditions: mem.medical_conditions, allergies: mem.allergies,
+      extraData: mem.extra_data ?? null,
+      father: getParent(mem.father_id), mother: getParent(mem.mother_id), guardian: getParent(mem.guardian_id),
+    } : null;
+
+    const classInfo = classRows[0] ? {
+      id: classRows[0].id, name: classRows[0].name, code: classRows[0].code,
+      grade: classRows[0].grade, specialty: classRows[0].specialty, academicYear: classRows[0].academicYear,
+    } : null;
+
+    const attendance = attendanceRows.map((r: any) => ({
+      date: r.date ?? (r.markedAt ? String(r.markedAt).substring(0, 10) : ''),
+      markedAt: r.markedAt, status: r.status, markingMethod: r.markingMethod, location: r.location,
+      sessionId: r.sessionId ?? null, sessionName: r.sessionName ?? null,
+      sessionStart: r.sessionStart ?? null, sessionEnd: r.sessionEnd ?? null,
+      groupId: r.groupId ?? null, groupName: r.groupName ?? null, groupColor: r.groupColor ?? null,
+    }));
+
+    const subMap: Record<string, any> = {};
+    for (const sub of paymentSubRows) subMap[sub.paymentId] = sub;
+    const payments = paymentRows.map((p: any) => ({
+      id: p.id, title: p.title, description: p.description, amount: p.amount,
+      status: p.status, dueDate: p.dueDate,
+      submissionStatus: subMap[p.id]?.status ?? null, submittedAmount: subMap[p.id]?.submittedAmount ?? null,
+    }));
+
+    const subjects = subjectRows.map((s: any) => ({
+      id: s.subjectId, name: s.name, code: s.code, imageUrl: imgUrl(s.imageUrl),
+      teacher: s.teacherName ? { name: s.teacherName, imageUrl: imgUrl(s.teacherImageUrl) } : null,
+    }));
+
+    const lectures = lectureRows.map((l: any) => {
+      const lRows = liveMap[l.id] ?? [];
+      const rRows = recMap[l.id] ?? [];
+      const liveSecs = lRows.reduce((sum: number, r: any) =>
+        sum + (!r.leaveTime ? 0 : Math.floor((new Date(r.leaveTime).getTime() - new Date(r.joinTime).getTime()) / 1000)), 0);
+      return {
+        id: l.id, title: l.title, status: l.status, startTime: l.startTime, endTime: l.endTime,
+        subjectId: l.subjectId, subjectName: l.subjectName,
+        liveEnabled: !!l.liveEnabled, recEnabled: !!l.recEnabled,
+        recordingUrl: l.recordingUrl, recDurationSeconds: l.recDuration,
+        liveAttendance: {
+          present: lRows.length > 0, totalSessions: lRows.length, totalSeconds: liveSecs,
+          sessions: lRows.map((r: any) => ({ joinTime: r.joinTime, leaveTime: r.leaveTime })),
+        },
+        recordingActivity: {
+          watched: rRows.length > 0,
+          totalWatchedSeconds: rRows.reduce((s: number, r: any) => s + (r.watchedSeconds ?? 0), 0),
+          sessionCount: rRows.length,
+          sessions: rRows.map((r: any) => ({
+            startTime: r.startTime, endTime: r.endTime,
+            watchedSeconds: r.watchedSeconds, seekCount: r.seekCount ?? 0, videoDuration: r.videoDuration,
+          })),
+        },
+      };
+    });
+
+    return { success: true, student, classInfo, attendance, payments, subjects, lectures };
+  }
+
+  async getStudentInstituteProfile(params: {
+    instituteId: string; studentId: string;
+    startDate: string; endDate: string; limit: number;
+  }): Promise<any> {
+    const { instituteId, studentId, startDate, endDate, limit } = params;
+
+    const [membershipRows, attendanceRows, paymentRows, paymentSubRows, classRows] = await Promise.all([
+      this.dataSource.query(
+        `SELECT iu.user_id_by_institute, iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
+                u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number,
+                u.date_of_birth, u.gender, u.nic, u.address_line1, u.address_line2,
+                u.city, u.district, u.province, u.image_url,
+                s.emergency_contact, s.medical_conditions, s.allergies, s.father_id, s.mother_id, s.guardian_id
+         FROM institute_users iu JOIN users u ON u.id = iu.user_id
+         LEFT JOIN students s ON s.user_id = iu.user_id
+         WHERE (iu.user_id = ? OR iu.user_id_by_institute = ?) AND iu.institute_id = ? LIMIT 1`,
+        [studentId, studentId, instituteId]),
+      this.dataSource.query(
+        `SELECT ar.date, ar.marked_at markedAt, ar.status, ar.marking_method markingMethod,
+                ar.location, ar.event_id eventId,
+                ev.title eventTitle, ev.event_type eventType,
+                ev.start_time eventStart, ev.end_time eventEnd,
+                ev.venue eventVenue, ev.is_mandatory isMandatory
+         FROM attendance_records ar
+         LEFT JOIN institute_calendar_events ev ON ev.id = ar.event_id
+         WHERE ar.institute_id = ? AND ar.student_id = ? AND ar.class_id IS NULL
+           AND ar.date >= ? AND ar.date <= ?
+         ORDER BY ar.date DESC LIMIT ?`,
+        [instituteId, studentId, startDate, endDate, limit]),
+      this.dataSource.query(
+        `SELECT id, payment_type paymentType, description, amount, status, due_date dueDate
+         FROM institute_payments WHERE institute_id = ? AND is_active = 1
+         ORDER BY due_date DESC LIMIT 50`, [instituteId]).catch(() => []),
+      this.dataSource.query(
+        `SELECT payment_id paymentId, status, payment_amount submittedAmount
+         FROM institute_payment_submissions
+         WHERE institute_id = ? AND submitted_by = ?
+         ORDER BY created_at DESC LIMIT 100`, [instituteId, studentId]).catch(() => []),
+      this.dataSource.query(
+        `SELECT ics.institute_class_id classId, ics.is_verified, ics.created_at enrolledAt,
+                ic.name className, ic.code classCode, ic.grade, ic.specialty,
+                ic.academic_year academicYear, ic.class_type classType, ic.image_url classImageUrl
+         FROM institute_class_students ics JOIN institute_classes ic ON ic.id = ics.institute_class_id
+         WHERE ics.student_user_id = ? AND ics.institute_id = ? AND ics.is_active = 1
+         ORDER BY ics.is_verified DESC, ics.created_at DESC LIMIT 50`,
+        [studentId, instituteId]).catch(() => []),
+    ]);
+
+    const mem = membershipRows[0] ?? {};
+    const parentIds = [mem.father_id, mem.mother_id, mem.guardian_id].filter(Boolean);
+    let parentRows: any[] = [];
+    if (parentIds.length > 0) {
+      parentRows = await this.dataSource.query(
+        `SELECT u.id, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
+         FROM users u LEFT JOIN parents p ON p.user_id = u.id
+         WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch(() => []);
+    }
+    const parentMap: Record<string, any> = {};
+    for (const p of parentRows) parentMap[p.id] = p;
+    const getParent = (id?: string | null) => {
+      if (!id || !parentMap[id]) return undefined;
+      const p = parentMap[id];
+      return {
+        name: p.name_with_initials, email: p.email, phoneNumber: p.phone_number,
+        occupation: p.occupation, workPlace: p.workPlace,
+        imageUrl: p.image_url ? this.CloudStorageService.getFullUrl(p.image_url) : null
+      };
+    };
+
+    const imgUrl = (p?: string | null) => p ? this.CloudStorageService.getFullUrl(p) : null;
+
+    const student = mem.first_name ? {
+      id: studentId,
+      name: mem.name_with_initials ?? `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim(),
+      nameWithInitials: mem.name_with_initials, email: mem.email, phoneNumber: mem.phone_number,
+      dateOfBirth: mem.date_of_birth, gender: mem.gender, nic: mem.nic,
+      addressLine1: mem.address_line1, addressLine2: mem.address_line2,
+      city: mem.city, district: mem.district, province: mem.province,
+      imageUrl: imgUrl(mem.institute_user_image_url ?? mem.image_url),
+      instituteImageUrl: imgUrl(mem.institute_user_image_url),
+      userIdByInstitute: mem.user_id_by_institute, role: mem.institute_user_type,
+      emergencyContact: mem.emergency_contact, medicalConditions: mem.medical_conditions, allergies: mem.allergies,
+      extraData: mem.extra_data ?? null,
+      father: getParent(mem.father_id), mother: getParent(mem.mother_id), guardian: getParent(mem.guardian_id),
+    } : null;
+
+    const attendance = attendanceRows.map((r: any) => ({
+      date: r.date ?? (r.markedAt ? String(r.markedAt).substring(0, 10) : ''),
+      markedAt: r.markedAt, status: r.status, markingMethod: r.markingMethod, location: r.location,
+      eventId: r.eventId ?? null, eventTitle: r.eventTitle ?? null,
+      eventType: r.eventType ?? null, eventStart: r.eventStart ?? null,
+      eventEnd: r.eventEnd ?? null, eventVenue: r.eventVenue ?? null, isMandatory: !!r.isMandatory,
+    }));
+
+    const subMap: Record<string, any> = {};
+    for (const sub of paymentSubRows) subMap[sub.paymentId] = sub;
+    const payments = paymentRows.map((p: any) => ({
+      id: p.id, source: 'INSTITUTE', paymentType: p.paymentType, description: p.description,
+      amount: p.amount, dueDate: p.dueDate, status: p.status,
+      submissionStatus: subMap[p.id]?.status ?? null, submittedAmount: subMap[p.id]?.submittedAmount ?? null,
+    }));
+
+    const enrolledClasses = classRows.map((c: any) => ({
+      classId: c.classId, className: c.className, classCode: c.classCode, grade: c.grade,
+      specialty: c.specialty, academicYear: c.academicYear, classType: c.classType,
+      classImageUrl: imgUrl(c.classImageUrl), isVerified: !!c.is_verified, enrolledAt: c.enrolledAt,
+    }));
+
+    return { success: true, student, attendance, payments, enrolledClasses };
   }
 }
 

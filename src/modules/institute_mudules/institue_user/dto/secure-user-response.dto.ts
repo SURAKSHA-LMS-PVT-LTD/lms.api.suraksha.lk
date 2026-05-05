@@ -127,37 +127,37 @@ export class SecureUserResponseDto {
   constructor(user: UserEntity | UserLikeData, userIdByInstitute?: string, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     // ✅ Handle both camelCase and snake_case field names from raw query results
     this.id = user.id || (user as any).user_id;
-    
+
     // ✅ Fix "undefined undefined" issue by checking both naming conventions
     const firstName = user.firstName || (user as any).first_name || '';
     const lastName = user.lastName || (user as any).last_name || '';
     this.name = `${firstName} ${lastName}`.trim();
     this.nameWithInitials = (user as any).nameWithInitials || (user as any).name_with_initials || undefined;
-    
+
     // ✅ Handle email from both naming conventions and apply masking if needed
     const email = user.email || (user as any).email || '';
     this.email = maskSensitiveData ? maskEmail(email) : email;
-    
+
     // ✅ Handle address from both naming conventions
     this.addressLine1 = user.addressLine1 || (user as any).address_line1;
     this.addressLine2 = user.addressLine2 || (user as any).address_line2;
-    
+
     // ✅ Handle phone from both naming conventions and apply masking
     const phoneNumber = user.phoneNumber || (user as any).phone_number;
     this.phoneNumber = maskSensitiveData ? maskPhoneNumber(phoneNumber) : phoneNumber;
-    
+
     // ✅ CRITICAL FIX: Use imageUrl from instituteUserData if provided (priority logic applied in service)
     // Otherwise fall back to user imageUrl with both naming conventions
     this.imageUrl = (instituteUserData as any)?.imageUrl || user.imageUrl || (user as any).image_url || (user as any).user_image_url;
-    
+
     this.gender = user.gender;
-    
+
     // ✅ Handle date of birth from both naming conventions
     const dateOfBirth = user.dateOfBirth || (user as any).date_of_birth;
     this.dateOfBirth = dateOfBirth instanceof Date ? dateOfBirth.toISOString().split('T')[0] : dateOfBirth;
-    
+
     this.userIdByInstitute = userIdByInstitute;
-    
+
     // ✅ Add enrollment verification information with proper field name handling
     if (instituteUserData) {
       this.status = instituteUserData.status;
@@ -204,7 +204,7 @@ export class SecureParentDetailsDto {
   @ApiProperty({ example: 'Tech Company Ltd', description: 'Parent workplace' })
   workPlace?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     type: 'array',
     items: {
       type: 'object',
@@ -234,20 +234,20 @@ export class SecureParentDetailsDto {
     if (parent) {
       // ✅ Null-safe ID extraction
       this.id = parent.id || parent.user_id || parent.userId || undefined;
-      
+
       // ✅ Null-safe name construction
       const firstName = parent.first_name || parent.firstName || '';
       const lastName = parent.last_name || parent.lastName || '';
       this.name = parent.name || (firstName || lastName ? `${firstName} ${lastName}`.trim() : undefined);
       this.nameWithInitials = parent.nameWithInitials || parent.name_with_initials || undefined;
-      
+
       // ✅ Respect masking setting from environment variables with null safety
       // ✅ Return null instead of undefined so fields appear in JSON response
       this.email = parent.email ? (maskSensitiveData ? maskEmail(parent.email) : parent.email) : null;
-      
+
       const phoneNumber = parent.phone_number || parent.phoneNumber;
       this.phoneNumber = phoneNumber ? (maskSensitiveData ? maskPhoneNumber(phoneNumber) : phoneNumber) : null;
-      
+
       this.imageUrl = parent.image_url || parent.imageUrl || null;
       this.occupation = parent.occupation || null;
       this.workPlace = parent.workplace || parent.workPlace || null;
@@ -299,13 +299,13 @@ export class SecureStudentResponseDto extends SecureUserResponseDto {
 
   constructor(user: UserEntity | UserLikeData, student?: StudentEntity | StudentLikeData, userIdByInstitute?: string, parentDetails?: any, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     super(user, userIdByInstitute, instituteUserData, maskSensitiveData);
-    
+
     if (student) {
       // ✅ Handle both camelCase and snake_case for legacy fields with null safety
       this.fatherId = student.fatherId || (student as any).father_id || undefined;
       this.motherId = student.motherId || (student as any).mother_id || undefined;
       this.guardianId = student.guardianId || (student as any).guardian_id || undefined;
-      
+
       // ✅ Medical and Emergency Information with both naming conventions and null safety
       this.emergencyContact = student.emergencyContact || (student as any).emergency_contact || undefined;
       this.medicalConditions = student.medicalConditions || (student as any).medical_conditions || undefined;
@@ -334,7 +334,7 @@ export class SecureParentResponseDto extends SecureUserResponseDto {
   @ApiProperty({ example: 'Tech Company Ltd', description: 'Workplace' })
   workPlace?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     type: 'array',
     items: {
       type: 'object',
@@ -363,7 +363,7 @@ export class SecureParentResponseDto extends SecureUserResponseDto {
 
   constructor(user: UserEntity | UserLikeData, parent?: ParentEntity | any, userIdByInstitute?: string, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     super(user, userIdByInstitute, instituteUserData, maskSensitiveData);
-    
+
     if (parent) {
       // ✅ Handle both naming conventions: workplace and workPlace
       this.occupation = parent.occupation;

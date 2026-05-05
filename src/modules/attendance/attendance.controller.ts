@@ -2313,4 +2313,85 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     return detail;
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  //  AGGREGATE PROFILE-PAGE ENDPOINTS (single-call page loaders)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('institute/:instituteId/student/:studentId/class-profile')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get all data needed for the student class-level profile page (single request)',
+    description: 'Returns student details, class info, attendance records+sessions, class payments, enrolled subjects, and lecture list in one call.',
+  })
+  async getStudentClassProfilePage(
+    @Param('instituteId') instituteId: string,
+    @Param('studentId') studentId: string,
+    @Query('classId') classId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!classId) {
+      throw new HttpException({ success: false, message: 'classId query parameter is required' }, HttpStatus.BAD_REQUEST);
+    }
+    const now = new Date();
+    const defaultEnd = now.toISOString().split('T')[0];
+    const defaultStart = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+    try {
+      return await this.attendanceService.getStudentClassProfile({
+        instituteId,
+        classId,
+        studentId,
+        startDate: startDate || defaultStart,
+        endDate: endDate || defaultEnd,
+        limit: Math.min(parseInt(limit || '100', 10), 500),
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message || 'Failed to load class profile' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('institute/:instituteId/student/:studentId/institute-profile')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Get all data needed for the student institute-level profile page (single request)',
+    description: 'Returns student details, institute attendance, institute payments, and enrolled classes in one call.',
+  })
+  async getStudentInstituteProfilePage(
+    @Param('instituteId') instituteId: string,
+    @Param('studentId') studentId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const now = new Date();
+    const defaultEnd = now.toISOString().split('T')[0];
+    const defaultStart = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+    try {
+      return await this.attendanceService.getStudentInstituteProfile({
+        instituteId,
+        studentId,
+        startDate: startDate || defaultStart,
+        endDate: endDate || defaultEnd,
+        limit: Math.min(parseInt(limit || '100', 10), 500),
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message || 'Failed to load institute profile' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
 }

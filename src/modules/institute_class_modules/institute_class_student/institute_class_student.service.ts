@@ -218,7 +218,17 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       const isOwnData = requestingUser.s === criteria.studentUserId;
       const children = Array.isArray(requestingUser.c) ? requestingUser.c : [];
       const isParentOfStudent = children.includes(criteria.studentUserId);
-      const isStaff = requestingUser.userType === 'superadmin' || requestingUser.userType === 'institute_admin' || requestingUser.role === 'teacher';
+      
+      // Determine if user is staff (Superadmin, Institute Admin, or Teacher)
+      let isStaff = requestingUser.u === 0 || requestingUser.userType === 'superadmin';
+      
+      if (!isStaff && requestingUser.i && Array.isArray(requestingUser.i)) {
+        const institute = requestingUser.i.find((inst: any) => inst.i === criteria.instituteId);
+        if (institute) {
+          // IA=2, TE=4. Bitmask check: (r & (2|4)) != 0
+          isStaff = (institute.r & 6) !== 0;
+        }
+      }
       
       if (!isOwnData && !isParentOfStudent && !isStaff) {
         throw new ForbiddenException('You can only access your own class assignments or your children\'s class assignments.');
