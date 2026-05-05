@@ -232,6 +232,9 @@ export class LectureTrackingService {
       notPaidPaymentId,
       paymentId: lecture.livePaymentId,
       paymentStatuses: lecture.livePaymentStatuses,
+      welcomeMessageEnabled: lecture.welcomeMessageEnabled,
+      welcomeMessageText: lecture.welcomeMessageText,
+      welcomeMessageVoiceEnabled: lecture.welcomeMessageVoiceEnabled,
       // Only expose meeting link when access is granted
       meetingLink: hasAccess ? lecture.meetingLink : undefined,
     };
@@ -324,6 +327,9 @@ export class LectureTrackingService {
       paymentId: lecture.recPaymentId,
       paymentStatuses: lecture.recPaymentStatuses,
       materials: lecture.materials,
+      welcomeMessageEnabled: lecture.welcomeMessageEnabled,
+      welcomeMessageText: lecture.welcomeMessageText,
+      welcomeMessageVoiceEnabled: lecture.welcomeMessageVoiceEnabled,
       // Only expose recording URL when access granted
       recordingUrl: hasAccess ? lecture.recordingUrl : undefined,
     };

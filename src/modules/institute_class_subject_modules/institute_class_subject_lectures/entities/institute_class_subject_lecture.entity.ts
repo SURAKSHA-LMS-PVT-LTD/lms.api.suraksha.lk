@@ -190,6 +190,15 @@ export class InstituteClassSubjectLecture {
   @Column({ name: 'rec_duration_seconds', type: 'int', nullable: true })
   recDurationSeconds?: number;
 
+  @Column({ name: 'welcome_message_enabled', type: 'boolean', default: false })
+  welcomeMessageEnabled: boolean;
+
+  @Column({ name: 'welcome_message_text', type: 'text', nullable: true })
+  welcomeMessageText?: string;
+
+  @Column({ name: 'welcome_message_voice_enabled', type: 'boolean', default: false })
+  welcomeMessageVoiceEnabled: boolean;
+
   @Column({ name: 'created_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
   createdAt?: Date;
 

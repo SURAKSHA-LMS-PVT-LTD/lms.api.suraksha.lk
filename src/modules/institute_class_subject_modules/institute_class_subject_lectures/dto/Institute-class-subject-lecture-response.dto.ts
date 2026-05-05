@@ -55,6 +55,15 @@ export class InstituteClassSubjectLectureResponseDto {
   @ApiProperty({ description: 'Is active' })
   isActive: boolean;
 
+  @ApiProperty({ description: 'Enable welcome message', required: false })
+  welcomeMessageEnabled?: boolean;
+
+  @ApiProperty({ description: 'Welcome message text', required: false })
+  welcomeMessageText?: string;
+
+  @ApiProperty({ description: 'Enable voice narration for welcome message', required: false })
+  welcomeMessageVoiceEnabled?: boolean;
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: Date;
 

@@ -81,6 +81,9 @@ export interface ICreateLecture {
     driveWebViewLink?: string;
     source?: string;
   }>;
+  welcomeMessageEnabled?: boolean;
+  welcomeMessageText?: string;
+  welcomeMessageVoiceEnabled?: boolean;
 }
 
 export interface IUpdateLecture {
@@ -104,6 +107,9 @@ export interface IUpdateLecture {
     driveWebViewLink?: string;
     source?: string;
   }>;
+  welcomeMessageEnabled?: boolean;
+  welcomeMessageText?: string;
+  welcomeMessageVoiceEnabled?: boolean;
 }
 
 export interface IBulkCreateLectures {

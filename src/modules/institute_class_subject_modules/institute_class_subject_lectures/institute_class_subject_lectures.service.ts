@@ -89,6 +89,10 @@ export class InstituteClassSubjectLecturesService {
         recPaymentId: createDto.recPaymentId,
         recPaymentStatuses: createDto.recPaymentStatuses,
 
+        welcomeMessageEnabled: createDto.welcomeMessageEnabled ?? false,
+        welcomeMessageText: createDto.welcomeMessageText?.trim() || null,
+        welcomeMessageVoiceEnabled: createDto.welcomeMessageVoiceEnabled ?? false,
+
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -341,6 +345,14 @@ export class InstituteClassSubjectLecturesService {
       if (updateDto.recAccessLevel !== undefined) updateData.recAccessLevel = updateDto.recAccessLevel;
       if (updateDto.recPaymentId !== undefined) updateData.recPaymentId = updateDto.recPaymentId;
       if (updateDto.recPaymentStatuses !== undefined) updateData.recPaymentStatuses = updateDto.recPaymentStatuses;
+
+      if (updateDto.welcomeMessageEnabled !== undefined) updateData.welcomeMessageEnabled = updateDto.welcomeMessageEnabled;
+      if (updateDto.welcomeMessageText !== undefined) {
+        updateData.welcomeMessageText = updateDto.welcomeMessageText?.trim() || null;
+      }
+      if (updateDto.welcomeMessageVoiceEnabled !== undefined) {
+        updateData.welcomeMessageVoiceEnabled = updateDto.welcomeMessageVoiceEnabled;
+      }
 
       await this.lectureRepository.update(id, updateData);
       

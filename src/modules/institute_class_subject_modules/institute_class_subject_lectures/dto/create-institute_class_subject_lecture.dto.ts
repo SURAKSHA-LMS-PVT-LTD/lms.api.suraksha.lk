@@ -215,6 +215,21 @@ export class CreateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsArray()
   recPaymentStatuses?: string[];
+
+  @ApiProperty({ description: 'Enable welcome message', default: false })
+  @IsOptional()
+  @IsBoolean()
+  welcomeMessageEnabled?: boolean;
+
+  @ApiProperty({ description: 'Welcome message text', required: false })
+  @IsOptional()
+  @IsString()
+  welcomeMessageText?: string;
+
+  @ApiProperty({ description: 'Enable voice narration for welcome message', default: false })
+  @IsOptional()
+  @IsBoolean()
+  welcomeMessageVoiceEnabled?: boolean;
 }
 
 export class LectureDataDto {
@@ -286,6 +301,21 @@ export class LectureDataDto {
   @IsOptional()
   @IsString()
   thumbnailUrl?: string;
+
+  @ApiProperty({ description: 'Enable welcome message', default: false })
+  @IsOptional()
+  @IsBoolean()
+  welcomeMessageEnabled?: boolean;
+
+  @ApiProperty({ description: 'Welcome message text', required: false })
+  @IsOptional()
+  @IsString()
+  welcomeMessageText?: string;
+
+  @ApiProperty({ description: 'Enable voice narration for welcome message', default: false })
+  @IsOptional()
+  @IsBoolean()
+  welcomeMessageVoiceEnabled?: boolean;
 }
 
 export class BulkCreateLecturesDto {

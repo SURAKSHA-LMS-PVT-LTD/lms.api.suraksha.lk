@@ -63,6 +63,9 @@ export class InstituteClassSubjectLecturesController {
         isActive: (lectureData as any).isActive,
         materials: (lectureData as any).materials,
         thumbnailUrl: (lectureData as any).thumbnailUrl,
+        welcomeMessageEnabled: (lectureData as any).welcomeMessageEnabled,
+        welcomeMessageText: (lectureData as any).welcomeMessageText,
+        welcomeMessageVoiceEnabled: (lectureData as any).welcomeMessageVoiceEnabled,
       };
       return await this.lecturesService.create(flatDto);
     }
