@@ -521,28 +521,60 @@ export class InstituteClassPaymentService {
         totalStudents = 0;
       }
 
-      // Return early if no students
+      // Load submissions FIRST to calculate summary counts for all cases
+      let submissions: any[] = [];
+      try {
+        submissions = await this.submissionRepository.find({
+          where: { paymentId },
+          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt'],
+          order: { updatedAt: 'DESC' } as any,
+        });
+      } catch (dbError: any) {
+        this.logger.error(`Error loading submissions: ${dbError?.message}`, dbError?.stack);
+        submissions = [];
+      }
+
+      // Create map of latest submission per user
+      const submissionMap = new Map<string, any>();
+      for (const s of (submissions || [])) {
+        if (s?.userId && !submissionMap.has(s.userId)) {
+          submissionMap.set(s.userId, s);
+        }
+      }
+
+      // Calculate summary counts
+      const verifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.VERIFIED).length;
+      const halfVerifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.HALF_VERIFIED).length;
+      const quarterVerifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.QUARTER_VERIFIED).length;
+      const pendingCount = (submissions || []).filter(s => s?.status === SubmissionStatus.PENDING).length;
+      const rejectedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.REJECTED).length;
+      const notSubmittedCount = Math.max(totalStudents - (submissions || []).length, 0);
+
+      const paymentTitle = payment?.title || 'Payment';
+      const paymentAmount = payment ? parseFloat(String(payment.amount || 0)) : 0;
+
+      // Return early if no students with consistent structure
       if (!enrollments || enrollments.length === 0) {
         return {
           success: true,
-          data: {
-            paymentId,
-            paymentTitle: payment?.title || 'Payment',
-            paymentAmount: payment ? parseFloat(String(payment.amount)) : 0,
-            students: [],
-            summary: {
-              total: totalStudents,
-              verified: 0,
-              pending: 0,
-              rejected: 0,
-              notSubmitted: totalStudents,
-            },
-            pagination: { currentPage: page, totalPages: Math.ceil(totalStudents / limit), totalItems: totalStudents, itemsPerPage: limit, hasNextPage: page < Math.ceil(totalStudents / limit), hasPreviousPage: page > 1 },
+          data: [],
+          total: totalStudents,
+          page,
+          limit,
+          totalPages: Math.ceil(totalStudents / limit),
+          summary: {
+            totalStudents,
+            verified: verifiedCount,
+            halfVerified: halfVerifiedCount,
+            quarterVerified: quarterVerifiedCount,
+            pending: pendingCount,
+            rejected: rejectedCount,
+            totalVerifiedAmount: '0',
           },
         };
       }
 
-      const enrolledUserIds = enrollments.map(e => e?.studentUserId).filter(id => id && typeof id === 'string' && id.trim());
+      const enrolledUserIds = enrollments.map(e => e?.studentUserId || e?.userId).filter(id => id && typeof id === 'string' && id.trim());
       let memberships: any[] = [];
       if (enrolledUserIds.length > 0) {
         try {
@@ -557,31 +589,15 @@ export class InstituteClassPaymentService {
       }
       const membershipMap = new Map((memberships || []).map(m => [m?.userId, m]));
 
-      let submissions: any[] = [];
-      try {
-        submissions = await this.submissionRepository.find({
-          where: { paymentId },
-          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt', 'updatedAt'],
-          order: { updatedAt: 'DESC' } as any,
-        });
-      } catch (dbError: any) {
-        this.logger.error(`Error loading submissions: ${dbError?.message}`, dbError?.stack);
-        submissions = [];
-      }
-      // Create map of latest submission per user (submissions ordered by updatedAt DESC ensures we get the most recent)
-      const submissionMap = new Map<string, any>();
-      for (const s of (submissions || [])) {
-        if (s?.userId && !submissionMap.has(s.userId)) {
-          submissionMap.set(s.userId, s);
-        }
-      }
-
       const students = (enrollments || []).map((enrollment, idx) => {
         try {
           if (!enrollment) return null;
 
-          const studentUserId = enrollment?.studentUserId;
-          if (!studentUserId) return null;
+          const studentUserId = enrollment?.studentUserId || enrollment?.userId;
+          if (!studentUserId) {
+            this.logger.warn(`Enrollment ${idx} has no studentUserId or userId`);
+            return null;
+          }
 
           const studentUser = enrollment?.student?.user;
           const membership = membershipMap.get(studentUserId);
@@ -636,37 +652,29 @@ export class InstituteClassPaymentService {
         }
       }).filter(s => s !== null);
 
-      const paymentTitle = payment?.title || 'Payment';
-      const paymentAmount = payment ? parseFloat(String(payment.amount || 0)) : 0;
-
       // Transform students to include payment details from context
-      const enrichedStudents = students.map(s => ({
-        studentId: s.userId,
-        studentUuid: s.userId,
-        studentName: s.nameWithInitials,
-        nameWithInitials: s.nameWithInitials,
-        image: s.instituteUserImage,
-        instituteUserId: s.instituteStudentId || '',
-        
-        paymentId,
-        paymentTitle,
-        paymentAmount: String(paymentAmount),
-        paymentDueDate: payment?.lastDate ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate)) : '',
-        
-        submissionId: s.submissionId || undefined,
-        submissionStatus: (s.paymentStatus || 'NOT_SUBMITTED') as any,
-        submittedAmount: s.amount ? String(s.amount) : undefined,
-        submittedDate: s.verifiedAt || undefined,
-        verifiedAt: s.verifiedAt || undefined,
-      }));
-
-      // Calculate summary counts
-      const verifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.VERIFIED).length;
-      const halfVerifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.HALF_VERIFIED).length;
-      const quarterVerifiedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.QUARTER_VERIFIED).length;
-      const pendingCount = (submissions || []).filter(s => s?.status === SubmissionStatus.PENDING).length;
-      const rejectedCount = (submissions || []).filter(s => s?.status === SubmissionStatus.REJECTED).length;
-      const notSubmittedCount = Math.max(totalStudents - (submissions || []).length, 0);
+      const enrichedStudents = students.map(s => {
+        const dueDateStr = payment?.lastDate ? (payment.lastDate instanceof Date ? payment.lastDate.toISOString() : String(payment.lastDate)) : '';
+        return {
+          studentId: s.userId,
+          studentUuid: s.userId,
+          studentName: s.nameWithInitials,
+          nameWithInitials: s.nameWithInitials,
+          image: s.instituteUserImage,
+          instituteUserId: s.instituteStudentId || '',
+          
+          paymentId,
+          paymentTitle,
+          paymentAmount: String(paymentAmount),
+          paymentDueDate: dueDateStr,
+          
+          submissionId: s.submissionId || undefined,
+          submissionStatus: (s.paymentStatus || 'NOT_SUBMITTED') as any,
+          submittedAmount: s.amount ? String(s.amount) : undefined,
+          submittedDate: s.verifiedAt || undefined,
+          verifiedAt: s.verifiedAt || undefined,
+        };
+      });
 
       return {
         success: true,
