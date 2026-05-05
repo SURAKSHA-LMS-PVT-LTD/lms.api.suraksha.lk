@@ -420,6 +420,11 @@ export class InstituteClassPaymentService {
     user: JwtPayload,
   ) {
     try {
+      // Validate inputs
+      if (!instituteId || !classId || !paymentId) {
+        throw new BadRequestException({ success: false, message: 'Missing required parameters', error: 'INVALID_INPUT' });
+      }
+
       const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
       if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
@@ -428,7 +433,12 @@ export class InstituteClassPaymentService {
         instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER || instituteRole === InstituteUserType.ATTENDANCE_MARKER;
       if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can view the student payment list', error: 'INSUFFICIENT_PERMISSIONS' });
 
-      const payment = await this.paymentRepository.findOne({ where: { id: paymentId, instituteId, classId } });
+      let payment: any = null;
+      try {
+        payment = await this.paymentRepository.findOne({ where: { id: paymentId, instituteId, classId } });
+      } catch (e: any) {
+        this.logger.error(`Error finding payment: ${e?.message}`);
+      }
       if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found for given institute/class', error: 'PAYMENT_NOT_FOUND' });
 
       let enrollments: any[] = [];
@@ -438,22 +448,23 @@ export class InstituteClassPaymentService {
           where: { instituteId, classId, isActive: true },
           relations: ['student', 'student.user'],
           order: { createdAt: 'DESC' } as any,
-          skip: (page - 1) * limit,
-          take: limit,
+          skip: Math.max(0, (page - 1) * limit),
+          take: Math.max(1, Math.min(limit, 100)),
         });
       } catch (dbError: any) {
-        this.logger.error(`Error loading class students: ${dbError?.message}`);
+        this.logger.error(`Error loading class students: ${dbError?.message}`, dbError?.stack);
         enrollments = [];
         totalStudents = 0;
       }
 
+      // Return early if no students
       if (!enrollments || enrollments.length === 0) {
         return {
           success: true,
           data: {
             paymentId,
-            paymentTitle: payment.title,
-            paymentAmount: parseFloat(String(payment.amount)),
+            paymentTitle: payment?.title || 'Payment',
+            paymentAmount: payment ? parseFloat(String(payment.amount)) : 0,
             students: [],
             summary: {
               total: totalStudents,
@@ -467,52 +478,82 @@ export class InstituteClassPaymentService {
         };
       }
 
-      const enrolledUserIds = enrollments.map(e => e.studentUserId).filter(Boolean);
+      const enrolledUserIds = enrollments.map(e => e?.studentUserId).filter(id => id && typeof id === 'string' && id.trim());
       let memberships: any[] = [];
       if (enrolledUserIds.length > 0) {
         try {
-          memberships = await this.instituteUserRepository.find({ where: { userId: In(enrolledUserIds), instituteId } });
+          memberships = await this.instituteUserRepository.find({
+            where: { userId: In(enrolledUserIds), instituteId },
+            select: ['userId', 'instituteUserImageUrl', 'userIdByInstitute', 'instituteCardId'],
+          });
         } catch (dbError: any) {
-          this.logger.error(`Error loading institute users: ${dbError?.message}`);
+          this.logger.error(`Error loading institute users: ${dbError?.message}`, dbError?.stack);
           memberships = [];
         }
       }
-      const membershipMap = new Map(memberships.map(m => [m.userId, m]));
+      const membershipMap = new Map((memberships || []).map(m => [m?.userId, m]));
 
       let submissions: any[] = [];
       try {
-        submissions = await this.submissionRepository.find({ where: { paymentId } });
+        submissions = await this.submissionRepository.find({
+          where: { paymentId },
+          select: ['id', 'userId', 'status', 'submittedAmount', 'verifiedAt'],
+        });
       } catch (dbError: any) {
-        this.logger.error(`Error loading submissions: ${dbError?.message}`);
+        this.logger.error(`Error loading submissions: ${dbError?.message}`, dbError?.stack);
         submissions = [];
       }
-      const submissionMap = new Map(submissions.map(s => [s.userId, s]));
+      const submissionMap = new Map((submissions || []).map(s => [s?.userId, s]));
 
-      const students = enrollments.map(enrollment => {
+      const students = (enrollments || []).map((enrollment, idx) => {
         try {
-          const studentUserId = enrollment.studentUserId;
-          const studentUser = enrollment.student?.user;
+          if (!enrollment) return null;
+
+          const studentUserId = enrollment?.studentUserId;
+          if (!studentUserId) return null;
+
+          const studentUser = enrollment?.student?.user;
           const membership = membershipMap.get(studentUserId);
           const sub = submissionMap.get(studentUserId);
-          const rawInstituteImage = membership?.instituteUserImageUrl || null;
-          const rawGlobalImage = studentUser?.imageUrl || null;
+
+          let instituteUserImage: string | null = null;
+          try {
+            const rawInstituteImage = membership?.instituteUserImageUrl;
+            if (rawInstituteImage && typeof rawInstituteImage === 'string') {
+              instituteUserImage = this.cloudStorageService.getFullUrl(rawInstituteImage);
+            }
+          } catch (imgError: any) {
+            this.logger.warn(`Error processing institute image for user ${studentUserId}: ${imgError?.message}`);
+          }
+
+          let globalImage: string | null = null;
+          if (!instituteUserImage) {
+            try {
+              const rawGlobalImage = studentUser?.imageUrl;
+              if (rawGlobalImage && typeof rawGlobalImage === 'string') {
+                globalImage = this.cloudStorageService.getFullUrl(rawGlobalImage);
+              }
+            } catch (imgError: any) {
+              this.logger.warn(`Error processing global image for user ${studentUserId}: ${imgError?.message}`);
+            }
+          }
 
           return {
             userId: studentUserId,
-            nameWithInitials: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : 'Unknown',
+            nameWithInitials: studentUser?.nameWithInitials || `${studentUser?.firstName || ''} ${studentUser?.lastName || ''}`.trim() || 'Unknown',
             instituteStudentId: membership?.userIdByInstitute || null,
             cardId: membership?.instituteCardId || null,
-            instituteUserImage: rawInstituteImage ? this.cloudStorageService.getFullUrl(rawInstituteImage) : (rawGlobalImage ? this.cloudStorageService.getFullUrl(rawGlobalImage) : null),
-            paymentStatus: sub ? sub.status : 'NOT_SUBMITTED',
+            instituteUserImage: instituteUserImage || globalImage || null,
+            paymentStatus: sub?.status || 'NOT_SUBMITTED',
             submissionId: sub?.id || null,
-            verifiedAt: sub?.verifiedAt ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : sub.verifiedAt) : null,
-            amount: sub ? parseFloat(String(sub.submittedAmount)) : null,
+            verifiedAt: sub?.verifiedAt ? (sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : String(sub.verifiedAt)) : null,
+            amount: sub?.submittedAmount ? parseFloat(String(sub.submittedAmount)) : null,
           };
         } catch (mapError: any) {
-          this.logger.error(`Error mapping student data: ${mapError?.message}`);
+          this.logger.error(`Error mapping student at index ${idx}: ${mapError?.message}`, mapError?.stack);
           return {
-            userId: enrollment.studentUserId,
-            nameWithInitials: 'Error Loading',
+            userId: enrollment?.studentUserId || `unknown-${idx}`,
+            nameWithInitials: 'Error',
             instituteStudentId: null,
             cardId: null,
             instituteUserImage: null,
@@ -522,28 +563,44 @@ export class InstituteClassPaymentService {
             amount: null,
           };
         }
-      });
+      }).filter(s => s !== null);
+
+      const paymentTitle = payment?.title || 'Payment';
+      const paymentAmount = payment ? parseFloat(String(payment.amount || 0)) : 0;
 
       return {
         success: true,
         data: {
           paymentId,
-          paymentTitle: payment.title,
-          paymentAmount: parseFloat(String(payment.amount)),
+          paymentTitle,
+          paymentAmount,
           students,
           summary: {
             total: totalStudents,
-            verified: submissions.filter(s => s.status === SubmissionStatus.VERIFIED).length,
-            pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
-            rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
-            notSubmitted: Math.max(totalStudents - submissions.length, 0),
+            verified: (submissions || []).filter(s => s?.status === SubmissionStatus.VERIFIED).length,
+            pending: (submissions || []).filter(s => s?.status === SubmissionStatus.PENDING).length,
+            rejected: (submissions || []).filter(s => s?.status === SubmissionStatus.REJECTED).length,
+            notSubmitted: Math.max(totalStudents - (submissions || []).length, 0),
           },
           pagination: { currentPage: page, totalPages: Math.ceil(totalStudents / limit), totalItems: totalStudents, itemsPerPage: limit, hasNextPage: page < Math.ceil(totalStudents / limit), hasPreviousPage: page > 1 },
         },
       };
     } catch (error: any) {
-      this.logger.error(`Unexpected error in getStudentsByInstituteClass: ${error?.message}`, error?.stack);
-      throw error;
+      this.logger.error(`CRITICAL error in getStudentsByInstituteClass: ${error?.message}`, error?.stack);
+      // Return a valid response structure even on error
+      return {
+        success: false,
+        error: error?.response?.error || 'INTERNAL_ERROR',
+        message: error?.message || 'Failed to load student payment details',
+        data: {
+          paymentId,
+          paymentTitle: '',
+          paymentAmount: 0,
+          students: [],
+          summary: { total: 0, verified: 0, pending: 0, rejected: 0, notSubmitted: 0 },
+          pagination: { currentPage: page, totalPages: 0, totalItems: 0, itemsPerPage: limit, hasNextPage: false, hasPreviousPage: false },
+        },
+      };
     }
   }
 
