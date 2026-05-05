@@ -211,7 +211,17 @@ export class InstituteClassPaymentService {
     user: JwtPayload,
   ): Promise<ClassSubmissionCreationSuccessResponseDto> {
     try {
-      const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
+      // Input validation
+      if (!paymentId || !dto.paymentDate || !dto.submittedAmount) {
+        throw new BadRequestException({ success: false, message: 'Missing required fields', error: 'INVALID_INPUT' });
+      }
+
+      let payment: any = null;
+      try {
+        payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
+      } catch (e: any) {
+        this.logger.error(`Error finding payment: ${e?.message}`);
+      }
       if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
       const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
@@ -227,43 +237,74 @@ export class InstituteClassPaymentService {
       if (payment.status !== PaymentStatus.ACTIVE) throw new BadRequestException({ success: false, message: 'Payment is no longer accepting submissions', error: 'PAYMENT_INACTIVE' });
       if (new Date() > payment.lastDate) throw new BadRequestException({ success: false, message: 'Payment submission deadline has passed', error: 'PAYMENT_EXPIRED' });
 
-      const existingSubmission = await this.submissionRepository.findOne({ where: { paymentId, userId: user.s } });
+      let existingSubmission: any = null;
+      try {
+        existingSubmission = await this.submissionRepository.findOne({ where: { paymentId, userId: user.s } });
+      } catch (e: any) {
+        this.logger.error(`Error checking existing submission: ${e?.message}`);
+      }
+      
       if (existingSubmission) {
         const allowResubmit = [SubmissionStatus.REJECTED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED].includes(existingSubmission.status);
         if (!allowResubmit) throw new BadRequestException({ success: false, message: 'You have already submitted a payment for this request', error: 'DUPLICATE_SUBMISSION' });
       }
 
-      const submitter = await this.userRepository.findOne({ where: { id: user.s } });
+      let submitter: any = null;
+      try {
+        submitter = await this.userRepository.findOne({ where: { id: user.s } });
+      } catch (e: any) {
+        this.logger.error(`Error finding user: ${e?.message}`);
+      }
       if (!submitter) throw new NotFoundException({ success: false, message: 'User not found', error: 'USER_NOT_FOUND' });
 
       const receiptUrl = dto.receiptUrl || file;
-      if (typeof receiptUrl !== 'string') throw new BadRequestException({ success: false, message: 'File upload is deprecated. Use receiptUrl from /upload/verify-and-publish.', error: 'FILE_UPLOAD_DEPRECATED' });
+      if (!receiptUrl || typeof receiptUrl !== 'string' || receiptUrl.trim().length === 0) {
+        throw new BadRequestException({ success: false, message: 'Receipt URL is required. Use the file from /upload/verify-and-publish.', error: 'MISSING_RECEIPT_URL' });
+      }
 
       const timestamp = new Date();
-      const submission = this.submissionRepository.create({
-        paymentId,
-        userId: user.s,
-        userType: user.userType as any,
-        username: `${submitter.firstName || ''} ${submitter.lastName || ''}`.trim(),
-        paymentDate: new Date(dto.paymentDate),
-        receiptUrl,
-        receiptFilename: receiptUrl.split('/').pop() || 'receipt',
-        transactionId: dto.transactionId,
-        submittedAmount: dto.submittedAmount,
-        notes: dto.notes,
-        status: SubmissionStatus.PENDING,
-        uploadedAt: timestamp,
-        updatedAt: timestamp,
-      });
-      const saved = await this.submissionRepository.save(submission);
-      
+      let submission: any = null;
+      try {
+        submission = this.submissionRepository.create({
+          paymentId,
+          userId: user.s,
+          userType: user.userType as any,
+          username: `${submitter.firstName || ''} ${submitter.lastName || ''}`.trim() || submitter.nameWithInitials || 'Unknown',
+          paymentDate: new Date(dto.paymentDate),
+          receiptUrl: receiptUrl.trim(),
+          receiptFilename: receiptUrl.split('/').pop() || 'receipt',
+          transactionId: dto.transactionId || null,
+          submittedAmount: dto.submittedAmount,
+          notes: dto.notes || null,
+          status: SubmissionStatus.PENDING,
+          uploadedAt: timestamp,
+          updatedAt: timestamp,
+        });
+      } catch (e: any) {
+        this.logger.error(`Error creating submission object: ${e?.message}`, e?.stack);
+        throw new BadRequestException({ success: false, message: 'Invalid submission data', error: 'INVALID_SUBMISSION_DATA' });
+      }
+
+      let saved: any = null;
+      try {
+        saved = await this.submissionRepository.save(submission);
+      } catch (e: any) {
+        this.logger.error(`Error saving submission: ${e?.message}`, e?.stack);
+        throw new BadRequestException({ success: false, message: 'Failed to save payment submission', error: 'SAVE_FAILED' });
+      }
+
+      if (!saved || !saved.id) {
+        throw new BadRequestException({ success: false, message: 'Submission was not saved properly', error: 'SAVE_FAILED' });
+      }
+
       let receiptFileUrl: string | null = null;
       try {
         receiptFileUrl = saved.receiptUrl ? this.cloudStorageService.getFullUrl(saved.receiptUrl) : null;
       } catch (imgError: any) {
         this.logger.warn(`Error processing receipt URL: ${imgError?.message}`);
+        receiptFileUrl = null;
       }
-      
+
       return {
         success: true,
         message: 'Payment submission uploaded successfully',
@@ -274,8 +315,18 @@ export class InstituteClassPaymentService {
         },
       };
     } catch (error: any) {
-      this.logger.error(`Error in submitPayment: ${error?.message}`, error?.stack);
-      throw error;
+      this.logger.error(`CRITICAL error in submitPayment: ${error?.message}`, error?.stack);
+      
+      // Return error response instead of throwing
+      return {
+        success: false,
+        message: error?.message || 'Failed to submit payment',
+        data: {
+          submissionId: null,
+          status: 'ERROR',
+          receiptFile: null,
+        },
+      } as any;
     }
   }
 
