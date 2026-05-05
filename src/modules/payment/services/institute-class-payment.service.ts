@@ -513,6 +513,9 @@ export class InstituteClassPaymentService {
       // ── Load class students via QueryBuilder with proper entity joins ──────────────────────────
       let totalStudents = 0;
       let classStudents: any[] = [];
+      let userMap = new Map<string, any>();
+      let instituteUserMap = new Map<string, any>();
+      
       try {
         const rawCount = await this.classStudentRepository.count({ where: { instituteId, classId } });
         this.logger.log(`[studentsDetails] raw count for class=${classId} institute=${instituteId}: ${rawCount}`);
@@ -521,21 +524,40 @@ export class InstituteClassPaymentService {
         const pageSize = Math.max(1, Math.min(limit, 100));
         const offset  = Math.max(0, (page - 1) * pageSize);
 
-        // Use proper entity-based relationships
-        classStudents = await this.classStudentRepository
-          .createQueryBuilder('ics')
-          .leftJoinAndSelect(UserEntity, 'u', 'u.id = ics.studentUserId')
-          .leftJoinAndSelect(InstituteUserEntity, 'iu', 'iu.userId = ics.studentUserId AND iu.instituteId = :iid', { iid: instituteId })
-          .where('ics.instituteId = :instituteId', { instituteId })
-          .andWhere('ics.classId = :classId', { classId })
-          .orderBy('ics.createdAt', 'DESC')
-          .offset(offset)
-          .limit(pageSize)
-          .getMany();
+        // Load class students
+        classStudents = await this.classStudentRepository.find({
+          where: { instituteId, classId },
+          order: { createdAt: 'DESC' },
+          skip: offset,
+          take: pageSize,
+        });
 
         this.logger.log(`[studentsDetails] classStudents=${classStudents.length} totalStudents=${totalStudents}`);
+        
         if (classStudents.length > 0) {
-          this.logger.log(`[studentsDetails] First student ID: ${classStudents[0].studentUserId}`);
+          // Collect all student user IDs for batch loading
+          const studentUserIds = classStudents.map(cs => cs.studentUserId).filter(Boolean);
+          this.logger.log(`[studentsDetails] studentUserIds to load: ${studentUserIds.join(',')}`);
+
+          // Batch load all users
+          if (studentUserIds.length > 0) {
+            const users = await this.userRepository.find({
+              where: { id: In(studentUserIds) },
+              select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl'],
+            });
+            users.forEach(u => userMap.set(String(u.id), u));
+            this.logger.log(`[studentsDetails] loaded ${users.length} users`);
+          }
+
+          // Batch load all institute users
+          if (studentUserIds.length > 0) {
+            const instituteUsers = await this.instituteUserRepository.find({
+              where: { userId: In(studentUserIds), instituteId },
+              select: ['userId', 'userIdByInstitute', 'instituteCardId', 'instituteUserImageUrl'],
+            });
+            instituteUsers.forEach(iu => instituteUserMap.set(String(iu.userId), iu));
+            this.logger.log(`[studentsDetails] loaded ${instituteUsers.length} institute users`);
+          }
         }
       } catch (dbError: any) {
         this.logger.error(`[studentsDetails] Error loading class students: ${dbError?.message}`, dbError?.stack);
@@ -615,21 +637,23 @@ export class InstituteClassPaymentService {
           // Get submission for this student
           const sub = submissionMap.get(studentUserId);
 
-          // Extract student user data
-          const user = classStudent?.user || {};
-          const instituteUser = classStudent?.instituteUser || {};
+          // Get user data from the map
+          const user = userMap.get(studentUserId);
+          const instituteUser = instituteUserMap.get(studentUserId);
           
-          const nameWithInitials =
-            user?.nameWithInitials ||
-            `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+          const nameWithInitials = user?.nameWithInitials || 
+            (user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '') ||
             'Unknown';
 
           let profileImage: string | null = null;
           try {
-            if (instituteUser?.instituteUserImageUrl && typeof instituteUser.instituteUserImageUrl === 'string') {
-              profileImage = this.cloudStorageService.getFullUrl(instituteUser.instituteUserImageUrl);
-            } else if (user?.imageUrl && typeof user.imageUrl === 'string') {
-              profileImage = this.cloudStorageService.getFullUrl(user.imageUrl);
+            const instituteImageUrl = instituteUser?.instituteUserImageUrl;
+            const userImageUrl = user?.imageUrl;
+            
+            if (instituteImageUrl && typeof instituteImageUrl === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(instituteImageUrl);
+            } else if (userImageUrl && typeof userImageUrl === 'string') {
+              profileImage = this.cloudStorageService.getFullUrl(userImageUrl);
             }
           } catch (imgErr: any) {
             this.logger.warn(`[studentsDetails] Image error userId=${studentUserId}: ${imgErr?.message}`);
