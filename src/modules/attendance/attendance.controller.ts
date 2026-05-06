@@ -2358,6 +2358,74 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // BATCH CLASS REPORT DATA  –  POST so student list can be in body
+  // Access: InstituteAdmin → any class; Teacher → only their assigned class.
+  // Body: { studentIds, classId, attendanceStart/End, paymentsStart/End,
+  //         liveStart/End, recordingStart/End, withActivities?, attendanceLimit? }
+  // ─────────────────────────────────────────────────────────────────────────
+  @Post('institute/:instituteId/class-report')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+  })
+  @ApiOperation({ summary: 'Batch class-level report data for one or more students with per-section date ranges' })
+  async getClassReportData(
+    @Param('instituteId') instituteId: string,
+    @Body() body: {
+      classId: string;
+      studentIds: string[];
+      attendanceStart?: string;
+      attendanceEnd?: string;
+      paymentsStart?: string;
+      paymentsEnd?: string;
+      liveStart?: string;
+      liveEnd?: string;
+      recordingStart?: string;
+      recordingEnd?: string;
+      withActivities?: boolean;
+      attendanceLimit?: number;
+    },
+  ) {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const threeMonthsAgo = new Date(now.setMonth(now.getMonth() - 3)).toISOString().split('T')[0];
+    const twelveMonthsAgo = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
+
+    if (!body?.classId) {
+      throw new HttpException({ success: false, message: 'classId is required in body' }, HttpStatus.BAD_REQUEST);
+    }
+    if (!Array.isArray(body.studentIds) || !body.studentIds.length) {
+      throw new HttpException({ success: false, message: 'studentIds array is required and must not be empty' }, HttpStatus.BAD_REQUEST);
+    }
+    if (body.studentIds.length > 100) {
+      throw new HttpException({ success: false, message: 'Maximum 100 students per request' }, HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      return await this.attendanceService.getStudentClassReportData({
+        instituteId,
+        classId: body.classId,
+        studentIds: body.studentIds,
+        attendanceStart: body.attendanceStart || threeMonthsAgo,
+        attendanceEnd: body.attendanceEnd || today,
+        paymentsStart: body.paymentsStart || twelveMonthsAgo,
+        paymentsEnd: body.paymentsEnd || today,
+        liveStart: body.liveStart || threeMonthsAgo,
+        liveEnd: body.liveEnd || today,
+        recordingStart: body.recordingStart || threeMonthsAgo,
+        recordingEnd: body.recordingEnd || today,
+        withActivities: body.withActivities ?? false,
+        attendanceLimit: Math.min(body.attendanceLimit ?? 500, 2000),
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message || 'Failed to generate report data' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Get('institute/:instituteId/student/:studentId/institute-profile')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({

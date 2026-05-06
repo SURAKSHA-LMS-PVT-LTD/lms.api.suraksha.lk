@@ -4258,19 +4258,19 @@ export class AttendanceService {
     const [membershipRows, classRows, attendanceRows, paymentRows,
       paymentSubRows, subjectRows, lectureRows] = await Promise.all([
         this.dataSource.query(
-          `SELECT iu.user_id_by_institute, iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
+          `SELECT iu.user_id_institue userIdByInstitute, iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
                 u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number,
                 u.date_of_birth, u.gender, u.nic, u.address_line1, u.city, u.district, u.province, u.image_url,
                 s.emergency_contact, s.medical_conditions, s.allergies, s.father_id, s.mother_id, s.guardian_id
-         FROM institute_users iu JOIN users u ON u.id = iu.user_id
+         FROM institute_user iu JOIN users u ON u.id = iu.user_id
          LEFT JOIN students s ON s.user_id = iu.user_id
-         WHERE (iu.user_id = ? OR iu.user_id_by_institute = ?) AND iu.institute_id = ? LIMIT 1`,
+         WHERE (iu.user_id = ? OR iu.user_id_institue = ?) AND iu.institute_id = ? LIMIT 1`,
           [studentId, studentId, instituteId]),
         this.dataSource.query(
           `SELECT id, name, code, grade, specialty, academic_year academicYear, class_type classType
          FROM institute_classes WHERE id = ? LIMIT 1`, [classId]),
         this.dataSource.query(
-          `SELECT ar.date, ar.marked_at markedAt, ar.status, ar.marking_method markingMethod,
+          `SELECT ar.date, ar.\`timestamp\` markedAt, ar.status, ar.marking_method markingMethod,
                 ar.class_session_id sessionId, ar.location,
                 sess.name sessionName, sess.start_time sessionStart, sess.end_time sessionEnd,
                 grp.id groupId, grp.name groupName, grp.color groupColor
@@ -4357,13 +4357,14 @@ export class AttendanceService {
 
     const student = mem.first_name ? {
       id: studentId,
+      fullName: `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim() || null,
       name: mem.name_with_initials ?? `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim(),
       nameWithInitials: mem.name_with_initials, email: mem.email, phoneNumber: mem.phone_number,
       dateOfBirth: mem.date_of_birth, gender: mem.gender, nic: mem.nic,
       addressLine1: mem.address_line1, city: mem.city, district: mem.district, province: mem.province,
       imageUrl: imgUrl(mem.institute_user_image_url ?? mem.image_url),
       instituteImageUrl: imgUrl(mem.institute_user_image_url),
-      userIdByInstitute: mem.user_id_by_institute, role: mem.institute_user_type,
+      userIdByInstitute: mem.userIdByInstitute, role: mem.institute_user_type,
       emergencyContact: mem.emergency_contact, medicalConditions: mem.medical_conditions, allergies: mem.allergies,
       extraData: mem.extra_data ?? null,
       father: getParent(mem.father_id), mother: getParent(mem.mother_id), guardian: getParent(mem.guardian_id),
@@ -4375,8 +4376,10 @@ export class AttendanceService {
     } : null;
 
     const attendance = attendanceRows.map((r: any) => ({
-      date: r.date ?? (r.markedAt ? String(r.markedAt).substring(0, 10) : ''),
-      markedAt: r.markedAt, status: r.status, markingMethod: r.markingMethod, location: r.location,
+      date: r.date ?? '',
+      markedAt: r.markedAt != null ? new Date(Number(r.markedAt)).toISOString() : null,
+      status: (['absent','present','late','left','left_early','left_lately'] as const)[r.status] ?? 'absent',
+      markingMethod: r.markingMethod, location: r.location,
       sessionId: r.sessionId ?? null, sessionName: r.sessionName ?? null,
       sessionStart: r.sessionStart ?? null, sessionEnd: r.sessionEnd ?? null,
       groupId: r.groupId ?? null, groupName: r.groupName ?? null, groupColor: r.groupColor ?? null,
@@ -4432,17 +4435,17 @@ export class AttendanceService {
 
     const [membershipRows, attendanceRows, paymentRows, paymentSubRows, classRows] = await Promise.all([
       this.dataSource.query(
-        `SELECT iu.user_id_by_institute, iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
+        `SELECT iu.user_id_institue userIdByInstitute, iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
                 u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number,
                 u.date_of_birth, u.gender, u.nic, u.address_line1, u.address_line2,
                 u.city, u.district, u.province, u.image_url,
                 s.emergency_contact, s.medical_conditions, s.allergies, s.father_id, s.mother_id, s.guardian_id
-         FROM institute_users iu JOIN users u ON u.id = iu.user_id
+         FROM institute_user iu JOIN users u ON u.id = iu.user_id
          LEFT JOIN students s ON s.user_id = iu.user_id
-         WHERE (iu.user_id = ? OR iu.user_id_by_institute = ?) AND iu.institute_id = ? LIMIT 1`,
+         WHERE (iu.user_id = ? OR iu.user_id_institue = ?) AND iu.institute_id = ? LIMIT 1`,
         [studentId, studentId, instituteId]),
       this.dataSource.query(
-        `SELECT ar.date, ar.marked_at markedAt, ar.status, ar.marking_method markingMethod,
+        `SELECT ar.date, ar.\`timestamp\` markedAt, ar.status, ar.marking_method markingMethod,
                 ar.location, ar.event_id eventId,
                 ev.title eventTitle, ev.event_type eventType,
                 ev.start_time eventStart, ev.end_time eventEnd,
@@ -4497,6 +4500,7 @@ export class AttendanceService {
 
     const student = mem.first_name ? {
       id: studentId,
+      fullName: `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim() || null,
       name: mem.name_with_initials ?? `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim(),
       nameWithInitials: mem.name_with_initials, email: mem.email, phoneNumber: mem.phone_number,
       dateOfBirth: mem.date_of_birth, gender: mem.gender, nic: mem.nic,
@@ -4504,15 +4508,17 @@ export class AttendanceService {
       city: mem.city, district: mem.district, province: mem.province,
       imageUrl: imgUrl(mem.institute_user_image_url ?? mem.image_url),
       instituteImageUrl: imgUrl(mem.institute_user_image_url),
-      userIdByInstitute: mem.user_id_by_institute, role: mem.institute_user_type,
+      userIdByInstitute: mem.userIdByInstitute, role: mem.institute_user_type,
       emergencyContact: mem.emergency_contact, medicalConditions: mem.medical_conditions, allergies: mem.allergies,
       extraData: mem.extra_data ?? null,
       father: getParent(mem.father_id), mother: getParent(mem.mother_id), guardian: getParent(mem.guardian_id),
     } : null;
 
     const attendance = attendanceRows.map((r: any) => ({
-      date: r.date ?? (r.markedAt ? String(r.markedAt).substring(0, 10) : ''),
-      markedAt: r.markedAt, status: r.status, markingMethod: r.markingMethod, location: r.location,
+      date: r.date ?? '',
+      markedAt: r.markedAt != null ? new Date(Number(r.markedAt)).toISOString() : null,
+      status: (['absent','present','late','left','left_early','left_lately'] as const)[r.status] ?? 'absent',
+      markingMethod: r.markingMethod, location: r.location,
       eventId: r.eventId ?? null, eventTitle: r.eventTitle ?? null,
       eventType: r.eventType ?? null, eventStart: r.eventStart ?? null,
       eventEnd: r.eventEnd ?? null, eventVenue: r.eventVenue ?? null, isMandatory: !!r.isMandatory,
@@ -4533,6 +4539,296 @@ export class AttendanceService {
     }));
 
     return { success: true, student, attendance, payments, enrolledClasses };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BATCH CLASS-LEVEL REPORT DATA
+  // Returns full report payload for one or more students in a class.
+  // Each date-range window is independent; withActivities includes per-session
+  // recording detail rows alongside the lecture summary.
+  // Access: InstituteAdmin → any class; Teacher → only their assigned class.
+  // ─────────────────────────────────────────────────────────────────────────
+  async getStudentClassReportData(params: {
+    instituteId: string;
+    classId: string;
+    studentIds: string[];           // 1..N students
+    attendanceStart: string;        // YYYY-MM-DD
+    attendanceEnd: string;
+    paymentsStart: string;          // YYYY-MM-DD
+    paymentsEnd: string;
+    liveStart: string;              // YYYY-MM-DD  (filter lecture start_time)
+    liveEnd: string;
+    recordingStart: string;         // YYYY-MM-DD
+    recordingEnd: string;
+    withActivities?: boolean;       // include per-session recording rows
+    attendanceLimit?: number;       // default 500
+  }): Promise<any> {
+    const {
+      instituteId, classId, studentIds,
+      attendanceStart, attendanceEnd,
+      paymentsStart, paymentsEnd,
+      liveStart, liveEnd,
+      recordingStart, recordingEnd,
+      withActivities = false,
+      attendanceLimit = 500,
+    } = params;
+
+    if (!studentIds.length) return { success: true, students: [] };
+
+    const ph = (n: number) => Array(n).fill('?').join(',');
+
+    // ── 1. Student membership rows (one query for all ids) ──────────────────
+    const membershipRows: any[] = await this.dataSource.query(
+      `SELECT iu.user_id userId, iu.user_id_institue userIdByInstitute,
+              iu.institute_user_type, iu.institute_user_image_url, iu.extra_data,
+              u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number,
+              u.date_of_birth, u.gender, u.nic, u.address_line1, u.city, u.district, u.province, u.image_url,
+              s.emergency_contact, s.medical_conditions, s.allergies,
+              s.father_id, s.mother_id, s.guardian_id
+       FROM institute_user iu
+       JOIN users u ON u.id = iu.user_id
+       LEFT JOIN students s ON s.user_id = iu.user_id
+       WHERE (iu.user_id IN (${ph(studentIds.length)}) OR iu.user_id_institue IN (${ph(studentIds.length)}))
+         AND iu.institute_id = ?`,
+      [...studentIds, ...studentIds, instituteId],
+    );
+
+    // Build studentId → membership row map (prefer UUID match, fall back to instituteId)
+    const memByUuid: Record<string, any> = {};
+    const memByInstId: Record<string, any> = {};
+    for (const m of membershipRows) {
+      memByUuid[m.userId] = m;
+      if (m.userIdByInstitute) memByInstId[m.userIdByInstitute] = m;
+    }
+    const resolveStudent = (sid: string) => memByUuid[sid] ?? memByInstId[sid] ?? null;
+
+    // ── 2. Collect parent ids and fetch parents ─────────────────────────────
+    const allParentIds = [...new Set(
+      membershipRows.flatMap((m: any) => [m.father_id, m.mother_id, m.guardian_id].filter(Boolean))
+    )];
+    let parentRows: any[] = [];
+    if (allParentIds.length) {
+      parentRows = await this.dataSource.query(
+        `SELECT u.id, u.name_with_initials, u.email, u.phone_number, u.image_url,
+                p.occupation, p.work_place workPlace
+         FROM users u LEFT JOIN parents p ON p.user_id = u.id
+         WHERE u.id IN (${ph(allParentIds.length)})`, allParentIds,
+      ).catch(() => []);
+    }
+    const parentMap: Record<string, any> = {};
+    for (const p of parentRows) parentMap[p.id] = p;
+    const imgUrl = (v?: string | null) => v ? this.CloudStorageService.getFullUrl(v) : null;
+    const getParent = (id?: string | null) => {
+      if (!id || !parentMap[id]) return undefined;
+      const p = parentMap[id];
+      return {
+        name: p.name_with_initials, email: p.email, phoneNumber: p.phone_number,
+        occupation: p.occupation, workPlace: p.workPlace, imageUrl: imgUrl(p.image_url),
+      };
+    };
+
+    // ── 3. Class info ───────────────────────────────────────────────────────
+    const classRows: any[] = await this.dataSource.query(
+      `SELECT id, name, code, grade, specialty, academic_year academicYear, class_type classType
+       FROM institute_classes WHERE id = ? LIMIT 1`, [classId],
+    );
+    const classInfo = classRows[0]
+      ? { id: classRows[0].id, name: classRows[0].name, code: classRows[0].code, grade: classRows[0].grade, specialty: classRows[0].specialty, academicYear: classRows[0].academicYear }
+      : null;
+
+    // ── 4. Parallel bulk fetches ────────────────────────────────────────────
+    const [attRows, payDefs, paySubs, lectureRows] = await Promise.all([
+      // Attendance – filtered by attendanceStart..attendanceEnd
+      this.dataSource.query(
+        `SELECT ar.student_id studentId, ar.date, ar.\`timestamp\` markedAt,
+                ar.status, ar.marking_method markingMethod, ar.location,
+                sess.name sessionName, sess.start_time sessionStart, sess.end_time sessionEnd,
+                grp.id groupId, grp.name groupName, grp.color groupColor
+         FROM attendance_records ar
+         LEFT JOIN institute_class_attendance_sessions sess ON sess.id = ar.class_session_id
+         LEFT JOIN institute_class_attendance_session_groups grp ON grp.id = sess.session_group_id
+         WHERE ar.institute_id = ? AND ar.class_id = ?
+           AND ar.student_id IN (${ph(studentIds.length)})
+           AND ar.date >= ? AND ar.date <= ?
+         ORDER BY ar.date DESC LIMIT ?`,
+        [instituteId, classId, ...studentIds, attendanceStart, attendanceEnd, attendanceLimit * studentIds.length],
+      ).catch(() => []),
+
+      // Payment definitions – filtered by paymentsStart..paymentsEnd (due_date window)
+      this.dataSource.query(
+        `SELECT id, title, description, amount, status, due_date dueDate
+         FROM institute_class_payments
+         WHERE institute_id = ? AND class_id = ? AND is_active = 1
+           AND (due_date IS NULL OR (due_date >= ? AND due_date <= ?))
+         ORDER BY due_date DESC LIMIT 100`,
+        [instituteId, classId, paymentsStart, paymentsEnd],
+      ).catch(() => []),
+
+      // Submission status per student
+      this.dataSource.query(
+        `SELECT payment_id paymentId, submitted_by submittedBy, status, submitted_amount submittedAmount
+         FROM institute_class_payment_submissions
+         WHERE institute_id = ? AND class_id = ? AND submitted_by IN (${ph(studentIds.length)})
+         LIMIT ${studentIds.length * 200}`,
+        [instituteId, classId, ...studentIds],
+      ).catch(() => []),
+
+      // Lectures with live/rec attendance enabled – filtered by liveStart..liveEnd or recordingStart..recordingEnd
+      this.dataSource.query(
+        `SELECT l.id, l.title, l.status, l.start_time startTime, l.end_time endTime,
+                l.live_attendance_enabled liveEnabled, l.rec_attendance_enabled recEnabled,
+                l.recording_url recordingUrl, l.rec_duration_seconds recDuration,
+                sub.id subjectId, sub.name subjectName
+         FROM institute_class_subject_lectures l
+         LEFT JOIN subjects sub ON sub.id = l.subject_id
+         WHERE l.class_id = ? AND l.institute_id = ? AND l.is_active = 1
+           AND (l.live_attendance_enabled = 1 OR l.rec_attendance_enabled = 1)
+           AND (
+             (l.live_attendance_enabled = 1 AND DATE(l.start_time) >= ? AND DATE(l.start_time) <= ?)
+             OR
+             (l.rec_attendance_enabled = 1 AND DATE(l.start_time) >= ? AND DATE(l.start_time) <= ?)
+           )
+         ORDER BY l.start_time DESC LIMIT 300`,
+        [classId, instituteId, liveStart, liveEnd, recordingStart, recordingEnd],
+      ).catch(() => []),
+    ]);
+
+    // ── 5. Per-student live + recording sessions ────────────────────────────
+    let liveSessionRows: any[] = [];
+    let recSessionRows: any[] = [];
+    if (lectureRows.length && studentIds.length) {
+      const lectureIds = lectureRows.map((l: any) => l.id);
+      const lPh = ph(lectureIds.length);
+      const sPh = ph(studentIds.length);
+      [liveSessionRows, recSessionRows] = await Promise.all([
+        this.dataSource.query(
+          `SELECT lecture_id lectureId, user_id userId, join_time joinTime, leave_time leaveTime
+           FROM lecture_live_attendance
+           WHERE lecture_id IN (${lPh}) AND user_id IN (${sPh})
+           ORDER BY join_time ASC`,
+          [...lectureIds, ...studentIds],
+        ).catch(() => []),
+        this.dataSource.query(
+          `SELECT lecture_id lectureId, user_id userId,
+                  start_time startTime, end_time endTime,
+                  total_watched_seconds watchedSeconds, seek_count seekCount,
+                  total_video_duration_seconds videoDuration
+           FROM lecture_recording_sessions
+           WHERE lecture_id IN (${lPh}) AND user_id IN (${sPh})
+           ORDER BY start_time ASC`,
+          [...lectureIds, ...studentIds],
+        ).catch(() => []),
+      ]);
+    }
+
+    // ── 6. Build lookup maps ────────────────────────────────────────────────
+    // attendance grouped by studentId
+    const attByStudent: Record<string, any[]> = {};
+    for (const r of attRows) (attByStudent[r.studentId] ??= []).push(r);
+
+    // payment submission by studentId → paymentId
+    const subByStudentPayment: Record<string, Record<string, any>> = {};
+    for (const sub of paySubs) {
+      (subByStudentPayment[sub.submittedBy] ??= {})[sub.paymentId] = sub;
+    }
+
+    // live sessions: lectureId → userId → rows[]
+    const liveMap: Record<string, Record<string, any[]>> = {};
+    for (const r of liveSessionRows) {
+      ((liveMap[r.lectureId] ??= {})[r.userId] ??= []).push(r);
+    }
+    // recording sessions: lectureId → userId → rows[]
+    const recMap: Record<string, Record<string, any[]>> = {};
+    for (const r of recSessionRows) {
+      ((recMap[r.lectureId] ??= {})[r.userId] ??= []).push(r);
+    }
+
+    // ── 7. Assemble per-student output ─────────────────────────────────────
+    const students = studentIds.map((sid) => {
+      const mem = resolveStudent(sid);
+      if (!mem) return { id: sid, student: null, attendance: [], payments: [], lectures: [] };
+
+      const resolvedId = mem.userId as string;
+
+      // Student detail
+      const student = {
+        id: resolvedId,
+        fullName: `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim() || null,
+        name: mem.name_with_initials ?? `${mem.first_name ?? ''} ${mem.last_name ?? ''}`.trim(),
+        nameWithInitials: mem.name_with_initials,
+        email: mem.email, phoneNumber: mem.phone_number,
+        dateOfBirth: mem.date_of_birth, gender: mem.gender, nic: mem.nic,
+        addressLine1: mem.address_line1, city: mem.city, district: mem.district, province: mem.province,
+        imageUrl: imgUrl(mem.institute_user_image_url ?? mem.image_url),
+        userIdByInstitute: mem.userIdByInstitute,
+        role: mem.institute_user_type,
+        emergencyContact: mem.emergency_contact,
+        medicalConditions: mem.medical_conditions,
+        allergies: mem.allergies,
+        extraData: mem.extra_data ?? null,
+        father: getParent(mem.father_id),
+        mother: getParent(mem.mother_id),
+        guardian: getParent(mem.guardian_id),
+      };
+
+      // Attendance
+      const attendance = (attByStudent[resolvedId] ?? attByStudent[sid] ?? []).map((r: any) => ({
+        date: r.date ?? '',
+        markedAt: r.markedAt != null ? new Date(Number(r.markedAt)).toISOString() : null,
+        status: (['absent','present','late','left','left_early','left_lately'] as const)[r.status] ?? 'absent',
+        markingMethod: r.markingMethod, location: r.location,
+        sessionName: r.sessionName ?? null,
+        sessionStart: r.sessionStart ?? null, sessionEnd: r.sessionEnd ?? null,
+        groupId: r.groupId ?? null, groupName: r.groupName ?? null, groupColor: r.groupColor ?? null,
+      }));
+
+      // Payments
+      const subMap = subByStudentPayment[resolvedId] ?? subByStudentPayment[sid] ?? {};
+      const payments = payDefs.map((p: any) => ({
+        id: p.id, title: p.title, description: p.description,
+        amount: p.amount, status: p.status, dueDate: p.dueDate,
+        submissionStatus: subMap[p.id]?.status ?? null,
+        submittedAmount: subMap[p.id]?.submittedAmount ?? null,
+      }));
+
+      // Lectures with per-student live + recording data
+      const lectures = lectureRows.map((l: any) => {
+        const lRows = (liveMap[l.id]?.[resolvedId] ?? liveMap[l.id]?.[sid] ?? []);
+        const rRows = (recMap[l.id]?.[resolvedId] ?? recMap[l.id]?.[sid] ?? []);
+        const liveSecs = lRows.reduce((sum: number, r: any) =>
+          sum + (!r.leaveTime ? 0 : Math.floor((new Date(r.leaveTime).getTime() - new Date(r.joinTime).getTime()) / 1000)), 0);
+        const totalWatched = rRows.reduce((sum: number, r: any) => sum + (r.watchedSeconds ?? 0), 0);
+        return {
+          id: l.id, title: l.title, status: l.status,
+          startTime: l.startTime, endTime: l.endTime,
+          subjectId: l.subjectId, subjectName: l.subjectName,
+          liveEnabled: !!l.liveEnabled, recEnabled: !!l.recEnabled,
+          recordingUrl: l.recordingUrl, recDurationSeconds: l.recDuration,
+          liveAttendance: {
+            present: lRows.length > 0,
+            totalSessions: lRows.length,
+            totalSeconds: liveSecs,
+            sessions: lRows.map((r: any) => ({ joinTime: r.joinTime, leaveTime: r.leaveTime })),
+          },
+          recordingActivity: {
+            watched: rRows.length > 0,
+            totalWatchedSeconds: totalWatched,
+            sessionCount: rRows.length,
+            // per-session rows only when withActivities=true
+            sessions: withActivities
+              ? rRows.map((r: any) => ({
+                  startTime: r.startTime, endTime: r.endTime,
+                  watchedSeconds: r.watchedSeconds, seekCount: r.seekCount ?? 0, videoDuration: r.videoDuration,
+                }))
+              : [],
+          },
+        };
+      });
+
+      return { id: sid, student, classInfo, attendance, payments, lectures };
+    });
+
+    return { success: true, students };
   }
 }
 
