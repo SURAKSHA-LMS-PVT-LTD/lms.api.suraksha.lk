@@ -240,5 +240,16 @@ export class InstituteEntity {
     applicableTo?: string[]; // e.g. ['Student','Teacher'] — empty = all roles
   }>;
 
+  // ── PDF Report branding ──────────────────────────────────────────────────────
+  // S3 relative paths.  institute.service.ts getSettings() resolves to full URLs.
+  // Uploaded via PATCH /institutes/:id/settings with keys reportHeaderUrl / reportFooterUrl.
+  // Frontend: InstituteSettingsPage.tsx → "Report Branding" section.
+
+  @Column({ name: 'report_header_url', type: 'varchar', length: 500, nullable: true, comment: 'S3 path for PDF report header banner (~8:1 ratio)' })
+  reportHeaderUrl?: string;
+
+  @Column({ name: 'report_footer_url', type: 'varchar', length: 500, nullable: true, comment: 'S3 path for PDF report footer banner (~14:1 ratio)' })
+  reportFooterUrl?: string;
+
 }
 

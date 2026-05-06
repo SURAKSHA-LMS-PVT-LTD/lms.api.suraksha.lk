@@ -440,6 +440,9 @@ export class InstitutesService {
       youtubeChannelUrl: institute.youtubeChannelUrl,
       isActive: institute.isActive,
       updatedAt: institute.updatedAt,
+      // Report branding — returned as full URLs so frontend can fetch directly
+      reportHeaderUrl: institute.reportHeaderUrl ? this.cloudStorageService.getFullUrl(institute.reportHeaderUrl) : null,
+      reportFooterUrl: institute.reportFooterUrl ? this.cloudStorageService.getFullUrl(institute.reportFooterUrl) : null,
     });
   }
 
@@ -530,6 +533,20 @@ export class InstitutesService {
     if (dto.websiteUrl !== undefined) updateData.websiteUrl = dto.websiteUrl;
     if (dto.facebookPageUrl !== undefined) updateData.facebookPageUrl = dto.facebookPageUrl;
     if (dto.youtubeChannelUrl !== undefined) updateData.youtubeChannelUrl = dto.youtubeChannelUrl;
+
+    // Report branding — S3 relative paths; track replaced paths for deletion
+    if (dto.reportHeaderUrl !== undefined) {
+      if (institute.reportHeaderUrl && institute.reportHeaderUrl !== dto.reportHeaderUrl) {
+        filesToDelete.push(institute.reportHeaderUrl);
+      }
+      updateData.reportHeaderUrl = dto.reportHeaderUrl;
+    }
+    if (dto.reportFooterUrl !== undefined) {
+      if (institute.reportFooterUrl && institute.reportFooterUrl !== dto.reportFooterUrl) {
+        filesToDelete.push(institute.reportFooterUrl);
+      }
+      updateData.reportFooterUrl = dto.reportFooterUrl;
+    }
 
     updateData.updatedAt = now();
 

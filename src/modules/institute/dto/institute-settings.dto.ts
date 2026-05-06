@@ -134,6 +134,15 @@ export class InstituteSettingsResponseDto {
   @Expose()
   updatedAt: Date;
 
+  // PDF Report branding — full CDN URLs (or null if not set)
+  @ApiPropertyOptional({ description: 'Full URL of the report header banner image (wide, ~8:1 ratio)' })
+  @Expose()
+  reportHeaderUrl?: string | null;
+
+  @ApiPropertyOptional({ description: 'Full URL of the report footer banner image (wide, ~14:1 ratio)' })
+  @Expose()
+  reportFooterUrl?: string | null;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
     Object.assign(this, partial);
   }

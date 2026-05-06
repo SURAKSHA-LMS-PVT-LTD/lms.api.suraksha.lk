@@ -191,4 +191,27 @@ export class UpdateInstituteSettingsDto {
   @IsUrl()
   @MaxLength(255)
   youtubeChannelUrl?: string;
+
+  // ── PDF Report branding ────────────────────────────────────────────────────
+  // S3 relative paths returned by /upload/verify-and-publish.
+  // Displayed as full URLs in getSettings() response via CloudStorageService.getFullUrl().
+  // Frontend upload UI: InstituteSettingsPage.tsx (search for "Report Branding")
+
+  @ApiPropertyOptional({
+    description: 'Report header banner S3 path — wide image shown at top of every PDF page (~8:1 aspect ratio, e.g. 1400×175 px)',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reportHeaderUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Report footer banner S3 path — wide image shown at bottom of every PDF page (~14:1 aspect ratio, e.g. 1400×100 px)',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reportFooterUrl?: string;
 }
