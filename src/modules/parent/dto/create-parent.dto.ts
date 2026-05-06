@@ -1,6 +1,6 @@
 import { Type, Transform } from 'class-transformer';
 import { ValidateNested, IsOptional, IsString, IsBoolean, Length, IsNotEmpty, IsEmail, IsEnum } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '../../user/enums/gender.enum';
 import { UserType } from '../../user/enums/user-type.enum';
 import { Occupation } from '../../user/enums/occupation.enum';
@@ -8,7 +8,7 @@ import { IsDateOfBirth } from '../../../common/validators/date-format.validator'
 import { IsOptionalNic } from '../../../common/validators/optional-nic.validator';
 
 class CreateParentUserDto {
-  @ApiProperty({ 
+  @ApiPropertyOptional({
     description: 'First name of the parent',
     example: 'John',
     minLength: 1,
@@ -19,7 +19,7 @@ class CreateParentUserDto {
   @Length(1, 100)
   firstName: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({
     description: 'Last name of the parent',
     example: 'Doe',
     minLength: 1,
@@ -30,15 +30,15 @@ class CreateParentUserDto {
   @Length(1, 100)
   lastName: string;
 
-  @ApiProperty({ 
-    description: 'Email address (required for parent login)',
+  @ApiPropertyOptional({
+    description: 'Email address (optional — parent can activate via phone OTP or system ID)',
     example: 'john.doe@parent.com'
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Phone number',
     example: '+94771234567',
     minLength: 10,
@@ -170,9 +170,9 @@ class CreateParentUserDto {
 }
 
 export class CreateParentDto {
-  @ApiProperty({ 
+  @ApiPropertyOptional({
     description: 'User information for the parent',
-    type: CreateParentUserDto 
+    type: CreateParentUserDto
   })
   @ValidateNested()
   @Type(() => CreateParentUserDto)

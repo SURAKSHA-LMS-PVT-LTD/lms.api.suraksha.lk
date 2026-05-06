@@ -3,6 +3,7 @@ import {
   UseGuards, Query, BadRequestException, InternalServerErrorException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { LectureTrackingService } from './lecture_tracking.service';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../../auth/guards/optional-jwt-auth.guard';
@@ -36,6 +37,7 @@ export class LectureTrackingController {
   @Post('live/join')
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Record user joining a live lecture; returns attendanceId' })
   async joinLive(
     @Body() body: {
@@ -60,9 +62,10 @@ export class LectureTrackingController {
   @Post('live/leave')
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Record user leaving a live lecture' })
-  async leaveLive(@Body() body: { attendanceId: string }) {
-    return this.trackingService.recordLiveLeave(body.attendanceId);
+  async leaveLive(@Body() body: { attendanceId: string }, @Req() req: any) {
+    return this.trackingService.recordLiveLeave(body.attendanceId, req.user?.id);
   }
 
   // ─── Recording session ──────────────────────────────────────────────────
@@ -70,6 +73,7 @@ export class LectureTrackingController {
   @Post('recording/session/start')
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'Start a recording tracking session; returns sessionId' })
   async startRecordingSession(
     @Body() body: {
@@ -94,19 +98,23 @@ export class LectureTrackingController {
   @Post('recording/session/end')
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({ summary: 'End a recording session; optionally sets last position' })
   async endRecordingSession(
     @Body() body: { sessionId: string; lastPositionSeconds?: number },
+    @Req() req: any,
   ) {
     return this.trackingService.endRecordingSession(
       body.sessionId,
       body.lastPositionSeconds,
+      req.user?.id,
     );
   }
 
   @Post('recording/heartbeat')
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @ApiOperation({ summary: 'Batch-send PLAY / PAUSE / SEEK / HEARTBEAT activity events' })
   async recordHeartbeat(
     @Body() body: {
@@ -117,8 +125,9 @@ export class LectureTrackingController {
         wallTime?: number;
       }>;
     },
+    @Req() req: any,
   ) {
-    return this.trackingService.recordHeartbeats(body.sessionId, body.activities);
+    return this.trackingService.recordHeartbeats(body.sessionId, body.activities, req.user?.id);
   }
 
   // ─── Attendance grid (multi-lecture × students) ─────────────────────────

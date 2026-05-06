@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { InstituteClassSubjectLecture } from './entities/institute_class_subject_lecture.entity';
@@ -9,7 +9,7 @@ import { InstituteClassStudentEntity } from '../../institute_class_modules/insti
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 
-const BASE_DOMAIN = 'lms.suraksha.lk';
+const BASE_DOMAIN = process.env.BASE_DOMAIN ?? 'lms.suraksha.lk';
 
 function buildPublicUrl(
   path: string,
@@ -348,13 +348,24 @@ export class LectureTrackingService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    // Fetch scope for denormalisation
     const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
+    if (!lecture) throw new NotFoundException('Lecture not found');
+
+    // Idempotent for authenticated users: resume an existing active join instead of creating a duplicate
+    if (userId) {
+      const existing = await this.liveAttRepo.findOne({
+        where: { lectureId, userId, leaveTime: null as any },
+      });
+      if (existing) {
+        return { attendanceId: existing.id, lectureId, joinTime: existing.joinTime };
+      }
+    }
+
     const record = this.liveAttRepo.create({
       lectureId,
-      instituteId: lecture?.instituteId,
-      classId: lecture?.classId,
-      subjectId: lecture?.subjectId,
+      instituteId: lecture.instituteId,
+      classId: lecture.classId,
+      subjectId: lecture.subjectId,
       userId,
       guestName,
       guestEmail,
@@ -367,7 +378,12 @@ export class LectureTrackingService {
     return { attendanceId: saved.id, lectureId, joinTime: saved.joinTime };
   }
 
-  async recordLiveLeave(attendanceId: string) {
+  async recordLiveLeave(attendanceId: string, userId?: string) {
+    const record = await this.liveAttRepo.findOne({ where: { id: attendanceId } });
+    if (!record) throw new NotFoundException('Attendance record not found');
+    if (userId && record.userId && record.userId !== userId) {
+      throw new ForbiddenException('Not your attendance record');
+    }
     await this.liveAttRepo.update(attendanceId, { leaveTime: new Date() });
     return { success: true };
   }
@@ -401,7 +417,12 @@ export class LectureTrackingService {
     return { sessionId: saved.id, lectureId };
   }
 
-  async endRecordingSession(sessionId: string, lastPositionSeconds?: number) {
+  async endRecordingSession(sessionId: string, lastPositionSeconds?: number, userId?: string) {
+    const session = await this.recSessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Session not found');
+    if (userId && session.userId && session.userId !== userId) {
+      throw new ForbiddenException('Not your session');
+    }
     const update: Partial<LectureRecordingSession> = { endTime: new Date() };
     if (lastPositionSeconds !== undefined) {
       update.lastPositionSeconds = lastPositionSeconds;
@@ -417,8 +438,16 @@ export class LectureTrackingService {
       videoTimestamp: number;
       wallTime?: number;
     }>,
+    userId?: string,
   ) {
     if (!activities.length) return { success: true };
+    if (activities.length > 100) throw new BadRequestException('Maximum 100 activities per batch');
+
+    const session = await this.recSessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Session not found');
+    if (userId && session.userId && session.userId !== userId) {
+      throw new ForbiddenException('Not your session');
+    }
 
     const records = activities.map(act =>
       this.recActivityRepo.create({
@@ -646,32 +675,40 @@ export class LectureTrackingService {
       order: { startTime: 'ASC' },
     });
 
-    const result = [];
-    for (const s of sessions) {
-      const activities = await this.recActivityRepo.find({
-        where: { sessionId: s.id },
-        order: { createdAt: 'ASC' },
-      });
-      result.push({
-        sessionId: s.id,
-        userId: s.userId,
-        name: s.userId
-          ? (s as any).user?.name ??
-            `${(s as any).user?.firstName ?? ''} ${(s as any).user?.lastName ?? ''}`.trim()
-          : s.guestName ?? 'Guest',
-        isGuest: !s.userId,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        totalWatchedSeconds: s.totalWatchedSeconds,
-        lastPositionSeconds: s.lastPositionSeconds,
-        activities: activities.map(a => ({
-          type: a.activityType,
-          videoTimestamp: a.videoTimestamp,
-          at: a.createdAt,
-        })),
-      });
+    if (!sessions.length) return [];
+
+    // Load all activities in one query instead of one-per-session (fixes N+1)
+    const sessionIds = sessions.map(s => s.id);
+    const allActivities = await this.recActivityRepo.find({
+      where: { sessionId: In(sessionIds) },
+      order: { createdAt: 'ASC' },
+    });
+
+    const actBySession = new Map<string, LectureRecordingActivity[]>();
+    for (const act of allActivities) {
+      const arr = actBySession.get(act.sessionId) ?? [];
+      arr.push(act);
+      actBySession.set(act.sessionId, arr);
     }
-    return result;
+
+    return sessions.map(s => ({
+      sessionId: s.id,
+      userId: s.userId,
+      name: s.userId
+        ? (s as any).user?.name ??
+          `${(s as any).user?.firstName ?? ''} ${(s as any).user?.lastName ?? ''}`.trim()
+        : s.guestName ?? 'Guest',
+      isGuest: !s.userId,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      totalWatchedSeconds: s.totalWatchedSeconds,
+      lastPositionSeconds: s.lastPositionSeconds,
+      activities: (actBySession.get(s.id) ?? []).map(a => ({
+        type: a.activityType,
+        videoTimestamp: a.videoTimestamp,
+        at: a.createdAt,
+      })),
+    }));
   }
 
   async getStudentLectureActivities(studentId: string, instituteId: string, classId: string, subjectId?: string) {
