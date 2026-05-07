@@ -1,11 +1,11 @@
-import { IsNotEmpty, IsOptional, IsString, IsIn, IsDateString, IsNumber, MaxLength, IsEnum, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsIn, IsDateString, IsISO8601, IsNumber, MaxLength, IsEnum, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { SubmissionStatus } from '../entities/institute-class-payment-submission.entity';
 
 export class CreateInstituteClassPaymentSubmissionDto {
-  @ApiProperty({ description: 'Payment date when payment was made', example: '2024-01-15T10:30:00Z' })
-  @IsDateString()
+  @ApiProperty({ description: 'Payment date when payment was made (ISO 8601 format: YYYY-MM-DD or full timestamp)', example: '2024-01-15T10:30:00Z' })
+  @IsISO8601()
   @IsNotEmpty()
   paymentDate: string;
 
@@ -71,7 +71,7 @@ export class AdminVerifyStudentClassPaymentDto {
 
   @ApiProperty({ description: 'Date when payment was made (ISO 8601 format: YYYY-MM-DD or full timestamp)', example: '2024-01-15T10:30:00Z' })
   @IsNotEmpty()
-  @IsDateString()
+  @IsISO8601()
   date: string;
 
   @ApiPropertyOptional({ description: 'Optional notes or remarks from admin about the verification', maxLength: 500 })
