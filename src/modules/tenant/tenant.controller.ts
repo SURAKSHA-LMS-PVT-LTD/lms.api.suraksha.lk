@@ -126,6 +126,15 @@ export class TenantController {
   }
 
   @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @Post('institutes/:id/force-verify-domain')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Force-verify custom domain (SUPERADMIN only)' })
+  async forceVerifyDomain(@Param('id') id: string) {
+    return this.tenantService.forceVerifyDomain(id);
+  }
+
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/login-branding')
   @ApiOperation({ summary: 'Get current login page branding for an institute' })

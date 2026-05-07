@@ -119,19 +119,43 @@ export class TenantService {
   }
 
   /**
-   * Verify custom domain DNS (CNAME check).
-   * Placeholder — Cloudflare integration added later via env vars.
+   * Verify custom domain — marks the domain as verified in the DB.
+   * Admins call this after confirming DNS is correctly configured.
    */
   async verifyCustomDomain(instituteId: string): Promise<{ verified: boolean; message: string }> {
     const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
     if (!institute) throw new NotFoundException('Institute not found');
     if (!institute.customDomain) throw new BadRequestException('No custom domain configured');
 
-    // TODO: When CLOUDFLARE_API_TOKEN env is set, call Cloudflare API to verify CNAME
-    // For now, mark as pending — system admin can manually verify
+    institute.customDomainVerified = true;
+    institute.customLoginEnabled = true;
+    institute.updatedAt = now();
+    await this.instituteRepository.save(institute);
+
+    this.logger.log(`✅ Custom domain verified: ${institute.customDomain} → institute ${instituteId}`);
     return {
-      verified: false,
-      message: `DNS verification pending for ${institute.customDomain}. Ensure CNAME points to proxy.suraksha.lk`,
+      verified: true,
+      message: `Domain ${institute.customDomain} marked as verified. Custom login is now active.`,
+    };
+  }
+
+  /**
+   * Force-verify custom domain (SUPERADMIN only) — bypasses any DNS restrictions.
+   */
+  async forceVerifyDomain(instituteId: string): Promise<{ verified: boolean; message: string }> {
+    const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
+    if (!institute) throw new NotFoundException('Institute not found');
+    if (!institute.customDomain) throw new BadRequestException('No custom domain configured');
+
+    institute.customDomainVerified = true;
+    institute.customLoginEnabled = true;
+    institute.updatedAt = now();
+    await this.instituteRepository.save(institute);
+
+    this.logger.log(`✅ Custom domain force-verified: ${institute.customDomain} → institute ${instituteId}`);
+    return {
+      verified: true,
+      message: `Domain ${institute.customDomain} force-verified by system administrator.`,
     };
   }
 
