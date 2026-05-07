@@ -914,14 +914,21 @@ export class InstituteClassPaymentService {
     user: JwtPayload,
   ) {
     try {
+      // Validate user has access to this institute
       const { hasAccess } = await this.getUserInstituteRole(user, instituteId);
       if (!hasAccess) {
         throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
       }
 
-      // Get all active payments for this class
+      // Get all active payments for this class (must be both active and ACTIVE status)
       const payments = await this.paymentRepository.find({
-        where: { instituteId, classId, isActive: true, status: PaymentStatus.ACTIVE },
+        where: { 
+          instituteId, 
+          classId, 
+          isActive: true,
+          status: PaymentStatus.ACTIVE 
+        },
+        relations: ['submissions'],
         order: { createdAt: 'DESC' },
       });
 
@@ -931,7 +938,14 @@ export class InstituteClassPaymentService {
           data: {
             submissions: [],
             total: 0,
-            payments: [],
+            summary: {
+              totalSubmissions: 0,
+              byStatus: {
+                pending: 0,
+                verified: 0,
+                rejected: 0,
+              },
+            },
           },
         };
       }
@@ -946,16 +960,38 @@ export class InstituteClassPaymentService {
         order: { uploadedAt: 'DESC' },
       });
 
-      // Map submissions with payment info
+      // Calculate summary stats
+      const summary = {
+        totalSubmissions: submissions.length,
+        byStatus: {
+          pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
+          verified: submissions.filter(s => [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED].includes(s.status)).length,
+          rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
+        },
+      };
+
+      // Map submissions with enriched payment info for frontend
       const submissionsWithPayments = submissions.map(sub => {
         const payment = payments.find(p => p.id === sub.paymentId);
         return {
           ...this.mapSubmissionToResponse(sub),
+          id: sub.id,
           paymentId: sub.paymentId,
-          paymentTitle: payment?.title,
-          paymentAmount: payment?.amount,
-          paymentLastDate: payment?.lastDate,
-          paymentDescription: payment?.description,
+          paymentType: payment?.title || 'Payment',
+          description: payment?.description || '',
+          paymentDescription: payment?.description || '',
+          paymentAmount: Number(payment?.amount || 0),
+          totalAmountPaid: Number(sub.submittedAmount || 0),
+          paymentLastDate: payment?.lastDate instanceof Date ? payment.lastDate.toISOString() : payment?.lastDate,
+          priority: payment?.priority,
+          createdAt: sub.uploadedAt instanceof Date ? sub.uploadedAt.toISOString() : sub.uploadedAt,
+          dueDate: payment?.lastDate instanceof Date ? payment.lastDate.toISOString() : payment?.lastDate,
+          daysSinceSubmission: sub.uploadedAt 
+            ? Math.floor((Date.now() - (sub.uploadedAt instanceof Date ? sub.uploadedAt.getTime() : new Date(sub.uploadedAt || 0).getTime())) / 86400000)
+            : null,
+          receiptFileUrl: sub.receiptUrl ? this.cloudStorageService.getFullUrl(sub.receiptUrl) : null,
+          lateFeeApplied: 0,
+          verifiedAt: sub.verifiedAt instanceof Date ? sub.verifiedAt.toISOString() : sub.verifiedAt,
         };
       });
 
@@ -964,19 +1000,15 @@ export class InstituteClassPaymentService {
         data: {
           submissions: submissionsWithPayments,
           total: submissionsWithPayments.length,
-          payments: payments.map(p => ({
-            id: p.id,
-            title: p.title,
-            amount: p.amount,
-            lastDate: p.lastDate,
-            description: p.description,
-            status: p.status,
-          })),
+          summary,
         },
       };
     } catch (error: any) {
-      this.logger.error(`Failed to get my class submissions for institute ${instituteId}, class ${classId}: ${error?.message}`);
-      throw error;
+      this.logger.error(`Failed to get my class submissions for institute ${instituteId}, class ${classId}: ${error?.message}`, error?.stack);
+      if (error.status && error.response) {
+        throw error;
+      }
+      throw new BadRequestException({ success: false, message: 'Failed to retrieve submissions', error: 'FETCH_FAILED' });
     }
   }
 }
