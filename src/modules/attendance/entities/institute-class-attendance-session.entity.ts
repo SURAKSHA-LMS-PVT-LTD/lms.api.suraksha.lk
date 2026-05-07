@@ -56,6 +56,10 @@ export class InstituteClassAttendanceSessionEntity {
     comment: 'Snapshot of student count when session was created' })
   totalStudents: number;
 
+  @Column({ name: 'send_notifications', type: 'boolean', default: true,
+    comment: 'Whether to send parent notifications when marking attendance in this session' })
+  sendNotifications: boolean;
+
   @Column({ name: 'created_by', type: 'bigint', nullable: true })
   createdBy?: string;
 

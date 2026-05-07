@@ -4,13 +4,16 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { InstituteClassAttendanceSessionGroupEntity } from '../entities/institute-class-attendance-session-group.entity';
 import { InstituteClassAttendanceSessionEntity, CloseUnmarkAction } from '../entities/institute-class-attendance-session.entity';
 import { AttendanceRecordEntity } from '../entities/attendance-record.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../../user/entities/user.entity';
-import { now, getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
+import { StudentEntity } from '../../student/entities/student.entity';
+import { now, getCurrentSriLankaDate, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
+import { AttendanceNotificationService } from './attendance-notification.service';
 import {
   CreateSessionGroupDto,
   UpdateSessionGroupDto,
@@ -91,6 +94,7 @@ function mapSession(s: InstituteClassAttendanceSessionEntity): SessionResponse {
     totalStudents: s.totalStudents,
     sessionGroupId: s.sessionGroupId,
     group: s.group ? mapGroup(s.group) : undefined,
+    sendNotifications: s.sendNotifications ?? true,
     createdAt: s.createdAt,
   };
 }
@@ -98,6 +102,7 @@ function mapSession(s: InstituteClassAttendanceSessionEntity): SessionResponse {
 @Injectable()
 export class ClassAttendanceSessionService {
   private readonly logger = new Logger(ClassAttendanceSessionService.name);
+  private readonly notificationsEnabled: boolean;
 
   constructor(
     @InjectRepository(InstituteClassAttendanceSessionGroupEntity)
@@ -112,7 +117,13 @@ export class ClassAttendanceSessionService {
     private readonly instituteUserRepo: Repository<InstituteUserEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
-  ) {}
+    @InjectRepository(StudentEntity)
+    private readonly studentRepo: Repository<StudentEntity>,
+    private readonly attendanceNotificationService: AttendanceNotificationService,
+    private readonly configService: ConfigService,
+  ) {
+    this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
+  }
 
   // ─────────────────────────────────────────────────────────────
   // SESSION GROUPS
@@ -204,6 +215,7 @@ export class ClassAttendanceSessionService {
       isClosed: false,
       closeUnmarkAction: CloseUnmarkAction.KEEP_NOT_MARKED,
       totalStudents,
+      sendNotifications: dto.sendNotifications ?? true,
       createdBy: userId,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -475,6 +487,14 @@ export class ClassAttendanceSessionService {
       advertisementId: null,
     });
     const saved = await this.recordRepo.save(record);
+
+    // Send parent notification for ABSENT (0) or LATE (2) when session has notifications enabled
+    if (session.sendNotifications && (autoStatus === 0 || autoStatus === 2)) {
+      this.sendSessionAttendanceNotification(session, dto.studentId, autoStatus, saved.id).catch(
+        err => this.logger.warn(`Session notification failed: ${err.message}`),
+      );
+    }
+
     return { success: true, record: saved };
   }
 
@@ -499,6 +519,83 @@ export class ClassAttendanceSessionService {
       }
     }
     return { marked, updated, errors };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // NOTIFICATION (fire-and-forget)
+  // ─────────────────────────────────────────────────────────────
+
+  private async sendSessionAttendanceNotification(
+    session: InstituteClassAttendanceSessionEntity,
+    studentId: string,
+    statusCode: number,
+    recordId: string,
+  ): Promise<void> {
+    if (!this.notificationsEnabled) return;
+
+    try {
+      const student = await this.studentRepo.findOne({
+        where: { userId: studentId },
+        relations: ['user', 'father', 'father.user', 'mother', 'mother.user', 'guardian', 'guardian.user'],
+        select: {
+          userId: true,
+          fatherId: true,
+          motherId: true,
+          guardianId: true,
+          user: { id: true, firstName: true, lastName: true, nameWithInitials: true, subscriptionPlan: true },
+          father: { userId: true, user: { id: true, firstName: true, lastName: true, nameWithInitials: true, phoneNumber: true, email: true, telegramId: true, firstLoginCompleted: true } },
+          mother: { userId: true, user: { id: true, firstName: true, lastName: true, nameWithInitials: true, phoneNumber: true, email: true, telegramId: true, firstLoginCompleted: true } },
+          guardian: { userId: true, user: { id: true, firstName: true, lastName: true, nameWithInitials: true, phoneNumber: true, email: true, telegramId: true, firstLoginCompleted: true } },
+        },
+      });
+
+      if (!student?.user) return;
+
+      // Pick primary parent in order: father → mother → guardian
+      const parentEntry = student.father?.user
+        ? { userId: student.father.userId, user: student.father.user }
+        : student.mother?.user
+          ? { userId: student.mother.userId, user: student.mother.user }
+          : student.guardian?.user
+            ? { userId: student.guardian.userId, user: student.guardian.user }
+            : null;
+
+      if (!parentEntry) return;
+
+      const { userId: parentUserId, user: parentUser } = parentEntry;
+      const parentContact = parentUser.phoneNumber || null;
+      const parentEmail = parentUser.email || null;
+      const parentTelegramId = (parentUser as any).telegramId || null;
+
+      if (!parentContact && !parentEmail && !parentTelegramId) return;
+
+      const studentName = student.user.nameWithInitials ||
+        `${student.user.firstName} ${(student.user as any).lastName || ''}`.trim();
+      const parentName = parentUser.nameWithInitials ||
+        `${parentUser.firstName} ${(parentUser as any).lastName || ''}`.trim() || 'Parent/Guardian';
+      const subscriptionPlan = (student.user as any).subscriptionPlan || 'FREE';
+
+      await this.attendanceNotificationService.sendAttendanceNotification({
+        studentId,
+        studentName,
+        parentName,
+        parentContact,
+        parentEmail,
+        parentTelegramId,
+        parentUserId,
+        instituteId: session.instituteId,
+        attendanceId: recordId,
+        attendanceStatus: 'ABSENT',  // LATE (2) also triggers absent-style alert (type only supports PRESENT|ABSENT)
+        attendanceType: 'CLASS',
+        date: session.date,
+        time: getCurrentSriLankaISO(),
+        className: statusCode === 2 ? `${session.name} (Late)` : session.name,
+        subscriptionPlan,
+        firstLoginCompleted: (parentUser as any).firstLoginCompleted ?? false,
+      });
+    } catch (err) {
+      this.logger.warn(`sendSessionAttendanceNotification error for student ${studentId}: ${err.message}`);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────

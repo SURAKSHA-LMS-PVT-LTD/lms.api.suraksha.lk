@@ -93,6 +93,12 @@ export class CreateSessionDto {
   @IsString()
   @IsOptional()
   sessionGroupId?: string;
+
+  @ApiPropertyOptional({ description: 'Send parent notifications when attendance is marked in this session (default: true)' })
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === 'false' ? false : value === 'true' ? true : value)
+  sendNotifications?: boolean;
 }
 
 export class UpdateSessionDto {
@@ -244,6 +250,7 @@ export interface SessionResponse {
   totalStudents: number;
   sessionGroupId?: string;
   group?: SessionGroupResponse;
+  sendNotifications: boolean;
   createdAt: Date;
 }
 

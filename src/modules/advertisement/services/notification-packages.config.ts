@@ -2,7 +2,7 @@ export const NOTIFICATION_PACKAGES_CONFIG = {
   packages: {
     // ─── Base Plans ──────────────────────────────────────────────────────────
     FREE: {
-      channels: ["sms", "push"],
+      channels: ["whatsapp", "telegram", "email", "sms", "push"],
       isAds: true,
       priority: 1,
       retryCount: 1,
