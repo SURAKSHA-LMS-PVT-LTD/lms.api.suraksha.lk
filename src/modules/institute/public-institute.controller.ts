@@ -1,7 +1,9 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
+  Param,
   HttpStatus,
   UseGuards,
   Logger,
@@ -313,6 +315,77 @@ export class PublicInstitutesController {
    * Format: INST-YYYYMMDD-XXX
    * Example: INST-20260118-001
    */
+  @Get('by-domain/:domain')
+  @ApiOperation({
+    summary: '🏫 Get institute by custom domain',
+    description: `
+      Fetch institute branding and configuration by custom domain.
+      Used for custom domain login page rendering.
+      
+      Example: GET /public/institutes/by-domain/lms2.thilinadhananjaya.lk
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Institute found with branding config',
+    schema: {
+      example: {
+        id: 109,
+        code: 'VHDAGS88',
+        name: 'Thilina Dhananjaya Institute',
+        customDomain: 'lms2.thilinadhananjaya.lk',
+        customDomainVerified: true,
+        tier: 'ENTERPRISE',
+        logoUrl: 'https://...',
+        primaryColorCode: '#1E40AF',
+        secondaryColorCode: '#3B82F6',
+        loginWelcomeTitle: 'Welcome',
+        loginWelcomeSubtitle: 'Sign in to your account',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Custom domain not found or not verified',
+  })
+  async getByCustomDomain(@Param('domain') domain: string) {
+    if (!domain) {
+      throw new BadRequestException('Domain is required');
+    }
+
+    const institute = await this.institutesService['instituteRepository'].findOne({
+      where: {
+        customDomain: domain,
+        customDomainVerified: true, // Only return verified domains
+      },
+      select: [
+        'id',
+        'code',
+        'name',
+        'customDomain',
+        'customDomainVerified',
+        'tier',
+        'logoUrl',
+        'primaryColorCode',
+        'secondaryColorCode',
+        'loginWelcomeTitle',
+        'loginWelcomeSubtitle',
+        'loginLogoUrl',
+        'loginBackgroundUrl',
+        'loginFooterText',
+      ],
+    });
+
+    if (!institute) {
+      throw new BadRequestException(`Domain ${domain} not found or not verified`);
+    }
+
+    return {
+      success: true,
+      data: institute,
+    };
+  }
+
   private async generateInstituteCode(): Promise<string> {
     const today = getCurrentSriLankaTime();
     const year = today.getFullYear();
