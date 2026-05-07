@@ -154,18 +154,16 @@ export class AttendanceNotificationService {
   async sendAttendanceNotification(data: AttendanceNotificationData): Promise<NotificationSummary> {
     const startTime = Date.now();
 
-    // Get package configuration (with environment filtering)
     let channels = this.getNotificationChannels(data.subscriptionPlan);
     const retryConfig = this.getRetryConfig(data.subscriptionPlan);
     const isAdsEnabled = this.isAdsEnabled(data.subscriptionPlan);
 
-    // 📱 Push is always attempted — sendPushNotification handles the no-token case gracefully.
-    // firstLoginCompleted is not a reliable indicator that FCM tokens are absent,
-    // and removing the channel here also blocks push for parents who DO have tokens.
+    this.logger.log(
+      `[NotifSvc] student=${data.studentId} plan=${data.subscriptionPlan} channels=${channels.join(',')} ` +
+      `hasAd=${!!data.advertisementData} contact=${!!data.parentContact} email=${!!data.parentEmail} telegram=${!!data.parentTelegramId}`,
+    );
 
-    // 🎯 PLATFORM-SPECIFIC FILTERING: Use modeOfSending (primary) or supportivePlatforms (fallback) to filter channels
     if (isAdsEnabled && data.advertisementData) {
-      // modeOfSending takes priority over supportivePlatforms for channel selection
       const sendingModes = data.advertisementData.modeOfSending && data.advertisementData.modeOfSending.length > 0
         ? data.advertisementData.modeOfSending
         : (data.advertisementData.supportivePlatforms && data.advertisementData.supportivePlatforms.length > 0
@@ -174,10 +172,7 @@ export class AttendanceNotificationService {
 
       if (sendingModes && sendingModes.length > 0) {
         const originalChannels = [...channels];
-        
-        // Filter channels to only those specified by the advertisement's sending modes
         channels = channels.filter(channel => {
-          // Map channel names to modeOfSending/platform enum values
           const modeMap: Record<string, string[]> = {
             'sms': ['sms'],
             'whatsapp': ['whatsapp'],
@@ -185,17 +180,17 @@ export class AttendanceNotificationService {
             'email': ['email'],
             'push': ['push-mobile', 'push-web', 'mobile-push', 'web-push', 'push']
           };
-          
           const possibleModes = modeMap[channel] || [channel];
           return possibleModes.some(mode => sendingModes.includes(mode));
         });
-        
         if (channels.length < originalChannels.length) {
+          this.logger.debug(`[NotifSvc] Ad platform filter: ${originalChannels.join(',')} → ${channels.join(',')}`);
         }
       }
     }
 
     if (channels.length === 0) {
+      this.logger.warn(`[NotifSvc] No channels after filtering for student=${data.studentId} plan=${data.subscriptionPlan}`);
       return {
         studentId: data.studentId,
         totalChannels: 0,
@@ -293,8 +288,8 @@ export class AttendanceNotificationService {
     data: AttendanceNotificationData,
     retryConfig: RetryConfig
   ): Promise<NotificationResult> {
-    // Check if channel is available in current environment
     if (!this.isChannelAvailable(channel)) {
+      this.logger.warn(`[NotifSvc] Channel '${channel}' not available in env — skipping for student=${data.studentId}`);
       return {
         success: false,
         channel,
@@ -961,35 +956,31 @@ export class AttendanceNotificationService {
     data: AttendanceNotificationData
   ): Promise<{ success: boolean; deliveryId?: string }> {
     try {
-      // Check if parent contact is available
       if (!data.parentContact) {
+        this.logger.warn(`[SMS] Skipped — no parent contact for student=${data.studentId}`);
         return { success: false, deliveryId: undefined };
       }
 
-      // Pre-validate phone number format before hitting the provider.
-      // Sri Lanka mobile numbers: +9476XXXXXXX or +9477XXXXXXX (12 chars total).
       const sriLankaPattern = /^\+947[0-9]{8}$/;
       if (!sriLankaPattern.test(data.parentContact)) {
-        this.logger.warn(`⚠️ SMS skipped — invalid phone number format: ${data.parentContact}. Expected: +9476XXXXXXX`);
+        this.logger.warn(`[SMS] Skipped — invalid number format: ${data.parentContact} (expected +947XXXXXXXX)`);
         return { success: false };
       }
 
-      // Get SMS credentials from environment
       const userId = this.configService.get<string>('SMSLENZ_USER_ID');
       const apiKey = this.configService.get<string>('SMSLENZ_API_KEY');
-      const senderId = this.configService.get<string>('SMSLENZ_SENDER_ID') || 
-                       this.configService.get<string>('SMSLENZ_DEFAULT_SENDER_ID') || 
+      const senderId = this.configService.get<string>('SMSLENZ_SENDER_ID') ||
+                       this.configService.get<string>('SMSLENZ_DEFAULT_SENDER_ID') ||
                        'SMSlenzDEMO';
 
-      // Check if SMS is configured
       if (!userId || !apiKey) {
+        this.logger.warn(`[SMS] Skipped — SMSLENZ_USER_ID or SMSLENZ_API_KEY not set`);
         return { success: false, deliveryId: undefined };
       }
 
-      // Build message content (SMS version - shorter)
+      this.logger.log(`[SMS] Sending to ${data.parentContact} via sender=${senderId} for student=${data.studentId}`);
       const message = this.buildAttendanceMessage(data, true, 'sms');
 
-      // Send SMS via provider
       const result = await this.smsProviderService.sendSingleSms(
         userId,
         apiKey,
@@ -998,17 +989,21 @@ export class AttendanceNotificationService {
         message
       );
 
-      // Check if SMS was sent successfully
+      this.logger.debug(`[SMS] Provider response: ${JSON.stringify(result)}`);
+
       if (result.success === true || result.data?.status === 'success') {
+        this.logger.log(`[SMS] Sent successfully to ${data.parentContact} campaignId=${result.data?.campaign_id}`);
         return {
           success: true,
           deliveryId: result.data.campaign_id?.toString()
         };
       } else {
+        this.logger.warn(`[SMS] Provider returned failure: ${JSON.stringify(result.data)}`);
         return { success: false };
       }
 
     } catch (error) {
+      this.logger.error(`[SMS] Exception for student=${data.studentId}: ${error.message}`, error.stack);
       return { success: false };
     }
   }

@@ -1820,12 +1820,16 @@ export class AttendanceService {
   }
 
   private scheduleAttendanceNotification(markAttendanceDto: MarkAttendanceDto, attendanceResult: any, studentData?: any): void {
-    // Only send notifications for absent and late statuses â€” present/left/etc. don't notify
-    const status = markAttendanceDto.status;
-    if (status !== AttendanceStatus.ABSENT && status !== AttendanceStatus.LATE) {
+    if (!this.notificationsEnabled) {
+      this.logger.debug(`[Notification] Skipped — ENABLE_ATTENDANCE_NOTIFICATIONS is false`);
       return;
     }
-    // Fire-and-forget notification - no blocking, no waiting
+    const status = markAttendanceDto.status;
+    if (status !== AttendanceStatus.ABSENT && status !== AttendanceStatus.LATE) {
+      this.logger.debug(`[Notification] Skipped — status=${status} (only ABSENT/LATE trigger notifications)`);
+      return;
+    }
+    this.logger.log(`[Notification] Scheduling for student=${markAttendanceDto.studentId} status=${status}`);
     this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));
   }
 
@@ -1839,37 +1843,46 @@ export class AttendanceService {
     attendanceResult: any,
     studentData?: any
   ): Promise<void> {
+    const sid = markAttendanceDto.studentId;
     try {
       if (!this.shouldSendNotifications()) {
+        this.logger.warn(`[Notification] No channels configured — notification skipped for student=${sid}`);
         return;
       }
 
-      // Reuse student data if already fetched, otherwise fetch it
-      const data = studentData || await this.fetchStudentWithParentData(markAttendanceDto.studentId);
+      const data = studentData || await this.fetchStudentWithParentData(sid);
 
-      if (!data.student || (!data.parentContact && !data.parentEmail && !data.parentTelegramId)) {
+      if (!data.student) {
+        this.logger.warn(`[Notification] Student not found in DB: ${sid}`);
         return;
       }
 
-      // Get package config to check isAds flag
+      if (!data.parentContact && !data.parentEmail && !data.parentTelegramId) {
+        this.logger.warn(`[Notification] No parent contact for student=${sid} (phone/email/telegram all null)`);
+        return;
+      }
+
       const normalizedPlan = String(data.subscriptionPlan || 'FREE').toUpperCase();
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
+      const channels = packageConfig?.channels || ['sms'];
       const isAdsEnabled = this.adsDeliveryEnabled && packageConfig?.isAds === true;
       const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
-      // Prepare ad data based on config
-      let advertisementData = null;
+      this.logger.log(
+        `[Notification] student=${sid} plan=${normalizedPlan} channels=${channels.join(',')} ` +
+        `contact=${!!data.parentContact} email=${!!data.parentEmail} telegram=${!!data.parentTelegramId} ads=${isAdsEnabled}`,
+      );
 
+      let advertisementData = null;
       if (isAdsEnabled) {
         if (isAdsFromDB) {
-          // Fetch from database
           advertisementData = await this.getMatchingAdvertisementFromDB(
             data.subscriptionPlan,
             data.student,
             markAttendanceDto.instituteId
           );
+          this.logger.debug(`[Notification] Ad from DB: ${advertisementData?.id ?? 'none'}`);
         } else {
-          // Use default from environment
           advertisementData = {
             id: 'default-company-ad',
             mediaUrl: process.env.DEFAULT_AD_URL || '',
@@ -1877,14 +1890,15 @@ export class AttendanceService {
             title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
             content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
             sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
-            supportivePlatforms: [],  // Default ads support all platforms
-            modeOfSending: []  // Default ads use all available channels
+            supportivePlatforms: [],
+            modeOfSending: []
           };
+          this.logger.debug(`[Notification] Using default ad`);
         }
       }
 
       const notificationData = {
-        studentId: markAttendanceDto.studentId,
+        studentId: sid,
         studentName: data.student.user.nameWithInitials || `${data.student.user.firstName} ${data.student.user.lastName || ''}`.trim(),
         parentName: data.primaryParent ?
           (data.primaryParent.nameWithInitials || `${data.primaryParent.firstName} ${data.primaryParent.lastName || ''}`.trim()) :
@@ -1910,9 +1924,14 @@ export class AttendanceService {
         advertisementData
       };
 
+      this.logger.log(`[Notification] Sending via attendanceNotificationService for student=${sid}`);
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
+      this.logger.log(
+        `[Notification] Result for student=${sid}: total=${notificationResult.totalChannels} ` +
+        `success=${notificationResult.successfulChannels} failed=${notificationResult.failedChannels} ` +
+        `channels=${notificationResult.results.map(r => `${r.channel}:${r.success ? 'ok' : r.errorMessage}`).join(', ')}`,
+      );
 
-      // âœ… BUG-B FIX: Only increment currentSendings AFTER successful delivery
       if (this.shouldTrackAdvertisementSending(advertisementData) && notificationResult.successfulChannels > 0) {
         this.advertisementRepository.increment(
           { id: advertisementData.id },
@@ -1921,17 +1940,15 @@ export class AttendanceService {
         ).catch(err => this.logger.error(`Failed to increment ad sendings: ${err.message}`));
       }
 
-      // âœ… Store matched advertisement ID on the attendance record for delivery tracking
       if (advertisementData?.id && advertisementData.id !== 'default-company-ad' && advertisementData.id !== 'default-fallback' && attendanceResult?.id) {
         this.dynamoAttendanceService.patchAdvertisementId(attendanceResult.id, advertisementData.id)
           .catch(err => this.logger.warn(`Failed to patch advertisementId: ${err.message}`));
       }
 
-      // âœ… SELF-NOTIFICATION: Send notification to the student themselves
       await this.sendSelfAttendanceNotification(markAttendanceDto, data.student?.user);
 
     } catch (error) {
-      this.logger.warn(`Attendance notification failed (non-blocking): ${error.message}`);
+      this.logger.warn(`[Notification] Failed (non-blocking) for student=${sid}: ${error.message}`, error.stack);
     }
   }
 
@@ -1941,15 +1958,18 @@ export class AttendanceService {
    * Check if notification system is properly configured
    */
   private shouldSendNotifications(): boolean {
-    // Check if we have minimum required environment variables
     const hasWhatsApp = !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
     const hasTelegram = !!process.env.TELEGRAM_BOT_TOKEN;
     const hasEmail = !!(process.env.EMAIL_SERVER_URL || process.env.EMAIL_API_URL);
-    // Also allow when only FCM push is configured (Firebase Admin SDK initialised)
     const hasFcm = this.attendanceNotificationService.isPushReady();
+    // SMS (SMSlenz) requires user ID + API key
+    const hasSms = !!(process.env.SMSLENZ_USER_ID && process.env.SMSLENZ_API_KEY);
 
-    // We need at least one notification channel configured
-    return hasWhatsApp || hasTelegram || hasEmail || hasFcm;
+    const result = hasWhatsApp || hasTelegram || hasEmail || hasFcm || hasSms;
+    this.logger.debug(
+      `[Notification Gate] whatsapp=${hasWhatsApp} telegram=${hasTelegram} email=${hasEmail} fcm=${hasFcm} sms=${hasSms} → enabled=${result}`,
+    );
+    return result;
   }
 
   /**
