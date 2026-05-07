@@ -819,11 +819,11 @@ export class InstituteClassPaymentService {
     // Check if student already has a verified payment (any verified status)
     const verifiedStatuses = [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
     const existingVerified = await this.submissionRepository.findOne({
-      where: [
-        { paymentId, userId: studentId, status: SubmissionStatus.VERIFIED },
-        { paymentId, userId: studentId, status: SubmissionStatus.HALF_VERIFIED },
-        { paymentId, userId: studentId, status: SubmissionStatus.QUARTER_VERIFIED },
-      ],
+      where: {
+        paymentId,
+        userId: studentId,
+        status: In(verifiedStatuses),
+      },
       order: { verifiedAt: 'DESC' } as any,
     });
     if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
