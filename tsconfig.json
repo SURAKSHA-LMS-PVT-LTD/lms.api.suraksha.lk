@@ -11,7 +11,6 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./",
-    "ignoreDeprecations": "6.0",
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,
@@ -22,8 +21,20 @@
     "noFallthroughCasesInSwitch": false,
     "strictPropertyInitialization": false,
     "paths": {
-      "@common/*": ["src/common/*"]
+      "@common/*": [
+        "src/common/*"
+      ]
     }
   },
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "test-*.ts", "*-test.ts", "jest.config.ts", "run-calendar-migration.ts", "view-dynamodb-attendance.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "**/*spec.ts",
+    "test-*.ts",
+    "*-test.ts",
+    "jest.config.ts",
+    "run-calendar-migration.ts",
+    "view-dynamodb-attendance.ts"
+  ]
 }
