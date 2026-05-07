@@ -1,11 +1,11 @@
-import { IsNotEmpty, IsOptional, IsString, IsIn, IsDateString, IsISO8601, IsNumber, MaxLength, IsEnum, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsIn, IsDateString, IsISO8601, IsNumber, MaxLength, IsEnum, Min, Max, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { SubmissionStatus } from '../entities/institute-class-payment-submission.entity';
 
 export class CreateInstituteClassPaymentSubmissionDto {
   @ApiProperty({ description: 'Payment date when payment was made (ISO 8601 format: YYYY-MM-DD or full timestamp)', example: '2024-01-15T10:30:00Z' })
-  @IsISO8601()
+  @Matches(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/, { message: 'Date must be in YYYY-MM-DD or ISO 8601 format' })
   @IsNotEmpty()
   paymentDate: string;
 
@@ -71,7 +71,7 @@ export class AdminVerifyStudentClassPaymentDto {
 
   @ApiProperty({ description: 'Date when payment was made (ISO 8601 format: YYYY-MM-DD or full timestamp)', example: '2024-01-15T10:30:00Z' })
   @IsNotEmpty()
-  @IsISO8601()
+  @Matches(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/, { message: 'Date must be in YYYY-MM-DD or ISO 8601 format' })
   date: string;
 
   @ApiPropertyOptional({ description: 'Optional notes or remarks from admin about the verification', maxLength: 500 })
