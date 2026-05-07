@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 
 class GenerateUploadUrlDto {
   @ApiProperty()
-  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'])
-  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'class-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails';
+  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails', 'institute-branding'])
+  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'class-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails' | 'institute-branding';
   
   @ApiProperty()
   @IsString()
@@ -69,7 +69,7 @@ export class UploadController {
   })
   @ApiQuery({ 
     name: 'folder', 
-    enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'],
+    enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'institute-branding'],
     description: 'Target folder for file upload',
     example: 'profile-images'
   })
@@ -163,7 +163,7 @@ export class UploadController {
     })();
 
     // Validate folder type
-    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails'];
+    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails', 'institute-branding'];
     if (!validFolders.includes(folder)) {
       throw new BadRequestException(`Invalid folder. Must be one of: ${validFolders.join(', ')}`);
     }
@@ -663,7 +663,8 @@ export class UploadController {
       'id-documents': ['.jpg', '.jpeg', '.png', '.pdf'],
       'bookhire-vehicle-images': ['.jpg', '.jpeg', '.png', '.webp'],
       'bookhire-owner-images': ['.jpg', '.jpeg', '.png', '.webp'],
-      'lecture-thumbnails': ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+      'lecture-thumbnails': ['.jpg', '.jpeg', '.png', '.webp', '.gif'],
+      'institute-branding': ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif'],
     };
 
     const allowed = allowedExtensions[folder] || ['.jpg', '.jpeg', '.png', '.pdf'];
@@ -712,7 +713,8 @@ export class UploadController {
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
+      'institute-branding': this.configService.get<number>('MAX_INSTITUTE_BRANDING_SIZE_MB', 5) * 1024 * 1024,
     };
 
     const maxSize = maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
@@ -759,7 +761,8 @@ export class UploadController {
       'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
-      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
+      'institute-branding': this.configService.get<number>('MAX_INSTITUTE_BRANDING_SIZE_MB', 5) * 1024 * 1024,
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
