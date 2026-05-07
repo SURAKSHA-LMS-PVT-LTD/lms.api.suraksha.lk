@@ -13,7 +13,7 @@ import { InstituteUserEntity } from '../../institute_mudules/institue_user/entit
 import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { now, getCurrentSriLankaDate, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
-import { AttendanceNotificationService } from './attendance-notification.service';
+import { AdvertisementDeliveryService } from '../../advertisement/services/advertisement-delivery.service';
 import {
   CreateSessionGroupDto,
   UpdateSessionGroupDto,
@@ -119,7 +119,7 @@ export class ClassAttendanceSessionService {
     private readonly userRepo: Repository<UserEntity>,
     @InjectRepository(StudentEntity)
     private readonly studentRepo: Repository<StudentEntity>,
-    private readonly attendanceNotificationService: AttendanceNotificationService,
+    private readonly advertisementDeliveryService: AdvertisementDeliveryService,
     private readonly configService: ConfigService,
   ) {
     this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
@@ -575,7 +575,7 @@ export class ClassAttendanceSessionService {
         `${parentUser.firstName} ${(parentUser as any).lastName || ''}`.trim() || 'Parent/Guardian';
       const subscriptionPlan = (student.user as any).subscriptionPlan || 'FREE';
 
-      await this.attendanceNotificationService.sendAttendanceNotification({
+      await this.advertisementDeliveryService.sendAttendanceWithAdvertisement(studentId, {
         studentId,
         studentName,
         parentName,
