@@ -113,8 +113,10 @@ async function bootstrap() {
         'https://lms-923357517997.europe-west1.run.app', // Frontend production URL
         'http://localhost:5173', // Frontend local development
         'http://localhost:3000', // Alternative frontend port
+        'http://localhost:3001', // Alternative frontend port
         'http://127.0.0.1:5173', // Alternative localhost
-        'http://127.0.0.1:3000'  // Alternative localhost port
+        'http://127.0.0.1:3000',  // Alternative localhost port
+        'http://127.0.0.1:3001'   // Alternative localhost port
       ];
 
     // 🏢 Multi-tenant: Wildcard pattern for *.suraksha.lk subdomains
@@ -174,8 +176,10 @@ async function bootstrap() {
           const devAllowed = !origin || [
             'http://localhost:5173',
             'http://localhost:3000',
+            'http://localhost:3001',
             'http://127.0.0.1:5173',
             'http://127.0.0.1:3000',
+            'http://127.0.0.1:3001',
           ].includes(origin);
           if (devAllowed) return callback(null, true);
         }

@@ -216,12 +216,7 @@ export class InstituteClassPaymentService {
         throw new BadRequestException({ success: false, message: 'Missing required fields', error: 'INVALID_INPUT' });
       }
 
-      let payment: any = null;
-      try {
-        payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
-      } catch (e: any) {
-        this.logger.error(`Error finding payment: ${e?.message}`);
-      }
+      const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
       if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
       const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
@@ -237,24 +232,15 @@ export class InstituteClassPaymentService {
       if (payment.status !== PaymentStatus.ACTIVE) throw new BadRequestException({ success: false, message: 'Payment is no longer accepting submissions', error: 'PAYMENT_INACTIVE' });
       if (new Date() > payment.lastDate) throw new BadRequestException({ success: false, message: 'Payment submission deadline has passed', error: 'PAYMENT_EXPIRED' });
 
-      let existingSubmission: any = null;
-      try {
-        existingSubmission = await this.submissionRepository.findOne({ where: { paymentId, userId: user.s } });
-      } catch (e: any) {
-        this.logger.error(`Error checking existing submission: ${e?.message}`);
-      }
+      const userIdStr = String(user.s);
+      const existingSubmission = await this.submissionRepository.findOne({ where: { paymentId, userId: userIdStr } });
       
       if (existingSubmission) {
         const allowResubmit = [SubmissionStatus.REJECTED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED].includes(existingSubmission.status);
         if (!allowResubmit) throw new BadRequestException({ success: false, message: 'You have already submitted a payment for this request', error: 'DUPLICATE_SUBMISSION' });
       }
 
-      let submitter: any = null;
-      try {
-        submitter = await this.userRepository.findOne({ where: { id: user.s } });
-      } catch (e: any) {
-        this.logger.error(`Error finding user: ${e?.message}`);
-      }
+      const submitter = await this.userRepository.findOne({ where: { id: userIdStr } });
       if (!submitter) throw new NotFoundException({ success: false, message: 'User not found', error: 'USER_NOT_FOUND' });
 
       const receiptUrl = dto.receiptUrl || file;
@@ -263,46 +249,35 @@ export class InstituteClassPaymentService {
       }
 
       const timestamp = new Date();
-      let submission: any = null;
-      try {
-        submission = this.submissionRepository.create({
-          paymentId,
-          userId: user.s,
-          userType: user.userType as any,
-          username: `${submitter.firstName || ''} ${submitter.lastName || ''}`.trim() || submitter.nameWithInitials || 'Unknown',
-          paymentDate: new Date(dto.paymentDate),
-          receiptUrl: receiptUrl.trim(),
-          receiptFilename: receiptUrl.split('/').pop() || 'receipt',
-          transactionId: dto.transactionId || null,
-          submittedAmount: dto.submittedAmount,
-          notes: dto.notes || null,
-          status: SubmissionStatus.PENDING,
-          uploadedAt: timestamp,
-          updatedAt: timestamp,
-        });
-      } catch (e: any) {
-        this.logger.error(`Error creating submission object: ${e?.message}`, e?.stack);
-        throw new BadRequestException({ success: false, message: 'Invalid submission data', error: 'INVALID_SUBMISSION_DATA' });
-      }
+      const submission = this.submissionRepository.create({
+        paymentId: String(paymentId),
+        userId: userIdStr,
+        userType: user.userType as any,
+        username: `${submitter.firstName || ''} ${submitter.lastName || ''}`.trim() || submitter.nameWithInitials || 'Unknown',
+        paymentDate: new Date(dto.paymentDate),
+        receiptUrl: receiptUrl.trim(),
+        receiptFilename: receiptUrl.split('/').pop() || 'receipt',
+        transactionId: dto.transactionId || null,
+        submittedAmount: dto.submittedAmount,
+        notes: dto.notes || null,
+        status: SubmissionStatus.PENDING,
+        uploadedAt: timestamp,
+        updatedAt: timestamp,
+      });
 
-      let saved: any = null;
-      try {
-        saved = await this.submissionRepository.save(submission);
-      } catch (e: any) {
-        this.logger.error(`Error saving submission: ${e?.message}`, e?.stack);
-        throw new BadRequestException({ success: false, message: 'Failed to save payment submission', error: 'SAVE_FAILED' });
-      }
-
+      const saved = await this.submissionRepository.save(submission);
       if (!saved || !saved.id) {
         throw new BadRequestException({ success: false, message: 'Submission was not saved properly', error: 'SAVE_FAILED' });
       }
 
+      this.logger.log(`✅ Submission saved: id=${saved.id} paymentId=${paymentId} userId=${userIdStr} status=${saved.status}`);
+
       let receiptFileUrl: string | null = null;
       try {
         receiptFileUrl = saved.receiptUrl ? this.cloudStorageService.getFullUrl(saved.receiptUrl) : null;
-      } catch (imgError: any) {
-        this.logger.warn(`Error processing receipt URL: ${imgError?.message}`);
-        receiptFileUrl = null;
+      } catch (storageError: any) {
+        this.logger.warn(`⚠️ Failed to get full URL from cloud storage: ${storageError?.message}`, storageError?.stack);
+        receiptFileUrl = saved.receiptUrl || null;
       }
 
       return {
@@ -315,18 +290,20 @@ export class InstituteClassPaymentService {
         },
       };
     } catch (error: any) {
-      this.logger.error(`CRITICAL error in submitPayment: ${error?.message}`, error?.stack);
+      this.logger.error(`❌ submitPayment error: ${error?.message}`, error?.stack);
       
-      // Return error response instead of throwing
-      return {
+      // Re-throw known HTTP exceptions (they have a getStatus method)
+      if (error.getStatus && error.getResponse) {
+        throw error;
+      }
+      
+      // Convert unexpected errors to 400 with details
+      throw new BadRequestException({
         success: false,
-        message: error?.message || 'Failed to submit payment',
-        data: {
-          submissionId: null,
-          status: 'ERROR',
-          receiptFile: null,
-        },
-      } as any;
+        message: error?.message || 'Payment submission failed',
+        error: 'SUBMISSION_FAILED',
+        details: error?.message,
+      });
     }
   }
 
@@ -445,17 +422,49 @@ export class InstituteClassPaymentService {
   }
 
   async getAllSubmissions(instituteId: string, classId: string, page: number = 1, limit: number = 20, user: JwtPayload, status?: string) {
-    const qb = this.submissionRepository.createQueryBuilder('submission')
-      .innerJoinAndSelect('submission.payment', 'payment')
-      .where('payment.instituteId = :instituteId', { instituteId })
-      .andWhere('payment.classId = :classId', { classId });
+    try {
+      // Validate user has admin access to this institute
+      const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
+      if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
-    if (status && Object.values(SubmissionStatus).includes(status as SubmissionStatus)) {
-      qb.andWhere('submission.status = :status', { status });
+      const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER ||
+        user.u === 0 || user.u === 1 ||
+        instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER || instituteRole === InstituteUserType.ATTENDANCE_MARKER;
+      if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can view all submissions', error: 'INSUFFICIENT_PERMISSIONS' });
+
+      // Build query with proper filtering
+      const qb = this.submissionRepository.createQueryBuilder('submission')
+        .innerJoinAndSelect('submission.payment', 'payment')
+        .where('payment.instituteId = :instituteId', { instituteId })
+        .andWhere('payment.classId = :classId', { classId });
+
+      if (status && Object.values(SubmissionStatus).includes(status as SubmissionStatus)) {
+        qb.andWhere('submission.status = :status', { status });
+      }
+      
+      qb.orderBy('submission.uploadedAt', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      const [submissions, total] = await qb.getManyAndCount();
+
+      return {
+        success: true,
+        data: {
+          submissions: submissions.map(s => this.mapSubmissionToResponse(s)),
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`getAllSubmissions failed: ${error?.message}`, error?.stack);
+      if (error.status && error.response) {
+        throw error;
+      }
+      throw new BadRequestException({ success: false, message: 'Failed to retrieve submissions', error: 'FETCH_FAILED' });
     }
-    qb.orderBy('submission.uploadedAt', 'DESC').skip((page - 1) * limit).take(limit);
-    const [submissions, total] = await qb.getManyAndCount();
-    return { data: submissions.map(s => this.mapSubmissionToResponse(s)), total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getStudentAllClassSubmissions(instituteId: string, studentId: string, limit: number = 20, user: JwtPayload) {
@@ -803,57 +812,69 @@ export class InstituteClassPaymentService {
   }
 
   async adminVerifyStudentClassPayment(paymentId: string, studentId: string, dto: AdminVerifyStudentClassPaymentDto, user: JwtPayload) {
-    const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
-    if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
+    try {
+      // Ensure BigInt values are properly stringified
+      const paymentIdStr = String(paymentId);
+      const studentIdStr = String(studentId);
 
-    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
-    if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+      const payment = await this.paymentRepository.findOne({ where: { id: paymentIdStr } });
+      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
-    const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1 ||
-      instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER;
-    if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can manually verify student payments', error: 'INSUFFICIENT_PERMISSIONS' });
+      const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
+      if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
-    const membership = await this.instituteUserRepository.findOne({ where: { userId: studentId, instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE } });
-    if (!membership) throw new NotFoundException({ success: false, message: 'Student not found in this institute', error: 'STUDENT_NOT_FOUND' });
+      const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1 ||
+        instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER;
+      if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can manually verify student payments', error: 'INSUFFICIENT_PERMISSIONS' });
 
-    // Check if student already has a verified payment (any verified status)
-    const verifiedStatuses = [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
-    const existingVerified = await this.submissionRepository.findOne({
-      where: {
-        paymentId,
-        userId: studentId,
-        status: In(verifiedStatuses),
-      },
-      order: { verifiedAt: 'DESC' } as any,
-    });
-    if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
+      const membership = await this.instituteUserRepository.findOne({ where: { userId: studentIdStr, instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE } });
+      if (!membership) throw new NotFoundException({ success: false, message: 'Student not found in this institute', error: 'STUDENT_NOT_FOUND' });
 
-    const studentUser = await this.userRepository.findOne({ where: { id: studentId }, select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'] });
+      // Check if student already has a verified payment (any verified status)
+      const verifiedStatuses = [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
+      const existingVerified = await this.submissionRepository.findOne({
+        where: {
+          paymentId: paymentIdStr,
+          userId: studentIdStr,
+          status: In(verifiedStatuses),
+        },
+        order: { verifiedAt: 'DESC' } as any,
+      });
+      if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
 
-    const timestamp = new Date();
-    const submission = this.submissionRepository.create({
-      paymentId,
-      userId: studentId,
-      userType: studentUser?.userType ?? UserType.USER,
-      username: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : studentId,
-      paymentDate: new Date(dto.date),
-      receiptUrl: '',
-      receiptFilename: '',
-      submittedAmount: dto.amount,
-      status: dto.paymentTier === 'half' ? SubmissionStatus.HALF_VERIFIED : dto.paymentTier === 'quarter' ? SubmissionStatus.QUARTER_VERIFIED : SubmissionStatus.VERIFIED,
-      verifiedBy: user.s,
-      verifiedAt: timestamp,
-      notes: dto.notes || null,
-      uploadedAt: timestamp,
-      updatedAt: timestamp,
-    });
-    const saved = await this.submissionRepository.save(submission);
+      const studentUser = await this.userRepository.findOne({ where: { id: studentIdStr }, select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'] });
 
-    try { await this.userManagementService.refreshUserCache(studentId); } catch (e: any) {
-      this.logger.warn(`Cache refresh failed after admin class payment verification for user ${studentId}: ${e.message}`);
+      const timestamp = new Date();
+      const submission = this.submissionRepository.create({
+        paymentId: paymentIdStr,
+        userId: studentIdStr,
+        userType: studentUser?.userType ?? UserType.USER,
+        username: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : studentIdStr,
+        paymentDate: new Date(dto.date),
+        receiptUrl: '',
+        receiptFilename: '',
+        submittedAmount: dto.amount,
+        status: dto.paymentTier === 'half' ? SubmissionStatus.HALF_VERIFIED : dto.paymentTier === 'quarter' ? SubmissionStatus.QUARTER_VERIFIED : SubmissionStatus.VERIFIED,
+        verifiedBy: String(user.s),
+        verifiedAt: timestamp,
+        notes: dto.notes || null,
+        uploadedAt: timestamp,
+        updatedAt: timestamp,
+      });
+      const saved = await this.submissionRepository.save(submission);
+
+      try { await this.userManagementService.refreshUserCache(studentIdStr); } catch (e: any) {
+        this.logger.warn(`Cache refresh failed after admin class payment verification for user ${studentIdStr}: ${e.message}`);
+      }
+
+      return { success: true, message: 'Payment verified for student successfully', data: { submissionId: saved.id, paymentId: paymentIdStr, studentId: studentIdStr, amount: dto.amount, status: saved.status, verifiedBy: user.s, verifiedAt: saved.verifiedAt, notes: saved.notes } };
+    } catch (error: any) {
+      this.logger.error(`adminVerifyStudentClassPayment failed: ${error?.message}`, error?.stack);
+      if (error.status && error.response) {
+        throw error;
+      }
+      throw new BadRequestException({ success: false, message: 'Failed to verify payment', error: 'VERIFICATION_FAILED', details: error?.message });
     }
-
-    return { success: true, message: 'Payment verified for student successfully', data: { submissionId: saved.id, paymentId, studentId, amount: dto.amount, status: saved.status, verifiedBy: user.s, verifiedAt: saved.verifiedAt, notes: saved.notes } };
   }
 
   private mapPaymentToResponse(payment: InstituteClassPayment): InstituteClassPaymentResponseDto {
@@ -920,6 +941,10 @@ export class InstituteClassPaymentService {
         throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
       }
 
+      // Ensure userId is stringified
+      const userIdStr = String(user.s);
+      this.logger.log(`getMyClassSubmissions: instituteId=${instituteId} classId=${classId} userId=${userIdStr}`);
+
       // Get all active payments for this class (must be both active and ACTIVE status)
       const payments = await this.paymentRepository.find({
         where: { 
@@ -931,6 +956,8 @@ export class InstituteClassPaymentService {
         relations: ['submissions'],
         order: { createdAt: 'DESC' },
       });
+
+      this.logger.log(`Found ${payments.length} payments for class ${classId}`);
 
       if (payments.length === 0) {
         return {
@@ -955,10 +982,12 @@ export class InstituteClassPaymentService {
       const submissions = await this.submissionRepository.find({
         where: {
           paymentId: In(paymentIds),
-          userId: String(user.s),
+          userId: userIdStr,
         },
         order: { uploadedAt: 'DESC' },
       });
+
+      this.logger.log(`Found ${submissions.length} submissions for user ${userIdStr}`);
 
       // Calculate summary stats
       const summary = {
