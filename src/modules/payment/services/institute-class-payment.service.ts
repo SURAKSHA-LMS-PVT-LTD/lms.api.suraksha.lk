@@ -803,57 +803,69 @@ export class InstituteClassPaymentService {
   }
 
   async adminVerifyStudentClassPayment(paymentId: string, studentId: string, dto: AdminVerifyStudentClassPaymentDto, user: JwtPayload) {
-    const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
-    if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
+    try {
+      // Ensure BigInt values are properly stringified
+      const paymentIdStr = String(paymentId);
+      const studentIdStr = String(studentId);
 
-    const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
-    if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
+      const payment = await this.paymentRepository.findOne({ where: { id: paymentIdStr } });
+      if (!payment) throw new NotFoundException({ success: false, message: 'Payment not found', error: 'PAYMENT_NOT_FOUND' });
 
-    const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1 ||
-      instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER;
-    if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can manually verify student payments', error: 'INSUFFICIENT_PERMISSIONS' });
+      const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, payment.instituteId);
+      if (!hasAccess) throw new ForbiddenException({ success: false, message: 'You do not have access to this institute', error: 'NO_INSTITUTE_ACCESS' });
 
-    const membership = await this.instituteUserRepository.findOne({ where: { userId: studentId, instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE } });
-    if (!membership) throw new NotFoundException({ success: false, message: 'Student not found in this institute', error: 'STUDENT_NOT_FOUND' });
+      const isAdmin = user.userType === UserType.SUPERADMIN || user.userType === UserType.ORGANIZATION_MANAGER || user.u === 0 || user.u === 1 ||
+        instituteRole === InstituteUserType.INSTITUTE_ADMIN || instituteRole === InstituteUserType.TEACHER;
+      if (!isAdmin) throw new ForbiddenException({ success: false, message: 'Only admins and teachers can manually verify student payments', error: 'INSUFFICIENT_PERMISSIONS' });
 
-    // Check if student already has a verified payment (any verified status)
-    const verifiedStatuses = [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
-    const existingVerified = await this.submissionRepository.findOne({
-      where: {
-        paymentId,
-        userId: studentId,
-        status: In(verifiedStatuses),
-      },
-      order: { verifiedAt: 'DESC' } as any,
-    });
-    if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
+      const membership = await this.instituteUserRepository.findOne({ where: { userId: studentIdStr, instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE } });
+      if (!membership) throw new NotFoundException({ success: false, message: 'Student not found in this institute', error: 'STUDENT_NOT_FOUND' });
 
-    const studentUser = await this.userRepository.findOne({ where: { id: studentId }, select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'] });
+      // Check if student already has a verified payment (any verified status)
+      const verifiedStatuses = [SubmissionStatus.VERIFIED, SubmissionStatus.HALF_VERIFIED, SubmissionStatus.QUARTER_VERIFIED];
+      const existingVerified = await this.submissionRepository.findOne({
+        where: {
+          paymentId: paymentIdStr,
+          userId: studentIdStr,
+          status: In(verifiedStatuses),
+        },
+        order: { verifiedAt: 'DESC' } as any,
+      });
+      if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
 
-    const timestamp = new Date();
-    const submission = this.submissionRepository.create({
-      paymentId,
-      userId: studentId,
-      userType: studentUser?.userType ?? UserType.USER,
-      username: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : studentId,
-      paymentDate: new Date(dto.date),
-      receiptUrl: '',
-      receiptFilename: '',
-      submittedAmount: dto.amount,
-      status: dto.paymentTier === 'half' ? SubmissionStatus.HALF_VERIFIED : dto.paymentTier === 'quarter' ? SubmissionStatus.QUARTER_VERIFIED : SubmissionStatus.VERIFIED,
-      verifiedBy: user.s,
-      verifiedAt: timestamp,
-      notes: dto.notes || null,
-      uploadedAt: timestamp,
-      updatedAt: timestamp,
-    });
-    const saved = await this.submissionRepository.save(submission);
+      const studentUser = await this.userRepository.findOne({ where: { id: studentIdStr }, select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'] });
 
-    try { await this.userManagementService.refreshUserCache(studentId); } catch (e: any) {
-      this.logger.warn(`Cache refresh failed after admin class payment verification for user ${studentId}: ${e.message}`);
+      const timestamp = new Date();
+      const submission = this.submissionRepository.create({
+        paymentId: paymentIdStr,
+        userId: studentIdStr,
+        userType: studentUser?.userType ?? UserType.USER,
+        username: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : studentIdStr,
+        paymentDate: new Date(dto.date),
+        receiptUrl: '',
+        receiptFilename: '',
+        submittedAmount: dto.amount,
+        status: dto.paymentTier === 'half' ? SubmissionStatus.HALF_VERIFIED : dto.paymentTier === 'quarter' ? SubmissionStatus.QUARTER_VERIFIED : SubmissionStatus.VERIFIED,
+        verifiedBy: String(user.s),
+        verifiedAt: timestamp,
+        notes: dto.notes || null,
+        uploadedAt: timestamp,
+        updatedAt: timestamp,
+      });
+      const saved = await this.submissionRepository.save(submission);
+
+      try { await this.userManagementService.refreshUserCache(studentIdStr); } catch (e: any) {
+        this.logger.warn(`Cache refresh failed after admin class payment verification for user ${studentIdStr}: ${e.message}`);
+      }
+
+      return { success: true, message: 'Payment verified for student successfully', data: { submissionId: saved.id, paymentId: paymentIdStr, studentId: studentIdStr, amount: dto.amount, status: saved.status, verifiedBy: user.s, verifiedAt: saved.verifiedAt, notes: saved.notes } };
+    } catch (error: any) {
+      this.logger.error(`adminVerifyStudentClassPayment failed: ${error?.message}`, error?.stack);
+      if (error.status && error.response) {
+        throw error;
+      }
+      throw new BadRequestException({ success: false, message: 'Failed to verify payment', error: 'VERIFICATION_FAILED', details: error?.message });
     }
-
-    return { success: true, message: 'Payment verified for student successfully', data: { submissionId: saved.id, paymentId, studentId, amount: dto.amount, status: saved.status, verifiedBy: user.s, verifiedAt: saved.verifiedAt, notes: saved.notes } };
   }
 
   private mapPaymentToResponse(payment: InstituteClassPayment): InstituteClassPaymentResponseDto {
