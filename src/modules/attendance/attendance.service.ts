@@ -2542,6 +2542,12 @@ export class AttendanceService {
 
       const subscriptionPlan = student.user?.subscriptionPlan || 'FREE';
 
+      this.logger.log(
+        `[FetchStudent] student=${studentId} plan=${subscriptionPlan} ` +
+        `father=${!!student.father} mother=${!!student.mother} guardian=${!!student.guardian} ` +
+        `parentContact=${parentContact || 'null'} parentEmail=${!!parentEmail} parentTelegram=${!!parentTelegramId}`,
+      );
+
       return {
         student,
         primaryParent,

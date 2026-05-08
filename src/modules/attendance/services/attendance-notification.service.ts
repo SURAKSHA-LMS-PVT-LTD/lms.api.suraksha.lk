@@ -129,22 +129,21 @@ export class AttendanceNotificationService {
    * Check if channel is available in current environment
    */
   private isChannelAvailable(channel: string): boolean {
+    if (channel === 'sms') return true;
+    if (channel === 'push') return this.fcmNotificationService.isReady();
+    if (channel === 'email') {
+      const hasUrl = !!process.env.EMAIL_SERVER_URL;
+      const hasToken = !!process.env.EMAIL_SERVER_AUTH_TOKEN;
+      if (!hasUrl || !hasToken) {
+        this.logger.warn(`[Email] Channel unavailable — EMAIL_SERVER_URL=${hasUrl} EMAIL_SERVER_AUTH_TOKEN=${hasToken}`);
+        return false;
+      }
+      return true;
+    }
     const envChannels: Record<string, string | undefined> = {
       'whatsapp': process.env.WHATSAPP_ACCESS_TOKEN,
       'telegram': process.env.TELEGRAM_BOT_TOKEN,
-      'email': process.env.EMAIL_SERVER_URL,
-      'push': process.env.FIREBASE_PROJECT_ID  // FCM push notifications
     };
-    
-    // SMS is always available
-    if (channel === 'sms') return true;
-    
-    // Push notifications check FCM service readiness
-    if (channel === 'push') {
-      return this.fcmNotificationService.isReady();
-    }
-    
-    // Check if environment variable is configured
     return !!envChannels[channel];
   }
 
@@ -633,60 +632,33 @@ export class AttendanceNotificationService {
   private async sendEmailNotification(
     data: AttendanceNotificationData
   ): Promise<{ success: boolean; deliveryId?: string }> {
-    try {
-      if (!data.parentEmail) {
-        throw new Error('Parent email not available');
-      }
-
-      // ✅ Determine correct template based on subscription plan and attendance type
-      const templateType = this.determineEmailTemplate(data);
-      const templateData = this.buildEmailTemplateData(data);
-      
-      // ⚡ FIRE-AND-FORGET: Send email in background without waiting
-      this.sendEmailInBackground(
-        templateType,
-        [data.parentEmail],
-        templateData,
-        data.studentId
-      ).catch((err) => this.logger.warn(`Background email send failed: ${err.message}`));
-
-      // Return immediately - don't wait for email service
-      return {
-        success: true,
-        deliveryId: `email_${Date.now()}_${data.studentId}`
-      };
-
-    } catch (error) {
+    if (!data.parentEmail) {
+      this.logger.warn(`[Email] Skipped — no parent email for student=${data.studentId}`);
       return { success: false };
     }
-  }
 
-  /**
-   * 🔥 TRUE FIRE-AND-FORGET: Send email in background using EnhancedEmailService
-   */
-  private async sendEmailInBackground(
-    templateType: string,
-    toEmails: string[],
-    templateData: any,
-    studentId: string
-  ): Promise<void> {
+    const templateType = this.determineEmailTemplate(data);
+    const templateData = this.buildEmailTemplateData(data);
+
+    this.logger.log(`[Email] Sending template=${templateType} to=${data.parentEmail} student=${data.studentId}`);
+
     try {
       const result = await this.enhancedEmailService.sendTemplateEmail({
         templateType,
-        toEmails,
+        toEmails: [data.parentEmail],
         templateData,
       });
 
-      if (!result.success) {
-        this.logger.warn(
-          `Attendance email failed for student ${studentId}: ${result.error}`,
-        );
+      if (result.success) {
+        this.logger.log(`[Email] Sent successfully to=${data.parentEmail} messageId=${result.messageId}`);
+        return { success: true, deliveryId: result.messageId };
+      } else {
+        this.logger.warn(`[Email] Provider returned failure for student=${data.studentId}: ${result.error}`);
+        return { success: false };
       }
     } catch (error: any) {
-      // Silent failure for performance
-      this.logger.warn(
-        `Background email send error for student ${studentId}: ${error.message}`,
-      );
+      this.logger.error(`[Email] Exception for student=${data.studentId}: ${error.message}`);
+      return { success: false };
     }
   }
 
@@ -952,6 +924,19 @@ export class AttendanceNotificationService {
   /**
    * Send SMS notification via configured SMS provider (SMSlenz/Dialog eSMS)
    */
+  private normalizeSriLankaPhone(raw: string): string {
+    const trimmed = raw.trim().replace(/\s+/g, '');
+    // Already correct international format
+    if (/^\+947[0-9]{8}$/.test(trimmed)) return trimmed;
+    // Local 10-digit format: 07XXXXXXXX → +947XXXXXXXX
+    if (/^07[0-9]{8}$/.test(trimmed)) return `+94${trimmed.slice(1)}`;
+    // 9-digit without leading 0: 7XXXXXXXX → +947XXXXXXXX
+    if (/^7[0-9]{8}$/.test(trimmed)) return `+94${trimmed}`;
+    // Country code without +: 947XXXXXXXX → +947XXXXXXXX
+    if (/^947[0-9]{8}$/.test(trimmed)) return `+${trimmed}`;
+    return trimmed;
+  }
+
   private async sendSMSNotification(
     data: AttendanceNotificationData
   ): Promise<{ success: boolean; deliveryId?: string }> {
@@ -961,10 +946,14 @@ export class AttendanceNotificationService {
         return { success: false, deliveryId: undefined };
       }
 
+      const normalized = this.normalizeSriLankaPhone(data.parentContact);
       const sriLankaPattern = /^\+947[0-9]{8}$/;
-      if (!sriLankaPattern.test(data.parentContact)) {
-        this.logger.warn(`[SMS] Skipped — invalid number format: ${data.parentContact} (expected +947XXXXXXXX)`);
+      if (!sriLankaPattern.test(normalized)) {
+        this.logger.warn(`[SMS] Skipped — invalid number: raw=${data.parentContact} normalized=${normalized} (expected +947XXXXXXXX)`);
         return { success: false };
+      }
+      if (normalized !== data.parentContact) {
+        this.logger.log(`[SMS] Normalized phone: ${data.parentContact} → ${normalized}`);
       }
 
       const userId = this.configService.get<string>('SMSLENZ_USER_ID');
@@ -978,21 +967,21 @@ export class AttendanceNotificationService {
         return { success: false, deliveryId: undefined };
       }
 
-      this.logger.log(`[SMS] Sending to ${data.parentContact} via sender=${senderId} for student=${data.studentId}`);
+      this.logger.log(`[SMS] Sending to ${normalized} via sender=${senderId} for student=${data.studentId}`);
       const message = this.buildAttendanceMessage(data, true, 'sms');
 
       const result = await this.smsProviderService.sendSingleSms(
         userId,
         apiKey,
         senderId,
-        data.parentContact,
+        normalized,
         message
       );
 
       this.logger.debug(`[SMS] Provider response: ${JSON.stringify(result)}`);
 
       if (result.success === true || result.data?.status === 'success') {
-        this.logger.log(`[SMS] Sent successfully to ${data.parentContact} campaignId=${result.data?.campaign_id}`);
+        this.logger.log(`[SMS] Sent successfully to ${normalized} campaignId=${result.data?.campaign_id}`);
         return {
           success: true,
           deliveryId: result.data.campaign_id?.toString()
@@ -1021,22 +1010,20 @@ export class AttendanceNotificationService {
     data: AttendanceNotificationData
   ): Promise<{ success: boolean; deliveryId?: string }> {
     try {
-      // Check if parent userId is available for push notification
       if (!data.parentUserId) {
-        this.logger.debug(`No parent userId for push notification - studentId: ${data.studentId}`);
-        return { success: false, deliveryId: undefined };
+        this.logger.warn(`[Push] Skipped — no parentUserId for student=${data.studentId} (student has no linked parent account)`);
+        return { success: false };
       }
 
-      // Check if FCM service is ready
       if (!this.fcmNotificationService.isReady()) {
-        this.logger.warn('FCM service not initialized - push notification skipped');
-        return { success: false, deliveryId: undefined };
+        this.logger.warn(`[Push] Skipped — FCM not initialized (check FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL env vars)`);
+        return { success: false };
       }
 
-      // Build push notification content
+      this.logger.log(`[Push] Sending to parentUserId=${data.parentUserId} student=${data.studentId}`);
+
       const pushContent = this.buildPushNotificationContent(data);
 
-      // Send push notification to parent's devices
       const result = await this.fcmNotificationService.sendToUser(
         data.parentUserId,
         {
@@ -1048,33 +1035,31 @@ export class AttendanceNotificationService {
         pushContent.data,
         {
           priority: 'high',
-          timeToLive: 86400, // 24 hours
+          timeToLive: 86400,
           collapseKey: `attendance_${data.studentId}`,
         }
       );
 
-      if (result.successCount > 0) {
-        this.logger.debug(`✅ Push notification sent to user ${data.parentUserId} - ${result.successCount} devices`);
+      this.logger.log(`[Push] Result for parentUserId=${data.parentUserId}: success=${result.successCount} failure=${result.failureCount} invalidTokens=${result.invalidTokens.length}`);
 
-        // Record in push_notifications + notification_recipients so the parent
-        // can see attendance notifications in their in-app notification inbox
+      if (result.successCount > 0) {
         try {
           await this.recordAttendancePushNotification(data, pushContent);
         } catch (recErr) {
-          this.logger.warn(`Failed to record attendance push notification: ${(recErr as Error).message}`);
+          this.logger.warn(`[Push] Record failed: ${(recErr as Error).message}`);
         }
-
-        return {
-          success: true,
-          deliveryId: `push_${Date.now()}_${data.parentUserId}`
-        };
+        return { success: true, deliveryId: `push_${Date.now()}_${data.parentUserId}` };
       } else {
-        this.logger.debug(`⚠️ Push notification failed for user ${data.parentUserId} - no devices received`);
+        if (result.failureCount > 0) {
+          this.logger.warn(`[Push] All ${result.failureCount} tokens failed — parent may not have app installed or notifications disabled`);
+        } else {
+          this.logger.warn(`[Push] No FCM tokens registered for parentUserId=${data.parentUserId} — parent has not logged in to the app`);
+        }
         return { success: false };
       }
 
     } catch (error) {
-      this.logger.error(`❌ Push notification error: ${(error as Error).message}`);
+      this.logger.error(`[Push] Exception for student=${data.studentId}: ${(error as Error).message}`);
       return { success: false };
     }
   }

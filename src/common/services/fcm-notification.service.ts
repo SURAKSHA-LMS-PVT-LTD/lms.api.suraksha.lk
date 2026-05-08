@@ -50,8 +50,8 @@ export class FcmNotificationService implements OnModuleInit {
 
       if (!projectId || !privateKey || !clientEmail) {
         this.logger.warn(
-          '⚠️ Firebase credentials not configured. FCM notifications will be disabled. ' +
-          'Set FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL in .env'
+          `[FCM] Credentials missing — FCM disabled. ` +
+          `FIREBASE_PROJECT_ID=${!!projectId} FIREBASE_PRIVATE_KEY=${!!privateKey} FIREBASE_CLIENT_EMAIL=${!!clientEmail}`
         );
         return;
       }
@@ -345,14 +345,10 @@ export class FcmNotificationService implements OnModuleInit {
       const tokens = await this.fcmTokenRepository.findActiveTokensByUserId(userId);
 
       if (tokens.length === 0) {
-        this.logger.warn(`⚠️ No active FCM tokens found for user ${userId}`);
-        return {
-          successCount: 0,
-          failureCount: 0,
-          results: [],
-          invalidTokens: [],
-        };
+        this.logger.warn(`[FCM] No active tokens for userId=${userId} — user has not registered a device or tokens expired`);
+        return { successCount: 0, failureCount: 0, results: [], invalidTokens: [] };
       }
+      this.logger.log(`[FCM] Sending to userId=${userId} (${tokens.length} token(s))`);
 
       const fcmTokens = tokens.map(token => token.fcmToken);
 
