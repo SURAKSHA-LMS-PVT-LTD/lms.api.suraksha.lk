@@ -68,7 +68,7 @@ export class TenantService {
         'id', 'name', 'code', 'tier', 'logoUrl', 'primaryColorCode', 'secondaryColorCode',
         'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl', 'loginVideoPosterUrl',
         'loginIllustrationUrl', 'loginWelcomeTitle', 'loginWelcomeSubtitle', 'loginFooterText',
-        'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible',
+        'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible', 'subdomain', 'customDomain',
       ],
     });
 
@@ -87,7 +87,7 @@ export class TenantService {
         'id', 'name', 'code', 'tier', 'logoUrl', 'primaryColorCode', 'secondaryColorCode',
         'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl', 'loginVideoPosterUrl',
         'loginIllustrationUrl', 'loginWelcomeTitle', 'loginWelcomeSubtitle', 'loginFooterText',
-        'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible',
+        'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible', 'subdomain', 'customDomain',
       ],
     });
 
@@ -604,6 +604,8 @@ export class TenantService {
       faviconUrl: institute.faviconUrl,
       customAppName: institute.customAppName,
       poweredByVisible: institute.poweredByVisible ?? true,
+      subdomain: institute.subdomain ?? null,
+      customDomain: institute.customDomain ?? null,
     };
   }
 

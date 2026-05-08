@@ -150,13 +150,14 @@ export class MarkSessionAttendanceDto {
   @IsNotEmpty()
   studentId: string;
 
-  @ApiProperty({
-    description: 'Attendance status: 0=Absent, 1=Present, 2=Late, 3=Left, 4=LeftEarly, 5=LeftLately',
+  @ApiPropertyOptional({
+    description: 'Attendance status: 0=Absent, 1=Present, 2=Late, 3=Left, 4=LeftEarly, 5=LeftLately. Omit to auto-resolve from session time rules.',
     example: 1,
   })
+  @IsOptional()
   @IsInt()
   @Min(0)
-  status: number;
+  status?: number;
 
   @ApiPropertyOptional()
   @IsString()

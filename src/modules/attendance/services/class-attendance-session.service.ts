@@ -296,7 +296,7 @@ export class ClassAttendanceSessionService {
     const studentIds = students.map(s => s.studentUserId);
 
     const [sessionRecords, instituteUsers, users] = await Promise.all([
-      // Records linked to THIS session
+      // Only records explicitly marked within THIS session
       studentIds.length
         ? this.recordRepo.find({
             where: { classSessionId: sessionId, studentId: In(studentIds) },
@@ -317,35 +317,6 @@ export class ClassAttendanceSessionService {
         : Promise.resolve([]),
     ]);
 
-    // Records for same class+date but NOT from this session
-    const otherRecordMap = new Map<string, AttendanceRecordEntity>();
-    if (studentIds.length) {
-      const otherRecords = await this.recordRepo
-        .createQueryBuilder('r')
-        .select([
-          'r.studentId',
-          'r.status',
-          'r.createdAt',
-          'r.remarks',
-          'r.markingMethod',
-          'r.classSessionId',
-        ])
-        .where('r.instituteId = :instituteId', { instituteId })
-        .andWhere('r.classId = :classId', { classId: session.classId })
-        .andWhere('r.date = :date', { date: session.date })
-        .andWhere('r.studentId IN (:...ids)', { ids: studentIds })
-        .andWhere('(r.classSessionId IS NULL OR r.classSessionId != :sessionId)', { sessionId })
-        .orderBy('r.studentId', 'ASC')
-        .addOrderBy('r.createdAt', 'DESC')
-        .getMany();
-
-      for (const rec of otherRecords) {
-        if (!otherRecordMap.has(rec.studentId)) {
-          otherRecordMap.set(rec.studentId, rec);
-        }
-      }
-    }
-
     const sessionRecordMap = new Map(sessionRecords.map(r => [r.studentId, r]));
     const iuMap = new Map(instituteUsers.map(u => [u.userId, u]));
     const userMap = new Map(users.map(u => [u.id, u]));
@@ -357,18 +328,7 @@ export class ClassAttendanceSessionService {
       const iu   = iuMap.get(s.studentUserId);
       const user = userMap.get(s.studentUserId);
 
-      let statusCode: number | null = null;
-      let isFromOtherSource = false;
-      const otherRecord = otherRecordMap.get(s.studentUserId) ?? null;
-
-      if (rec) {
-        statusCode = Number(rec.status);
-        isFromOtherSource = false;
-      } else if (otherRecord) {
-        statusCode = Number(otherRecord.status);
-        isFromOtherSource = true;
-      }
-
+      const statusCode: number | null = rec ? Number(rec.status) : null;
       const label = statusCode !== null ? (STATUS_LABEL[statusCode] ?? 'Unknown') : 'NotMarked';
 
       if (statusCode === 1) presentCount++;
@@ -384,9 +344,9 @@ export class ClassAttendanceSessionService {
         cardId: iu?.instituteCardId ?? null,
         statusCode,
         statusLabel: label,
-        markedAt: rec ? toSLTimeString(rec.createdAt) : otherRecord ? toSLTimeString(otherRecord.createdAt) : null,
-        remarks: rec?.remarks ?? otherRecord?.remarks ?? null,
-        isFromOtherSource,
+        markedAt: rec ? toSLTimeString(rec.createdAt) : null,
+        remarks: rec?.remarks ?? null,
+        isFromOtherSource: false,
       };
     });
 
@@ -429,20 +389,8 @@ export class ClassAttendanceSessionService {
       throw new BadRequestException('Cannot mark attendance for future sessions');
     }
 
-    const otherSourceRecord = await this.recordRepo
-      .createQueryBuilder('r')
-      .where('r.instituteId = :instituteId', { instituteId })
-      .andWhere('r.classId = :classId', { classId: session.classId })
-      .andWhere('r.date = :date', { date: session.date })
-      .andWhere('r.studentId = :studentId', { studentId: dto.studentId })
-      .andWhere('(r.classSessionId IS NULL OR r.classSessionId != :sessionId)', { sessionId })
-      .orderBy('r.createdAt', 'DESC')
-      .getOne();
-
-    if (otherSourceRecord) {
-      throw new BadRequestException('Student already has attendance marked from another source for this date');
-    }
-
+    // Session records always take precedence in the session view, so non-session records
+    // from other sources (e.g. gate check-in) are allowed to co-exist.
     const autoStatus = dto.status ?? resolveAutoStatus(session);
     const timestamp = now();
 

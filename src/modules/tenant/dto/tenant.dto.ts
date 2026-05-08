@@ -163,6 +163,8 @@ export class InstituteBrandingResponse {
   faviconUrl?: string;
   customAppName?: string;
   poweredByVisible: boolean;
+  subdomain?: string | null;
+  customDomain?: string | null;
 }
 
 export class UpdateVisibilityDto {
