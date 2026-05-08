@@ -91,7 +91,22 @@ export class TenantService {
       ],
     });
 
-    if (!institute) return null;
+    if (!institute) {
+      // Log why it failed so we can debug in Cloud Run logs
+      const raw = await this.instituteRepository.findOne({
+        where: { customDomain: domain },
+        select: ['id', 'isActive', 'customDomainVerified', 'customLoginEnabled', 'tier'],
+      });
+      if (raw) {
+        this.logger.warn(
+          `[BrandingDomain] domain=${domain} found institute=${raw.id} but blocked: ` +
+          `isActive=${raw.isActive} verified=${raw.customDomainVerified} loginEnabled=${raw.customLoginEnabled} tier=${raw.tier}`,
+        );
+      } else {
+        this.logger.warn(`[BrandingDomain] domain=${domain} not found in DB`);
+      }
+      return null;
+    }
 
     return this.toBrandingResponse(institute);
   }

@@ -101,6 +101,7 @@ export class MarkAttendanceDto {
   location?: string;
 
   @ApiPropertyOptional({ description: 'Location coordinates: { latitude, longitude }', type: AddressDto })
+  @Transform(({ value }) => (typeof value === 'string' ? undefined : value))
   @ValidateNested()
   @Type(() => AddressDto)
   @IsOptional()
@@ -233,6 +234,7 @@ export class BulkAttendanceDto {
   location?: string;
 
   @ApiPropertyOptional({ description: 'Location coordinates: { latitude, longitude }', type: AddressDto })
+  @Transform(({ value }) => (typeof value === 'string' ? undefined : value))
   @ValidateNested()
   @Type(() => AddressDto)
   @IsOptional()
