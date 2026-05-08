@@ -23,7 +23,7 @@ export interface AttendanceNotificationData {
   parentUserId?: string;       // ✅ Parent user ID for push notifications
   instituteId?: string;        // ✅ Institute ID for push notification inbox
   attendanceId?: string;       // ✅ Encoded attendance record ID for deep-link
-  attendanceStatus: 'PRESENT' | 'ABSENT';
+  attendanceStatus: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT' | 'LEFT_EARLY' | 'LEFT_LATELY';
   attendanceType?: 'INSTITUTE' | 'CLASS' | 'SUBJECT' | 'TRANSPORT';  // ✅ Type of attendance (with all levels)
   date: string;
   time: string;

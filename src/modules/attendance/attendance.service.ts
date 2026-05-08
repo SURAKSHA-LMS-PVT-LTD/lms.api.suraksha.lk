@@ -1825,10 +1825,6 @@ export class AttendanceService {
       return;
     }
     const status = markAttendanceDto.status;
-    if (status !== AttendanceStatus.ABSENT && status !== AttendanceStatus.LATE) {
-      this.logger.debug(`[Notification] Skipped — status=${status} (only ABSENT/LATE trigger notifications)`);
-      return;
-    }
     this.logger.log(`[Notification] Scheduling for student=${markAttendanceDto.studentId} status=${status}`);
     this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));
   }
@@ -1909,7 +1905,7 @@ export class AttendanceService {
         parentUserId: data.parentUserId,
         instituteId: markAttendanceDto.instituteId,
         attendanceId: attendanceResult?.id || undefined,
-        attendanceStatus: (markAttendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
+        attendanceStatus: (markAttendanceDto.status?.toUpperCase() as any) || 'ABSENT',
         date: markAttendanceDto.date,
         time: getCurrentSriLankaISO(),
         location: markAttendanceDto.location,
@@ -2057,7 +2053,7 @@ export class AttendanceService {
         parentUserId,
         instituteId,
         attendanceId: attendanceId || undefined,
-        attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
+        attendanceStatus: (attendanceDto.status?.toUpperCase() as any) || 'ABSENT',
         date: attendanceDto.date,
         time: formatSriLankaTime(now()),
         location: attendanceDto.location || null,
@@ -2169,7 +2165,7 @@ export class AttendanceService {
             parentTelegramId: parentUser.telegramId || null,
             parentUserId: parentUser.id || null,
             instituteId: attendanceDto.instituteId,
-            attendanceStatus: (attendanceDto.status === AttendanceStatus.PRESENT ? 'PRESENT' : 'ABSENT') as 'PRESENT' | 'ABSENT',
+            attendanceStatus: (attendanceDto.status?.toUpperCase() as any) || 'ABSENT',
             date: attendanceDto.date,
             time: formatSriLankaTime(now()),
             vehicleNumber: null,
@@ -2530,14 +2526,18 @@ export class AttendanceService {
       }
 
       if (primaryParent) {
-        parentContact = primaryParent.phoneNumber || null;
+        // Only keep phone if it has enough digits to be a real number (>= 7 digits after stripping non-numeric)
+        const rawPhone = primaryParent.phoneNumber || '';
+        const digits = rawPhone.replace(/\D/g, '');
+        parentContact = digits.length >= 7 ? rawPhone : null;
         parentEmail = primaryParent.email || null;
         parentTelegramId = primaryParent.telegramId || null;
       }
 
       // Fallback: Use student's emergency contact if no parent contact found
       if (!parentContact && student.emergencyContact) {
-        parentContact = student.emergencyContact;
+        const ecDigits = (student.emergencyContact || '').replace(/\D/g, '');
+        parentContact = ecDigits.length >= 7 ? student.emergencyContact : null;
       }
 
       const subscriptionPlan = student.user?.subscriptionPlan || 'FREE';
@@ -3759,8 +3759,8 @@ export class AttendanceService {
       [newStatusCode, String(Date.now()), existingRecord.id],
     );
 
-    // Send notification if status changed to absent or late
-    if (status === AttendanceStatus.ABSENT || status === AttendanceStatus.LATE) {
+    // Send notification for all status changes
+    {
       try {
         // Look up names for notification
         const [institute, clazz] = await Promise.all([
