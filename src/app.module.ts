@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { CSRFProtectionMiddleware } from './common/middleware/csrf-protection.middleware';
+import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { DataMaskingInterceptor } from './common/interceptors/data-masking.interceptor';
 import { UrlTransformInterceptor } from './common/interceptors/url-transform.interceptor';
@@ -222,7 +223,7 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(
-        // Strict origin validation now handled directly in main.ts for immediate 403 blocking
+        RequestLoggerMiddleware,
         SecurityHeadersMiddleware, 
         CSRFProtectionMiddleware
       )

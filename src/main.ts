@@ -1,4 +1,5 @@
 import { NestFactory, Reflector } from '@nestjs/core';
+console.log('\n[DEBUG] main.ts is loading...\n');
 import { AppModule } from './app.module';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { validateAll } from './config/validate-environment';
@@ -309,8 +310,11 @@ async function bootstrap() {
 
     await app.listen(port, '0.0.0.0');
 
-    console.log(`\n✅ SERVER RUNNING on :${port} | ENV: ${process.env.NODE_ENV || 'dev'}`);
-    console.log(`🕐 Started at: ${formatSriLankaDateTime(new Date(), { hour12: false })} (Asia/Colombo)\n`);
+    console.log('\n' + '★'.repeat(60));
+    console.log(`🚀 SERVER IS NOW LIVE ON PORT: ${port}`);
+    console.log(`🔗 LOCAL: http://localhost:${port}`);
+    console.log(`🛠️ ENV: ${process.env.NODE_ENV || 'dev'}`);
+    console.log('★'.repeat(60) + '\n');
 
   } catch (error: any) {
     console.error('\n❌ FATAL ERROR DURING STARTUP:');

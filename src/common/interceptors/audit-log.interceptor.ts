@@ -1,4 +1,4 @@
-﻿import * as crypto from 'crypto';
+import * as crypto from 'crypto';
 import {
   Injectable,
   NestInterceptor,
@@ -9,7 +9,6 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Request, Response } from 'express';
-import { getCurrentSriLankaISO } from '../utils/timezone.util';
 import { AuditService } from '../services/audit.service';
 
 @Injectable()
@@ -25,43 +24,32 @@ export class AuditLogInterceptor implements NestInterceptor {
     
     const { method, originalUrl, ip, headers } = request;
     const userAgent = headers['user-agent'] || 'Unknown';
-    const requestId = this.generateRequestId();
+    const requestId = (request as any).requestId || (headers['x-request-id'] as string) || this.generateRequestId();
+
+    response.setHeader('X-Request-ID', requestId);
     
     // Extract action and resource from route
     const { action, resource } = this.extractActionAndResource(method, originalUrl);
     
-    // Log request start
-    this.logRequest(requestId, {
-      method,
-      url: originalUrl,
-      ip,
-      userAgent,
-      action,
-      resource,
-      body: this.sanitizeBody(request.body),
-      query: request.query,
-      params: request.params,
-      timestamp: getCurrentSriLankaISO(),
-    });
+    const userId = this.extractUserId(request);
 
     return next.handle().pipe(
       tap({
         next: async (responseBody) => {
           const duration = Date.now() - startTime;
-          
-          // Log to console
+
           this.logResponse(requestId, {
             method,
             url: originalUrl,
             statusCode: response.statusCode,
             duration,
             responseBody: this.sanitizeResponse(responseBody),
-            timestamp: getCurrentSriLankaISO(),
+            userId,
           });
-
+          
           // Save to audit service
           await this.auditService.createAuditLog({
-            userId: this.extractUserId(request),
+            userId,
             action,
             resource,
             method,
@@ -90,8 +78,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             status: error.status || error.statusCode,
             response: error.response, // For HTTP exceptions
           };
-          
-          // Log error to console with enhanced details
+
           this.logError(requestId, {
             method,
             url: originalUrl,
@@ -99,12 +86,13 @@ export class AuditLogInterceptor implements NestInterceptor {
             duration,
             error: errorDetails,
             requestBody: this.sanitizeBody(request.body),
-            timestamp: getCurrentSriLankaISO(),
+            userId,
+            ip,
           });
-
+          
           // Save error to audit service
           await this.auditService.createAuditLog({
-            userId: this.extractUserId(request),
+            userId,
             action,
             resource,
             method,
@@ -228,13 +216,13 @@ export class AuditLogInterceptor implements NestInterceptor {
   private sanitizeResponse(responseBody: any): any {
     if (!responseBody) return null;
     
-    // Limit response body size in logs
+    // Limit response body size in logs to avoid console flooding
     const responseStr = JSON.stringify(responseBody);
-    if (responseStr.length > 1000) {
+    if (responseStr.length > 4000) {
       return {
         ...responseBody,
         data: Array.isArray(responseBody.data) 
-          ? `[Array of ${responseBody.data.length} items]`
+          ? `[Array of ${responseBody.data.length} items (Total size: ${responseStr.length} chars)]`
           : '[Large response body truncated]',
         _truncated: true,
         _originalSize: responseStr.length
@@ -244,17 +232,16 @@ export class AuditLogInterceptor implements NestInterceptor {
     return responseBody;
   }
 
-  private logRequest(requestId: string, data: any): void {
-    // Request logged for audit trail
-  }
-
   private logResponse(requestId: string, data: any): void {
-    const statusEmoji = this.getStatusEmoji(data.statusCode);
-    // Response logged for successful requests
+    const userSuffix = data.userId ? ` | user=${data.userId}` : '';
+    const responseSuffix = data.responseBody ? ` | response=${this.previewBody(data.responseBody)}` : '';
+    this.logger.log(
+      `<< [${requestId}] ${data.method} ${data.url} | status=${data.statusCode} | duration=${data.duration}ms${userSuffix}${responseSuffix}`,
+    );
   }
 
   private logError(requestId: string, data: any): void {
-    this.logger.error(`âŒ ERROR [${requestId}] ${data.method} ${data.url} - ${data.statusCode} (${data.duration}ms)`, {
+    this.logger.error(`ERROR [${requestId}] ${data.method} ${data.url} | status=${data.statusCode} | duration=${data.duration}ms`, {
       requestId,
       type: 'ERROR',
       method: data.method,
@@ -263,23 +250,26 @@ export class AuditLogInterceptor implements NestInterceptor {
       duration: data.duration,
       error: data.error,
       requestBody: data.requestBody,
+      userId: data.userId,
+      ip: data.ip,
       timestamp: data.timestamp,
     });
     
     // Log validation errors in detail if it's a BadRequestException
     if (data.error?.name === 'BadRequestException' && data.error?.response?.message) {
-      this.logger.error(`ðŸ” Validation Details [${requestId}]:`, {
+      this.logger.error(`VALIDATION [${requestId}]`, {
         validationErrors: data.error.response.message,
         requestBody: data.requestBody,
       });
     }
   }
 
-  private getStatusEmoji(statusCode: number): string {
-    if (statusCode >= 200 && statusCode < 300) return 'ðŸŸ¢';
-    if (statusCode >= 300 && statusCode < 400) return 'ðŸŸ¡';
-    if (statusCode >= 400 && statusCode < 500) return 'ðŸ”´';
-    if (statusCode >= 500) return 'ðŸ’¥';
-    return 'âšª';
+  private previewBody(body: any): string {
+    const bodyString = JSON.stringify(body);
+    if (bodyString.length <= 500) {
+      return bodyString;
+    }
+
+    return `${bodyString.slice(0, 500)}...`;
   }
 }
