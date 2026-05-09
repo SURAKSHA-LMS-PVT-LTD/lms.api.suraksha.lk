@@ -124,6 +124,9 @@ export class SecureUserResponseDto {
   @ApiPropertyOptional({ example: { phone2: '0771234567', note: 'VIP student' }, description: 'Institute-defined custom key-value metadata' })
   extraData?: Record<string, any>;
 
+  @ApiPropertyOptional({ example: 3, description: 'Max simultaneous active login sessions for this user' })
+  maxDevicesPerUser?: number | null;
+
   constructor(user: UserEntity | UserLikeData, userIdByInstitute?: string, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     // ✅ Handle both camelCase and snake_case field names from raw query results
     this.id = user.id || (user as any).user_id;
@@ -170,6 +173,7 @@ export class SecureUserResponseDto {
       if (rawExtra) {
         this.extraData = typeof rawExtra === 'string' ? JSON.parse(rawExtra) : rawExtra;
       }
+      this.maxDevicesPerUser = (instituteUserData as any).maxDevicesPerUser !== undefined ? (instituteUserData as any).maxDevicesPerUser : (instituteUserData as any).max_devices_per_user;
     }
   }
 }

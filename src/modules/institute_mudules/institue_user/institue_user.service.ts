@@ -341,7 +341,8 @@ export class InstitueUserService {
       'iu.institute_user_image_url',  // Institute-specific image
       'iu.image_verification_status',  // Image verification status
       'ih.name as house_name',
-      'CONCAT(v.first_name, " ", COALESCE(v.last_name, "")) as verifier_name'
+      'CONCAT(v.first_name, " ", COALESCE(v.last_name, "")) as verifier_name',
+      'iu.max_devices_per_user as max_devices_per_user'
     ];
 
     // Add student-specific fields only if needed
@@ -1338,7 +1339,8 @@ export class InstitueUserService {
         's.emergency_contact as emergency_contact',
         's.medical_conditions as medical_conditions',
         's.allergies as allergies',
-        's.student_id as student_id'
+        's.student_id as student_id',
+        'iu.max_devices_per_user as max_devices_per_user'
       ])
       .where('iu.instituteUserType = :userType', { userType: safeUserType })  // ✅ FIX: Use institute user type, not global user type
       .andWhere('u.is_active = :userActive', { userActive: true })
@@ -1531,7 +1533,8 @@ export class InstitueUserService {
         's.emergency_contact as emergency_contact',
         's.medical_conditions as medical_conditions',
         's.allergies as allergies',
-        's.student_id as student_id'
+        's.student_id as student_id',
+        'iu.max_devices_per_user as max_devices_per_user'
       ])
       .where('iu.instituteUserType = :userType', { userType: safeUserType })  // ✅ FIX: Use institute user type, not global user type
       .andWhere('u.is_active = :userActive', { userActive: true })
@@ -1740,6 +1743,7 @@ export class InstitueUserService {
         house_id: raw.house_id,
         house_name: raw.house_name,
         extra_data: raw.extra_data,
+        max_devices_per_user: raw.max_devices_per_user,
       };
 
       if (userType === InstituteUserType.STUDENT) {

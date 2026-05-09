@@ -134,6 +134,15 @@ export class InstituteSettingsResponseDto {
   @Expose()
   updatedAt: Date;
 
+  // Session Limits
+  @ApiPropertyOptional({ description: 'Session limits enabled status', example: true })
+  @Expose()
+  isSessionLimitEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Default max devices per user', example: 1 })
+  @Expose()
+  defaultSessionsPerUserCount?: number;
+
   // PDF Report branding — full CDN URLs (or null if not set)
   @ApiPropertyOptional({ description: 'Full URL of the report header banner image (wide, ~8:1 ratio)' })
   @Expose()

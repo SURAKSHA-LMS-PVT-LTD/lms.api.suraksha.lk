@@ -14,6 +14,7 @@ import { Country } from '../../user/enums/country.enum';
 import { District } from '../../user/enums/district.enum';
 import { Province } from '../../user/enums/province.enum';
 import { InstituteType } from '../enums/institute.enums';
+import { IsBoolean, IsInt, Min } from 'class-validator';
 
 /**
  * Update Institute Settings DTO — Fields the Institute Admin can modify
@@ -102,6 +103,23 @@ export class UpdateInstituteSettingsDto {
   @IsOptional()
   @IsEnum(InstituteType)
   type?: InstituteType;
+
+  // Session Limits
+  @ApiPropertyOptional({ description: 'Enable/disable session limits for the institute' })
+  @IsOptional()
+  @IsBoolean()
+  isSessionLimitEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Default max devices per user' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  defaultSessionsPerUserCount?: number;
+
+  @ApiPropertyOptional({ description: 'How to apply the new default limit to existing users', enum: ['NEW_USERS_ONLY', 'ALL_USERS', 'USERS_WITH_PREVIOUS_LIMIT'] })
+  @IsOptional()
+  @IsEnum(['NEW_USERS_ONLY', 'ALL_USERS', 'USERS_WITH_PREVIOUS_LIMIT'])
+  sessionLimitUpdateMode?: 'NEW_USERS_ONLY' | 'ALL_USERS' | 'USERS_WITH_PREVIOUS_LIMIT';
 
   // Branding — S3 relative paths
   @ApiPropertyOptional({

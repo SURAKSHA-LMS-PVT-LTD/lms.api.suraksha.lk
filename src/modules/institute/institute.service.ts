@@ -534,6 +534,10 @@ export class InstitutesService {
     if (dto.facebookPageUrl !== undefined) updateData.facebookPageUrl = dto.facebookPageUrl;
     if (dto.youtubeChannelUrl !== undefined) updateData.youtubeChannelUrl = dto.youtubeChannelUrl;
 
+    // Session limits
+    if (dto.isSessionLimitEnabled !== undefined) updateData.isSessionLimitEnabled = dto.isSessionLimitEnabled;
+    if (dto.defaultSessionsPerUserCount !== undefined) updateData.defaultSessionsPerUserCount = dto.defaultSessionsPerUserCount;
+
     // Report branding — S3 relative paths; track replaced paths for deletion
     if (dto.reportHeaderUrl !== undefined) {
       if (institute.reportHeaderUrl && institute.reportHeaderUrl !== dto.reportHeaderUrl) {
@@ -551,6 +555,21 @@ export class InstitutesService {
     updateData.updatedAt = now();
 
     await this.instituteRepository.update(instituteId, updateData);
+
+    // Apply session limit to existing users based on mode
+    if (dto.defaultSessionsPerUserCount !== undefined && dto.sessionLimitUpdateMode) {
+      const qb = this.instituteRepository.manager
+        .createQueryBuilder()
+        .update('institute_user')
+        .set({ max_devices_per_user: dto.defaultSessionsPerUserCount })
+        .where('institute_id = :instituteId', { instituteId });
+
+      if (dto.sessionLimitUpdateMode === 'ALL_USERS') {
+        await qb.execute();
+      } else if (dto.sessionLimitUpdateMode === 'USERS_WITH_PREVIOUS_LIMIT') {
+        await qb.andWhere('max_devices_per_user IS NOT NULL').execute();
+      }
+    }
 
     // Permanently delete replaced/removed storage files (fire-and-forget — DB save already succeeded)
     if (filesToDelete.length > 0) {

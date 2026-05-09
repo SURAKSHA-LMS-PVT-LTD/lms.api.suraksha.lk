@@ -26,6 +26,7 @@ import { StudentEntity } from '../modules/student/entities/student.entity';
 import { ParentEntity } from '../modules/parent/entities/parent.entity';
 import { UserOtpEntity } from '../modules/user/entities/user-otp.entity';
 import { PasswordResetTokenEntity, UserFirstLoginLogEntity, RefreshTokenEntity } from './entities/password-reset.entity';
+import { InstituteLoginSessionEntity } from './entities/institute-login-session.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 // ✅ NEW: Flexible access guard (simplified - one guard for all)
 import { FlexibleAccessGuard } from './guards/flexible-access.guard';
@@ -34,6 +35,7 @@ import { ChildrenAccessGuard } from './guards/children-access.guard';
 import { InstituteSelectionController } from './institute-selection.controller';
 import { InstituteAuthController } from './controllers/institute-auth.controller';
 import { InstituteLoginService } from './services/institute-login.service';
+import { InstituteSessionService } from './services/institute-session.service';
 import { AccessValidationService } from './services/access-validation.service';
 import { CacheModule } from '../common/modules/cache.module';
 import { EnhancedJwtService } from './services/enhanced-jwt.service';
@@ -100,6 +102,7 @@ import { TenantModule } from '../modules/tenant/tenant.module';
       StudentEntity,
       ParentEntity,
       UserOtpEntity,
+      InstituteLoginSessionEntity,
     ]),
   ],
   controllers: [AuthController, AuthV2Controller, AuthMobileController, InstituteSelectionController, FirstLoginController, InstituteAuthController],
@@ -119,6 +122,7 @@ import { TenantModule } from '../modules/tenant/tenant.module';
     ChildrenAccessGuard, // ✅ JWT v2 children access validation
     EnhancedJwtService,
     InstituteLoginService,
+    InstituteSessionService,
   ],
   exports: [
     AuthService, 
@@ -131,7 +135,8 @@ import { TenantModule } from '../modules/tenant/tenant.module';
     JwtAuthGuard,
     FlexibleAccessGuard, // ✅ The ONLY guard needed
     ChildrenAccessGuard, // ✅ JWT v2 children access validation
-    EnhancedJwtService
+    EnhancedJwtService,
+    InstituteSessionService,
   ],
 })
 export class AuthModule {}

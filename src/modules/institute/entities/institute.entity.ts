@@ -168,6 +168,13 @@ export class InstituteEntity {
   @Column({ name: 'custom_domain_verified_at', type: 'timestamp', nullable: true })
   customDomainVerifiedAt?: Date;
 
+  // Session Limits
+  @Column({ name: 'is_session_limit_enabled', type: 'boolean', default: false, comment: 'Whether institute session limits are active' })
+  isSessionLimitEnabled: boolean;
+
+  @Column({ name: 'default_sessions_per_user_count', type: 'int', default: 1, comment: 'Default device limit when new users enroll' })
+  defaultSessionsPerUserCount: number;
+
   // Login Page Customization
   @Column({ name: 'custom_login_enabled', type: 'boolean', default: false, comment: 'Whether custom login page is active' })
   customLoginEnabled: boolean;

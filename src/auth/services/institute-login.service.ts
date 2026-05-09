@@ -29,6 +29,11 @@ import {
   SelfActivateRequestOtpDto,
   SelfActivateVerifyDto,
 } from '../dto/institute-login.dto';
+import {
+  InstituteSessionService,
+  ActiveSessionDto,
+} from './institute-session.service';
+import { InstituteSessionLoginMethod } from '../entities/institute-login-session.entity';
 
 const OTP_EXPIRY_MINUTES = 30;
 const MAX_OTP_REQUESTS_PER_DAY = 5;
@@ -56,17 +61,30 @@ export class InstituteLoginService {
     private readonly enhancedEmailService: EnhancedEmailService,
     private readonly smslenzProvider: SmslenzProvider,
     private readonly cloudStorageService: CloudStorageService,
+    private readonly instituteSessionService: InstituteSessionService,
   ) {}
 
   /**
    * Institute-level login using userIdByInstitute + password.
    * Does NOT join with the main users table for authentication — only uses institute_user.
    */
-  async login(dto: InstituteLoginDto): Promise<{
+  async login(dto: InstituteLoginDto, options?: {
+    ipAddress?: string;
+    userAgent?: string;
+    /** Resolved host (subdomain.suraksha.lk or customdomain.com) — null for main domain */
+    scopeHost?: string | null;
+    loginMethod?: InstituteSessionLoginMethod;
+    /** If true, forced logout the oldest session and retry instead of returning 409 */
+    forceReplaceOldest?: boolean;
+  }): Promise<{
     access_token: string;
     refresh_token: string;
     expires_in: number;
     refresh_expires_in: number;
+    /** Present when device limit is reached and forceReplaceOldest is false */
+    deviceLimitReached?: boolean;
+    activeSessions?: ActiveSessionDto[];
+    maxDevices?: number;
     user: {
       userId: string;
       instituteId: string;
@@ -112,6 +130,45 @@ export class InstituteLoginService {
       select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'email', 'userType'],
     });
 
+    // ── 4b. Session / device-limit check ──────────────────────────────────
+    const check = await this.instituteSessionService.checkSessionLimit(
+      instituteUser.instituteId,
+      instituteUser.userId,
+    );
+
+    if (!check.allowed && !options?.forceReplaceOldest) {
+      // Return limit info so the frontend can show "sign out existing device" UI
+      return {
+        access_token: '',
+        refresh_token: '',
+        expires_in: 0,
+        refresh_expires_in: 0,
+        deviceLimitReached: true,
+        activeSessions: check.activeSessions,
+        maxDevices: check.maxDevices ?? undefined,
+        user: {
+          userId: instituteUser.userId,
+          instituteId: instituteUser.instituteId,
+          userIdByInstitute: instituteUser.userIdByInstitute,
+          instituteUserType: instituteUser.instituteUserType,
+          instituteName: instituteUser.institute?.name || 'Unknown Institute',
+          firstName: user?.firstName,
+          lastName: user?.lastName,
+          imageUrl: user?.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        },
+      };
+    }
+
+    if (!check.allowed && options?.forceReplaceOldest) {
+      // Kick out the oldest session to free a slot
+      await this.instituteSessionService.deactivateOldestSessions(
+        instituteUser.instituteId,
+        instituteUser.userId,
+        1,
+      );
+    }
+    // ── End session check ──────────────────────────────────────────────────
+
     // 5. Build JWT payload (institute-context aware)
     const payload = {
       sub: instituteUser.userId,
@@ -119,6 +176,8 @@ export class InstituteLoginService {
       instituteUserType: instituteUser.instituteUserType,
       userIdByInstitute: instituteUser.userIdByInstitute,
       loginType: 'institute',
+      // embed scope so the JWT itself carries the allowed host
+      scopeHost: options?.scopeHost ?? null,
     };
 
     const access_token = await this.jwtService.signAsync(payload);
@@ -136,7 +195,20 @@ export class InstituteLoginService {
     const expires_in = this.parseExpiryToSeconds(jwtExpiresIn);
     const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400;
 
-    this.logger.log(`✅ Institute login successful: user=${instituteUser.userId}, institute=${instituteUser.instituteId}`);
+    // 7. Persist session record
+    await this.instituteSessionService.createSession({
+      instituteId: instituteUser.instituteId,
+      userId: instituteUser.userId,
+      userIdByInstitute: instituteUser.userIdByInstitute,
+      refreshToken: refresh_token,
+      loginMethod: options?.loginMethod ?? InstituteSessionLoginMethod.MAIN,
+      scopeHost: options?.scopeHost ?? null,
+      ipAddress: options?.ipAddress ?? null,
+      userAgent: options?.userAgent ?? null,
+      refreshExpiresInSeconds: refresh_expires_in,
+    });
+
+    this.logger.log(`✅ Institute login successful: user=${instituteUser.userId}, institute=${instituteUser.instituteId}, scope=${options?.scopeHost ?? 'main'}`);
 
     return {
       access_token,

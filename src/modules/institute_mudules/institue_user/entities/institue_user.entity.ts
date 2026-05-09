@@ -1,7 +1,7 @@
 //this is file for manage relation betwween user and isntitute
 //this is specilaly need [get all institeues by user id,get all users by institute id,get all users by institue id filtering user type,assign user to institute,assign institute to user]
 //manage here status of user and institute like active,former,etc 
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn,  Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { UserEntity } from '../../../user/entities/user.entity';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteUserStatus } from '../enums/institute-user-status.enum';
@@ -31,19 +31,19 @@ export class InstituteUserEntity {
   @Column({ name: 'user_id_institue', type: 'varchar', length: 50, nullable: true })
   userIdByInstitute?: string;
 
-  @Column({ 
-    name: 'status', 
-    type: 'enum', 
-    enum: InstituteUserStatus, 
+  @Column({
+    name: 'status',
+    type: 'enum',
+    enum: InstituteUserStatus,
     default: InstituteUserStatus.PENDING  // Changed from ACTIVE to PENDING - requires verification
   })
   status: InstituteUserStatus;
 
-  @Column({ 
-    name: 'institute_user_type', 
-    type: 'enum', 
-    enum: InstituteUserType, 
-    default: InstituteUserType.STUDENT 
+  @Column({
+    name: 'institute_user_type',
+    type: 'enum',
+    enum: InstituteUserType,
+    default: InstituteUserType.STUDENT
   })
   instituteUserType: InstituteUserType;
 
@@ -61,11 +61,11 @@ export class InstituteUserEntity {
   @Column({ name: 'institute_card_id', type: 'varchar', length: 100, nullable: true })
   instituteCardId?: string;
 
-  @Column({ 
-    name: 'image_verification_status', 
-    type: 'enum', 
-    enum: ImageVerificationStatus, 
-    default: ImageVerificationStatus.PENDING 
+  @Column({
+    name: 'image_verification_status',
+    type: 'enum',
+    enum: ImageVerificationStatus,
+    default: ImageVerificationStatus.PENDING
   })
   imageVerificationStatus: ImageVerificationStatus;
 
@@ -87,6 +87,10 @@ export class InstituteUserEntity {
   // Stored as plain JSON — fully visible to admins, no encryption.
   @Column({ name: 'extra_data', type: 'json', nullable: true, comment: 'Institute-defined custom key-value data. Visible to admins, not encrypted.' })
   extraData?: Record<string, any>;
+
+  /** Max simultaneous active institute login sessions per user. NULL = unlimited. */
+  @Column({ name: 'max_devices_per_user', type: 'tinyint', unsigned: true, nullable: true, default: null })
+  maxDevicesPerUser?: number | null;
 
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
