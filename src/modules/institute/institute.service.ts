@@ -12,7 +12,7 @@ import {
   PaginatedInstituteResponseDto
 } from './dto/index.dto';
 import { UpdateInstituteSettingsDto } from './dto/update-institute-settings.dto';
-import { InstituteSettingsResponseDto, InstituteProfileResponseDto } from './dto/institute-settings.dto';
+import { InstituteSettingsResponseDto, InstituteReportBrandingResponseDto, InstituteProfileResponseDto } from './dto/institute-settings.dto';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { InstituteAccessValidator } from '../../common/helpers/institute-access-validator.helper';
 import { now } from '../../common/utils/timezone.util';
@@ -446,6 +446,49 @@ export class InstitutesService {
       reportHeaderUrl: institute.reportHeaderUrl ? this.cloudStorageService.getFullUrl(institute.reportHeaderUrl) : null,
       reportFooterUrl: institute.reportFooterUrl ? this.cloudStorageService.getFullUrl(institute.reportFooterUrl) : null,
     });
+  }
+
+  /**
+   * Get report branding as base64 data URLs so PDFs can embed the images
+   * without depending on browser CORS.
+   */
+  async getReportBranding(instituteId: string, user: any): Promise<InstituteReportBrandingResponseDto> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+    });
+
+    if (!institute) {
+      throw new NotFoundException(`Institute with ID ${instituteId} not found`);
+    }
+
+    const [headerDataUrl, footerDataUrl] = await Promise.all([
+      institute.reportHeaderUrl ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.reportHeaderUrl)) : Promise.resolve(null),
+      institute.reportFooterUrl ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.reportFooterUrl)) : Promise.resolve(null),
+    ]);
+
+    return new InstituteReportBrandingResponseDto({
+      instituteHeaderDataUrl: headerDataUrl,
+      instituteFooterDataUrl: footerDataUrl,
+    });
+  }
+
+  private async fetchImageAsDataUrl(imageUrl: string): Promise<string | null> {
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        this.logger.warn(`Failed to fetch report image ${imageUrl}: ${response.status} ${response.statusText}`);
+        return null;
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/png';
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return `data:${contentType};base64,${buffer.toString('base64')}`;
+    } catch (error) {
+      this.logger.warn(`Error fetching report image ${imageUrl}: ${error instanceof Error ? error.message : error}`);
+      return null;
+    }
   }
 
   /**

@@ -29,7 +29,7 @@ import {
   PaginatedInstituteResponseDto
 } from './dto/index.dto';
 import { UpdateInstituteSettingsDto } from './dto/update-institute-settings.dto';
-import { InstituteSettingsResponseDto, InstituteProfileResponseDto, AddGalleryImageDto } from './dto/institute-settings.dto';
+import { InstituteSettingsResponseDto, InstituteReportBrandingResponseDto, InstituteProfileResponseDto, AddGalleryImageDto } from './dto/institute-settings.dto';
 
 @ApiTags('Institutes')
 @ApiBearerAuth()
@@ -465,6 +465,24 @@ export class InstitutesController {
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
     return this.institutesService.getSettings(id, req.user);
+  }
+
+  @Get(':id/report-branding')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Get institute report branding as base64 data URLs',
+    description: 'Returns the report header and footer banners as base64 data URLs so the frontend can embed them in generated PDFs without browser CORS.'
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Report branding', type: InstituteReportBrandingResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
+  async getReportBranding(
+    @Param('id', ParseBigIntPipe) id: string,
+    @Request() req: JwtRequest,
+  ): Promise<InstituteReportBrandingResponseDto> {
+    return this.institutesService.getReportBranding(id, req.user);
   }
 
   @Patch(':id/settings')

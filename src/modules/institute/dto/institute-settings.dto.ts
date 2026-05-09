@@ -158,6 +158,25 @@ export class InstituteSettingsResponseDto {
 }
 
 /**
+ * Institute PDF report branding response.
+ * Returns header/footer images as base64 data URLs so the frontend can embed them
+ * into generated PDFs without relying on browser CORS.
+ */
+export class InstituteReportBrandingResponseDto {
+  @ApiPropertyOptional({ description: 'Base64 data URL for the report header image' })
+  @Expose()
+  instituteHeaderDataUrl?: string | null;
+
+  @ApiPropertyOptional({ description: 'Base64 data URL for the report footer image' })
+  @Expose()
+  instituteFooterDataUrl?: string | null;
+
+  constructor(partial: Partial<InstituteReportBrandingResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
+
+/**
  * Institute Profile Response — Minimal beautiful view for teachers, students, attendance markers
  * Only essential identity + branding + social links. No images array, no system contacts.
  * NOTE: code and pinCode are intentionally excluded — they are sensitive enrollment credentials.
