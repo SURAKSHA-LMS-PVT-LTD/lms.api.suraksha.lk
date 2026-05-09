@@ -440,6 +440,8 @@ export class InstitutesService {
       youtubeChannelUrl: institute.youtubeChannelUrl,
       isActive: institute.isActive,
       updatedAt: institute.updatedAt,
+      isSessionLimitEnabled: institute.isSessionLimitEnabled,
+      defaultSessionsPerUserCount: institute.defaultSessionsPerUserCount,
       // Report branding — returned as full URLs so frontend can fetch directly
       reportHeaderUrl: institute.reportHeaderUrl ? this.cloudStorageService.getFullUrl(institute.reportHeaderUrl) : null,
       reportFooterUrl: institute.reportFooterUrl ? this.cloudStorageService.getFullUrl(institute.reportFooterUrl) : null,
@@ -556,19 +558,21 @@ export class InstitutesService {
 
     await this.instituteRepository.update(instituteId, updateData);
 
-    // Apply session limit to existing users based on mode
+    // Apply session limit to existing users based on mode (raw SQL to avoid entity metadata lookup)
     if (dto.defaultSessionsPerUserCount !== undefined && dto.sessionLimitUpdateMode) {
-      const qb = this.instituteRepository.manager
-        .createQueryBuilder()
-        .update('institute_user')
-        .set({ max_devices_per_user: dto.defaultSessionsPerUserCount })
-        .where('institute_id = :instituteId', { instituteId });
-
+      const em = this.instituteRepository.manager;
       if (dto.sessionLimitUpdateMode === 'ALL_USERS') {
-        await qb.execute();
+        await em.query(
+          `UPDATE institute_user SET max_devices_per_user = ? WHERE institute_id = ?`,
+          [dto.defaultSessionsPerUserCount, instituteId],
+        );
       } else if (dto.sessionLimitUpdateMode === 'USERS_WITH_PREVIOUS_LIMIT') {
-        await qb.andWhere('max_devices_per_user IS NOT NULL').execute();
+        await em.query(
+          `UPDATE institute_user SET max_devices_per_user = ? WHERE institute_id = ? AND max_devices_per_user IS NOT NULL`,
+          [dto.defaultSessionsPerUserCount, instituteId],
+        );
       }
+      // NEW_USERS_ONLY: no-op — new enrollments inherit defaultSessionsPerUserCount automatically
     }
 
     // Permanently delete replaced/removed storage files (fire-and-forget — DB save already succeeded)
