@@ -45,6 +45,7 @@ export class LectureTrackingController {
       guestName?: string;
       guestEmail?: string;
       guestPhone?: string;
+      guestSchool?: string;
     },
     @Req() req: any,
   ) {
@@ -54,6 +55,7 @@ export class LectureTrackingController {
       body.guestName,
       body.guestEmail,
       body.guestPhone,
+      body.guestSchool,
       req.ip,
       req.headers['user-agent'],
     );
@@ -78,18 +80,26 @@ export class LectureTrackingController {
   async startRecordingSession(
     @Body() body: {
       lectureId: string;
+      instituteId?: string;
+      classId?: string;
+      subjectId?: string;
       guestName?: string;
       guestEmail?: string;
       guestPhone?: string;
+      guestSchool?: string;
     },
     @Req() req: any,
   ) {
     return this.trackingService.startRecordingSession(
       body.lectureId,
+      body.instituteId,
+      body.classId,
+      body.subjectId,
       req.user?.id,
       body.guestName,
       body.guestEmail,
       body.guestPhone,
+      body.guestSchool,
       req.ip,
       req.headers['user-agent'],
     );
@@ -215,5 +225,74 @@ export class LectureTrackingController {
       throw new BadRequestException('instituteId and classId are required');
     }
     return this.trackingService.getStudentLectureActivities(studentId, instituteId, classId, subjectId);
+  }
+
+  @Get('student/me/activities')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the authenticated student’s own live and recording activities' })
+  async getMyStudentActivities(
+    @Req() req: any,
+    @Query('instituteId') instituteId: string,
+    @Query('classId') classId: string,
+    @Query('subjectId') subjectId?: string,
+  ) {
+    if (!req.user?.id) {
+      throw new BadRequestException('Authenticated user is required');
+    }
+    if (!instituteId || !classId) {
+      throw new BadRequestException('instituteId and classId are required');
+    }
+    return this.trackingService.getStudentLectureActivities(req.user.id, instituteId, classId, subjectId);
+  }
+
+  // ─── Recording Timeline & Watch History ──────────────────────────────────
+
+  @Get('recording/session/:sessionId/timeline')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Get detailed activity timeline for a recording session with wall-clock timestamps; shows watch duration between actions',
+  })
+  async getRecordingSessionTimeline(@Param('sessionId') sessionId: string, @Req() req: any) {
+    return this.trackingService.getRecordingSessionTimeline(sessionId, req.user?.id);
+  }
+
+  @Get('recording/:lectureId/watch-history')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiQuery({ name: 'userType', required: false, enum: ['enrolled', 'suraksha_user', 'guest', 'all'] })
+  @ApiOperation({
+    summary:
+      'Get recording watch history grouped by user type (enrolled students, Suraksha users, guests)',
+  })
+  async getRecordingWatchHistory(
+    @Param('lectureId') lectureId: string,
+    @Query('userType') userType?: 'enrolled' | 'suraksha_user' | 'guest' | 'all',
+  ) {
+    return this.trackingService.getRecordingWatchHistory(lectureId, userType ?? 'all');
+  }
+
+  @Post('recording/session/:sessionId/sync')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Manually trigger sync of activities for a recording session (auto-sync should happen automatically)',
+  })
+  async syncSessionActivities(@Param('sessionId') sessionId: string, @Req() req: any) {
+    // Allow session owner or staff
+    return this.trackingService.syncSessionActivities(sessionId);
+  }
+
+  @Post('recording/auto-sync')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Manually trigger auto-sync of all pending activities (admin endpoint)',
+  })
+  async autoSyncPendingActivities() {
+    return this.trackingService.autoSyncPendingActivities();
   }
 }

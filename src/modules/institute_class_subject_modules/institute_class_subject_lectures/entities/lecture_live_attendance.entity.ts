@@ -48,6 +48,9 @@ export class LectureLiveAttendance {
   @Column({ name: 'guest_dob', type: 'date', nullable: true })
   guestDob?: Date;
 
+  @Column({ name: 'guest_school', type: 'varchar', length: 255, nullable: true })
+  guestSchool?: string;
+
   @Column({ name: 'join_time', type: 'timestamp' })
   joinTime: Date;
 

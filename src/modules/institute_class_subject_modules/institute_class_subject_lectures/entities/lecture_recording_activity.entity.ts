@@ -14,11 +14,38 @@ export class LectureRecordingActivity {
   @JoinColumn([{ name: 'session_id' }])
   session: LectureRecordingSession;
 
-  @Column({ name: 'activity_type', type: 'enum', enum: ['PLAY', 'PAUSE', 'SEEK', 'HEARTBEAT'] })
-  activityType: 'PLAY' | 'PAUSE' | 'SEEK' | 'HEARTBEAT';
+  @Column({
+    name: 'activity_type',
+    type: 'enum',
+    enum: [
+      'PLAY',
+      'PAUSE',
+      'SEEK',
+      'HEARTBEAT',
+      'SPEED_CHANGE',
+      'QUALITY_CHANGE',
+      'FULLSCREEN_TOGGLE',
+      'SUBTITLE_TOGGLE',
+    ],
+  })
+  activityType:
+    | 'PLAY'
+    | 'PAUSE'
+    | 'SEEK'
+    | 'HEARTBEAT'
+    | 'SPEED_CHANGE'
+    | 'QUALITY_CHANGE'
+    | 'FULLSCREEN_TOGGLE'
+    | 'SUBTITLE_TOGGLE';
 
   @Column({ name: 'video_timestamp', type: 'float' })
   videoTimestamp: number;
+
+  @Column({ name: 'wall_clock_timestamp', type: 'timestamp', nullable: true })
+  wallClockTimestamp?: Date;
+
+  @Column({ name: 'metadata', type: 'json', nullable: true })
+  metadata?: Record<string, any>;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

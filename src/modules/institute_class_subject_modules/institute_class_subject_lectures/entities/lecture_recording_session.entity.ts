@@ -6,6 +6,7 @@ import { UserEntity } from '../../../user/entities/user.entity';
 @Index(['lectureId'])
 @Index(['userId'])
 @Index(['lectureId', 'userId'])
+@Index(['userType'])
 export class LectureRecordingSession {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
@@ -24,6 +25,15 @@ export class LectureRecordingSession {
   @JoinColumn([{ name: 'user_id' }])
   user?: UserEntity;
 
+  // User type: 'enrolled' (class/subject enrolled), 'suraksha_user' (any Suraksha LMS user), 'guest' (public/guest access)
+  @Column({
+    name: 'user_type',
+    type: 'enum',
+    enum: ['enrolled', 'suraksha_user', 'guest'],
+    default: 'guest',
+  })
+  userType: 'enrolled' | 'suraksha_user' | 'guest' = 'guest';
+
   // For guest users
   @Column({ name: 'guest_name', type: 'varchar', length: 255, nullable: true })
   guestName?: string;
@@ -36,6 +46,16 @@ export class LectureRecordingSession {
 
   @Column({ name: 'guest_dob', type: 'date', nullable: true })
   guestDob?: Date;
+
+  @Column({ name: 'guest_school', type: 'varchar', length: 255, nullable: true })
+  guestSchool?: string;
+
+  // Backup/sync tracking
+  @Column({ name: 'backup_status', type: 'enum', enum: ['pending', 'completed', 'failed'], default: 'pending' })
+  backupStatus: 'pending' | 'completed' | 'failed' = 'pending';
+
+  @Column({ name: 'last_sync_time', type: 'timestamp', nullable: true })
+  lastSyncTime?: Date;
 
   @Column({ name: 'start_time', type: 'timestamp' })
   startTime: Date;

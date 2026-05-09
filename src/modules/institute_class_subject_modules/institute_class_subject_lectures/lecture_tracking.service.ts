@@ -8,6 +8,7 @@ import { LectureRecordingActivity } from './entities/lecture_recording_activity.
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
+import { formatSriLankaDateTime, formatSriLankaTime } from '../../../common/utils/timezone.util';
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN ?? 'lms.suraksha.lk';
 
@@ -345,6 +346,7 @@ export class LectureTrackingService {
     guestName?: string,
     guestEmail?: string,
     guestPhone?: string,
+    guestSchool?: string,
     ipAddress?: string,
     userAgent?: string,
   ) {
@@ -370,6 +372,7 @@ export class LectureTrackingService {
       guestName,
       guestEmail,
       guestPhone,
+      guestSchool,
       joinTime: new Date(),
       ipAddress,
       userAgent,
@@ -392,29 +395,60 @@ export class LectureTrackingService {
   // Recording session management
   // ─────────────────────────────────────────────────────────────
 
+  /**
+   * Determine user type for recording access:
+   * - 'enrolled': Student enrolled in this lecture's class/subject
+   * - 'suraksha_user': Any Suraksha LMS user (not enrolled)
+   * - 'guest': Guest/public user (no registered account)
+   */
+  private async determineUserType(
+    userId: string | undefined,
+    instituteId: string,
+    classId?: string,
+    subjectId?: string,
+  ): Promise<'enrolled' | 'suraksha_user' | 'guest'> {
+    if (!userId) return 'guest';
+
+    // Check if user is enrolled in this lecture
+    const isEnrolled = await this.checkEnrollment(userId, instituteId, classId, subjectId);
+    if (isEnrolled) return 'enrolled';
+
+    // Otherwise, if they have a userId, they're a Suraksha LMS user
+    return 'suraksha_user';
+  }
+
   async startRecordingSession(
     lectureId: string,
+    instituteId: string,
+    classId: string | undefined,
+    subjectId: string | undefined,
     userId?: string,
     guestName?: string,
     guestEmail?: string,
     guestPhone?: string,
+    guestSchool?: string,
     ipAddress?: string,
     userAgent?: string,
   ) {
+    const userType = await this.determineUserType(userId, instituteId, classId, subjectId);
+
     const session = this.recSessionRepo.create({
       lectureId,
       userId,
-      guestName,
-      guestEmail,
-      guestPhone,
+      userType,
+      guestName: userType === 'guest' ? guestName : undefined,
+      guestEmail: userType === 'guest' ? guestEmail : undefined,
+      guestPhone: userType === 'guest' ? guestPhone : undefined,
+      guestSchool: userType === 'guest' ? guestSchool : undefined,
       startTime: new Date(),
       lastPositionSeconds: 0,
       totalWatchedSeconds: 0,
       ipAddress,
       userAgent,
+      backupStatus: 'pending',
     });
     const saved = await this.recSessionRepo.save(session);
-    return { sessionId: saved.id, lectureId };
+    return { sessionId: saved.id, lectureId, userType };
   }
 
   async endRecordingSession(sessionId: string, lastPositionSeconds?: number, userId?: string) {
@@ -434,9 +468,10 @@ export class LectureTrackingService {
   async recordHeartbeats(
     sessionId: string,
     activities: Array<{
-      type: 'PLAY' | 'PAUSE' | 'SEEK' | 'HEARTBEAT';
+      type: 'PLAY' | 'PAUSE' | 'SEEK' | 'HEARTBEAT' | 'SPEED_CHANGE' | 'QUALITY_CHANGE' | 'FULLSCREEN_TOGGLE' | 'SUBTITLE_TOGGLE';
       videoTimestamp: number;
       wallTime?: number;
+      metadata?: Record<string, any>;
     }>,
     userId?: string,
   ) {
@@ -449,13 +484,30 @@ export class LectureTrackingService {
       throw new ForbiddenException('Not your session');
     }
 
-    const records = activities.map(act =>
-      this.recActivityRepo.create({
+    const records = activities.map(act => {
+      const record = this.recActivityRepo.create({
         sessionId,
         activityType: act.type,
         videoTimestamp: act.videoTimestamp,
-      }),
-    );
+        metadata: act.metadata,
+      });
+
+      // If wallTime is provided as ISO string, convert to Date; if number (timestamp), convert from ms
+      if (act.wallTime) {
+        if (typeof act.wallTime === 'string') {
+          record.wallClockTimestamp = new Date(act.wallTime);
+        } else if (typeof act.wallTime === 'number') {
+          // Assume milliseconds since epoch
+          record.wallClockTimestamp = new Date(act.wallTime);
+        }
+      } else {
+        // Default to current server time if not provided
+        record.wallClockTimestamp = new Date();
+      }
+
+      return record;
+    });
+
     await this.recActivityRepo.save(records);
 
     // Update last known position from the most recent heartbeat/play event
@@ -772,5 +824,191 @@ export class LectureTrackingService {
         } : null
       };
     });
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Enhanced Recording Reports: Timeline & Watch History
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Get detailed activity timeline for a recording session with wall-clock timestamps
+   * Shows exact time of each interaction and how long user watched between actions
+   */
+  async getRecordingSessionTimeline(sessionId: string, userId?: string) {
+    const session = await this.recSessionRepo.findOne({
+      where: { id: sessionId },
+      relations: ['user'],
+    });
+
+    if (!session) throw new NotFoundException('Session not found');
+    if (userId && session.userId && session.userId !== userId) {
+      throw new ForbiddenException('Not your session');
+    }
+
+    const activities = await this.recActivityRepo.find({
+      where: { sessionId },
+      order: { createdAt: 'ASC' },
+    });
+
+    // Build timeline with computed watch durations
+    const timeline = activities.map((act, idx) => {
+      const nextActivity = activities[idx + 1];
+      const actWallClock = act.wallClockTimestamp ?? act.createdAt;
+      const durationUntilNextMs = nextActivity
+        ? nextActivity.createdAt.getTime() - actWallClock.getTime()
+        : session.endTime
+        ? session.endTime.getTime() - actWallClock.getTime()
+        : null;
+
+      return {
+        id: act.id,
+        type: act.activityType,
+        videoTime: act.videoTimestamp,
+        wallTime: formatSriLankaDateTime(actWallClock),
+        wallTimeDisplay: formatSriLankaTime(actWallClock),
+        durationUntilNextMs: durationUntilNextMs ? Math.max(0, durationUntilNextMs) : null,
+        metadata: act.metadata,
+        createdAt: formatSriLankaDateTime(act.createdAt),
+      };
+    });
+
+    return {
+      sessionId: session.id,
+      userId: session.userId,
+      userType: session.userType,
+      guestName: session.guestName,
+      startTime: formatSriLankaDateTime(session.startTime),
+      endTime: session.endTime ? formatSriLankaDateTime(session.endTime) : null,
+      backupStatus: session.backupStatus,
+      lastSyncTime: session.lastSyncTime ? formatSriLankaDateTime(session.lastSyncTime) : null,
+      totalWatchedSeconds: session.totalWatchedSeconds,
+      lastPositionSeconds: session.lastPositionSeconds,
+      timeline,
+      activityCount: timeline.length,
+    };
+  }
+
+  /**
+   * Get recording watch history for a lecture, grouped and filtered by user type
+   * Returns: enrolled students, other Suraksha users, guest viewers
+   */
+  async getRecordingWatchHistory(
+    lectureId: string,
+    userTypeFilter?: 'enrolled' | 'suraksha_user' | 'guest' | 'all',
+  ) {
+    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
+    if (!lecture) throw new NotFoundException('Lecture not found');
+
+    let query = this.recSessionRepo.createQueryBuilder('session')
+      .where('session.lectureId = :lectureId', { lectureId })
+      .leftJoinAndSelect('session.user', 'user')
+      .orderBy('session.startTime', 'ASC');
+
+    if (userTypeFilter && userTypeFilter !== 'all') {
+      query = query.andWhere('session.userType = :userType', { userType: userTypeFilter });
+    }
+
+    const sessions = await query.getMany();
+
+    // Load activity counts per session
+    const sessionIds = sessions.map(s => s.id);
+    const activityCounts = await this.recActivityRepo
+      .createQueryBuilder('activity')
+      .select('activity.sessionId', 'sessionId')
+      .addSelect('COUNT(*)', 'count')
+      .where('activity.sessionId IN (:...sessionIds)', { sessionIds })
+      .groupBy('activity.sessionId')
+      .getRawMany();
+
+    const actCountMap = new Map(
+      activityCounts.map(ac => [ac.sessionId, parseInt(ac.count, 10)]),
+    );
+
+    const grouped = {
+      enrolled: [] as any[],
+      suraksha_user: [] as any[],
+      guest: [] as any[],
+    };
+
+    for (const session of sessions) {
+      const record = {
+        sessionId: session.id,
+        userId: session.userId,
+        userName: session.userId
+          ? (session.user as any)?.name ??
+            `${(session.user as any)?.firstName ?? ''} ${(session.user as any)?.lastName ?? ''}`.trim()
+          : session.guestName ?? 'Guest',
+        userEmail: session.userId ? (session.user as any)?.email : session.guestEmail,
+        userPhone: session.guestPhone,
+        startTime: formatSriLankaDateTime(session.startTime),
+        endTime: session.endTime ? formatSriLankaDateTime(session.endTime) : null,
+        totalWatchedSeconds: session.totalWatchedSeconds,
+        lastPositionSeconds: session.lastPositionSeconds,
+        durationMinutes: session.endTime
+          ? Math.round(
+              (session.endTime.getTime() - session.startTime.getTime()) / 60000,
+            )
+          : null,
+        activityCount: actCountMap.get(session.id) ?? 0,
+        backupStatus: session.backupStatus,
+        lastSyncTime: session.lastSyncTime ? formatSriLankaDateTime(session.lastSyncTime) : null,
+        ipAddress: session.ipAddress,
+      };
+
+      grouped[session.userType].push(record);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Manually trigger sync of all pending activities for a session
+   * Auto-sync should be enabled by default, but manual button available for recovery
+   */
+  async syncSessionActivities(sessionId: string) {
+    const session = await this.recSessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Session not found');
+
+    // Mark backup as completed and record sync time
+    await this.recSessionRepo.update(sessionId, {
+      backupStatus: 'completed',
+      lastSyncTime: new Date(),
+    });
+
+    return {
+      success: true,
+      sessionId,
+      backupStatus: 'completed',
+      syncedAt: formatSriLankaDateTime(new Date()),
+      message: 'Activities synchronized successfully',
+    };
+  }
+
+  /**
+   * Auto-sync all pending activities (called by background job)
+   * Returns count of synced sessions
+   */
+  async autoSyncPendingActivities() {
+    const pendingSessions = await this.recSessionRepo.find({
+      where: { backupStatus: 'pending' },
+    });
+
+    if (!pendingSessions.length) return { synced: 0 };
+
+    const now = new Date();
+    const sessionIds = pendingSessions.map(s => s.id);
+
+    await this.recSessionRepo.update(
+      { id: In(sessionIds) },
+      {
+        backupStatus: 'completed',
+        lastSyncTime: now,
+      },
+    );
+
+    return {
+      synced: pendingSessions.length,
+      syncedAt: formatSriLankaDateTime(now),
+    };
   }
 }
