@@ -61,6 +61,7 @@ import { AccountDeletionModule } from './modules/account-deletion/account-deleti
 import { InstituteHouseModule } from './modules/institute_mudules/institute_house/institute_house.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { NotificationCreditsModule } from './modules/notification-credits/notification-credits.module';
+import { FeaturesModule } from './modules/features/features.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -181,6 +182,7 @@ import { AppService } from './app.service';
     AccountDeletionModule, // Google Play compliant account deletion with 30-day grace period
     InstituteHouseModule, // Institute house management with member enrollment
     TenantModule, // Multi-tenant subdomain/custom domain management with billing
+    FeaturesModule, // Institute feature toggles catalog
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
   ],
   controllers: [AppController],

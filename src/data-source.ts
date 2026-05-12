@@ -17,6 +17,7 @@ const AppDataSource = new DataSource({
   ],
   migrations: [
     __dirname + '/database/migrations/*{.ts,.js}',
+    __dirname + '/database/seeds/*{.ts,.js}',
     __dirname + '/migrations/*{.ts,.js}'
   ],
   synchronize: false,
