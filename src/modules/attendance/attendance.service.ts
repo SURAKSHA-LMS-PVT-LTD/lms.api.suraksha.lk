@@ -3588,6 +3588,7 @@ export class AttendanceService {
         date: queryDate,
         markingMethod: dto.markingMethod ?? MarkingMethod.SYSTEM,
         eventId: dto.eventId,
+        classSessionId: dto.sessionId,
         students: ids.map(studentId => ({
           studentId,
           status,

@@ -110,6 +110,14 @@ export class BulkMarkClassFromInstituteDto {
   eventId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Attendance session ID. When provided, all marked records will be linked to this session.',
+  })
+  @IsString()
+  @IsOptional()
+  sessionId?: string;
+
+  @ApiPropertyOptional({
     enum: MarkingMethod,
     description: 'How attendance was marked (defaults to "system").',
   })
