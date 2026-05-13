@@ -14,6 +14,7 @@ import {
   CreateFinanceCategoryDto, UpdateFinanceCategoryDto,
   CollectPhysicalPaymentDto,
   TeacherPayoutDto, TeacherDeductionDto,
+  TeacherAdvanceDto, ManualRecordDto,
   LedgerQueryDto, AnalyticsQueryDto,
 } from './dto/finance.dto';
 
@@ -122,6 +123,44 @@ export class FinanceController {
     return this.financeService.deductTeacher(dto, String(req.user.s), resolveUserName(req), instituteId);
   }
 
+  // ─── Teacher advance ─────────────────────────────────────────────
+
+  @Post('advance')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Give a teacher an advance payment against future earnings' })
+  async giveTeacherAdvance(@Body() dto: TeacherAdvanceDto, @Req() req: JwtRequest) {
+    const instituteId = resolveInstituteId(req);
+    return this.financeService.giveTeacherAdvance(dto, String(req.user.s), resolveUserName(req), instituteId);
+  }
+
+  // ─── Manual record ────────────────────────────────────────────────
+
+  @Post('manual')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Add a manual income or expense record' })
+  async addManualRecord(@Body() dto: ManualRecordDto, @Req() req: JwtRequest) {
+    const instituteId = resolveInstituteId(req);
+    return this.financeService.addManualRecord(dto, String(req.user.s), resolveUserName(req), instituteId);
+  }
+
+  // ─── Teachers summary ─────────────────────────────────────────────
+
+  @Get('teachers/summary')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Get all teacher wallets for this institute' })
+  async getTeachersSummary(@Req() req: JwtRequest) {
+    return this.financeService.getTeachersSummary(resolveInstituteId(req));
+  }
+
+  // ─── Category analytics ───────────────────────────────────────────
+
+  @Get('analytics/categories')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Analytics breakdown by category' })
+  async getAnalyticsByCategory(@Query() query: AnalyticsQueryDto, @Req() req: JwtRequest) {
+    return this.financeService.getAnalyticsByCategory(query, resolveInstituteId(req));
+  }
+
   // ─── Ledger ───────────────────────────────────────────────────────
 
   @Get('ledger')
@@ -156,6 +195,13 @@ export class FinanceController {
   async getMyLedger(@Query() query: LedgerQueryDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
     return this.financeService.getTeacherLedger(String(req.user.s), instituteId, query);
+  }
+
+  @Post('teacher/:teacherId/init-wallet')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Initialize a teacher wallet (creates if not exists)' })
+  async initTeacherWallet(@Param('teacherId') teacherId: string, @Req() req: JwtRequest) {
+    return this.financeService.initTeacherWallet(teacherId, resolveInstituteId(req));
   }
 
   @Get('teacher/:teacherId/wallet')

@@ -52,6 +52,9 @@ export class InstituteClassPayment {
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.ACTIVE })
   status: PaymentStatus;
 
+  @Column({ name: 'teacher_commission_pct', type: 'decimal', precision: 5, scale: 2, default: '0.00', nullable: true })
+  teacherCommissionPct?: string;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 

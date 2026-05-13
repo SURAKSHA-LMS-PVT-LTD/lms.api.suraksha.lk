@@ -89,6 +89,7 @@ export class InstituteClassPaymentService {
       bankName: dto.bankName,
       accountHolderName: dto.accountHolderName,
       accountHolderNumber: dto.accountHolderNumber,
+      teacherCommissionPct: dto.teacherCommissionPct != null ? String(dto.teacherCommissionPct) : '0.00',
       status: PaymentStatus.ACTIVE,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -380,7 +381,9 @@ export class InstituteClassPaymentService {
           await this.financeService.processSplit({
             paymentAmount: Number(submission.submittedAmount),
             targetAccountId: dto.targetAccountId,
+            classCommissionPct: payment ? Number(payment.teacherCommissionPct ?? 0) : 0,
             commissionPctOverride: dto.commissionPctOverride,
+            teacherId: payment?.createdBy,
             referenceId: submission.paymentId,
             studentId: submission.userId,
             studentName: submission.username,
@@ -894,7 +897,9 @@ export class InstituteClassPaymentService {
           await this.financeService.processSplit({
             paymentAmount: dto.amount,
             targetAccountId: dto.targetAccountId,
+            classCommissionPct: Number(payment.teacherCommissionPct ?? 0),
             commissionPctOverride: dto.commissionPctOverride,
+            teacherId: payment.createdBy,
             referenceId: paymentIdStr,
             studentId: studentIdStr,
             studentName: saved.username,

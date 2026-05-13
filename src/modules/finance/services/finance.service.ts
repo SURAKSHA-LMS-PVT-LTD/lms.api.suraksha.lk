@@ -12,6 +12,7 @@ import {
   CreateFinanceCategoryDto, UpdateFinanceCategoryDto,
   CollectPhysicalPaymentDto, ApproveWithFinanceDto,
   TeacherPayoutDto, TeacherDeductionDto,
+  TeacherAdvanceDto, ManualRecordDto,
   LedgerQueryDto, AnalyticsQueryDto,
 } from '../dto/finance.dto';
 
@@ -293,7 +294,7 @@ export class FinanceService {
       .leftJoinAndSelect('l.toAccount', 'toAcc')
       .leftJoinAndSelect('l.fromAccount', 'fromAcc')
       .leftJoinAndSelect('l.category', 'cat')
-      .orderBy('l.created_at', 'DESC');
+      .orderBy('l.createdAt', 'DESC');
 
     if (query.startDate) qb.andWhere('l.created_at >= :start', { start: query.startDate });
     if (query.endDate)   qb.andWhere('l.created_at <= :end',   { end: query.endDate + ' 23:59:59' });
@@ -302,6 +303,7 @@ export class FinanceService {
     if (query.accountId)  qb.andWhere('(l.to_account_id = :aid OR l.from_account_id = :aid)', { aid: query.accountId });
     if (query.categoryId) qb.andWhere('l.category_id = :cid',  { cid: query.categoryId });
     if (query.type)       qb.andWhere('l.type = :type',        { type: query.type });
+    if (query.txSource)   qb.andWhere('l.tx_source = :txSource', { txSource: query.txSource });
 
     const page  = query.page  ?? 1;
     const limit = query.limit ?? 50;
@@ -337,9 +339,146 @@ export class FinanceService {
 
     const rows = await this.dataSource.query(sql, params);
 
+    let srcSql = `
+      SELECT tx_source AS source,
+             SUM(CASE WHEN type = 'CREDIT' THEN amount ELSE 0 END) AS income,
+             SUM(CASE WHEN type = 'DEBIT'  THEN amount ELSE 0 END) AS expense
+      FROM finance_ledger WHERE institute_id = ?
+    `;
+    const srcParams: any[] = [instituteId];
+    if (query.startDate) { srcSql += ' AND created_at >= ?'; srcParams.push(query.startDate); }
+    if (query.endDate)   { srcSql += ' AND created_at <= ?'; srcParams.push(query.endDate + ' 23:59:59'); }
+    srcSql += ' GROUP BY tx_source';
+    const bySource = await this.dataSource.query(srcSql, srcParams);
+
     const totalIncome  = rows.reduce((s: number, r: any) => s + parseFloat(r.income  || 0), 0);
     const totalExpense = rows.reduce((s: number, r: any) => s + parseFloat(r.expense || 0), 0);
-    return { period, data: rows, summary: { totalIncome: totalIncome.toFixed(2), totalExpense: totalExpense.toFixed(2), net: (totalIncome - totalExpense).toFixed(2) } };
+    return { period, data: rows, bySource, summary: { totalIncome: totalIncome.toFixed(2), totalExpense: totalExpense.toFixed(2), net: (totalIncome - totalExpense).toFixed(2) } };
+  }
+
+  // ─── Analytics by Category ────────────────────────────────────────
+
+  async getAnalyticsByCategory(query: AnalyticsQueryDto, instituteId: string) {
+    let sql = `
+      SELECT c.name AS category, c.type AS categoryType,
+             SUM(l.amount) AS total
+      FROM finance_ledger l
+      LEFT JOIN finance_categories c ON l.category_id = c.id
+      WHERE l.institute_id = ?
+    `;
+    const params: any[] = [instituteId];
+    if (query.startDate) { sql += ' AND l.created_at >= ?'; params.push(query.startDate); }
+    if (query.endDate)   { sql += ' AND l.created_at <= ?'; params.push(query.endDate + ' 23:59:59'); }
+    sql += ' GROUP BY l.category_id, c.name, c.type ORDER BY total DESC';
+    const rows = await this.dataSource.query(sql, params);
+    return { data: rows };
+  }
+
+  // ─── Teacher advance ──────────────────────────────────────────────
+
+  async giveTeacherAdvance(dto: TeacherAdvanceDto, userId: string, createdByName: string, instituteId: string) {
+    const amount = dto.amount.toFixed(2);
+    return this.dataSource.transaction(async manager => {
+      await this.debitAccount(manager, dto.fromAccountId, amount);
+
+      let wallet = await manager.findOne(TeacherWalletEntity, { where: { teacherId: dto.teacherId, instituteId } });
+      if (!wallet) {
+        wallet = manager.create(TeacherWalletEntity, {
+          teacherId: dto.teacherId, instituteId,
+          balance: '0.00', totalEarned: '0.00', totalDeductions: '0.00', totalPaidOut: '0.00',
+        });
+      }
+      wallet.balance = add(wallet.balance, amount);
+      await manager.save(wallet);
+
+      await this.recordLedger(manager, {
+        instituteId,
+        amount,
+        type: LedgerEntryType.CREDIT,
+        txSource: LedgerTxSource.TEACHER_ADVANCE,
+        fromAccountId: dto.fromAccountId,
+        teacherId: dto.teacherId,
+        teacherAmount: amount,
+        description: dto.description,
+        adminNote: dto.adminNote,
+        createdByUserId: userId,
+        createdByName,
+      });
+    });
+  }
+
+  // ─── Manual record ────────────────────────────────────────────────
+
+  async addManualRecord(dto: ManualRecordDto, userId: string, createdByName: string, instituteId: string) {
+    const amount = dto.amount.toFixed(2);
+    const isIncome = dto.recordType === 'INCOME';
+    return this.dataSource.transaction(async manager => {
+      if (isIncome) {
+        await this.creditAccount(manager, dto.accountId, amount);
+      } else {
+        await this.debitAccount(manager, dto.accountId, amount);
+      }
+
+      const row = manager.create(FinanceLedgerEntity, {
+        instituteId,
+        amount,
+        type: isIncome ? LedgerEntryType.CREDIT : LedgerEntryType.DEBIT,
+        txSource: LedgerTxSource.MANUAL,
+        toAccountId:   isIncome ? dto.accountId : undefined,
+        fromAccountId: isIncome ? undefined : dto.accountId,
+        categoryId: dto.categoryId,
+        description: dto.description,
+        adminNote: dto.adminNote,
+        createdByUserId: userId,
+        createdByName,
+      });
+      const saved = await manager.save(row);
+
+      if (dto.recordDate) {
+        await manager.query(
+          'UPDATE finance_ledger SET created_at = ? WHERE id = ?',
+          [dto.recordDate + ' 12:00:00', saved.id],
+        );
+      }
+    });
+  }
+
+  // ─── Teachers summary ─────────────────────────────────────────────
+
+  async getTeachersSummary(instituteId: string) {
+    // Return ALL active teachers in the institute, with wallet data if it exists
+    const rows = await this.dataSource.query(`
+      SELECT
+        u.id                                                                      AS teacherId,
+        COALESCE(u.name_with_initials, CONCAT_WS(' ', u.first_name, u.last_name)) AS teacherName,
+        u.email                                                                   AS teacherEmail,
+        COALESCE(iu.institute_user_image_url, u.image_url)                        AS teacherImageUrl,
+        iu.user_id_institue                                                       AS instituteUserId,
+        w.id                                                                      AS walletId,
+        w.balance,
+        w.total_earned      AS totalEarned,
+        w.total_deductions  AS totalDeductions,
+        w.total_paid_out    AS totalPaidOut
+      FROM institute_user iu
+      JOIN users u         ON u.id = iu.user_id
+      LEFT JOIN teacher_wallets w
+             ON w.teacher_id = iu.user_id AND w.institute_id = iu.institute_id
+      WHERE iu.institute_id = ?
+        AND iu.institute_user_type = 'TEACHER'
+        AND iu.status = 'ACTIVE'
+      ORDER BY teacherName ASC
+    `, [instituteId]);
+    return { data: rows, total: rows.length };
+  }
+
+  async initTeacherWallet(teacherId: string, instituteId: string) {
+    const existing = await this.walletRepo.findOne({ where: { teacherId, instituteId } });
+    if (existing) return existing;
+    const wallet = this.walletRepo.create({
+      teacherId, instituteId,
+      balance: '0.00', totalEarned: '0.00', totalDeductions: '0.00', totalPaidOut: '0.00',
+    });
+    return this.walletRepo.save(wallet);
   }
 
   // ─── Teacher wallet ───────────────────────────────────────────────

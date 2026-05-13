@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsNumber, MaxLength, Min, Max } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsNumber, MaxLength, Min, Max, IsDecimal } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentTargetType, PaymentPriority } from '../entities/institute-class-subject-payment.entity';
 import { Transform } from 'class-transformer';
@@ -45,6 +45,13 @@ export class CreateInstituteClassPaymentDto {
   @IsDateString()
   @IsNotEmpty()
   lastDate: string;
+
+  @ApiPropertyOptional({ description: 'Teacher commission % (0-100). When approved, this % goes to teacher wallet.', example: 15 })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  teacherCommissionPct?: number;
 
   @ApiPropertyOptional({ description: 'Additional notes', maxLength: 255 })
   @IsOptional()

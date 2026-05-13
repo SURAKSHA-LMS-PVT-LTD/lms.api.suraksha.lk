@@ -182,6 +182,7 @@ export class LedgerQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() accountId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() categoryId?: string;
   @ApiPropertyOptional() @IsOptional() @IsIn(['CREDIT', 'DEBIT']) type?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() txSource?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional() @Type(() => Number) @IsNumber() @Min(1)
@@ -190,6 +191,64 @@ export class LedgerQueryDto {
   @ApiPropertyOptional({ default: 50 })
   @IsOptional() @Type(() => Number) @IsNumber() @Min(1) @Max(200)
   limit?: number = 50;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Teacher Advance
+// ─────────────────────────────────────────────────────────────────
+
+export class TeacherAdvanceDto {
+  @ApiProperty({ description: 'Teacher user ID' })
+  @IsString() @IsNotEmpty()
+  teacherId: string;
+
+  @ApiProperty({ example: 5000 })
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  amount: number;
+
+  @ApiProperty({ description: 'Finance account to debit for the advance' })
+  @IsString() @IsNotEmpty()
+  fromAccountId: string;
+
+  @ApiProperty({ description: 'Reason / reference for advance' })
+  @IsString() @IsNotEmpty() @MaxLength(300)
+  description: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000)
+  adminNote?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Manual Record
+// ─────────────────────────────────────────────────────────────────
+
+export class ManualRecordDto {
+  @ApiProperty({ enum: ['INCOME', 'EXPENSE'] })
+  @IsIn(['INCOME', 'EXPENSE'])
+  recordType: 'INCOME' | 'EXPENSE';
+
+  @ApiProperty({ example: 3500 })
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  amount: number;
+
+  @ApiPropertyOptional({ description: 'Finance category ID' })
+  @IsOptional() @IsString()
+  categoryId?: string;
+
+  @ApiProperty({ description: 'Finance account to credit (income) or debit (expense)' })
+  @IsString() @IsNotEmpty()
+  accountId: string;
+
+  @ApiProperty({ description: 'Short description of the record' })
+  @IsString() @IsNotEmpty() @MaxLength(300)
+  description: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000)
+  adminNote?: string;
+
+  @ApiPropertyOptional({ description: 'Override transaction date YYYY-MM-DD (defaults to now)' })
+  @IsOptional() @IsString()
+  recordDate?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────
