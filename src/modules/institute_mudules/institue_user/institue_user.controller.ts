@@ -359,6 +359,29 @@ export class InstitueUserController {
     return this.institueUserService.getUsersByCustomUserTypeId(instituteId, userTypeId, query);
   }
 
+  @Get('institute/:instituteId/user/:userId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: {} })
+  @ApiOperation({ 
+    summary: 'Get specific institute user by ID',
+    description: 'Returns secure user data for a specific institute user by numeric ID. Use singular "/user/" for specific user lookup.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'User data retrieved successfully',
+    type: SecureUserResponseDto 
+  })
+  @ApiResponse({ status: 400, description: 'Invalid user ID format' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Insufficient access' })
+  @ApiResponse({ status: 404, description: 'User not found in this institute' })
+  async getSpecificUser(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('userId', ParseBigIntPipe) userId: string
+  ): Promise<SecureUserResponseDto> {
+    return this.institueUserService.findOne(instituteId, userId);
+  }
+
   @Get('institute/:instituteId/users/:userType')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: {} })
@@ -432,8 +455,15 @@ export class InstitueUserController {
     @Param('userType') userType: InstituteUserType,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
-    // Validate user type parameter
+    // Validate user type parameter with helpful error message
     if (!Object.values(InstituteUserType).includes(userType)) {
+      // Check if numeric (likely a userId) to provide better error guidance
+      if (/^\d+$/.test(userType)) {
+        throw new BadRequestException(
+          `Invalid user type "${userType}". This looks like a user ID. To get a specific user, use: GET /institute-users/institute/${instituteId}/user/${userType}. ` +
+          `To get users by type, use a valid type: ${Object.values(InstituteUserType).join(', ')}`
+        );
+      }
       throw new BadRequestException('Invalid user type. Must be one of: ' + Object.values(InstituteUserType).join(', '));
     }
 
@@ -461,8 +491,14 @@ export class InstitueUserController {
     @Param('classId', ParseBigIntPipe) classId: string,
     @Query() query: SecureClassUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
-    // Validate user type parameter
+    // Validate user type parameter with helpful error message
     if (!Object.values(InstituteUserType).includes(userType)) {
+      if (/^\d+$/.test(userType)) {
+        throw new BadRequestException(
+          `Invalid user type "${userType}". This looks like a user ID. To get a specific user, use: GET /institute-users/institute/${instituteId}/user/${userType}. ` +
+          `To get users by type, use a valid type: ${Object.values(InstituteUserType).join(', ')}`
+        );
+      }
       throw new BadRequestException('Invalid user type. Must be one of: ' + Object.values(InstituteUserType).join(', '));
     }
 
@@ -491,8 +527,14 @@ export class InstitueUserController {
     @Param('subjectId', ParseBigIntPipe) subjectId: string,
     @Query() query: SecureSubjectUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
-    // Validate user type parameter
+    // Validate user type parameter with helpful error message
     if (!Object.values(InstituteUserType).includes(userType)) {
+      if (/^\d+$/.test(userType)) {
+        throw new BadRequestException(
+          `Invalid user type "${userType}". This looks like a user ID. To get a specific user, use: GET /institute-users/institute/${instituteId}/user/${userType}. ` +
+          `To get users by type, use a valid type: ${Object.values(InstituteUserType).join(', ')}`
+        );
+      }
       throw new BadRequestException('Invalid user type. Must be one of: ' + Object.values(InstituteUserType).join(', '));
     }
 
@@ -522,8 +564,14 @@ export class InstitueUserController {
     @Param('userType') userType: InstituteUserType,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
-    // Validate user type parameter
+    // Validate user type parameter with helpful error message
     if (!Object.values(InstituteUserType).includes(userType)) {
+      if (/^\d+$/.test(userType)) {
+        throw new BadRequestException(
+          `Invalid user type "${userType}". This looks like a user ID. To get a specific user, use: GET /institute-users/institute/${instituteId}/user/${userType}. ` +
+          `To get users by type, use a valid type: ${Object.values(InstituteUserType).join(', ')}`
+        );
+      }
       throw new BadRequestException('Invalid user type. Must be one of: ' + Object.values(InstituteUserType).join(', '));
     }
 
