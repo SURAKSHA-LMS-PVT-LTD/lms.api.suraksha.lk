@@ -112,10 +112,10 @@ export class CreateRbacTables1792000000000 implements MigrationInterface {
     `);
 
     // ── 6. Seed default permissions for each user type ───────────────────────
-    // Admin gets full access; student/teacher/others get view-only on basic features
+    // Admin gets full access; teacher gets create/update/report; student gets submit
     await queryRunner.query(`
       INSERT IGNORE INTO institute_feature_permissions
-        (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report)
+        (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report, can_submit)
       SELECT
         iut.institute_id,
         iut.id,
@@ -124,7 +124,13 @@ export class CreateRbacTables1792000000000 implements MigrationInterface {
         CASE WHEN iut.slug = 'institute_admin' THEN 1 ELSE 0 END,
         CASE WHEN iut.slug = 'institute_admin' THEN 1 ELSE 0 END,
         CASE WHEN iut.slug = 'institute_admin' THEN 1 ELSE 0 END,
-        CASE WHEN iut.slug IN ('institute_admin','teacher') THEN 1 ELSE 0 END
+        CASE WHEN iut.slug IN ('institute_admin','teacher') THEN 1 ELSE 0 END,
+        CASE
+          WHEN iut.slug IN ('institute_admin','teacher','student')
+               AND fc.key IN ('homework','exams','subject-payments','class-payments','institute-payments')
+          THEN 1
+          ELSE 0
+        END
       FROM institute_user_types iut
       CROSS JOIN feature_catalog fc
       WHERE iut.is_active = 1

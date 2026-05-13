@@ -508,8 +508,88 @@ export class InstitueUserService {
   }
 
   /**
+   * Get institute users filtered by custom user type ID (primary_user_type_id).
+   * Used for dynamic user type assignment — not limited to system roles.
+   */
+  async getUsersByCustomUserTypeId(
+    instituteId: string,
+    userTypeId: string,
+    query: SecureUserQueryDto
+  ): Promise<PaginatedSecureUserResponseDto> {
+    const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
+    const safeUserTypeId = SecurityUtils.validateBigIntId(userTypeId, 'userTypeId');
+    const { page, limit, skip } = SecurityUtils.validatePagination(query.page, query.limit);
+    const { sortBy, sortOrder } = SecurityUtils.validateSortParams(query.sortBy, query.sortOrder);
+    const safeSearch = query.search ? SecurityUtils.sanitizeSearchInput(query.search) : null;
+
+    const baseFields = [
+      'u.id as user_id',
+      'u.first_name',
+      'u.last_name',
+      'u.email as email',
+      'u.phone_number',
+      'u.image_url as user_image_url',
+      'u.gender',
+      'u.date_of_birth',
+      'u.is_active',
+      'iu.user_id_institue as userIdByInstitute',
+      'iu.extra_data as extra_data',
+      'iu.status',
+      'iu.institute_user_image_url',
+    ];
+
+    let queryBuilder = this.instituteUserRepository
+      .createQueryBuilder('iu')
+      .leftJoin('iu.user', 'u')
+      .select(baseFields)
+      .where('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
+      .andWhere('iu.primaryUserTypeId = :userTypeId', { userTypeId: safeUserTypeId })
+      .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
+      .andWhere('u.is_active = :userActive', { userActive: true });
+
+    let countQueryBuilder = this.instituteUserRepository
+      .createQueryBuilder('iu')
+      .leftJoin('iu.user', 'u')
+      .where('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
+      .andWhere('iu.primaryUserTypeId = :userTypeId', { userTypeId: safeUserTypeId })
+      .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
+      .andWhere('u.is_active = :userActive', { userActive: true });
+
+    if (safeSearch) {
+      const searchCondition = '(CONCAT(u.first_name, " ", COALESCE(u.last_name, "")) LIKE :search OR u.email LIKE :search)';
+      queryBuilder.andWhere(searchCondition, { search: `%${safeSearch}%` });
+      countQueryBuilder.andWhere(searchCondition, { search: `%${safeSearch}%` });
+    }
+
+    const total = await countQueryBuilder.getCount();
+    const sortField = this.mapSortFieldForRaw(sortBy);
+    const rawResults = await queryBuilder
+      .orderBy(sortField, sortOrder)
+      .skip(skip)
+      .take(limit)
+      .getRawMany();
+
+    const data = rawResults.map((row: any) => ({
+      id: row.user_id?.toString(),
+      name: [row.first_name, row.last_name].filter(Boolean).join(' '),
+      email: row.email ?? '',
+      phoneNumber: row.phone_number ?? '',
+      imageUrl: row.institute_user_image_url || row.user_image_url || null,
+      userIdByInstitute: row.userIdByInstitute ?? null,
+      status: row.status ?? 'active',
+      isActive: row.is_active ?? true,
+      extraData: row.extra_data ? (typeof row.extra_data === 'string' ? JSON.parse(row.extra_data) : row.extra_data) : null,
+    }));
+
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+    };
+  }
+
+  /**
    * Get parents by institute - Special handler for PARENT type
-   * 
+   *
    * ⚠️ IMPORTANT: Parents are NOT stored in institute_users table!
    * This method:
    * 1. Gets all STUDENTS from the institute

@@ -346,10 +346,23 @@ export class InstitueUserController {
     return this.institueUserService.getInactiveInstituteUsers(instituteId, query);
   }
 
+  @Get('institute/:instituteId/users-by-type/:userTypeId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: {} })
+  @ApiOperation({ summary: 'Get institute users by custom user type ID (primary_user_type_id)' })
+  @ApiResponse({ status: 200, type: PaginatedSecureUserResponseDto })
+  async getUsersByCustomUserTypeId(
+    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('userTypeId', ParseBigIntPipe) userTypeId: string,
+    @Query() query: SecureUserQueryDto
+  ): Promise<PaginatedSecureUserResponseDto> {
+    return this.institueUserService.getUsersByCustomUserTypeId(instituteId, userTypeId, query);
+  }
+
   @Get('institute/:instituteId/users/:userType')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: {} })
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get users by institute and type (SECURE & OPTIMIZED with Advanced Filtering)',
     description: `✅ ENHANCED: Returns optimized user data with unmasked emails for admin access and comprehensive filtering options.
     
