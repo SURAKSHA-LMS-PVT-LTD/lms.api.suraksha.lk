@@ -18,7 +18,8 @@ export class RbacContextService {
    * Resolves the RBAC context for a user within an institute.
    * Looks up primary_user_type_id first; falls back to matching by slug from the legacy enum.
    */
-  async getMyContext(instituteId: string, userId: string, legacyUserType?: string): Promise<MyRbacContextDto> {
+  async getMyContext(instituteId: string, userId: string, legacyUserType?: string, compactUserType?: number): Promise<MyRbacContextDto> {
+    const isSystemAdmin = compactUserType === 0;
     // Try to find their primary_user_type_id
     const memberRow = await this.dataSource.query(
       `SELECT primary_user_type_id, institute_user_type
@@ -36,7 +37,7 @@ export class RbacContextService {
         userTypeSlug: (legacyUserType ?? '').toLowerCase(),
         userTypeColor: undefined,
         permissions: {},
-        isSystemAdmin: false,
+        isSystemAdmin,
       };
     }
 
@@ -63,7 +64,7 @@ export class RbacContextService {
         userTypeSlug: (legacyUserType ?? 'unknown').toLowerCase(),
         userTypeColor: undefined,
         permissions: {},
-        isSystemAdmin: false,
+        isSystemAdmin,
       };
     }
 
@@ -75,7 +76,7 @@ export class RbacContextService {
       userTypeSlug: userType.slug,
       userTypeColor: userType.color ?? undefined,
       permissions,
-      isSystemAdmin: false,
+      isSystemAdmin,
     };
   }
 
@@ -93,8 +94,9 @@ export class RbacContextService {
     const params: any[] = [instituteId, typeId];
 
     if (opts.search) {
-      const safe = opts.search.replace(/['"`;\\]/g, '').trim().substring(0, 100);
-      whereExtra = `AND (CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) LIKE ? OR u.email LIKE ?)`;
+      // Escape SQL LIKE special chars so user input is treated as a literal substring
+      const safe = opts.search.trim().substring(0, 100).replace(/[\\%_]/g, '\\$&');
+      whereExtra = `AND (CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) LIKE ? ESCAPE '\\\\' OR u.email LIKE ? ESCAPE '\\\\')`;
       params.push(`%${safe}%`, `%${safe}%`);
     }
 

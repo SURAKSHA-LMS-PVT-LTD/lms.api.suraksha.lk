@@ -22,11 +22,16 @@ export class FeaturePermissionsService {
   ) {}
 
   private cacheKey(instituteId: string, userTypeId: string) {
-    return `rbac:${instituteId}:${userTypeId}`;
+    return `rbac:perm:${instituteId}:${userTypeId}`;
   }
 
   private invalidate(instituteId: string, userTypeId: string) {
     cache.delete(this.cacheKey(instituteId, userTypeId));
+    // Opportunistically prune expired entries to prevent unbounded Map growth
+    const now = Date.now();
+    for (const [k, v] of cache) {
+      if (v.expiresAt <= now) cache.delete(k);
+    }
   }
 
   async getMatrix(instituteId: string, userTypeId: string): Promise<PermissionMatrix> {
@@ -74,33 +79,40 @@ export class FeaturePermissionsService {
     const userType = await this.userTypeRepo.findOne({ where: { id: userTypeId, instituteId } });
     if (!userType) throw new NotFoundException('User type not found');
 
-    // Upsert all rows in a single transaction
-    await this.dataSource.transaction(async (em) => {
-      for (const p of dto.permissions) {
-        await em.query(
-          `INSERT INTO institute_feature_permissions
-             (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-           ON DUPLICATE KEY UPDATE
-             can_view   = VALUES(can_view),
-             can_create = VALUES(can_create),
-             can_update = VALUES(can_update),
-             can_delete = VALUES(can_delete),
-             can_report = VALUES(can_report),
-             updated_at = NOW()`,
-          [
-            instituteId,
-            userTypeId,
-            p.featureKey,
-            p.canView ? 1 : 0,
-            p.canCreate ? 1 : 0,
-            p.canUpdate ? 1 : 0,
-            p.canDelete ? 1 : 0,
-            p.canReport ? 1 : 0,
-          ],
-        );
-      }
-    });
+    if (!dto.permissions.length) {
+      this.invalidate(instituteId, userTypeId);
+      return;
+    }
+
+    // Single batch INSERT … ON DUPLICATE KEY UPDATE — one round-trip regardless of row count
+    const placeholders = dto.permissions.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())').join(', ');
+    const params: any[] = [];
+    for (const p of dto.permissions) {
+      params.push(
+        instituteId,
+        userTypeId,
+        p.featureKey,
+        p.canView ? 1 : 0,
+        p.canCreate ? 1 : 0,
+        p.canUpdate ? 1 : 0,
+        p.canDelete ? 1 : 0,
+        p.canReport ? 1 : 0,
+      );
+    }
+
+    await this.dataSource.query(
+      `INSERT INTO institute_feature_permissions
+         (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report, created_at, updated_at)
+       VALUES ${placeholders}
+       ON DUPLICATE KEY UPDATE
+         can_view   = VALUES(can_view),
+         can_create = VALUES(can_create),
+         can_update = VALUES(can_update),
+         can_delete = VALUES(can_delete),
+         can_report = VALUES(can_report),
+         updated_at = NOW()`,
+      params,
+    );
 
     this.invalidate(instituteId, userTypeId);
   }

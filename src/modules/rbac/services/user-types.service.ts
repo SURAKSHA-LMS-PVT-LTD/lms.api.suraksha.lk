@@ -52,6 +52,17 @@ export class UserTypesService {
     const type = await this.repo.findOne({ where: { id, instituteId } });
     if (!type) throw new NotFoundException('User type not found');
 
+    // System types guard: only non-structural fields may be touched
+    if (type.isSystemType) {
+      if ((dto as any).slug !== undefined) {
+        throw new ForbiddenException('Cannot change the slug of a system user type');
+      }
+      // Block deactivating a system type via isActive=false
+      if (dto.isActive === false) {
+        throw new ForbiddenException('System user types cannot be deactivated');
+      }
+    }
+
     Object.assign(type, {
       name: dto.name ?? type.name,
       namePlural: dto.namePlural ?? type.namePlural,

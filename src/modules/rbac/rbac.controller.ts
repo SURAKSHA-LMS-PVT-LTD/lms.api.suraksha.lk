@@ -46,7 +46,8 @@ export class RbacController {
   ): Promise<MyRbacContextDto> {
     const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
     const legacyType = req.user?.instituteUserType ?? req.user?.iuType;
-    return this.contextService.getMyContext(instituteId, String(userId), legacyType);
+    const compactUserType = req.user?.u;  // 0 = SUPERADMIN in enhanced JWT
+    return this.contextService.getMyContext(instituteId, String(userId), legacyType, compactUserType);
   }
 
   // ── User Types CRUD ────────────────────────────────────────────────────────

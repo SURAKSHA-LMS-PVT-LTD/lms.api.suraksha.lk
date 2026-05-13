@@ -92,6 +92,10 @@ export class InstituteUserEntity {
   @Column({ name: 'max_devices_per_user', type: 'tinyint', unsigned: true, nullable: true, default: null })
   maxDevicesPerUser?: number | null;
 
+  /** FK to institute_user_types — the dynamic RBAC role for this membership. */
+  @Column({ name: 'primary_user_type_id', type: 'bigint', unsigned: true, nullable: true, default: null })
+  primaryUserTypeId?: string | null;
+
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
