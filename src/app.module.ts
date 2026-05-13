@@ -62,6 +62,7 @@ import { InstituteHouseModule } from './modules/institute_mudules/institute_hous
 import { TenantModule } from './modules/tenant/tenant.module';
 import { NotificationCreditsModule } from './modules/notification-credits/notification-credits.module';
 import { FeaturesModule } from './modules/features/features.module';
+import { RbacModule } from './modules/rbac/rbac.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -183,6 +184,7 @@ import { AppService } from './app.service';
     InstituteHouseModule, // Institute house management with member enrollment
     TenantModule, // Multi-tenant subdomain/custom domain management with billing
     FeaturesModule, // Institute feature toggles catalog
+    RbacModule, // Dynamic RBAC: user types + per-feature permission matrices
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
   ],
   controllers: [AppController],

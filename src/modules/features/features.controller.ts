@@ -4,6 +4,7 @@ import { UpdateFeatureTogglesDto } from './dto/feature.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller()
+@UseGuards(JwtAuthGuard)
 export class FeaturesController {
   constructor(private readonly featuresService: FeaturesService) {}
 
