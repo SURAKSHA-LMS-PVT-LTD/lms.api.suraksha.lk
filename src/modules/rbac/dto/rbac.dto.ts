@@ -112,6 +112,7 @@ export class FeaturePermissionDto {
   @ApiProperty() canUpdate: boolean;
   @ApiProperty() canDelete: boolean;
   @ApiProperty() canReport: boolean;
+  @ApiProperty() canSubmit: boolean;
 }
 
 export class BulkUpdatePermissionsDto {

@@ -25,6 +25,7 @@ import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto
 import { SubjectParentResponseDto, SubjectParentQueryDto, PaginatedSubjectParentResponseDto } from './dto/subject-parent-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
+import { UpdateStudentTypeDto } from './dto/update-student-type.dto';
 
 @ApiTags('Institute Class Subject Students')
 @ApiBearerAuth()
@@ -775,7 +776,7 @@ export class InstituteClassSubjectStudentsController {
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('subjectId', ParseBigIntPipe) subjectId: string,
     @Param('studentId', ParseBigIntPipe) studentId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid' }
+    @Body() body: UpdateStudentTypeDto
   ) {
     return await this.studentsService.updateStudentType(instituteId, classId, subjectId, studentId, body.studentType);
   }
@@ -968,7 +969,7 @@ export class InstituteClassSubjectStudentsController {
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('studentId', ParseBigIntPipe) studentId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid' },
+    @Body() body: UpdateStudentTypeDto,
   ) {
     return this.studentsService.updateStudentTypeForClass(instituteId, classId, studentId, body.studentType);
   }

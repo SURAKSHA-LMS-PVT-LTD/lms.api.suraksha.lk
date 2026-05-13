@@ -21,6 +21,8 @@ import {
   SelfActivateRequestOtpDto,
   SelfActivateVerifyDto,
 } from '../dto/institute-login.dto';
+import { LogoutDto } from '../dto/logout.dto';
+import { SetDeviceLimitDto, BulkSetDeviceLimitDto } from '../dto/device-limit.dto';
 
 /** Resolve which login method and scope host to use based on request origin header. */
 function resolveLoginContext(req: ExpressRequest): { loginMethod: InstituteSessionLoginMethod; scopeHost: string | null } {
@@ -247,7 +249,7 @@ export class InstituteAuthController {
   async setDeviceLimit(
     @Param('instituteId') instituteId: string,
     @Param('userId') userId: string,
-    @Body() body: { maxDevices: number | null },
+    @Body() body: SetDeviceLimitDto,
   ) {
     await this.instituteSessionService.setDeviceLimit(instituteId, userId, body.maxDevices ?? null);
     return { message: 'Device limit updated', maxDevices: body.maxDevices ?? null };
@@ -260,7 +262,7 @@ export class InstituteAuthController {
   @ApiOperation({ summary: '[Admin] Apply device limit to specific users' })
   async bulkSetDeviceLimit(
     @Param('instituteId') instituteId: string,
-    @Body() body: { userIds: string[]; maxDevices: number | null },
+    @Body() body: BulkSetDeviceLimitDto,
   ) {
     await Promise.all(
       body.userIds.map(userId =>

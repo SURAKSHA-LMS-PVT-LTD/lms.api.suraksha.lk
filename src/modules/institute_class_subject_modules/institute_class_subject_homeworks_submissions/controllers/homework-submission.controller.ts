@@ -11,6 +11,7 @@ import { QueryInstituteClassSubjectHomeworksSubmissionDto } from '../dto/query-i
 import { UpdateInstituteClassSubjectHomeworksSubmissionDto } from '../dto/update-institute_class_subject_homeworks_submission.dto';
 import { CloudStorageService } from '../../../../common/services/cloud-storage.service';
 import { JwtRequest, JwtPayload } from '@common/interfaces/jwt-request.interface';
+import { SubmitHomeworkDto, UploadCorrectionFileDto } from '../dto/submit-homework.dto';
 
 @ApiTags('Institute Class Subject Homework Submissions')
 @ApiBearerAuth()
@@ -74,13 +75,10 @@ export class HomeworkSubmissionController {
   @HttpCode(HttpStatus.OK)
   async submitHomework(
     @Param('homeworkId', ParseBigIntPipe) homeworkId: string,
-    @Body() body: { fileUrl: string },
+    @Body() body: SubmitHomeworkDto,
     @Request() req: JwtRequest
   ) {
     try {
-      if (!body.fileUrl) {
-        throw new BadRequestException('fileUrl is required');
-      }
 
       const user = req.user;
       // JWT v2: user.s is the userId
@@ -331,12 +329,9 @@ export class HomeworkSubmissionController {
   })
   async uploadCorrectionFile(
     @Param('submissionId', ParseBigIntPipe) submissionId: string,
-    @Body() body: { correctionFileUrl: string },
+    @Body() body: UploadCorrectionFileDto,
     @Request() req: JwtRequest
   ) {
-    if (!body.correctionFileUrl) {
-      throw new BadRequestException('correctionFileUrl is required');
-    }
 
     const user = req.user;
 

@@ -30,6 +30,7 @@ import {
 } from './dto/index.dto';
 import { UpdateInstituteSettingsDto } from './dto/update-institute-settings.dto';
 import { InstituteSettingsResponseDto, InstituteReportBrandingResponseDto, InstituteProfileResponseDto, AddGalleryImageDto } from './dto/institute-settings.dto';
+import { UpdateUserExtraDataSchemaDto } from './dto/update-user-extra-data-schema.dto';
 
 @ApiTags('Institutes')
 @ApiBearerAuth()
@@ -666,7 +667,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Schema updated' })
   async updateUserExtraDataSchema(
     @Param('id', ParseBigIntPipe) id: string,
-    @Body() body: { schema: Array<{ key: string; label: string; type: string; applicableTo?: string[] }> },
+    @Body() body: UpdateUserExtraDataSchemaDto,
     @Request() req: JwtRequest,
   ) {
     return this.institutesService.updateUserExtraDataSchema(id, body.schema ?? [], req.user);

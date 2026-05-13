@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../../user/enums/user-type.enum';
+import { UpdateClassStudentTypeDto } from './dto/update-class-student-type.dto';
 
 
 
@@ -121,7 +122,7 @@ export class InstituteClassStudentController {
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('classId', ParseBigIntPipe) classId: string,
     @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
-    @Body() body: { studentType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid' },
+    @Body() body: UpdateClassStudentTypeDto,
   ) {
     return this.instituteClassStudentService.updateClassStudentType(
       instituteId, classId, studentUserId, body.studentType,

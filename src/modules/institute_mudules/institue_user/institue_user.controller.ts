@@ -32,6 +32,8 @@ import {
 } from './dto/upload-institute-user-image.dto';
 import { AdminUserDataResponseDto } from './dto/admin-user-data-response.dto';
 import { ImageVerificationStatus } from './enums/image-verification-status.enum';
+import { UpdateExtraDataDto } from './dto/update-extra-data.dto';
+import { ChangeInstituteUserRoleDto } from './dto/change-role.dto';
 
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
@@ -599,7 +601,7 @@ export class InstitueUserController {
   async updateExtraData(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() body: { extraData: Record<string, any> | null },
+    @Body() body: UpdateExtraDataDto,
   ): Promise<{
     success: boolean;
     message: string;
@@ -731,7 +733,7 @@ export class InstitueUserController {
   async changeInstituteUserRole(
     @Param('instituteId', ParseBigIntPipe) instituteId: string,
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() body: { newRole: string },
+    @Body() body: ChangeInstituteUserRoleDto,
     @Req() req: JwtRequest
   ): Promise<{
     success: boolean;

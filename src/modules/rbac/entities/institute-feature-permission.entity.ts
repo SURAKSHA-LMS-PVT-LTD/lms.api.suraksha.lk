@@ -36,6 +36,9 @@ export class InstituteFeaturePermissionEntity {
   @Column({ name: 'can_report', type: 'boolean', default: false })
   canReport: boolean;
 
+  @Column({ name: 'can_submit', type: 'boolean', default: false })
+  canSubmit: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

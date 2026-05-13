@@ -7,6 +7,7 @@ import { Request as ExpressRequest, Response as ExpressResponse } from 'express'
 import { Public } from '../../common/decorators/public.decorator';
 import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { RefreshTokenDto } from '../auth.controller';
+import { LogoutDto } from '../dto/logout.dto';
 import { TenantService } from '../../modules/tenant/tenant.service';
 import { LoginMethod } from '../../modules/institute/enums/institute.enums';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -241,7 +242,7 @@ export class AuthV2Controller {
     }
   })
   async logout(
-    @Body() body: { refresh_token?: string },
+    @Body() body: LogoutDto,
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: ExpressResponse
   ) {

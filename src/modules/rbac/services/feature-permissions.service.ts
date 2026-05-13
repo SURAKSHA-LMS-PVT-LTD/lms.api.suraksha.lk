@@ -49,6 +49,7 @@ export class FeaturePermissionsService {
       if (row.canUpdate) actions.push('update');
       if (row.canDelete) actions.push('delete');
       if (row.canReport) actions.push('report');
+      if (row.canSubmit) actions.push('submit');
       matrix[row.featureKey] = actions;
     }
 
@@ -68,6 +69,7 @@ export class FeaturePermissionsService {
       canUpdate: r.canUpdate,
       canDelete: r.canDelete,
       canReport: r.canReport,
+      canSubmit: r.canSubmit,
     }));
   }
 
@@ -85,7 +87,7 @@ export class FeaturePermissionsService {
     }
 
     // Single batch INSERT … ON DUPLICATE KEY UPDATE — one round-trip regardless of row count
-    const placeholders = dto.permissions.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())').join(', ');
+    const placeholders = dto.permissions.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())').join(', ');
     const params: any[] = [];
     for (const p of dto.permissions) {
       params.push(
@@ -97,12 +99,13 @@ export class FeaturePermissionsService {
         p.canUpdate ? 1 : 0,
         p.canDelete ? 1 : 0,
         p.canReport ? 1 : 0,
+        (p as any).canSubmit ? 1 : 0,
       );
     }
 
     await this.dataSource.query(
       `INSERT INTO institute_feature_permissions
-         (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report, created_at, updated_at)
+         (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report, can_submit, created_at, updated_at)
        VALUES ${placeholders}
        ON DUPLICATE KEY UPDATE
          can_view   = VALUES(can_view),
@@ -110,6 +113,7 @@ export class FeaturePermissionsService {
          can_update = VALUES(can_update),
          can_delete = VALUES(can_delete),
          can_report = VALUES(can_report),
+         can_submit = VALUES(can_submit),
          updated_at = NOW()`,
       params,
     );

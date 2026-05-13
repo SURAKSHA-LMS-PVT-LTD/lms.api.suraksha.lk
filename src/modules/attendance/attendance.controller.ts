@@ -7,6 +7,7 @@ import { MarkAttendanceByCardDto, GetAttendanceByCardDto, BulkCardAttendanceDto 
 import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteCardUserResponseDto } from './dto/institute-card-attendance.dto';
 import { GetClassStudentsInstituteAttendanceQueryDto, BulkMarkClassFromInstituteDto } from './dto/class-attendance-from-institute.dto';
 import { GetSubjectStudentsClassAttendanceQueryDto, BulkMarkSubjectFromClassDto } from './dto/subject-attendance-from-class.dto';
+import { UpdateAttendanceStatusDto } from './dto/update-attendance-status.dto';
 import { UserType } from '../user/enums/user-type.enum';
 import { Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -1051,7 +1052,7 @@ export class AttendanceController {
     @Param('instituteId') instituteId: string,
     @Param('classId') classId: string,
     @Param('studentId') studentId: string,
-    @Body() body: { status: string; subjectId?: string; instituteName?: string; className?: string; subjectName?: string },
+    @Body() body: UpdateAttendanceStatusDto,
   ) {
     try {
       return await this.attendanceService.updateStudentAttendanceStatus(
