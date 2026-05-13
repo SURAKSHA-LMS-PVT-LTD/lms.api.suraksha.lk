@@ -28,11 +28,13 @@ import { CommonModule } from '../../common/common.module';
 import { CacheModule } from '../../common/modules/cache.module';
 import { AsyncEmailService } from '../../common/services/async-email.service';
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
+import { FinanceModule } from '../finance/finance.module';
 
 @Module({
   imports: [
     CommonModule, // Import CommonModule to get CloudStorageService
     CacheModule,
+    FinanceModule,
     TypeOrmModule.forFeature([
       PaymentEntity,
       InstituteClassSubjectPayment,

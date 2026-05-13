@@ -55,6 +55,15 @@ export class VerifyClassPaymentSubmissionDto {
   @IsString()
   @MaxLength(255)
   notes?: string;
+
+  // ── Finance routing (optional) ────────────────────────────────────
+  @ApiPropertyOptional({ description: 'Finance account ID to credit on approval.' })
+  @IsOptional() @IsString()
+  targetAccountId?: string;
+
+  @ApiPropertyOptional({ description: 'Teacher commission % override (0-100).' })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
+  commissionPctOverride?: number;
 }
 
 export class AdminVerifyStudentClassPaymentDto {
@@ -81,12 +90,21 @@ export class AdminVerifyStudentClassPaymentDto {
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   notes?: string;
 
-  @ApiPropertyOptional({ 
-    description: "Payment tier for partial verification. 'full' = VERIFIED (100%), 'half' = HALF_VERIFIED (50%), 'quarter' = QUARTER_VERIFIED (25%)", 
+  @ApiPropertyOptional({
+    description: "Payment tier for partial verification. 'full' = VERIFIED (100%), 'half' = HALF_VERIFIED (50%), 'quarter' = QUARTER_VERIFIED (25%)",
     enum: ['full', 'half', 'quarter'],
     example: 'full'
   })
   @IsOptional()
   @IsIn(['full', 'half', 'quarter'])
   paymentTier?: 'full' | 'half' | 'quarter';
+
+  // ── Finance routing (optional) ────────────────────────────────────
+  @ApiPropertyOptional({ description: 'Finance account ID to credit. If provided, triggers automatic ledger entry.' })
+  @IsOptional() @IsString()
+  targetAccountId?: string;
+
+  @ApiPropertyOptional({ description: 'Teacher commission % override (0-100). Falls back to class default.' })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
+  commissionPctOverride?: number;
 }

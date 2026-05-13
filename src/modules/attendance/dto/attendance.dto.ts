@@ -263,6 +263,11 @@ export class BulkAttendanceDto {
   @IsOptional()
   advertisementId?: string;
 
+  @ApiPropertyOptional({ description: 'Class session ID — links bulk attendance records to a specific session' })
+  @IsString()
+  @IsOptional()
+  classSessionId?: string;
+
   @ApiProperty({ type: [StudentAttendanceItem], description: 'Array of student attendance records' })
   @IsArray()
   @ValidateNested({ each: true })

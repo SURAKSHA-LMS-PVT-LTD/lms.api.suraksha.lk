@@ -16,6 +16,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
 import { UserType } from '../../user/enums/user-type.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
+import { FinanceService } from '../../finance/services/finance.service';
 
 @Injectable()
 export class InstituteClassPaymentService {
@@ -35,6 +36,7 @@ export class InstituteClassPaymentService {
     private readonly cloudStorageService: CloudStorageService,
     private readonly userManagementService: UserManagementService,
     private readonly asyncEmailService: AsyncEmailService,
+    private readonly financeService: FinanceService,
   ) {}
 
   private async getUserInstituteRole(user: JwtPayload, instituteId: string): Promise<{ hasAccess: boolean; instituteRole?: string }> {
@@ -370,6 +372,26 @@ export class InstituteClassPaymentService {
     if (dto.status === SubmissionStatus.VERIFIED) {
       try { await this.userManagementService.refreshUserCache(submission.userId); } catch (e: any) {
         this.logger.warn(`Cache refresh failed after class payment verification for user ${submission.userId}: ${e.message}`);
+      }
+
+      if (dto.targetAccountId && submission.submittedAmount) {
+        try {
+          const payment = await this.paymentRepository.findOne({ where: { id: submission.paymentId } });
+          await this.financeService.processSplit({
+            paymentAmount: Number(submission.submittedAmount),
+            targetAccountId: dto.targetAccountId,
+            commissionPctOverride: dto.commissionPctOverride,
+            referenceId: submission.paymentId,
+            studentId: submission.userId,
+            studentName: submission.username,
+            description: `Class payment: ${payment?.title ?? submission.paymentId}`,
+            userId: String(user.s),
+            createdByName: '',
+            instituteId: payment?.instituteId ?? '',
+          });
+        } catch (fe: any) {
+          this.logger.warn(`Finance split failed for submission ${submissionId}: ${fe.message}`);
+        }
       }
     }
 
@@ -865,6 +887,25 @@ export class InstituteClassPaymentService {
 
       try { await this.userManagementService.refreshUserCache(studentIdStr); } catch (e: any) {
         this.logger.warn(`Cache refresh failed after admin class payment verification for user ${studentIdStr}: ${e.message}`);
+      }
+
+      if (dto.targetAccountId && saved.status === SubmissionStatus.VERIFIED) {
+        try {
+          await this.financeService.processSplit({
+            paymentAmount: dto.amount,
+            targetAccountId: dto.targetAccountId,
+            commissionPctOverride: dto.commissionPctOverride,
+            referenceId: paymentIdStr,
+            studentId: studentIdStr,
+            studentName: saved.username,
+            description: `Admin verified class payment`,
+            userId: String(user.s),
+            createdByName: '',
+            instituteId: payment.instituteId,
+          });
+        } catch (fe: any) {
+          this.logger.warn(`Finance split failed for admin verify ${paymentIdStr}: ${fe.message}`);
+        }
       }
 
       return { success: true, message: 'Payment verified for student successfully', data: { submissionId: saved.id, paymentId: paymentIdStr, studentId: studentIdStr, amount: dto.amount, status: saved.status, verifiedBy: user.s, verifiedAt: saved.verifiedAt, notes: saved.notes } };
