@@ -2,8 +2,8 @@ import {
   Injectable, Logger, NotFoundException,
   BadRequestException, ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { InstituteClassAttendanceSessionGroupEntity } from '../entities/institute-class-attendance-session-group.entity';
 import { InstituteClassAttendanceSessionEntity, CloseUnmarkAction } from '../entities/institute-class-attendance-session.entity';
@@ -95,6 +95,8 @@ function mapSession(s: InstituteClassAttendanceSessionEntity): SessionResponse {
     sessionGroupId: s.sessionGroupId,
     group: s.group ? mapGroup(s.group) : undefined,
     sendNotifications: s.sendNotifications ?? true,
+    linkedPaymentId: s.linkedPaymentId,
+    paymentMode: s.paymentMode,
     createdAt: s.createdAt,
   };
 }
@@ -121,6 +123,7 @@ export class ClassAttendanceSessionService {
     private readonly studentRepo: Repository<StudentEntity>,
     private readonly advertisementDeliveryService: AdvertisementDeliveryService,
     private readonly configService: ConfigService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {
     this.notificationsEnabled = this.configService.get('ENABLE_ATTENDANCE_NOTIFICATIONS', 'true') === 'true';
   }
@@ -216,6 +219,8 @@ export class ClassAttendanceSessionService {
       closeUnmarkAction: CloseUnmarkAction.KEEP_NOT_MARKED,
       totalStudents,
       sendNotifications: dto.sendNotifications ?? true,
+      linkedPaymentId: dto.linkedPaymentId,
+      paymentMode: dto.paymentMode,
       createdBy: userId,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -237,6 +242,9 @@ export class ClassAttendanceSessionService {
     if (dto.lateAfterMinutes !== undefined)     session.lateAfterMinutes = dto.lateAfterMinutes;
     if (dto.leftEarlyBeforeMinutes !== undefined) session.leftEarlyBeforeMinutes = dto.leftEarlyBeforeMinutes;
     if ('sessionGroupId' in dto)               session.sessionGroupId = dto.sessionGroupId ?? undefined;
+    if (dto.sendNotifications !== undefined)   session.sendNotifications = dto.sendNotifications;
+    if ('linkedPaymentId' in dto)              session.linkedPaymentId = dto.linkedPaymentId ?? undefined;
+    if ('paymentMode' in dto)                  session.paymentMode = dto.paymentMode ?? undefined;
     session.updatedAt = now();
     const saved = await this.sessionRepo.save(session);
     return mapSession(saved);
@@ -290,45 +298,49 @@ export class ClassAttendanceSessionService {
   async getSessionDetail(sessionId: string, instituteId: string): Promise<SessionDetailResponse> {
     const session = await this.getSessionById(sessionId, instituteId);
 
-    const students = await this.classStudentRepo.find({
-      where: { instituteId, classId: session.classId, isActive: true, isVerified: true },
-    });
-    const studentIds = students.map(s => s.studentUserId);
-
-    const [sessionRecords, instituteUsers, users] = await Promise.all([
-      // Only records explicitly marked within THIS session
-      studentIds.length
-        ? this.recordRepo.find({
-            where: { classSessionId: sessionId, studentId: In(studentIds) },
-            select: ['studentId', 'status', 'createdAt', 'remarks'],
-          })
-        : Promise.resolve([]),
-      studentIds.length
-        ? this.instituteUserRepo.find({
-            where: { instituteId, userId: In(studentIds) },
-            select: ['userId', 'userIdByInstitute', 'instituteCardId', 'instituteUserImageUrl'],
-          })
-        : Promise.resolve([]),
-      studentIds.length
-        ? this.userRepo.find({
-            where: { id: In(studentIds) },
-            select: ['id', 'nameWithInitials', 'imageUrl'],
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const sessionRecordMap = new Map(sessionRecords.map(r => [r.studentId, r]));
-    const iuMap = new Map(instituteUsers.map(u => [u.userId, u]));
-    const userMap = new Map(users.map(u => [u.id, u]));
+    const rows: any[] = await this.dataSource.query(`
+      SELECT
+        cs.student_user_id         AS studentId,
+        u.name_with_initials       AS studentName,
+        COALESCE(iu.institute_user_image_url, u.image_url) AS imageUrl,
+        iu.user_id_institue        AS userIdInstitute,
+        iu.institute_card_id       AS cardId,
+        ar.status                  AS statusCode,
+        ar.created_at              AS markedAt,
+        ar.remarks                 AS remarks,
+        ${session.linkedPaymentId ? `
+        CASE
+          WHEN sub.id IS NOT NULL AND sub.status IN ('VERIFIED','HALF_VERIFIED','QUARTER_VERIFIED') THEN 'PAID'
+          WHEN sub.id IS NOT NULL THEN 'PENDING'
+          ELSE 'UNPAID'
+        END AS paymentStatus
+        ` : `NULL AS paymentStatus`}
+      FROM institute_class_students cs
+      JOIN users u         ON u.id = cs.student_user_id
+      JOIN institute_user iu
+                           ON iu.user_id = cs.student_user_id
+                          AND iu.institute_id = cs.institute_id
+      LEFT JOIN attendance_records ar
+                           ON ar.class_session_id = ?
+                          AND ar.student_id = cs.student_user_id
+      ${session.linkedPaymentId ? `
+      LEFT JOIN institute_class_payment_submissions sub
+                           ON sub.payment_id = ?
+                          AND sub.user_id = cs.student_user_id
+      ` : ''}
+      WHERE cs.institute_id = ?
+        AND cs.class_id    = ?
+        AND cs.is_active   = 1
+        AND cs.is_verified = 1
+      ORDER BY u.name_with_initials ASC
+    `, session.linkedPaymentId
+        ? [sessionId, session.linkedPaymentId, instituteId, session.classId]
+        : [sessionId, instituteId, session.classId]);
 
     let presentCount = 0, absentCount = 0, lateCount = 0, notMarkedCount = 0;
 
-    const studentRows: SessionStudentRecord[] = students.map(s => {
-      const rec  = sessionRecordMap.get(s.studentUserId);
-      const iu   = iuMap.get(s.studentUserId);
-      const user = userMap.get(s.studentUserId);
-
-      const statusCode: number | null = rec ? Number(rec.status) : null;
+    const studentRows: SessionStudentRecord[] = rows.map(r => {
+      const statusCode: number | null = r.statusCode !== null && r.statusCode !== undefined ? Number(r.statusCode) : null;
       const label = statusCode !== null ? (STATUS_LABEL[statusCode] ?? 'Unknown') : 'NotMarked';
 
       if (statusCode === 1) presentCount++;
@@ -337,27 +349,21 @@ export class ClassAttendanceSessionService {
       else notMarkedCount++;
 
       return {
-        studentId: s.studentUserId,
-        studentName: user?.nameWithInitials ?? 'Unknown',
-        imageUrl: iu?.instituteUserImageUrl ?? user?.imageUrl ?? null,
-        userIdInstitute: iu?.userIdByInstitute ?? null,
-        cardId: iu?.instituteCardId ?? null,
+        studentId: r.studentId,
+        studentName: r.studentName ?? 'Unknown',
+        imageUrl: r.imageUrl ?? null,
+        userIdInstitute: r.userIdInstitute ?? null,
+        cardId: r.cardId ?? null,
         statusCode,
         statusLabel: label,
-        markedAt: rec ? toSLTimeString(rec.createdAt) : null,
-        remarks: rec?.remarks ?? null,
+        markedAt: r.markedAt ? toSLTimeString(r.markedAt) : null,
+        remarks: r.remarks ?? null,
         isFromOtherSource: false,
+        paymentStatus: r.paymentStatus ?? null,
       };
     });
 
-    return {
-      ...mapSession(session),
-      students: studentRows,
-      presentCount,
-      absentCount,
-      lateCount,
-      notMarkedCount,
-    };
+    return { ...mapSession(session), students: studentRows, presentCount, absentCount, lateCount, notMarkedCount };
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -372,6 +378,17 @@ export class ClassAttendanceSessionService {
   ): Promise<{ success: boolean; record: any }> {
     const session = await this.getSessionById(sessionId, instituteId);
     if (session.isClosed) throw new ForbiddenException('Session is closed');
+
+    // Payment enforcement
+    if (session.linkedPaymentId && session.paymentMode === 'REQUIRED') {
+      const [subRow]: any[] = await this.dataSource.query(
+        `SELECT id, status FROM institute_class_payment_submissions WHERE payment_id = ? AND user_id = ? LIMIT 1`,
+        [session.linkedPaymentId, dto.studentId],
+      );
+      if (!subRow || !['VERIFIED', 'HALF_VERIFIED', 'QUARTER_VERIFIED'].includes(subRow.status)) {
+        throw new ForbiddenException('Student has not completed payment for this session');
+      }
+    }
 
     const today = getCurrentSriLankaDate();
     // Normalize session.date to YYYY-MM-DD string
@@ -455,10 +472,29 @@ export class ClassAttendanceSessionService {
     const session = await this.getSessionById(sessionId, instituteId);
     if (session.isClosed) throw new ForbiddenException('Session is closed');
 
+    // Pre-fetch payment statuses for REQUIRED mode (one query for all students)
+    let approvedStudentIds: Set<string> | null = null;
+    if (session.linkedPaymentId && session.paymentMode === 'REQUIRED') {
+      const studentIds = dto.records.map(r => r.studentId);
+      if (studentIds.length > 0) {
+        const payRows: any[] = await this.dataSource.query(
+          `SELECT user_id FROM institute_class_payment_submissions WHERE payment_id = ? AND user_id IN (${studentIds.map(() => '?').join(',')}) AND status IN ('VERIFIED','HALF_VERIFIED','QUARTER_VERIFIED')`,
+          [session.linkedPaymentId, ...studentIds],
+        );
+        approvedStudentIds = new Set(payRows.map(r => String(r.user_id)));
+      } else {
+        approvedStudentIds = new Set();
+      }
+    }
+
     let marked = 0, updated = 0;
     const errors: string[] = [];
 
     for (const item of dto.records) {
+      if (approvedStudentIds !== null && !approvedStudentIds.has(item.studentId)) {
+        errors.push(`${item.studentId}: Student has not completed payment for this session`);
+        continue;
+      }
       try {
         const res = await this.markAttendanceInSession(sessionId, instituteId, item, userId);
         if (res.record.id) marked++;

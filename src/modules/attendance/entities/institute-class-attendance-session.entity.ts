@@ -6,6 +6,11 @@ export enum CloseUnmarkAction {
   MARK_ABSENT     = 'MARK_ABSENT',
 }
 
+export enum PaymentMode {
+  OPTIONAL = 'OPTIONAL',
+  REQUIRED = 'REQUIRED',
+}
+
 @Entity('institute_class_attendance_sessions')
 @Index('idx_icas_class_date', ['instituteId', 'classId', 'date'])
 @Index('idx_icas_group', ['sessionGroupId'])
@@ -59,6 +64,12 @@ export class InstituteClassAttendanceSessionEntity {
   @Column({ name: 'send_notifications', type: 'boolean', default: true,
     comment: 'Whether to send parent notifications when marking attendance in this session' })
   sendNotifications: boolean;
+
+  @Column({ name: 'linked_payment_id', type: 'bigint', nullable: true })
+  linkedPaymentId?: string;
+
+  @Column({ name: 'payment_mode', type: 'enum', enum: ['OPTIONAL', 'REQUIRED'], nullable: true })
+  paymentMode?: 'OPTIONAL' | 'REQUIRED';
 
   @Column({ name: 'created_by', type: 'bigint', nullable: true })
   createdBy?: string;

@@ -99,6 +99,16 @@ export class CreateSessionDto {
   @IsOptional()
   @Transform(({ value }) => value === 'false' ? false : value === 'true' ? true : value)
   sendNotifications?: boolean;
+
+  @ApiPropertyOptional({ description: 'Linked class payment ID (optional)' })
+  @IsString()
+  @IsOptional()
+  linkedPaymentId?: string;
+
+  @ApiPropertyOptional({ enum: ['OPTIONAL', 'REQUIRED'], description: 'Payment enforcement mode. Required if linkedPaymentId is set.' })
+  @IsOptional()
+  @IsEnum(['OPTIONAL', 'REQUIRED'])
+  paymentMode?: 'OPTIONAL' | 'REQUIRED';
 }
 
 export class UpdateSessionDto {
@@ -133,6 +143,22 @@ export class UpdateSessionDto {
   @IsString()
   @IsOptional()
   sessionGroupId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Linked class payment ID (optional). Set to null to remove.' })
+  @IsString()
+  @IsOptional()
+  linkedPaymentId?: string;
+
+  @ApiPropertyOptional({ enum: ['OPTIONAL', 'REQUIRED'], description: 'Payment enforcement mode.' })
+  @IsOptional()
+  @IsEnum(['OPTIONAL', 'REQUIRED'])
+  paymentMode?: 'OPTIONAL' | 'REQUIRED';
+
+  @ApiPropertyOptional({ description: 'Send parent notifications when attendance is marked in this session' })
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === 'false' ? false : value === 'true' ? true : value)
+  sendNotifications?: boolean;
 }
 
 export class CloseSessionDto {
@@ -252,6 +278,8 @@ export interface SessionResponse {
   sessionGroupId?: string;
   group?: SessionGroupResponse;
   sendNotifications: boolean;
+  linkedPaymentId?: string;
+  paymentMode?: 'OPTIONAL' | 'REQUIRED';
   createdAt: Date;
 }
 
@@ -266,6 +294,7 @@ export interface SessionStudentRecord {
   markedAt: string | null;
   remarks: string | null;
   isFromOtherSource: boolean;
+  paymentStatus?: 'PAID' | 'PENDING' | 'UNPAID' | null;
 }
 
 export interface SessionDetailResponse extends SessionResponse {
