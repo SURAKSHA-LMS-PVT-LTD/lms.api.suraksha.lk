@@ -547,6 +547,7 @@ export class FinanceService {
       WHERE iu.institute_id = ?
         AND iu.institute_user_type = 'TEACHER'
         AND iu.status = 'ACTIVE'
+        AND u.is_active = 1
       ORDER BY teacherName ASC
     `, [instituteId]);
     return { data: rows, total: rows.length };
