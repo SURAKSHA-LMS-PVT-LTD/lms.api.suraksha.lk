@@ -29,7 +29,7 @@ export class InstituteHouseMemberEntity {
   @Column({ name: 'house_id', type: 'bigint' })
   houseId: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @Column({ name: 'user_id', type: 'bigint' })

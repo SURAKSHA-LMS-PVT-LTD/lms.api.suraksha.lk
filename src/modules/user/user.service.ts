@@ -283,6 +283,11 @@ export class UsersService {
           throw new ConflictException('This RFID card is already registered. Please use a different RFID card.');
         }
         
+        // PK collision from random ID generation — retry once with a new ID
+        if (error.message.includes('PRIMARY')) {
+          return this.create(createUserDto, transactionQueryRunner);
+        }
+
         // Generic duplicate error
         throw new ConflictException('A record with this information already exists. Please check all fields and try again.');
       }

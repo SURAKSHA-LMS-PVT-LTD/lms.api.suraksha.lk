@@ -22,21 +22,21 @@ import { InstituteEntity } from '../../../institute/entities/institute.entity';
 @Index('idx_class_subjects_enrollment_key', ['enrollmentKey'])
 export class InstituteClassSubjectEntity {
 
-  @PrimaryColumn({ name: 'institute_id', type: 'bigint' })
+  @PrimaryColumn({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'institute_id' }])
   institute: InstituteEntity;
 
-  @PrimaryColumn({ name: 'class_id', type: 'bigint' })
+  @PrimaryColumn({ name: 'class_id', type: 'varchar', length: 36 })
   classId: string;
 
   @ManyToOne(() => InstituteClassEntity, { onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'class_id' }])
   class: InstituteClassEntity;
 
-  @PrimaryColumn({ name: 'subject_id', type: 'bigint' })
+  @PrimaryColumn({ name: 'subject_id', type: 'varchar', length: 36 })
   subjectId: string;
 
   @ManyToOne(() => SubjectEntity, { onDelete: 'CASCADE' })

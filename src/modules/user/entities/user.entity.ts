@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryColumn, Column, Index, AfterLoad, BeforeInsert } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { UserType } from '../enums/user-type.enum';
 import { Gender } from '../enums/gender.enum';
@@ -32,8 +32,22 @@ import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 // Active status: user.service.ts line 670, 1099
 @Index('idx_users_is_active', ['isActive'])
 export class UserEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryColumn({ type: 'bigint', unsigned: true })
   id: string;
+
+  // Assigns a random 9-digit numeric ID before insert so IDs are non-sequential
+  // while staying human-readable on receipts and SMS (e.g. 251041432).
+  // The DB column no longer uses AUTO_INCREMENT after migration 1790000000003.
+  @BeforeInsert()
+  assignRandomId() {
+    if (!this.id) {
+      // 100_000_000 – 999_999_999  (9 digits, never starts with 0)
+      const min = 100_000_000n;
+      const range = 900_000_000n;
+      const rand = BigInt(Math.floor(Math.random() * Number(range)));
+      this.id = String(min + rand);
+    }
+  }
 
   @Column({ name: 'first_name', type: 'varchar', length: 50, nullable: true })
   firstName: string;

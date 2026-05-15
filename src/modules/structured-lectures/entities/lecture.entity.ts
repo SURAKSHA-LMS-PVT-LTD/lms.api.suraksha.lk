@@ -51,7 +51,7 @@ export class LectureEntity {
   id: string;
 
   // Institute relationship - lectures belong to an institute
-  @Column({ name: 'institute_id', type: 'bigint', nullable: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36, nullable: true })
   instituteId: string;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })
@@ -59,7 +59,7 @@ export class LectureEntity {
   institute: InstituteEntity;
 
   // Class relationship - lectures belong to a class within an institute
-  @Column({ name: 'class_id', type: 'bigint', nullable: true })
+  @Column({ name: 'class_id', type: 'varchar', length: 36, nullable: true })
   classId: string;
 
   @ManyToOne(() => InstituteClassEntity, { onDelete: 'CASCADE' })

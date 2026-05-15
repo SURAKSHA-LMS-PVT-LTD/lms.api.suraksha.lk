@@ -19,10 +19,10 @@ export class InstituteClassPayment {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
-  @Column({ name: 'class_id', type: 'bigint' })
+  @Column({ name: 'class_id', type: 'varchar', length: 36 })
   classId: string;
 
   @Column({ name: 'created_by', type: 'bigint', nullable: true })

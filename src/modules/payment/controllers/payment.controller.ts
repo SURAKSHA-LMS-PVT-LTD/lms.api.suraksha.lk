@@ -1,4 +1,5 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Post, Get, Patch, Param, Body, Query, UseGuards, Request, ParseIntPipe, DefaultValuePipe, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -123,3 +124,4 @@ export class PaymentController {
     return this.paymentService.resetMonthlyPayments();
   }
 }
+

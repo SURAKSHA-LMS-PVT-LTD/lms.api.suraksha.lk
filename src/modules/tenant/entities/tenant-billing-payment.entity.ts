@@ -51,7 +51,7 @@ export class TenantServicePaymentEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   /** YYYY-MM — the month this payment relates to (for monthly invoices) or the month of top-up */

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Institute Admin User Controller
  *
  * Provides endpoints for **institute admins** to create and manage users
@@ -30,6 +30,7 @@ import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard'
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { NoDataMasking } from '../../../common/decorators/no-data-masking.decorator';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { InstituteAdminUserService } from '../services/institute-admin-user.service';
 import {
   CreateInstituteUserDto,
@@ -141,7 +142,7 @@ their password and complete their profile.
     description: 'Institute not found',
   })
   async createInstituteUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() dto: CreateInstituteUserDto,
     @Request() req: any,
   ): Promise<CreateInstituteUserResponseDto> {
@@ -149,3 +150,4 @@ their password and complete their profile.
     return this.instituteAdminUserService.createInstituteUser(instituteId, adminUserId, dto);
   }
 }
+

@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpStatus, HttpCode, ValidationPipe, UsePipes, Request, UseInterceptors } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -180,7 +180,7 @@ export class InstituteClassSubjectExamsController {
   @ApiQuery({ name: 'createdBy', required: false, description: 'Filter by creator ID', example: '40' })
   @HttpCode(HttpStatus.OK)
   async findByInstitute(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() query: QueryInstituteClassSubjectExamDto,
     @Request() req: any
   ): Promise<PaginatedInstituteClassSubjectExamResponseDto> {
@@ -228,7 +228,7 @@ export class InstituteClassSubjectExamsController {
   @ApiQuery({ name: 'createdBy', required: false, description: 'Filter by creator ID', example: '40' })
   @HttpCode(HttpStatus.OK)
   async findByClass(
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query() query: QueryInstituteClassSubjectExamDto,
     @Request() req: any
   ): Promise<PaginatedInstituteClassSubjectExamResponseDto> {
@@ -276,7 +276,7 @@ export class InstituteClassSubjectExamsController {
   @ApiQuery({ name: 'createdBy', required: false, description: 'Filter by creator ID', example: '40' })
   @HttpCode(HttpStatus.OK)
   async findBySubject(
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query() query: QueryInstituteClassSubjectExamDto,
     @Request() req: any
   ): Promise<PaginatedInstituteClassSubjectExamResponseDto> {
@@ -303,7 +303,7 @@ export class InstituteClassSubjectExamsController {
   })
   @ApiParam({ name: 'id', description: 'Exam ID' })
   @HttpCode(HttpStatus.OK)
-  async findOne(@Param('id', ParseBigIntPipe) id: string, @Request() req: any): Promise<InstituteClassSubjectExamResponseDto> {
+  async findOne(@Param('id', ParseIdPipe) id: string, @Request() req: any): Promise<InstituteClassSubjectExamResponseDto> {
     return this.instituteClassSubjectExamsService.findOne(id, req.user);
   }
 
@@ -331,7 +331,7 @@ export class InstituteClassSubjectExamsController {
   @ApiBody({ type: UpdateInstituteClassSubjectExamDto })
   @HttpCode(HttpStatus.OK)
   async update(
-    @Param('id', ParseBigIntPipe) id: string, 
+    @Param('id', ParseIdPipe) id: string, 
     @Body() updateInstituteClassSubjectExamDto: UpdateInstituteClassSubjectExamDto,
     @Request() req: any
   ): Promise<InstituteClassSubjectExamResponseDto> {
@@ -374,7 +374,7 @@ export class InstituteClassSubjectExamsController {
   })
   @HttpCode(HttpStatus.OK)
   async updateStatus(
-    @Param('id', ParseBigIntPipe) id: string, 
+    @Param('id', ParseIdPipe) id: string, 
     @Body('status') status: 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled',
     @Request() req: any
   ): Promise<InstituteClassSubjectExamResponseDto> {
@@ -398,7 +398,7 @@ export class InstituteClassSubjectExamsController {
   })
   @ApiParam({ name: 'id', description: 'Exam ID' })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<void> {
     return this.instituteClassSubjectExamsService.remove(id);
   }
 
@@ -421,9 +421,10 @@ export class InstituteClassSubjectExamsController {
   @ApiParam({ name: 'id', description: 'Exam ID' })
   @HttpCode(HttpStatus.OK)
   async softDelete(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<InstituteClassSubjectExamResponseDto> {
     return this.instituteClassSubjectExamsService.softDelete(id, req.user);
   }
 }
+

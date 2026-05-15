@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -116,7 +116,7 @@ export class InstituteClassSubjectLecturesController {
   @ApiParam({ name: 'id', description: 'Lecture ID' })
   @ApiResponse({ status: 200, description: 'Lecture retrieved successfully', type: InstituteClassSubjectLecture })
   @ApiResponse({ status: 404, description: 'Lecture not found' })
-  async findOne(@Param('id', ParseBigIntPipe) id: string, @Request() req: any): Promise<InstituteClassSubjectLecture> {
+  async findOne(@Param('id', ParseIdPipe) id: string, @Request() req: any): Promise<InstituteClassSubjectLecture> {
     return await this.lecturesService.findOne(id, req.user);
   }
 
@@ -133,7 +133,7 @@ export class InstituteClassSubjectLecturesController {
   @ApiResponse({ status: 404, description: 'Lecture not found' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async update(
-    @Param('id', ParseBigIntPipe) id: string, 
+    @Param('id', ParseIdPipe) id: string, 
     @Body() updateDto: UpdateInstituteClassSubjectLectureDto,
     @Request() req: any
   ): Promise<InstituteClassSubjectLecture> {
@@ -150,7 +150,7 @@ export class InstituteClassSubjectLecturesController {
   @ApiParam({ name: 'id', description: 'Lecture ID' })
   @ApiResponse({ status: 204, description: 'Lecture deleted successfully' })
   @ApiResponse({ status: 404, description: 'Lecture not found' })
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<void> {
     await this.lecturesService.remove(id);
   }
 
@@ -182,7 +182,7 @@ export class InstituteClassSubjectLecturesController {
   @ApiResponse({ status: 404, description: 'Lecture not found' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only institute admins and super admins can permanently delete lectures' })
   async removePermanent(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<any> {
     return await this.lecturesService.removePermanent(id, req.user);
@@ -211,3 +211,4 @@ export class InstituteClassSubjectLecturesController {
     return await this.lecturesService.createBulk(createDtos);
   }
 }
+

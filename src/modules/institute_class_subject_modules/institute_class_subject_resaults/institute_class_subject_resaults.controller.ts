@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, BadRequestException, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -49,7 +49,7 @@ export class InstituteClassSubjectResaultsController {
   @ApiParam({ name: 'id', description: 'Result ID' })
   @ApiResponse({ status: 200, description: 'Result details with full related entities' })
   @ApiResponse({ status: 404, description: 'Result not found' })
-  async findOneWithDetails(@Param('id', ParseBigIntPipe) id: string): Promise<any> {
+  async findOneWithDetails(@Param('id', ParseIdPipe) id: string): Promise<any> {
     return await this.resultsService.findOneWithDetails(id);
   }
 
@@ -99,7 +99,7 @@ export class InstituteClassSubjectResaultsController {
   @ApiParam({ name: 'id', description: 'Result ID' })
   @ApiResponse({ status: 200, description: 'Result details', type: InstituteClassSubjectResaultResponseDto })
   @ApiResponse({ status: 404, description: 'Result not found' })
-  async findOne(@Param('id', ParseBigIntPipe) id: string): Promise<InstituteClassSubjectResaultResponseDto> {
+  async findOne(@Param('id', ParseIdPipe) id: string): Promise<InstituteClassSubjectResaultResponseDto> {
     return await this.resultsService.findOne(id);
   }
 
@@ -111,7 +111,7 @@ export class InstituteClassSubjectResaultsController {
   @ApiResponse({ status: 200, description: 'Result updated successfully', type: InstituteClassSubjectResaultResponseDto })
   @ApiResponse({ status: 404, description: 'Result not found' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async update(@Param('id', ParseBigIntPipe) id: string, @Body() updateDto: UpdateInstituteClassSubjectResaultDto): Promise<InstituteClassSubjectResaultResponseDto> {
+  async update(@Param('id', ParseIdPipe) id: string, @Body() updateDto: UpdateInstituteClassSubjectResaultDto): Promise<InstituteClassSubjectResaultResponseDto> {
     return await this.resultsService.update(id, updateDto);
   }
 
@@ -123,7 +123,7 @@ export class InstituteClassSubjectResaultsController {
   @ApiParam({ name: 'id', description: 'Result ID' })
   @ApiResponse({ status: 204, description: 'Result deleted successfully' })
   @ApiResponse({ status: 404, description: 'Result not found' })
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<void> {
     await this.resultsService.remove(id);
   }
 
@@ -137,3 +137,4 @@ export class InstituteClassSubjectResaultsController {
     return await this.resultsService.createBulk(createBulkDto);
   }
 }
+

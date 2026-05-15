@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Post,
   Get,
@@ -25,7 +25,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { NoDataMasking } from '../../../common/decorators/no-data-masking.decorator';
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { InstituteHouseService } from './institute_house.service';
 import {
   CreateInstituteHouseDto,
@@ -59,7 +59,7 @@ export class InstituteHouseController {
   @ApiResponse({ status: 201, type: InstituteHouseResponseDto })
   @ApiResponse({ status: 409, description: 'House name already exists' })
   async createHouse(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() dto: CreateInstituteHouseDto,
     @Request() req: any,
   ): Promise<InstituteHouseResponseDto> {
@@ -74,7 +74,7 @@ export class InstituteHouseController {
   @ApiOperation({ summary: 'List all active houses of an institute' })
   @ApiResponse({ status: 200, type: [InstituteHouseResponseDto] })
   async getHouses(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Request() req: any,
   ): Promise<InstituteHouseResponseDto[]> {
     const userId = req.user.s ?? req.user.userId ?? req.user.sub;
@@ -89,8 +89,8 @@ export class InstituteHouseController {
   @ApiOperation({ summary: 'Get house details with member count (admin only)' })
   @ApiResponse({ status: 200, type: InstituteHouseResponseDto })
   async getHouse(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Request() req: any,
   ): Promise<InstituteHouseResponseDto> {
     const adminId = req.user.s ?? req.user.userId ?? req.user.sub;
@@ -106,8 +106,8 @@ export class InstituteHouseController {
   @ApiBody({ type: UpdateInstituteHouseDto })
   @ApiResponse({ status: 200, type: InstituteHouseResponseDto })
   async updateHouse(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Body() dto: UpdateInstituteHouseDto,
     @Request() req: any,
   ): Promise<InstituteHouseResponseDto> {
@@ -129,8 +129,8 @@ export class InstituteHouseController {
   @ApiBody({ type: UpdateInstituteHouseImageDto })
   @ApiResponse({ status: 200, type: InstituteHouseResponseDto })
   async updateHouseImage(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Body() dto: UpdateInstituteHouseImageDto,
     @Request() req: any,
   ): Promise<InstituteHouseResponseDto> {
@@ -146,8 +146,8 @@ export class InstituteHouseController {
   @ApiOperation({ summary: 'Soft-delete a house (admin only)' })
   @ApiResponse({ status: 200, type: HouseActionResponseDto })
   async deleteHouse(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Request() req: any,
   ): Promise<HouseActionResponseDto> {
     const adminId = req.user.s ?? req.user.userId ?? req.user.sub;
@@ -165,8 +165,8 @@ export class InstituteHouseController {
   @ApiBody({ type: AssignUserToHouseDto })
   @ApiResponse({ status: 201, type: HouseActionResponseDto })
   async assignUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Body() dto: AssignUserToHouseDto,
     @Request() req: any,
   ): Promise<HouseActionResponseDto> {
@@ -183,8 +183,8 @@ export class InstituteHouseController {
   @ApiBody({ type: BulkAssignUsersToHouseDto })
   @ApiResponse({ status: 200, description: 'Partial success possible — check results array' })
   async bulkAssignUsers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Body() dto: BulkAssignUsersToHouseDto,
     @Request() req: any,
   ) {
@@ -200,8 +200,8 @@ export class InstituteHouseController {
   @ApiOperation({ summary: 'Self-enroll into a house (active institute member)' })
   @ApiResponse({ status: 200, type: HouseActionResponseDto })
   async selfEnroll(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Request() req: any,
   ): Promise<HouseActionResponseDto> {
     const userId = req.user.s ?? req.user.userId ?? req.user.sub;
@@ -216,8 +216,8 @@ export class InstituteHouseController {
   @ApiOperation({ summary: 'Get house members with user details (admin only)' })
   @ApiResponse({ status: 200, type: PaginatedHouseMembersDto })
   async getHouseMembers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
     @Query() query: HouseMemberQueryDto,
     @Request() req: any,
   ): Promise<PaginatedHouseMembersDto> {
@@ -234,12 +234,13 @@ export class InstituteHouseController {
   @ApiOperation({ summary: 'Remove a user from a house (admin only)' })
   @ApiResponse({ status: 200, type: HouseActionResponseDto })
   async removeUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('houseId', ParseBigIntPipe) houseId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('houseId', ParseIdPipe) houseId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Request() req: any,
   ): Promise<HouseActionResponseDto> {
     const adminId = req.user.s ?? req.user.userId ?? req.user.sub;
     return this.houseService.removeUserFromHouse(instituteId, houseId, adminId, userId);
   }
 }
+

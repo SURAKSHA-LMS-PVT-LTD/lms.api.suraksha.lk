@@ -29,7 +29,7 @@ export class InstituteCalendarDayEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   @Index()
   instituteId: string;
 

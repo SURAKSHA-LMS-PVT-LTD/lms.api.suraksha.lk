@@ -21,14 +21,14 @@ import { StudentEntity } from '../../../student/entities/student.entity';
 // Verification status
 @Index('idx_class_students_verified', ['classId', 'isVerified', 'isActive'])
 export class InstituteClassStudentEntity {
-  @PrimaryColumn({ name: 'institute_id', type: 'bigint' })
+  @PrimaryColumn({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'institute_id' }])
   institute?: InstituteEntity;
 
-  @PrimaryColumn({ name: 'institute_class_id', type: 'bigint' })
+  @PrimaryColumn({ name: 'institute_class_id', type: 'varchar', length: 36 })
   classId: string;
 
   @ManyToOne(() => InstituteClassEntity, { onDelete: 'CASCADE' })

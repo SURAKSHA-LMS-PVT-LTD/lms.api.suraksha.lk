@@ -17,7 +17,7 @@ import { Country } from '../../user/enums/country.enum';
 // Custom domain lookup (tenant resolution)
 @Index('idx_institutes_custom_domain', ['customDomain'], { unique: true })
 export class InstituteEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ type: 'varchar', length: 100 })

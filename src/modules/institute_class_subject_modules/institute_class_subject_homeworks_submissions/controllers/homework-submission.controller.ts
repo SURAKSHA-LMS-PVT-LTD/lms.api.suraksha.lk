@@ -1,4 +1,4 @@
-﻿import { ParseBigIntPipe } from '../../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../../common/pipes/parse-id.pipe';
 import { Controller, Post, BadRequestException, Param, UseGuards, Request, HttpStatus, HttpCode, Body, UseFilters, Get, Patch, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiConsumes, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../auth/guards/jwt-auth.guard';
@@ -74,7 +74,7 @@ export class HomeworkSubmissionController {
   @ApiParam({ name: 'homeworkId', description: 'Homework ID' })
   @HttpCode(HttpStatus.OK)
   async submitHomework(
-    @Param('homeworkId', ParseBigIntPipe) homeworkId: string,
+    @Param('homeworkId', ParseIdPipe) homeworkId: string,
     @Body() body: SubmitHomeworkDto,
     @Request() req: JwtRequest
   ) {
@@ -201,9 +201,9 @@ export class HomeworkSubmissionController {
     description: 'Access denied - insufficient permissions' 
   })
   async getSubmissionsForSubject(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query() queryDto: QueryInstituteClassSubjectHomeworksSubmissionDto,
     @Request() req: JwtRequest
   ) {
@@ -262,7 +262,7 @@ export class HomeworkSubmissionController {
     description: 'Access denied - insufficient permissions' 
   })
   async reviewSubmission(
-    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Param('submissionId', ParseIdPipe) submissionId: string,
     @Body() reviewData: { remarks?: string; requestResubmission?: boolean; grade?: string },
     @Request() req: JwtRequest
   ) {
@@ -328,7 +328,7 @@ export class HomeworkSubmissionController {
     description: 'Invalid file URL or submission not found' 
   })
   async uploadCorrectionFile(
-    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Param('submissionId', ParseIdPipe) submissionId: string,
     @Body() body: UploadCorrectionFileDto,
     @Request() req: JwtRequest
   ) {
@@ -436,7 +436,7 @@ export class HomeworkSubmissionController {
   })
   @HttpCode(HttpStatus.OK)
   async uploadCorrectionFileFromDrive(
-    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Param('submissionId', ParseIdPipe) submissionId: string,
     @Body() body: { 
       driveFileId: string; 
       accessToken: string; 
@@ -528,7 +528,7 @@ export class HomeworkSubmissionController {
     }
   })
   async getSubmissionDetails(
-    @Param('submissionId', ParseBigIntPipe) submissionId: string,
+    @Param('submissionId', ParseIdPipe) submissionId: string,
     @Request() req: JwtRequest
   ) {
     const user = req.user;
@@ -578,7 +578,7 @@ export class HomeworkSubmissionController {
     }
   })
   async getMySubmissions(
-    @Param('homeworkId', ParseBigIntPipe) homeworkId: string,
+    @Param('homeworkId', ParseIdPipe) homeworkId: string,
     @Query() queryDto: QueryInstituteClassSubjectHomeworksSubmissionDto,
     @Request() req: JwtRequest
   ) {
@@ -636,7 +636,7 @@ export class HomeworkSubmissionController {
     }
   })
   async getStudentSubmissions(
-    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Param('studentId', ParseIdPipe) studentId: string,
     @Query() queryDto: QueryInstituteClassSubjectHomeworksSubmissionDto,
     @Request() req: JwtRequest
   ) {
@@ -713,4 +713,5 @@ export class HomeworkSubmissionController {
     return false;
   }
 }
+
 

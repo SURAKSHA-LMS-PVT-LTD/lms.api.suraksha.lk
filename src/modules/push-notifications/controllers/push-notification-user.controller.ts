@@ -1,4 +1,4 @@
-import { 
+﻿import { 
   Controller, 
   Get, 
   Post,
@@ -25,7 +25,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { SkipThrottle } from '../../../common/decorators/throttle.decorator';
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { UserType } from '../../user/enums/user-type.enum';
 import { PushNotificationService } from '../services/push-notification.service';
 import { QueryUserNotificationsDto } from '../dto/query-push-notification.dto';
@@ -114,7 +114,7 @@ export class PushNotificationUserController {
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiResponse({ status: 200, description: 'Notifications retrieved successfully', type: PaginatedUserNotificationResponseDto })
   async getInstituteNotifications(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() queryDto: QueryUserNotificationsDto,
     @Req() request: Request
   ): Promise<PaginatedUserNotificationResponseDto> {
@@ -156,7 +156,7 @@ export class PushNotificationUserController {
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiResponse({ status: 200, description: 'Unread count retrieved successfully', type: UnreadCountResponseDto })
   async getInstituteUnreadCount(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Req() request: Request
   ): Promise<UnreadCountResponseDto> {
     const user = request.user as any;
@@ -196,7 +196,7 @@ export class PushNotificationUserController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 200, description: 'Notification marked as read' })
   async markAsRead(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Req() request: Request
   ): Promise<{ message: string }> {
     const user = request.user as any;
@@ -242,7 +242,7 @@ export class PushNotificationUserController {
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiResponse({ status: 200, description: 'All notifications marked as read' })
   async markAllInstituteAsRead(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Req() request: Request
   ): Promise<{ message: string }> {
     const user = request.user as any;
@@ -264,7 +264,7 @@ export class PushNotificationUserController {
   @ApiResponse({ status: 200, description: 'Notification retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Notification not found' })
   async getNotification(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Req() request: Request
   ): Promise<UserNotificationResponseDto> {
     const user = request.user as any;
@@ -278,3 +278,4 @@ export class PushNotificationUserController {
     return notification as any; // Type cast for response
   }
 }
+

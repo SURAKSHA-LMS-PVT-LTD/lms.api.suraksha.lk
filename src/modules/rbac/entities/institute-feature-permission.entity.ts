@@ -11,7 +11,7 @@ export class InstituteFeaturePermissionEntity {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @Column({ name: 'user_type_id', type: 'bigint' })

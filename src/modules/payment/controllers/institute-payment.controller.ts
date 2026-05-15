@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -22,6 +22,7 @@ import { UserType } from '../../user/enums/user-type.enum';
 import { InstitutePaymentService } from '../services/institute-payment.service';
 import { InputValidationService } from '../../../common/services/input-validation.service';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 import {
   CreateInstitutePaymentDto,
@@ -63,7 +64,7 @@ export class InstitutePaymentController {
     transformOptions: { enableImplicitConversion: true }
   }))
   async createPayment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() createDto: CreateInstitutePaymentDto,
     @Request() req: JwtRequest,
   ) {
@@ -99,7 +100,7 @@ export class InstitutePaymentController {
     transformOptions: { enableImplicitConversion: true }
   }))
   async getPayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() queryDto: GetInstitutePaymentsQueryDto,
     @Request() req: JwtRequest,
   ) {
@@ -227,7 +228,7 @@ export class InstitutePaymentController {
   @ApiResponse({ status: 404, description: 'Student not found in this institute' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   async searchStudentInInstitute(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query('studentId') studentId: string,
     @Query('paymentId') paymentId: string,
     @Request() req: JwtRequest,
@@ -265,7 +266,7 @@ export class InstitutePaymentController {
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async adminVerifyStudentPayment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Param('studentId', ParseBigIntPipe) studentId: string,
     @Body() dto: AdminVerifyStudentPaymentDto,
@@ -296,10 +297,11 @@ export class InstitutePaymentController {
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async deletePayment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Request() req: JwtRequest,
   ) {
     return this.institutePaymentService.softDeletePayment(instituteId, paymentId, req.user);
   }
 }
+

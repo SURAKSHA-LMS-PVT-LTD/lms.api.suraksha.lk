@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
@@ -42,8 +42,8 @@ export class InstituteClassSubjectController {
 
 
   async create(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() createDto: CreateInstituteClassSubjectDto,
   ): Promise<InstituteClassSubjectSuccessResponseDto> {
     createDto.instituteId = instituteId;
@@ -65,8 +65,8 @@ export class InstituteClassSubjectController {
 
 
   async bulkCreate(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() bulkCreateDto: BulkCreateInstituteClassSubjectDto,
   ): Promise<BulkInstituteClassSubjectResponseDto> {
     bulkCreateDto.instituteId = instituteId;
@@ -88,8 +88,8 @@ export class InstituteClassSubjectController {
 
 
   async findByClass(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query() query: QueryInstituteClassSubjectDto,
   ): Promise<PaginatedInstituteClassSubjectResponseDto> {
     query.instituteId = instituteId;
@@ -113,9 +113,9 @@ export class InstituteClassSubjectController {
 
 
   async findOne(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
   ): Promise<InstituteClassSubjectResponseDto> {
     return this.instituteClassSubjectService.findOne(instituteId, classId, subjectId);
   }
@@ -135,9 +135,9 @@ export class InstituteClassSubjectController {
 
 
   async update(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Body() updateDto: UpdateInstituteClassSubjectDto,
   ): Promise<InstituteClassSubjectResponseDto> {
     return this.instituteClassSubjectService.update(instituteId, classId, subjectId, updateDto);
@@ -159,9 +159,9 @@ export class InstituteClassSubjectController {
 
 
   async remove(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
   ): Promise<void> {
     return this.instituteClassSubjectService.remove(instituteId, classId, subjectId);
   }
@@ -182,9 +182,9 @@ export class InstituteClassSubjectController {
   @ApiResponse({ status: 404, description: 'Subject assignment not found' })
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async assignTeacher(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Body() body: TeacherIdDto
   ) {
     return this.instituteClassSubjectService.assignTeacher(instituteId, classId, subjectId, body.teacherId);
@@ -205,9 +205,9 @@ export class InstituteClassSubjectController {
   @ApiResponse({ status: 404, description: 'Subject assignment not found' })
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async unassignTeacher(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string
   ) {
     return this.instituteClassSubjectService.unassignTeacher(instituteId, classId, subjectId);
   }
@@ -228,9 +228,9 @@ export class InstituteClassSubjectController {
   @ApiResponse({ status: 404, description: 'Subject assignment not found' })
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or assigned teacher required' })
   async updateEnrollmentKey(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Body() body: UpdateEnrollmentKeyDto,
   ) {
     return this.instituteClassSubjectService.updateEnrollmentKey(instituteId, classId, subjectId, body);
@@ -261,9 +261,9 @@ export class InstituteClassSubjectController {
   @ApiResponse({ status: 200, description: 'Enrollment key retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Subject assignment not found' })
   async getEnrollmentKey(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
   ) {
     return this.instituteClassSubjectService.getEnrollmentKey(instituteId, classId, subjectId);
   }
@@ -289,8 +289,8 @@ export class InstituteClassSubjectController {
   @ApiResponse({ status: 404, description: 'Subject not found or enrollment is disabled' })
   @ApiResponse({ status: 409, description: 'Subject already has a teacher assigned' })
   async selfEnrollTeacher(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() body: { subjectId: string; enrollmentKey?: string },
     @Request() req: any,
   ) {
@@ -316,9 +316,9 @@ export class InstituteClassSubjectController {
 
 
   async findByClassAndTeacher(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('teacherId', ParseBigIntPipe) teacherId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('teacherId', ParseIdPipe) teacherId: string,
   ): Promise<InstituteClassSubjectResponseDto[]> {
     return this.instituteClassSubjectService.findByInstituteClassAndTeacher(instituteId, classId, teacherId);
   }
@@ -351,7 +351,7 @@ export class InstituteClassSubjectGlobalController {
   @ApiOperation({ summary: 'Get subjects assigned to a specific teacher' })
   @ApiParam({ name: 'teacherId', description: 'Teacher ID' })
   @ApiResponse({ status: 200, description: 'Teacher subjects retrieved successfully', type: [InstituteClassSubjectResponseDto] })
-  async findByTeacher(@Param('teacherId', ParseBigIntPipe) teacherId: string): Promise<InstituteClassSubjectResponseDto[]> {
+  async findByTeacher(@Param('teacherId', ParseIdPipe) teacherId: string): Promise<InstituteClassSubjectResponseDto[]> {
     return this.instituteClassSubjectService.findByTeacher(teacherId);
   }
 
@@ -363,7 +363,7 @@ export class InstituteClassSubjectGlobalController {
   @ApiResponse({ status: 200, description: 'Institute subjects retrieved successfully', type: [InstituteClassSubjectResponseDto] })
 
 
-  async findByInstitute(@Param('instituteId', ParseBigIntPipe) instituteId: string): Promise<InstituteClassSubjectResponseDto[]> {
+  async findByInstitute(@Param('instituteId', ParseIdPipe) instituteId: string): Promise<InstituteClassSubjectResponseDto[]> {
     return this.instituteClassSubjectService.findByInstitute(instituteId);
   }
 
@@ -380,8 +380,8 @@ export class InstituteClassSubjectGlobalController {
 
 
   async findByInstituteAndTeacher(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('teacherId', ParseBigIntPipe) teacherId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('teacherId', ParseIdPipe) teacherId: string,
   ): Promise<InstituteClassSubjectResponseDto[]> {
     return this.instituteClassSubjectService.findByInstituteAndTeacher(instituteId, teacherId);
   }
@@ -398,3 +398,4 @@ export class InstituteClassSubjectGlobalController {
     return this.instituteClassSubjectService.getStats(instituteId);
   }
 }
+

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Post, Get, Patch,
   Param, Body, Query, Request,
   UseGuards, UsePipes, ValidationPipe,
@@ -7,6 +7,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
@@ -52,8 +53,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiOperation({ summary: 'Submit payment receipt with institute/class context (Student/Parent only)' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async submitPaymentWithContext(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Body() dto: CreateInstituteClassPaymentSubmissionDto,
     @Request() req: JwtRequest,
@@ -141,8 +142,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiQuery({ name: 'status', required: false, type: String, enum: ['PENDING', 'VERIFIED', 'REJECTED'] })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getAllSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: string,
@@ -162,7 +163,7 @@ export class InstituteClassPaymentSubmissionController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getStudentAllClassSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('studentId') studentId: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Request() req?: any,
@@ -182,8 +183,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getStudentClassSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('studentId') studentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -201,8 +202,8 @@ export class InstituteClassPaymentSubmissionController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: { requireClass: true } })
   @ApiOperation({ summary: 'Get submission statistics for a class (Admin/Teacher only)' })
   async getSubmissionStats(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Request() req: JwtRequest,
   ) {
     return this.paymentService.getSubmissionStats(instituteId, classId, req.user);
@@ -221,8 +222,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiQuery({ name: 'status', required: false, type: String })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getClassPaymentSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
@@ -243,8 +244,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getStudentsByInstituteClass(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -265,8 +266,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getStudentsWithPaymentDetails(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
@@ -285,8 +286,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiOperation({ summary: 'Get my submissions for all payments in a class (Student/Parent)' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getMyClassSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Request() req: JwtRequest,
   ) {
     return this.paymentService.getMyClassSubmissions(instituteId, classId, req.user);
@@ -321,8 +322,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiOperation({ summary: 'Verify a class payment submission (Admin/Teacher)' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async verifyClassPaymentSubmission(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('submissionId', ParseBigIntPipe) submissionId: string,
     @Body() dto: VerifyClassPaymentSubmissionDto,
     @Request() req: JwtRequest,
@@ -340,8 +341,8 @@ export class InstituteClassPaymentSubmissionController {
   @ApiOperation({ summary: 'Reject a class payment submission (Admin/Teacher)' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async rejectClassPaymentSubmission(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('submissionId', ParseBigIntPipe) submissionId: string,
     @Body() dto: { rejectionReason: string; notes?: string },
     @Request() req: JwtRequest,
@@ -354,4 +355,5 @@ export class InstituteClassPaymentSubmissionController {
     return this.paymentService.verifySubmission(submissionId, verifyDto, req.user);
   }
 }
+
 

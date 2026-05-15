@@ -12,7 +12,7 @@ export class LoginEventEntity {
   @Column({ name: 'user_id', type: 'bigint' })
   userId: string;
 
-  @Column({ name: 'institute_id', type: 'bigint', nullable: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36, nullable: true })
   instituteId?: string;
 
   @Column({ name: 'login_method', type: 'enum', enum: LoginMethod })

@@ -1,4 +1,5 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Post, Get, Delete, Body, BadRequestException, Param, UseGuards, Request, Req, HttpStatus, HttpCode, UseFilters } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth, ApiConsumes, ApiProperty } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -509,7 +510,7 @@ export class UserProfileImageController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Institute image history retrieved successfully' })
   async getInstituteImageHistory(
     @Param('id', ParseBigIntPipe) userId: string,
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
   ): Promise<any> {
     const { currentInstituteImageUrl, currentInstituteImageStatus, records } =
       await this.userService.getInstituteImageHistory(userId, instituteId);
@@ -543,8 +544,9 @@ export class UserProfileImageController {
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'No pending image found or image already verified/rejected' })
   async deleteInstituteProfileImage(
     @Param('id', ParseBigIntPipe) userId: string,
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
   ): Promise<any> {
     return this.userService.deleteInstituteProfileImage(userId, instituteId);
   }
 }
+

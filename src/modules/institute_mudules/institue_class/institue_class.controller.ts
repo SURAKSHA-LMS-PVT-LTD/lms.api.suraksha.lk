@@ -1,5 +1,5 @@
 ﻿import * as crypto from 'crypto';
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { ImageUrlDto, TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, ClassSerializerInterceptor } from '@nestjs/common';
 import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
@@ -125,7 +125,7 @@ export class InstitueClassController {
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })
-  findByInstitute(@Param('instituteId', ParseBigIntPipe) instituteId: string) {
+  findByInstitute(@Param('instituteId', ParseIdPipe) instituteId: string) {
     return this.institueClassService.findByInstitute(instituteId);
   }
 
@@ -136,7 +136,7 @@ export class InstitueClassController {
   //   instituteIdParam: 'instituteId'
   // })
   findByAcademicYear(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('academicYear') academicYear: string
   ) {
     return this.institueClassService.findByAcademicYear(instituteId, academicYear);
@@ -149,7 +149,7 @@ export class InstitueClassController {
   //   instituteIdParam: 'instituteId'
   // })
   findByGrade(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('grade') grade: number
   ) {
     return this.institueClassService.findByGrade(instituteId, +grade);
@@ -162,7 +162,7 @@ export class InstitueClassController {
   //   instituteIdParam: 'instituteId'
   // })
   findBySpecialty(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('specialty') specialty: string
   ) {
     return this.institueClassService.findBySpecialty(instituteId, specialty);
@@ -171,7 +171,7 @@ export class InstitueClassController {
   @Get('teacher/:teacherId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ teacher: true })
-  findByTeacher(@Param('teacherId', ParseBigIntPipe) teacherId: string) {
+  findByTeacher(@Param('teacherId', ParseIdPipe) teacherId: string) {
     return this.institueClassService.findByTeacher(teacherId);
   }
 
@@ -181,7 +181,7 @@ export class InstitueClassController {
   //   instituteId: true,
   //   instituteIdParam: 'instituteId'
   // })
-  findActive(@Param('instituteId', ParseBigIntPipe) instituteId: string) {
+  findActive(@Param('instituteId', ParseIdPipe) instituteId: string) {
     return this.institueClassService.findActive(instituteId);
   }
 
@@ -288,7 +288,7 @@ export class InstitueClassController {
   @ApiResponse({ status: 404, description: 'Class or teacher not found' })
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async assignTeacher(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() body: TeacherIdDto
   ) {
     return this.institueClassService.assignTeacher(id, body.teacherId);
@@ -308,7 +308,7 @@ export class InstitueClassController {
   @ApiResponse({ status: 404, description: 'Class not found' })
   @ApiResponse({ status: 403, description: 'Access denied - Institute admin or SUPERADMIN access required' })
   async unassignTeacher(
-    @Param('id', ParseBigIntPipe) id: string
+    @Param('id', ParseIdPipe) id: string
   ) {
     return this.institueClassService.unassignTeacher(id);
   }
@@ -807,7 +807,7 @@ export class InstitueClassController {
   // })
   async removeStudentFromClass(
     @Param('id', ClassExistsPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string,
     @Request() req: JwtRequest
   ) {
     try {
@@ -994,8 +994,8 @@ export class InstitueClassController {
     description: 'Access denied - insufficient permissions or institute mismatch'
   })
   async getStudentClasses(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('studentId', ParseIdPipe) studentId: string,
     @Query() queryDto: ClassQueryDto,
     @Request() req: JwtRequest,
     @Headers() headers: any
@@ -1179,8 +1179,8 @@ export class InstitueClassController {
     description: 'Access denied - insufficient permissions or institute mismatch'
   })
   async getTeacherClasses(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('teacherId', ParseBigIntPipe) teacherId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('teacherId', ParseIdPipe) teacherId: string,
     @Query() queryDto: ClassQueryDto,
     @Request() req: JwtRequest,
     @Headers() headers: any

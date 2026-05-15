@@ -1,5 +1,6 @@
 ﻿import * as crypto from 'crypto';
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe';
 import { EmailDto, EmailOtpVerifyDto, PhoneNumberDto, PhoneOtpVerifyDto, RejectReasonDto, FileUploadRequestDto, ImageUrlDto } from '../../common/dto/common-body.dto';
 import {
   Controller,
@@ -2036,7 +2037,7 @@ export class UsersController {
     }
   })
   async getInstituteParents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Request() req: JwtRequest
   ): Promise<any[]> {
     const currentUser = req.user;
@@ -2141,8 +2142,8 @@ export class UsersController {
     }
   })
   async getInstituteClassParents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Request() req: JwtRequest
   ): Promise<any[]> {
     const currentUser = req.user;
@@ -2254,8 +2255,8 @@ export class UsersController {
     }
   })
   async getInstituteClassSubjectParents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Param('subjectId', ParseBigIntPipe) subjectId: string,
     @Request() req: JwtRequest
   ): Promise<any[]> {
@@ -4066,4 +4067,5 @@ export class UsersController {
     }
   }
 }
+
 

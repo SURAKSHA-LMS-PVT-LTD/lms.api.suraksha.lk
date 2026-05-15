@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, Request, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -61,7 +61,7 @@ export class InstituteClassLecturesController {
   @ApiOperation({ summary: 'Get all lectures for a specific class (all members)' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
   async findByClass(
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('instituteId') instituteId?: string
   ): Promise<InstituteClassLectureEntity[]> {
     return await this.lecturesService.findByClass(classId, instituteId);
@@ -75,7 +75,7 @@ export class InstituteClassLecturesController {
   @ApiOperation({ summary: 'Get all class lectures for an institute' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   async findByInstitute(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string
   ): Promise<InstituteClassLectureEntity[]> {
     return await this.lecturesService.findByInstitute(instituteId);
   }
@@ -87,7 +87,7 @@ export class InstituteClassLecturesController {
   })
   @ApiOperation({ summary: 'Get upcoming lectures for a class' })
   async findUpcoming(
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('instituteId') instituteId?: string,
     @Query('limit') limit?: number
   ): Promise<InstituteClassLectureEntity[]> {
@@ -101,7 +101,7 @@ export class InstituteClassLecturesController {
   })
   @ApiOperation({ summary: 'Get ongoing lectures for a class' })
   async findOngoing(
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('instituteId') instituteId?: string
   ): Promise<InstituteClassLectureEntity[]> {
     return await this.lecturesService.findOngoing(classId, instituteId);
@@ -114,7 +114,7 @@ export class InstituteClassLecturesController {
   })
   @ApiOperation({ summary: 'Get completed lectures for a class' })
   async findCompleted(
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('instituteId') instituteId?: string,
     @Query('limit') limit?: number
   ): Promise<InstituteClassLectureEntity[]> {
@@ -144,7 +144,7 @@ export class InstituteClassLecturesController {
   @ApiOperation({ summary: 'Get class lecture by ID' })
   @ApiParam({ name: 'id', description: 'Lecture ID' })
   async findOne(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<InstituteClassLectureEntity> {
     return await this.lecturesService.findOne(id, req.user);
@@ -157,7 +157,7 @@ export class InstituteClassLecturesController {
   })
   @ApiOperation({ summary: 'Get class lecture with full relation details' })
   async findOneWithDetails(
-    @Param('id', ParseBigIntPipe) id: string
+    @Param('id', ParseIdPipe) id: string
   ): Promise<InstituteClassLectureEntity> {
     return await this.lecturesService.findOneWithDetails(id);
   }
@@ -172,7 +172,7 @@ export class InstituteClassLecturesController {
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   @ApiOperation({ summary: 'Update class lecture' })
   async update(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() updateDto: UpdateInstituteClassLectureDto,
     @Request() req: any
   ): Promise<InstituteClassLectureEntity> {
@@ -189,7 +189,7 @@ export class InstituteClassLecturesController {
   @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({ summary: 'Update class lecture status' })
   async updateStatus(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() statusDto: UpdateClassLectureStatusDto,
     @Request() req: any
   ): Promise<any> {
@@ -206,7 +206,7 @@ export class InstituteClassLecturesController {
   @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({ summary: 'Reschedule class lecture' })
   async reschedule(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() rescheduleDto: RescheduleClassLectureDto,
     @Request() req: any
   ): Promise<any> {
@@ -220,7 +220,7 @@ export class InstituteClassLecturesController {
   })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete class lecture (Super Admin Only)' })
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<void> {
     await this.lecturesService.remove(id);
   }
 
@@ -233,7 +233,7 @@ export class InstituteClassLecturesController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Permanently delete class lecture' })
   async removePermanent(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<any> {
     return await this.lecturesService.removePermanent(id, req.user);
@@ -252,3 +252,4 @@ export class InstituteClassLecturesController {
     return await this.lecturesService.createBulk(bulkDto.lectures);
   }
 }
+

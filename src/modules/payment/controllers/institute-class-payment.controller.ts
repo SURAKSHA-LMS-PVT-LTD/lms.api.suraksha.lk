@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Get, Post, Patch, Delete,
   Param, Body, Query, Request,
   UseGuards, UsePipes, ValidationPipe,
@@ -8,6 +8,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam }
 import { Throttle } from '@nestjs/throttler';
 import { SerializeDatesInterceptor } from '../interceptors/serialize-dates.interceptor';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
@@ -35,8 +36,8 @@ export class InstituteClassPaymentController {
   @ApiOperation({ summary: 'Create a new class-level payment request (Admin/Teacher only)' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async createPayment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() dto: CreateInstituteClassPaymentDto,
     @Request() req: JwtRequest,
   ) {
@@ -55,8 +56,8 @@ export class InstituteClassPaymentController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getPayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -76,8 +77,8 @@ export class InstituteClassPaymentController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getMyApplicablePayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -132,3 +133,4 @@ export class InstituteClassPaymentController {
     return this.paymentService.softDeletePayment(paymentId, req.user);
   }
 }
+

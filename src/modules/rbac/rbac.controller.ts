@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Get, Post, Patch, Delete,
   Param, Query, Body, Request,
   UseGuards, ParseIntPipe, DefaultValuePipe,
@@ -8,7 +8,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../user/enums/user-type.enum';
-import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe';
 import { UserTypesService } from './services/user-types.service';
 import { FeaturePermissionsService } from './services/feature-permissions.service';
 import { RbacContextService } from './services/rbac-context.service';
@@ -41,7 +41,7 @@ export class RbacController {
   @ApiOperation({ summary: 'Get RBAC context (user type + permission matrix) for calling user' })
   @ApiResponse({ status: 200, type: MyRbacContextDto })
   async getMyContext(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Request() req: any,
   ): Promise<MyRbacContextDto> {
     const userId = req.user?.userId ?? req.user?.sub ?? req.user?.id;
@@ -58,7 +58,7 @@ export class RbacController {
   @ApiOperation({ summary: 'List all user types for an institute' })
   @ApiResponse({ status: 200, type: [UserTypeResponseDto] })
   async listUserTypes(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
   ): Promise<UserTypeResponseDto[]> {
     return this.userTypesService.list(instituteId);
   }
@@ -69,7 +69,7 @@ export class RbacController {
   @RequireAnyOfRoles({ anyInstituteRole: true })
   @ApiOperation({ summary: 'List user types (alternate path for frontend compatibility)' })
   async listUserTypesAlt(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
   ): Promise<UserTypeResponseDto[]> {
     return this.userTypesService.list(instituteId);
   }
@@ -81,7 +81,7 @@ export class RbacController {
   @ApiOperation({ summary: 'Create a custom user type (alternate path)' })
   @ApiResponse({ status: 201, type: UserTypeResponseDto })
   async createUserTypeAlt(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() dto: CreateUserTypeDto,
   ): Promise<UserTypeResponseDto> {
     return this.userTypesService.create(instituteId, dto);
@@ -93,7 +93,7 @@ export class RbacController {
   @ApiOperation({ summary: 'Get single user type by ID' })
   @ApiResponse({ status: 200, type: UserTypeResponseDto })
   async getUserType(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any,
   ): Promise<UserTypeResponseDto> {
     // We don't have instituteId in this route — derive from the entity itself
@@ -108,7 +108,7 @@ export class RbacController {
   @ApiOperation({ summary: 'Create a custom user type' })
   @ApiResponse({ status: 201, type: UserTypeResponseDto })
   async createUserType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() dto: CreateUserTypeDto,
   ): Promise<UserTypeResponseDto> {
     return this.userTypesService.create(instituteId, dto);
@@ -120,8 +120,8 @@ export class RbacController {
   @ApiOperation({ summary: 'Update a user type' })
   @ApiResponse({ status: 200, type: UserTypeResponseDto })
   async updateUserType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('typeId', ParseBigIntPipe) typeId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
     @Body() dto: UpdateUserTypeDto,
   ): Promise<UserTypeResponseDto> {
     return this.userTypesService.update(instituteId, typeId, dto);
@@ -133,7 +133,7 @@ export class RbacController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Update user type (alternate path)' })
   async updateUserTypeAlt(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: UpdateUserTypeDto,
     @Request() req: any,
   ): Promise<UserTypeResponseDto> {
@@ -146,8 +146,8 @@ export class RbacController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Delete (soft) a custom user type' })
   async removeUserType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('typeId', ParseBigIntPipe) typeId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
   ): Promise<{ success: boolean }> {
     await this.userTypesService.remove(instituteId, typeId);
     return { success: true };
@@ -159,7 +159,7 @@ export class RbacController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Delete user type (alternate path)' })
   async removeUserTypeAlt(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any,
   ): Promise<{ success: boolean }> {
     const instituteId = req.user?.currentInstituteId ?? req.user?.instituteId ?? '0';
@@ -175,8 +175,8 @@ export class RbacController {
   @ApiOperation({ summary: 'Get permission matrix for a user type' })
   @ApiResponse({ status: 200, type: [FeaturePermissionDto] })
   async getPermissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('typeId', ParseBigIntPipe) typeId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
   ): Promise<FeaturePermissionDto[]> {
     return this.permissionsService.listForUserType(instituteId, typeId);
   }
@@ -186,8 +186,8 @@ export class RbacController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Bulk-update the permission matrix for a user type' })
   async updatePermissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('typeId', ParseBigIntPipe) typeId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
     @Body() dto: BulkUpdatePermissionsDto,
   ): Promise<{ success: boolean }> {
     await this.permissionsService.bulkUpdate(instituteId, typeId, dto);
@@ -202,8 +202,8 @@ export class RbacController {
   @ApiOperation({ summary: 'List members of a user type' })
   @ApiResponse({ status: 200, type: UserTypeMembersResponseDto })
   async getMembers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('typeId', ParseBigIntPipe) typeId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('search') search?: string,
@@ -215,3 +215,4 @@ export class RbacController {
     });
   }
 }
+

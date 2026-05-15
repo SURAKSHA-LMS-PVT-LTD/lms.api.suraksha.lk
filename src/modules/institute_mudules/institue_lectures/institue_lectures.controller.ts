@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { InstitueLecturesService } from './institue_lectures.service';
@@ -59,7 +59,7 @@ export class InstitueLecturesController {
   @RequireAnyOfRoles({
     anyInstituteRole: true
   })
-  findByInstitute(@Param('instituteId', ParseBigIntPipe) instituteId: string) {
+  findByInstitute(@Param('instituteId', ParseIdPipe) instituteId: string) {
     return this.institueLecturesService.findByInstitute(instituteId);
   }
 
@@ -68,7 +68,7 @@ export class InstitueLecturesController {
   @RequireAnyOfRoles({
     anyInstituteRole: true
   })
-  findByClass(@Param('classId', ParseBigIntPipe) classId: string) {
+  findByClass(@Param('classId', ParseIdPipe) classId: string) {
     return this.institueLecturesService.findByClass(classId);
   }
 
@@ -77,7 +77,7 @@ export class InstitueLecturesController {
   @RequireAnyOfRoles({
     anyInstituteRole: true
   })
-  findByInstructor(@Param('instructorId', ParseBigIntPipe) instructorId: string) {
+  findByInstructor(@Param('instructorId', ParseIdPipe) instructorId: string) {
     return this.institueLecturesService.findByInstructor(instructorId);
   }
 
@@ -87,7 +87,7 @@ export class InstitueLecturesController {
     anyInstituteRole: true
   })
   findUpcoming(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query('limit') limit?: number
   ) {
     return this.institueLecturesService.findUpcoming(instituteId, limit);
@@ -98,7 +98,7 @@ export class InstitueLecturesController {
   @RequireAnyOfRoles({
     anyInstituteRole: true
   })
-  findOngoing(@Param('instituteId', ParseBigIntPipe) instituteId: string) {
+  findOngoing(@Param('instituteId', ParseIdPipe) instituteId: string) {
     return this.institueLecturesService.findOngoing(instituteId);
   }
 
@@ -108,7 +108,7 @@ export class InstitueLecturesController {
     anyInstituteRole: true
   })
   findCompleted(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query('limit') limit?: number
   ) {
     return this.institueLecturesService.findCompleted(instituteId, limit);
@@ -199,7 +199,8 @@ export class InstitueLecturesController {
     global: [UserType.SUPERADMIN],
     instituteAdmin: true
   })
-  removePermanent(@Param('id', ParseBigIntPipe) id: string) {
+  removePermanent(@Param('id', ParseIdPipe) id: string) {
     return this.institueLecturesService.removePermanent(id);
   }
 }
+

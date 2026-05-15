@@ -15,7 +15,7 @@ export class InstituteCreditsEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint', unique: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36, unique: true })
   instituteId: string;
 
   /** Current available credit balance */

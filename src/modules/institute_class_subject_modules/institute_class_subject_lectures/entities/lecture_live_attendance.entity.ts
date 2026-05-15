@@ -19,13 +19,13 @@ export class LectureLiveAttendance {
   lecture: InstituteClassSubjectLecture;
 
   // Denormalised scope for fast class/subject-level reporting without joining lectures table
-  @Column({ name: 'institute_id', type: 'bigint', nullable: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36, nullable: true })
   instituteId?: string;
 
-  @Column({ name: 'class_id', type: 'bigint', nullable: true })
+  @Column({ name: 'class_id', type: 'varchar', length: 36, nullable: true })
   classId?: string;
 
-  @Column({ name: 'subject_id', type: 'bigint', nullable: true })
+  @Column({ name: 'subject_id', type: 'varchar', length: 36, nullable: true })
   subjectId?: string;
 
   @Column({ name: 'user_id', type: 'bigint', nullable: true })

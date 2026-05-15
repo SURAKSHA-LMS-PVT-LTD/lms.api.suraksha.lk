@@ -21,10 +21,10 @@ export enum SubjectType {
 @Index('idx_subjects_code', ['code'])
 @Index('idx_subjects_type', ['subjectType'])
 export class SubjectEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @Column({ type: 'varchar', length: 50, unique: true })

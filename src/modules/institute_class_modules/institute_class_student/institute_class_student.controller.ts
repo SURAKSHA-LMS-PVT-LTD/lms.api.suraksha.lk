@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { StudentUserIdsDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
@@ -38,8 +38,8 @@ export class InstituteClassStudentController {
 
   @UsePipes(InstituteClassStudentValidationPipe)
   async assignStudent(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() createDto: CreateInstituteClassStudentDto
   ) {
     // Override IDs from URL params
@@ -59,8 +59,8 @@ export class InstituteClassStudentController {
 
   @UsePipes(BulkInstituteClassStudentValidationPipe)
   async bulkAssignStudents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() bulkCreateDto: BulkCreateInstituteClassStudentDto
   ) {
     bulkCreateDto.instituteId = instituteId;
@@ -78,8 +78,8 @@ export class InstituteClassStudentController {
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
   @ApiQuery({ name: 'activeOnly', required: false, description: 'Filter active students only' })
   async getClassStudents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Query('activeOnly') activeOnly: string = 'true'
@@ -101,9 +101,9 @@ export class InstituteClassStudentController {
   @ApiResponse({ status: 200, description: 'Student assignment details' })
   @ApiResponse({ status: 404, description: 'Student assignment not found' })
   async getStudentAssignment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string,
     @Request() req: any
   ) {
     return await this.instituteClassStudentService.findOne({
@@ -119,9 +119,9 @@ export class InstituteClassStudentController {
   @ApiOperation({ summary: 'Update class-level student type (Admin/Teacher only)' })
   @ApiResponse({ status: 200, description: 'Student type updated at class level' })
   async updateClassStudentType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string,
     @Body() body: UpdateClassStudentTypeDto,
   ) {
     return this.instituteClassStudentService.updateClassStudentType(
@@ -139,9 +139,9 @@ export class InstituteClassStudentController {
 
 
   async updateStudentAssignment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string,
     @Body() updateDto: UpdateInstituteClassStudentDto
   ) {
     return await this.instituteClassStudentService.updateStudentAssignment(
@@ -161,9 +161,9 @@ export class InstituteClassStudentController {
 
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeStudent(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string
   ) {
     await this.instituteClassStudentService.removeStudentFromClass({
       instituteId,
@@ -182,8 +182,8 @@ export class InstituteClassStudentController {
 
   @HttpCode(HttpStatus.NO_CONTENT)
   async bulkRemoveStudents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() body: StudentUserIdsDto
   ) {
     await this.instituteClassStudentService.bulkRemoveStudents({
@@ -199,8 +199,8 @@ export class InstituteClassStudentController {
   @ApiOperation({ summary: 'Get student count in a class' })
   @ApiResponse({ status: 200, description: 'Number of students in the class' })
   async getStudentCount(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('activeOnly') activeOnly: string = 'true'
   ) {
     const criteria = activeOnly === 'true' 
@@ -221,8 +221,8 @@ export class InstituteClassStudentController {
   @ApiResponse({ status: 400, description: 'Student not enrolled in institute or invalid enrollment code' })
   @ApiResponse({ status: 409, description: 'Student already enrolled in class' })
   async selfEnrollToClass(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() enrollDto: SelfEnrollClassDto,
     @Request() req
   ) {
@@ -245,8 +245,8 @@ export class InstituteClassStudentController {
 
 
   async teacherAssignToClass(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() assignDto: AdminTeacherAssignClassDto,
     @Request() req
   ) {
@@ -275,8 +275,8 @@ export class InstituteClassStudentController {
 
 
   async getUnverifiedStudents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10'
   ) {
@@ -302,8 +302,8 @@ export class InstituteClassStudentController {
 
 
   async bulkVerifyStudents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Body() verifyDto: BulkVerifyStudentsDto,
     @Request() req
   ) {
@@ -325,8 +325,8 @@ export class InstituteClassStudentController {
   })
   @ApiResponse({ status: 200, description: 'Enrollment statistics retrieved successfully', type: ClassEnrollmentStatsDto })
   async getEnrollmentStats(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string
   ) {
     return await this.instituteClassStudentService.getClassEnrollmentStats(instituteId, classId);
   }
@@ -356,8 +356,8 @@ export class InstituteClassStudentController {
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Institute or class not found' })
   async getClassParents(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query() query: ClassParentQueryDto
   ): Promise<PaginatedClassParentResponseDto> {
     return await this.instituteClassStudentService.getClassParents(instituteId, classId, query);
@@ -385,7 +385,7 @@ export class StudentClassesController {
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
   @ApiQuery({ name: 'activeOnly', required: false, description: 'Filter active classes only' })
   async getStudentClasses(
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Query('activeOnly') activeOnly: string = 'true'
@@ -415,10 +415,10 @@ export class StudentClassesController {
   @ApiQuery({ name: 'verifiedOnly', required: false, description: 'Filter by verification status: true (verified only), false (pending only), or omit for all (default: show all)' })
   @ApiQuery({ name: 'enrollmentMethod', required: false, description: 'Filter by enrollment method (admin_assigned, self_enrollment)' })
   async getEnrolledClasses(
-    @Param('studentUserId', ParseBigIntPipe) studentUserId: string,
+    @Param('studentUserId', ParseIdPipe) studentUserId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
-    @Query('instituteId', ParseBigIntPipe) instituteId?: string,
+    @Query('instituteId', ParseIdPipe) instituteId?: string,
     @Query('verifiedOnly') verifiedOnly?: string,
     @Query('enrollmentMethod') enrollmentMethod?: string
   ) {
@@ -446,4 +446,5 @@ export class StudentClassesController {
     return await this.instituteClassStudentService.getStudentEnrolledClassesWithFilters(studentUserId, filters);
   }
 }
+
 

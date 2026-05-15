@@ -97,7 +97,7 @@ export class PushNotificationEntity {
   targetUserTypes: NotificationTargetUserType[];
 
   // Institute relation (null for global notifications)
-  @Column({ name: 'institute_id', type: 'bigint', nullable: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36, nullable: true })
   instituteId?: string;
 
   @ManyToOne(() => InstituteEntity, { nullable: true, onDelete: 'CASCADE' })
@@ -105,7 +105,7 @@ export class PushNotificationEntity {
   institute?: InstituteEntity;
 
   // Class relation (for class-scope notifications)
-  @Column({ name: 'class_id', type: 'bigint', nullable: true })
+  @Column({ name: 'class_id', type: 'varchar', length: 36, nullable: true })
   classId?: string;
 
   @ManyToOne(() => InstituteClassEntity, { nullable: true, onDelete: 'CASCADE' })
@@ -113,7 +113,7 @@ export class PushNotificationEntity {
   class?: InstituteClassEntity;
 
   // Subject relation (for subject-scope notifications)
-  @Column({ name: 'subject_id', type: 'bigint', nullable: true })
+  @Column({ name: 'subject_id', type: 'varchar', length: 36, nullable: true })
   subjectId?: string;
 
   @ManyToOne(() => SubjectEntity, { nullable: true, onDelete: 'CASCADE' })

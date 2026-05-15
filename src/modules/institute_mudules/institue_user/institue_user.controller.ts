@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { ImageUrlDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpCode, HttpStatus, BadRequestException, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -134,7 +134,7 @@ export class InstitueUserController {
   @ApiOperation({ summary: '[DEPRECATED] Get all users by institute' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async getUsersByInstitute(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string
   ): Promise<SecureUserResponseDto[]> {
     return this.institueUserService.getUsersByInstitute(instituteId);
   }
@@ -145,7 +145,7 @@ export class InstitueUserController {
   @ApiOperation({ summary: '[DEPRECATED] Get teachers by institute' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async getTeachersByInstitute(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string
   ): Promise<SecureUserResponseDto[]> {
     return this.institueUserService.getTeachersByInstitute(instituteId);
   }
@@ -155,7 +155,7 @@ export class InstitueUserController {
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: '[DEPRECATED] Get institutes by user' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
-  async getInstitutesByUser(@Param('userId', ParseBigIntPipe) userId: string): Promise<SecureUserResponseDto[]> {
+  async getInstitutesByUser(@Param('userId', ParseIdPipe) userId: string): Promise<SecureUserResponseDto[]> {
     return this.institueUserService.getInstitutesByUser(userId);
   }
 
@@ -165,8 +165,8 @@ export class InstitueUserController {
   @ApiOperation({ summary: '[DEPRECATED] Get specific institute user assignment' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async findOne(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string
   ): Promise<SecureUserResponseDto> {
     return this.institueUserService.findOne(instituteId, userId);
   }
@@ -177,8 +177,8 @@ export class InstitueUserController {
   @ApiOperation({ summary: '[DEPRECATED] Update institute user assignment' })
   @ApiResponse({ status: 400, description: 'SECURITY: This endpoint is deprecated' })
   async update(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Body() updateInstitueUserDto: UpdateInstitueUserDto
   ): Promise<SecureUserResponseDto> {
     return this.institueUserService.update(instituteId, userId, updateInstitueUserDto);
@@ -204,7 +204,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 404, description: 'User not found in this institute' })
 
   async getAdminUserData(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Req() req: JwtRequest
   ): Promise<AdminUserDataResponseDto> {
     const userId = req.user.s;
@@ -227,7 +227,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
 
   async getInstituteUsersForImageVerification(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
     return this.institueUserService.getInstituteUsersForImageVerification(instituteId, query);
@@ -249,7 +249,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
 
   async getUnverifiedUsersWithImages(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
     return this.institueUserService.getUnverifiedUsersWithImages(instituteId, query);
@@ -277,7 +277,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
 
   async getUnverifiedUsersWithImagesCount(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string
   ): Promise<{ count: number; message: string }> {
     const count = await this.institueUserService.getUnverifiedUsersWithImagesCount(instituteId);
     return {
@@ -340,7 +340,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   async getInactiveInstituteUsers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
     return this.institueUserService.getInactiveInstituteUsers(instituteId, query);
@@ -352,8 +352,8 @@ export class InstitueUserController {
   @ApiOperation({ summary: 'Get institute users by custom user type ID (primary_user_type_id)' })
   @ApiResponse({ status: 200, type: PaginatedSecureUserResponseDto })
   async getUsersByCustomUserTypeId(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userTypeId', ParseBigIntPipe) userTypeId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userTypeId', ParseIdPipe) userTypeId: string,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
     return this.institueUserService.getUsersByCustomUserTypeId(instituteId, userTypeId, query);
@@ -428,7 +428,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - System admin or institute admin access required' })
 
   async getSecureUsersByInstituteAndType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('userType') userType: InstituteUserType,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
@@ -456,9 +456,9 @@ export class InstitueUserController {
   @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
   @ApiResponse({ status: 403, description: 'Forbidden - Insufficient access' })
   async getSecureUsersByClass(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('userType') userType: InstituteUserType,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query() query: SecureClassUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
     // Validate user type parameter
@@ -485,10 +485,10 @@ export class InstitueUserController {
   @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
   @ApiResponse({ status: 403, description: 'Forbidden - Insufficient access' })
   async getSecureUsersBySubject(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('userType') userType: InstituteUserType,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query() query: SecureSubjectUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
     // Validate user type parameter
@@ -518,7 +518,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - System admin or institute admin access required' })
 
   async getUnverifiedUsersByInstituteAndType(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('userType') userType: InstituteUserType,
     @Query() query: SecureUserQueryDto
   ): Promise<PaginatedSecureUserResponseDto> {
@@ -543,7 +543,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - System admin or institute admin access required' })
 
   async bulkVerifyUsers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() bulkVerificationDto: BulkVerificationDto,
     // @CurrentUser() user: UserEntity, // Add when auth is implemented
   ): Promise<any> {
@@ -564,7 +564,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - System admin or institute admin access required' })
 
   async verifySingleUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() verifyUserDto: VerifyUserDto,
     // @CurrentUser() user: UserEntity, // Add when auth is implemented
   ): Promise<any> {
@@ -612,8 +612,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   async updateExtraData(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Body() body: UpdateExtraDataDto,
   ): Promise<{
     success: boolean;
@@ -650,8 +650,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   async deactivateInstituteUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Req() req: JwtRequest
   ): Promise<{
     success: boolean;
@@ -690,8 +690,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   async activateInstituteUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Req() req: JwtRequest
   ): Promise<{
     success: boolean;
@@ -744,8 +744,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   async changeInstituteUserRole(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Body() body: ChangeInstituteUserRoleDto,
     @Req() req: JwtRequest
   ): Promise<{
@@ -768,8 +768,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string
   ): Promise<void> {
     return this.institueUserService.remove(instituteId, userId);
   }
@@ -794,7 +794,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - User already assigned to institute' })
   async assignUserByPhone(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() assignDto: AssignUserByPhoneDto,
     @Req() request?: Request
   ): Promise<AssignmentResponseDto> {
@@ -820,7 +820,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - All parent roles already assigned' })
   async assignParentByPhone(
-    @Param('studentId', ParseBigIntPipe) studentId: string,
+    @Param('studentId', ParseIdPipe) studentId: string,
     @Body() assignDto: AssignParentByPhoneDto,
     @Req() request?: Request
   ): Promise<AssignmentResponseDto> {
@@ -846,7 +846,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - User already assigned to institute' })
   async assignStudentByRfid(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() assignDto: AssignStudentByRfidDto,
     @Req() request?: Request
   ): Promise<AssignmentResponseDto> {
@@ -872,7 +872,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - User already assigned to institute' })
   async assignUserByEmail(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() assignDto: AssignUserByEmailDto,
     @Req() request?: Request
   ): Promise<AssignmentResponseDto> {
@@ -898,7 +898,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - User already assigned to institute' })
   async assignUserById(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() assignDto: AssignUserByIdDto,
     @Req() request?: Request
   ): Promise<AssignmentResponseDto> {
@@ -923,7 +923,7 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
 
   async bulkAssignUsers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Body() bulkAssignDto: BulkAssignUsersDto
   ): Promise<BulkAssignmentResponseDto> {
     return this.institueUserService.bulkAssignUsers(instituteId, bulkAssignDto);
@@ -961,8 +961,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   async uploadInstituteUserImage(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Body() body: ImageUrlDto,
     @Req() req: JwtRequest
   ): Promise<InstituteUserImageResponseDto> {
@@ -990,8 +990,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 409, description: 'Card ID already assigned to another user' })
 
   async assignInstituteCardId(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Body() updateCardDto: UpdateInstituteCardIdDto
   ): Promise<{ success: boolean; message: string; cardId: string }> {
     return this.institueUserService.assignInstituteCardId(instituteId, userId, updateCardDto);
@@ -1011,8 +1011,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
   @ApiResponse({ status: 404, description: 'Institute user relationship not found' })
   async verifyInstituteUserImage(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Body() verifyImageDto: VerifyInstituteUserImageDto,
     @Req() req: JwtRequest,
   ): Promise<{ success: boolean; message: string; status: ImageVerificationStatus }> {
@@ -1021,3 +1021,4 @@ export class InstitueUserController {
   }
 
 }
+

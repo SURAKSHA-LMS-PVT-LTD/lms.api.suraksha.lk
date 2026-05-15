@@ -7,7 +7,7 @@ export class InstituteUserTypeEntity {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @Column({ name: 'name', type: 'varchar', length: 100 })

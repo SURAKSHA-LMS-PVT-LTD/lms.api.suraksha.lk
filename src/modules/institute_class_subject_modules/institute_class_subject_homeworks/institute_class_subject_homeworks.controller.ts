@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpStatus, HttpCode, ValidationPipe, UsePipes, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -268,8 +268,8 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions (JWT filtered)', example: true })
   @HttpCode(HttpStatus.OK)
   async findByClassAndSubject(
-    @Param('classId', ParseBigIntPipe) classId: string, 
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('classId', ParseIdPipe) classId: string, 
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query() query: QueryInstituteClassSubjectHomeworkDto,
     @Request() req: any
   ): Promise<PaginatedInstituteClassSubjectHomeworkResponseDto> {
@@ -325,7 +325,7 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   @ApiQuery({ name: 'includeSubmissions', required: false, type: Boolean, description: 'Include submissions (JWT filtered)', example: true })
   @HttpCode(HttpStatus.OK)
   async findByInstitute(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() query: QueryInstituteClassSubjectHomeworkDto,
     @Request() req: any
   ): Promise<PaginatedInstituteClassSubjectHomeworkResponseDto> {
@@ -367,7 +367,7 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   @ApiQuery({ name: 'sortOrder', required: false, description: 'Sort order', enum: ['ASC', 'DESC'], example: 'DESC' })
   @HttpCode(HttpStatus.OK)
   async findByTeacher(
-    @Param('teacherId', ParseBigIntPipe) teacherId: string,
+    @Param('teacherId', ParseIdPipe) teacherId: string,
     @Query() query: QueryInstituteClassSubjectHomeworkDto,
     @Request() req: any
   ): Promise<PaginatedInstituteClassSubjectHomeworkResponseDto> {
@@ -394,7 +394,7 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   })
   @ApiParam({ name: 'id', description: 'Homework ID', example: '123' })
   @HttpCode(HttpStatus.OK)
-  async findOne(@Param('id', ParseBigIntPipe) id: string, @Request() req: any): Promise<InstituteClassSubjectHomeworkResponseDto> {
+  async findOne(@Param('id', ParseIdPipe) id: string, @Request() req: any): Promise<InstituteClassSubjectHomeworkResponseDto> {
     return this.instituteClassSubjectHomeworksService.findOne(id, req.user);
   }
 
@@ -418,7 +418,7 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   @ApiBody({ type: UpdateInstituteClassSubjectHomeworkDto })
   @HttpCode(HttpStatus.OK)
   async update(
-    @Param('id', ParseBigIntPipe) id: string, 
+    @Param('id', ParseIdPipe) id: string, 
     @Body() updateInstituteClassSubjectHomeworkDto: UpdateInstituteClassSubjectHomeworkDto,
     @Request() req: any
   ): Promise<InstituteClassSubjectHomeworkResponseDto> {
@@ -483,7 +483,7 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   })
   @HttpCode(HttpStatus.OK)
   async getUserHomeworks(
-    @Param('userId', ParseBigIntPipe) userId: string,
+    @Param('userId', ParseIdPipe) userId: string,
     @Query('instituteId') instituteId: string,
     @Query('classId') classId: string,
     @Query('subjectId') subjectId: string,
@@ -520,9 +520,10 @@ Submissions are ALWAYS filtered by JWT token userId. Students automatically see 
   @ApiParam({ name: 'id', description: 'Homework ID', example: '123' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<void> {
     return this.instituteClassSubjectHomeworksService.remove(id, req.user);
   }
 }
+

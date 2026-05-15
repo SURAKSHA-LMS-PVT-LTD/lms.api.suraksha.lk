@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -23,7 +23,7 @@ import {
   ApiBody,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { ParseBigIntPipe } from '../../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../../common/pipes/parse-id.pipe';
 import { JwtAuthGuard } from '../../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../../auth/decorators/flexible-access.decorator';
@@ -227,7 +227,7 @@ Link a file from Google Drive as a homework reference.
   @ApiParam({ name: 'homeworkId', description: 'Homework ID' })
   @HttpCode(HttpStatus.OK)
   async findByHomework(
-    @Param('homeworkId', ParseBigIntPipe) homeworkId: string,
+    @Param('homeworkId', ParseIdPipe) homeworkId: string,
     @Request() req: any
   ): Promise<HomeworkReferenceResponseDto[]> {
     return this.referenceService.findByHomeworkId(homeworkId, req.user);
@@ -244,7 +244,7 @@ Link a file from Google Drive as a homework reference.
   @ApiParam({ name: 'homeworkId', description: 'Homework ID' })
   @HttpCode(HttpStatus.OK)
   async getSummary(
-    @Param('homeworkId', ParseBigIntPipe) homeworkId: string
+    @Param('homeworkId', ParseIdPipe) homeworkId: string
   ): Promise<HomeworkReferenceSummaryDto> {
     return this.referenceService.getSummary(homeworkId);
   }
@@ -260,7 +260,7 @@ Link a file from Google Drive as a homework reference.
   @ApiParam({ name: 'id', description: 'Reference ID' })
   @HttpCode(HttpStatus.OK)
   async findOne(
-    @Param('id', ParseBigIntPipe) id: string
+    @Param('id', ParseIdPipe) id: string
   ): Promise<HomeworkReferenceResponseDto> {
     return this.referenceService.findOne(id);
   }
@@ -279,7 +279,7 @@ Link a file from Google Drive as a homework reference.
   @ApiBody({ type: UpdateHomeworkReferenceDto })
   @HttpCode(HttpStatus.OK)
   async update(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() updateDto: UpdateHomeworkReferenceDto,
     @Request() req: any
   ): Promise<HomeworkReferenceResponseDto> {
@@ -298,7 +298,7 @@ Link a file from Google Drive as a homework reference.
   @ApiBody({ type: ReorderReferencesDto })
   @HttpCode(HttpStatus.OK)
   async reorder(
-    @Param('homeworkId', ParseBigIntPipe) homeworkId: string,
+    @Param('homeworkId', ParseIdPipe) homeworkId: string,
     @Body() reorderDto: ReorderReferencesDto,
     @Request() req: any
   ): Promise<HomeworkReferenceResponseDto[]> {
@@ -318,7 +318,7 @@ Link a file from Google Drive as a homework reference.
   @ApiParam({ name: 'id', description: 'Reference ID' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async softDelete(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<void> {
     return this.referenceService.softDelete(id, req.user);
@@ -335,7 +335,7 @@ Link a file from Google Drive as a homework reference.
   @ApiParam({ name: 'id', description: 'Reference ID' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async hardDelete(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<void> {
     return this.referenceService.hardDelete(id, req.user);
@@ -376,9 +376,10 @@ Link a file from Google Drive as a homework reference.
   @ApiParam({ name: 'id', description: 'Reference ID' })
   @HttpCode(HttpStatus.OK)
   async restore(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<HomeworkReferenceResponseDto> {
     return this.referenceService.restore(id, req.user);
   }
 }
+

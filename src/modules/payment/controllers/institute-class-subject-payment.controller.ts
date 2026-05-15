@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -19,6 +19,7 @@ import { Throttle } from '@nestjs/throttler';
 import { UseInterceptors } from '@nestjs/common';
 import { SerializeDatesInterceptor } from '../interceptors/serialize-dates.interceptor';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
@@ -67,9 +68,9 @@ export class InstituteClassSubjectPaymentController {
 
   @UsePipes(new ValidationPipe({ transform: true }))
   async createPayment(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Body() createPaymentDto: CreateInstituteClassSubjectPaymentDto,
     @Request() req: JwtRequest,
   ): Promise<PaymentCreationSuccessResponseDto> {
@@ -97,9 +98,9 @@ export class InstituteClassSubjectPaymentController {
 
   @UsePipes(new ValidationPipe({ transform: true }))
   async getPayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -131,9 +132,9 @@ export class InstituteClassSubjectPaymentController {
 
   @UsePipes(new ValidationPipe({ transform: true }))
   async getMyApplicablePayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -209,8 +210,8 @@ export class InstituteClassSubjectPaymentController {
   @ApiResponse({ status: 200, description: 'Class payments retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   async getClassPayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -236,7 +237,7 @@ export class InstituteClassSubjectPaymentController {
   @ApiResponse({ status: 200, description: 'Institute payments retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   async getInstitutePayments(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -265,9 +266,9 @@ export class InstituteClassSubjectPaymentController {
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   async getEnrolledUsers(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(32), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -303,3 +304,4 @@ export class InstituteClassSubjectPaymentController {
     return this.paymentService.softDeletePayment(paymentId, req.user);
   }
 }
+

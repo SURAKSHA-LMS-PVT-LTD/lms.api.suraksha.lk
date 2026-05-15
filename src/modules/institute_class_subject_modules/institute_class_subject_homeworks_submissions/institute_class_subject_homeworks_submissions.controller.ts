@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, Request, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { UseInterceptors } from '@nestjs/common';
@@ -66,7 +66,7 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   @ApiQuery({ name: 'page', required: false, description: 'Page number' })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
   async getInstituteSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
     @Query() queryDto: QueryInstituteClassSubjectHomeworksSubmissionDto,
     @Request() req: JwtRequest
   ): Promise<PaginatedResponseDto<InstituteClassSubjectHomeworksSubmissionResponseDto>> {
@@ -85,7 +85,7 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   @ApiParam({ name: 'id', description: 'Homework submission ID' })
   @ApiResponse({ status: 200, description: 'Homework submission details with full related entities' })
   @ApiResponse({ status: 404, description: 'Homework submission not found' })
-  async findOneWithDetails(@Param('id', ParseBigIntPipe) id: string): Promise<any> {
+  async findOneWithDetails(@Param('id', ParseIdPipe) id: string): Promise<any> {
     return await this.submissionsService.findOneWithDetails(id);
   }
 
@@ -96,7 +96,7 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   @ApiParam({ name: 'id', description: 'Homework submission ID' })
   @ApiResponse({ status: 200, description: 'Homework submission details', type: InstituteClassSubjectHomeworksSubmissionResponseDto })
   @ApiResponse({ status: 404, description: 'Homework submission not found' })
-  async findOne(@Param('id', ParseBigIntPipe) id: string): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
+  async findOne(@Param('id', ParseIdPipe) id: string): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
     return await this.submissionsService.findOne(id);
   }
 
@@ -113,7 +113,7 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   @ApiResponse({ status: 403, description: 'Forbidden - cannot update other users submissions' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async update(
-    @Param('id', ParseBigIntPipe) id: string, 
+    @Param('id', ParseIdPipe) id: string, 
     @Body() updateDto: UpdateInstituteClassSubjectHomeworksSubmissionDto,
     @Request() req: any
   ): Promise<InstituteClassSubjectHomeworksSubmissionResponseDto> {
@@ -133,7 +133,7 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
   @ApiResponse({ status: 404, description: 'Homework submission not found' })
   @ApiResponse({ status: 403, description: 'Forbidden - cannot delete other users submissions' })
   async remove(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: any
   ): Promise<void> {
     await this.submissionsService.remove(id, req.user);
@@ -179,3 +179,4 @@ export class InstituteClassSubjectHomeworksSubmissionsController {
     );
   }
 }
+

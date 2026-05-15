@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe';
 import { NoDataMasking } from '../../common/decorators/no-data-masking.decorator';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, ClassSerializerInterceptor, HttpStatus, ParseIntPipe, UseGuards, Put, Request, BadRequestException, ForbiddenException, Inject } from '@nestjs/common';
 import {
@@ -120,7 +120,7 @@ export class InstitutesController {
     status: HttpStatus.NOT_FOUND,
     description: 'Institute not found'
   })
-  async findOne(@Param('id', ParseBigIntPipe) id: string): Promise<InstituteResponseDto> {
+  async findOne(@Param('id', ParseIdPipe) id: string): Promise<InstituteResponseDto> {
     const institute = await this.institutesService.findOne(id);
     return new InstituteResponseDto(institute);
   }
@@ -177,7 +177,7 @@ export class InstitutesController {
     description: 'Invalid input data'
   })
   async update(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() updateInstituteDto: UpdateInstituteDto
   ): Promise<InstituteResponseDto> {
     // Update institute with URL fields from DTO (logoUrl, loadingGifUrl, imageUrl, imageUrls)
@@ -212,7 +212,7 @@ export class InstitutesController {
     status: HttpStatus.NOT_FOUND,
     description: 'Institute not found'
   })
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<{ message: string }> {
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<{ message: string }> {
     await this.institutesService.remove(id);
     return { message: 'Institute deleted successfully' };
   }
@@ -234,7 +234,7 @@ export class InstitutesController {
     description: 'Institute activated successfully',
     type: InstituteResponseDto
   })
-  async activate(@Param('id', ParseBigIntPipe) id: string): Promise<InstituteResponseDto> {
+  async activate(@Param('id', ParseIdPipe) id: string): Promise<InstituteResponseDto> {
     const institute = await this.institutesService.activate(id);
     return new InstituteResponseDto(institute);
   }
@@ -256,7 +256,7 @@ export class InstitutesController {
     description: 'Institute deactivated successfully',
     type: InstituteResponseDto
   })
-  async deactivate(@Param('id', ParseBigIntPipe) id: string): Promise<InstituteResponseDto> {
+  async deactivate(@Param('id', ParseIdPipe) id: string): Promise<InstituteResponseDto> {
     const institute = await this.institutesService.deactivate(id);
     return new InstituteResponseDto(institute);
   }
@@ -278,7 +278,7 @@ export class InstitutesController {
     description: 'Institute not found',
   })
   async getInstituteClasses(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
   ) {
     return this.institueClassService.findByInstitute(instituteId);
   }
@@ -328,9 +328,9 @@ export class InstitutesController {
     description: 'Class not found or teacher not found in institute'
   })
   async assignTeacherToClass(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('teacherId', ParseBigIntPipe) teacherId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('teacherId', ParseIdPipe) teacherId: string,
     @Request() req: JwtRequest
   ) {
     try {
@@ -462,7 +462,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async getSettings(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
     return this.institutesService.getSettings(id, req.user);
@@ -480,7 +480,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async getReportBranding(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest,
   ): Promise<InstituteReportBrandingResponseDto> {
     return this.institutesService.getReportBranding(id, req.user);
@@ -503,7 +503,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Email already taken by another institute' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async updateSettings(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: UpdateInstituteSettingsDto,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
@@ -526,7 +526,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async deleteLogo(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
     return this.institutesService.deleteLogoImage(id, req.user);
@@ -544,7 +544,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async deleteLoadingGif(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
     return this.institutesService.deleteLoadingGif(id, req.user);
@@ -562,7 +562,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async deleteCoverImage(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
     return this.institutesService.deleteCoverImage(id, req.user);
@@ -582,7 +582,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async addGalleryImage(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: AddGalleryImageDto,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
@@ -603,7 +603,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async deleteGalleryImage(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Param('imageIndex', ParseIntPipe) imageIndex: number,
     @Request() req: JwtRequest
   ): Promise<InstituteSettingsResponseDto> {
@@ -630,7 +630,7 @@ export class InstitutesController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'No access to this institute' })
   async getProfile(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest
   ): Promise<InstituteProfileResponseDto> {
     return this.institutesService.getProfile(id, req.user);
@@ -650,7 +650,7 @@ export class InstitutesController {
   @ApiParam({ name: 'id', description: 'Institute ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Schema array returned' })
   async getUserExtraDataSchema(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest,
   ) {
     return this.institutesService.getUserExtraDataSchema(id, req.user);
@@ -666,7 +666,7 @@ export class InstitutesController {
   @ApiParam({ name: 'id', description: 'Institute ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Schema updated' })
   async updateUserExtraDataSchema(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() body: UpdateUserExtraDataSchemaDto,
     @Request() req: JwtRequest,
   ) {

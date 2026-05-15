@@ -30,21 +30,21 @@ export class StudyMaterialEntity {
 
   // ── Scoping ────────────────────────────────────────────────
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'institute_id' }])
   institute: InstituteEntity;
 
-  @Column({ name: 'class_id', type: 'bigint', nullable: true })
+  @Column({ name: 'class_id', type: 'varchar', length: 36, nullable: true })
   classId?: string;
 
   @ManyToOne(() => InstituteClassEntity, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'class_id' }])
   class?: InstituteClassEntity;
 
-  @Column({ name: 'subject_id', type: 'bigint' })
+  @Column({ name: 'subject_id', type: 'varchar', length: 36 })
   subjectId: string;
 
   @ManyToOne(() => SubjectEntity, { onDelete: 'CASCADE' })

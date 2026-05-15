@@ -1,4 +1,4 @@
-import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, ValidationPipe, UsePipes, BadRequestException, Req } from '@nestjs/common';
 import { Transform } from 'class-transformer';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -232,7 +232,7 @@ export class SubjectController {
   @ApiResponse({ status: 400, description: 'instituteId is required' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   async findOne(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Query('instituteId') instituteId: string
   ): Promise<SubjectResponseDto> {
     if (!instituteId) {
@@ -278,7 +278,7 @@ export class SubjectController {
   @ApiResponse({ status: 409, description: 'Subject code already exists' })
   @ApiResponse({ status: 403, description: 'Forbidden - No access to this institute' })
   async update(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() updateSubjectDto: UpdateSubjectDto,
     @Req() request: JwtRequest
   ): Promise<SubjectResponseDto> {
@@ -302,7 +302,7 @@ export class SubjectController {
   @ApiResponse({ status: 403, description: 'Forbidden - No access to this institute' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   async activate(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Query('instituteId') instituteId: string,
     @Req() request: JwtRequest
   ): Promise<SubjectResponseDto> {
@@ -324,7 +324,7 @@ export class SubjectController {
   @ApiResponse({ status: 403, description: 'Forbidden - No access to this institute' })
   @ApiQuery({ name: 'instituteId', required: true, description: 'Institute ID - REQUIRED' })
   async softDelete(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Query('instituteId') instituteId: string,
     @Req() request: JwtRequest
   ): Promise<SubjectResponseDto> {
@@ -342,7 +342,7 @@ export class SubjectController {
   @ApiOperation({ summary: 'Delete subject by ID' })
   @ApiResponse({ status: 204, description: 'Subject deleted successfully' })
   @ApiResponse({ status: 404, description: 'Subject not found' })
-  async remove(@Param('id', ParseBigIntPipe) id: string): Promise<void> {
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<void> {
     return this.subjectService.remove(id);
   }
 }

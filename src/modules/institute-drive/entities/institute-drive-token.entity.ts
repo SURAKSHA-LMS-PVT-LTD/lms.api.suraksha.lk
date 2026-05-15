@@ -41,7 +41,7 @@ export class InstituteDriveTokenEntity {
   id: string;
 
   /** The institute this Drive connection belongs to. One connection per institute. */
-  @Column({ name: 'institute_id', type: 'bigint', unique: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36, unique: true })
   instituteId: string;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })

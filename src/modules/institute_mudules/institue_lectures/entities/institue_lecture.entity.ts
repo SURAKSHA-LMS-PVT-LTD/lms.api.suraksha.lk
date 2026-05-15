@@ -14,11 +14,11 @@ export class InstituteLectureEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   @Index()
   instituteId: string;
 
-  @Column({ name: 'class_id', type: 'bigint', nullable: true })
+  @Column({ name: 'class_id', type: 'varchar', length: 36, nullable: true })
   classId?: string;
 
   @Column({ name: 'instructor_id', type: 'bigint', nullable: true })

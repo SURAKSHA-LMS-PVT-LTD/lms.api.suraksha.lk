@@ -28,7 +28,7 @@ export class SmsCampaignEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   @Index('idx_institute_id')
   instituteId: string;
 

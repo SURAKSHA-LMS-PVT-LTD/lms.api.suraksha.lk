@@ -11,7 +11,7 @@ export class TeacherWalletEntity {
   @Column({ name: 'teacher_id', type: 'bigint' })
   teacherId: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   /** Current withdrawable balance */

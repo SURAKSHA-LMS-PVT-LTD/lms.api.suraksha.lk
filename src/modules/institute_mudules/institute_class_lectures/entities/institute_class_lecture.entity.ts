@@ -32,7 +32,7 @@ export class InstituteClassLectureEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   @Index()
   instituteId: string;
 
@@ -40,7 +40,7 @@ export class InstituteClassLectureEntity {
   @JoinColumn([{ name: 'institute_id' }])
   institute: InstituteEntity;
 
-  @Column({ name: 'class_id', type: 'bigint' })
+  @Column({ name: 'class_id', type: 'varchar', length: 36 })
   @Index()
   classId: string;
 

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Post,
   Get,
@@ -19,6 +19,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
@@ -182,9 +183,9 @@ export class InstituteClassSubjectPaymentSubmissionController {
   @ApiResponse({ status: 200, description: 'My submissions retrieved successfully' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getMySubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
@@ -261,9 +262,9 @@ export class InstituteClassSubjectPaymentSubmissionController {
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   @UsePipes(new ValidationPipe({ transform: true }))
   async getAllSubmissions(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('status') status?: string,
@@ -291,9 +292,9 @@ export class InstituteClassSubjectPaymentSubmissionController {
   @ApiResponse({ status: 200, description: 'Submission statistics retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   async getSubmissionStats(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Request() req: JwtRequest,
   ) {
     return this.paymentService.getSubmissionStats(instituteId, classId, subjectId, req.user);
@@ -357,9 +358,9 @@ export class InstituteClassSubjectPaymentSubmissionController {
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Payment not found for given institute/class/subject' })
   async getStudentsByInstituteClassSubject(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('classId', ParseBigIntPipe) classId: string,
-    @Param('subjectId', ParseBigIntPipe) subjectId: string,
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -412,3 +413,4 @@ export class InstituteClassSubjectPaymentSubmissionController {
     return this.paymentService.adminVerifyStudentCspPayment(paymentId, studentId, dto, req.user);
   }
 }
+

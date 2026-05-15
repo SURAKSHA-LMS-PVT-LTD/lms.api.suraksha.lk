@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -16,7 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { UserType } from '../../user/enums/user-type.enum';
 import { StudyMaterialsService } from './study_materials.service';
 import { CreateStudyMaterialDto } from './dto/create-study-material.dto';
@@ -54,7 +54,7 @@ export class StudyMaterialsController {
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ anyInstituteRole: true })
   @ApiOperation({ summary: 'Get a single study material by ID' })
-  findOne(@Param('id', ParseBigIntPipe) id: string) {
+  findOne(@Param('id', ParseIdPipe) id: string) {
     return this.service.findOne(id);
   }
 
@@ -67,7 +67,7 @@ export class StudyMaterialsController {
   })
   @ApiOperation({ summary: 'Update a study material' })
   update(
-    @Param('id', ParseBigIntPipe) id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: UpdateStudyMaterialDto,
     @Request() req: any,
   ) {
@@ -83,7 +83,7 @@ export class StudyMaterialsController {
   })
   @ApiOperation({ summary: 'Delete a study material permanently' })
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', ParseBigIntPipe) id: string, @Request() req: any) {
+  remove(@Param('id', ParseIdPipe) id: string, @Request() req: any) {
     return this.service.remove(id, req.user);
   }
 
@@ -95,7 +95,7 @@ export class StudyMaterialsController {
     teacher: {},
   })
   @ApiOperation({ summary: 'Toggle active/hidden status' })
-  toggleActive(@Param('id', ParseBigIntPipe) id: string, @Request() req: any) {
+  toggleActive(@Param('id', ParseIdPipe) id: string, @Request() req: any) {
     return this.service.toggleActive(id, req.user);
   }
 
@@ -111,3 +111,4 @@ export class StudyMaterialsController {
     return this.service.reorder(body.ids);
   }
 }
+

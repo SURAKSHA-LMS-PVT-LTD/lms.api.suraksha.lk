@@ -19,7 +19,7 @@ import { InstituteUserType } from '../enums/institute-user-type.enum';
 // Verification queries: user.service.ts verification workflows
 @Index('idx_institute_user_verified', ['instituteId', 'status', 'verifiedAt'])
 export class InstituteUserEntity {
-  @PrimaryColumn({ name: 'institute_id', type: 'bigint' })
+  @PrimaryColumn({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @PrimaryColumn({ name: 'user_id', type: 'bigint' })

@@ -20,7 +20,7 @@ export class InstituteClassCalendarEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   @Index()
   instituteId: string;
 
@@ -28,7 +28,7 @@ export class InstituteClassCalendarEntity {
   @JoinColumn({ name: 'institute_id' })
   institute: InstituteEntity;
 
-  @Column({ name: 'class_id', type: 'bigint' })
+  @Column({ name: 'class_id', type: 'varchar', length: 36 })
   classId: string;
 
   @ManyToOne(() => InstituteClassEntity, { onDelete: 'CASCADE' })
@@ -71,7 +71,7 @@ export class InstituteClassCalendarEntity {
   })
   isAttendanceExpected: boolean;
 
-  @Column({ name: 'merged_with_class_id', type: 'bigint', nullable: true })
+  @Column({ name: 'merged_with_class_id', type: 'varchar', length: 36, nullable: true })
   mergedWithClassId: string | null;
 
   @Column({ name: 'substitute_teacher_id', type: 'bigint', nullable: true })

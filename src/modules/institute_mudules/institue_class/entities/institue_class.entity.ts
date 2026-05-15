@@ -5,10 +5,10 @@ import { UserEntity } from '../../../user/entities/user.entity';
 
 @Entity('institute_classes')
 export class InstituteClassEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint' })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @ManyToOne(() => InstituteEntity, { onDelete: 'CASCADE' })

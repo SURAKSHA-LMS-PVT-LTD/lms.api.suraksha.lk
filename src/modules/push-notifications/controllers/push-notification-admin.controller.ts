@@ -1,4 +1,4 @@
-import { 
+﻿import { 
   Controller, 
   Get, 
   Post, 
@@ -26,7 +26,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
-import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { UserType } from '../../user/enums/user-type.enum';
 import { PushNotificationService } from '../services/push-notification.service';
 import { CreatePushNotificationDto } from '../dto/create-push-notification.dto';
@@ -121,7 +121,7 @@ export class PushNotificationAdminController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 200, description: 'Notification retrieved successfully', type: PushNotificationResponseDto })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  async findOne(@Param('id', ParseBigIntPipe) id: string): Promise<PushNotificationResponseDto> {
+  async findOne(@Param('id', ParseIdPipe) id: string): Promise<PushNotificationResponseDto> {
     return await this.pushNotificationService.findOne(id);
   }
 
@@ -143,7 +143,7 @@ export class PushNotificationAdminController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 200, description: 'Notification sent successfully', type: SendNotificationResultDto })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  async send(@Param('id', ParseBigIntPipe) id: string): Promise<SendNotificationResultDto> {
+  async send(@Param('id', ParseIdPipe) id: string): Promise<SendNotificationResultDto> {
     return await this.pushNotificationService.sendNotification(id);
   }
 
@@ -166,7 +166,7 @@ export class PushNotificationAdminController {
   @ApiResponse({ status: 200, description: 'Notification resent successfully', type: SendNotificationResultDto })
   @ApiResponse({ status: 400, description: 'Only failed notifications can be resent' })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  async resend(@Param('id', ParseBigIntPipe) id: string): Promise<SendNotificationResultDto> {
+  async resend(@Param('id', ParseIdPipe) id: string): Promise<SendNotificationResultDto> {
     return await this.pushNotificationService.resend(id);
   }
 
@@ -189,7 +189,7 @@ export class PushNotificationAdminController {
   @ApiResponse({ status: 200, description: 'Notification cancelled successfully' })
   @ApiResponse({ status: 400, description: 'Cannot cancel sent notification' })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  async cancel(@Param('id', ParseBigIntPipe) id: string): Promise<{ message: string }> {
+  async cancel(@Param('id', ParseIdPipe) id: string): Promise<{ message: string }> {
     await this.pushNotificationService.cancel(id);
     return { message: 'Notification cancelled successfully' };
   }
@@ -208,7 +208,7 @@ export class PushNotificationAdminController {
   @ApiParam({ name: 'id', description: 'Notification ID' })
   @ApiResponse({ status: 200, description: 'Notification deleted successfully' })
   @ApiResponse({ status: 404, description: 'Notification not found' })
-  async delete(@Param('id', ParseBigIntPipe) id: string): Promise<{ message: string }> {
+  async delete(@Param('id', ParseIdPipe) id: string): Promise<{ message: string }> {
     await this.pushNotificationService.delete(id);
     return { message: 'Notification deleted successfully' };
   }
@@ -242,3 +242,4 @@ export class PushNotificationAdminController {
     return 'USER';
   }
 }
+
