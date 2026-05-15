@@ -1168,10 +1168,12 @@ export class AttendanceNotificationService {
           imageUrl = data.advertisementData.mediaUrl;
         }
         
-        // Add ad data for tracking
+        // Add ad data for tracking — store the ad landing URL separately so it
+        // can be shown on the attendance view page without overriding the deep-link
+        // that navigates the parent to their child's attendance record.
         dataPayload.adId = data.advertisementData.id;
         if (data.advertisementData.title) dataPayload.adTitle = data.advertisementData.title;
-        if (data.advertisementData.sendingUrl) dataPayload.actionUrl = data.advertisementData.sendingUrl;
+        if (data.advertisementData.sendingUrl) dataPayload.adLandingUrl = data.advertisementData.sendingUrl;
         if (data.advertisementData.mediaUrl) dataPayload.adMediaUrl = data.advertisementData.mediaUrl;
         
         // Optionally append ad info to body (brief)
