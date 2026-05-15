@@ -329,7 +329,7 @@ export class ClassAttendanceSessionService {
                           AND sub.user_id = cs.student_user_id
       ` : ''}
       WHERE cs.institute_id = ?
-        AND cs.class_id    = ?
+        AND cs.institute_class_id = ?
         AND cs.is_active   = 1
         AND cs.is_verified = 1
       ORDER BY u.name_with_initials ASC
