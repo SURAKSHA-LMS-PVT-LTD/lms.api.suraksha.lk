@@ -2,11 +2,14 @@ import {
   Controller, Get, Post, Patch, Param, Body, Query,
   UseGuards, Req, ForbiddenException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../user/enums/user-type.enum';
+import { UserEntity } from '../user/entities/user.entity';
 import { JwtRequest } from '../../common/interfaces/jwt-request.interface';
 import { FinanceService } from './services/finance.service';
 import {
@@ -14,7 +17,7 @@ import {
   CreateFinanceCategoryDto, UpdateFinanceCategoryDto,
   CollectPhysicalPaymentDto,
   TeacherPayoutDto, TeacherDeductionDto,
-  TeacherAdvanceDto, ManualRecordDto,
+  TeacherAdvanceDto, TeacherTopupDto, ManualRecordDto,
   LedgerQueryDto, AnalyticsQueryDto,
 } from './dto/finance.dto';
 
@@ -24,16 +27,22 @@ function resolveInstituteId(req: JwtRequest): string {
   throw new ForbiddenException('No institute access');
 }
 
-function resolveUserName(req: JwtRequest): string {
-  return (req as any).user?.name || (req as any).user?.username || String(req.user.s);
-}
-
 @ApiTags('Finance')
 @ApiBearerAuth()
 @Controller('api/finance')
 @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
 export class FinanceController {
-  constructor(private readonly financeService: FinanceService) {}
+  constructor(
+    private readonly financeService: FinanceService,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
+  ) {}
+
+  private async resolveUserName(req: JwtRequest): Promise<string> {
+    const userId = String(req.user.s);
+    const user = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'nameWithInitials'] });
+    return user?.nameWithInitials || userId;
+  }
 
   // ─── Summary ─────────────────────────────────────────────────────
 
@@ -92,7 +101,7 @@ export class FinanceController {
   @ApiOperation({ summary: 'Record physical cash collection from a student' })
   async collectPhysical(@Body() dto: CollectPhysicalPaymentDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
-    return this.financeService.collectPhysical(dto, String(req.user.s), resolveUserName(req), instituteId);
+    return this.financeService.collectPhysical(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
   }
 
   // ─── Settle funds ─────────────────────────────────────────────────
@@ -102,7 +111,7 @@ export class FinanceController {
   @ApiOperation({ summary: 'Transfer funds between finance accounts' })
   async settleFunds(@Body() dto: SettleFundsDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
-    return this.financeService.settleFunds(dto, String(req.user.s), resolveUserName(req), instituteId);
+    return this.financeService.settleFunds(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
   }
 
   // ─── Payouts & Deductions ─────────────────────────────────────────
@@ -112,7 +121,7 @@ export class FinanceController {
   @ApiOperation({ summary: 'Pay out accumulated wallet balance to a teacher' })
   async payoutTeacher(@Body() dto: TeacherPayoutDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
-    return this.financeService.payoutTeacher(dto, String(req.user.s), resolveUserName(req), instituteId);
+    return this.financeService.payoutTeacher(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
   }
 
   @Post('deduct')
@@ -120,7 +129,7 @@ export class FinanceController {
   @ApiOperation({ summary: 'Apply a deduction to a teacher wallet' })
   async deductTeacher(@Body() dto: TeacherDeductionDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
-    return this.financeService.deductTeacher(dto, String(req.user.s), resolveUserName(req), instituteId);
+    return this.financeService.deductTeacher(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
   }
 
   // ─── Teacher advance ─────────────────────────────────────────────
@@ -130,7 +139,17 @@ export class FinanceController {
   @ApiOperation({ summary: 'Give a teacher an advance payment against future earnings' })
   async giveTeacherAdvance(@Body() dto: TeacherAdvanceDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
-    return this.financeService.giveTeacherAdvance(dto, String(req.user.s), resolveUserName(req), instituteId);
+    return this.financeService.giveTeacherAdvance(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
+  }
+
+  // ─── Teacher wallet top-up ────────────────────────────────────────
+
+  @Post('topup')
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Manually add money to a teacher wallet (admin top-up)' })
+  async topupTeacherWallet(@Body() dto: TeacherTopupDto, @Req() req: JwtRequest) {
+    const instituteId = resolveInstituteId(req);
+    return this.financeService.topupTeacherWallet(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
   }
 
   // ─── Manual record ────────────────────────────────────────────────
@@ -140,7 +159,7 @@ export class FinanceController {
   @ApiOperation({ summary: 'Add a manual income or expense record' })
   async addManualRecord(@Body() dto: ManualRecordDto, @Req() req: JwtRequest) {
     const instituteId = resolveInstituteId(req);
-    return this.financeService.addManualRecord(dto, String(req.user.s), resolveUserName(req), instituteId);
+    return this.financeService.addManualRecord(dto, String(req.user.s), await this.resolveUserName(req), instituteId);
   }
 
   // ─── Teachers summary ─────────────────────────────────────────────

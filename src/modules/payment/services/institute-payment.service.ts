@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, LessThan, DataSource } from 'typeorm';
+import { FinanceService } from '../../finance/services/finance.service';
 import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { InstitutePayment, PaymentRequestStatus, PaymentTargetType } from '../entities/institute-payment.entity';
 import { InstitutePaymentSubmission, SubmissionStatus, PaymentMethodType } from '../entities/institute-payment-submission.entity';
@@ -47,6 +48,7 @@ export class InstitutePaymentService {
     private readonly cloudStorageService: CloudStorageService,
     private readonly userManagementService: UserManagementService,
     private readonly dataSource: DataSource,
+    @Optional() private readonly financeService?: FinanceService,
   ) {}
 
   /**
@@ -2019,6 +2021,21 @@ export class InstitutePaymentService {
       });
     }
 
+    // Fetch acting user name (collector) for ledger record
+    const actingUser = await this.userRepository.findOne({
+      where: { id: user.s },
+      select: ['id', 'nameWithInitials'],
+    });
+    const actingUserName = actingUser?.nameWithInitials || String(user.s);
+
+    // Fetch student name and institute user ID for ledger record
+    const studentUser = await this.userRepository.findOne({
+      where: { id: studentId },
+      select: ['id', 'nameWithInitials'],
+    });
+    const studentName = studentUser?.nameWithInitials || studentId;
+    const instituteUserId = membership.userIdByInstitute || null;
+
     // Create and save the verified submission
     const timestamp = now();
     const submission = this.submissionRepository.create({
@@ -2048,6 +2065,26 @@ export class InstitutePaymentService {
       await this.userManagementService.refreshUserCache(studentId);
     } catch (cacheError) {
       this.logger.warn(`Cache refresh failed after admin payment verification for user ${studentId}: ${cacheError.message}`);
+    }
+
+    // Record to finance ledger if targetAccountId provided
+    if (dto.targetAccountId && savedSubmission.status === SubmissionStatus.VERIFIED && this.financeService) {
+      try {
+        await this.financeService.recordInstitutePaymentCollect({
+          paymentAmount: dto.amount,
+          targetAccountId: dto.targetAccountId,
+          referenceId: paymentId,
+          studentId,
+          studentName: instituteUserId ? `${studentName} [${instituteUserId}]` : studentName,
+          description: `Institute payment: ${payment.description ?? payment.paymentType}`,
+          notes: dto.notes,
+          userId: String(user.s),
+          createdByName: actingUserName,
+          instituteId,
+        });
+      } catch (fe: any) {
+        this.logger.warn(`Finance ledger failed for institute payment admin-verify ${paymentId}: ${fe.message}`);
+      }
     }
 
     return {

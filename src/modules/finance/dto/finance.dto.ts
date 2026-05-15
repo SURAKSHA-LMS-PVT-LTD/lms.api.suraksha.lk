@@ -252,6 +252,31 @@ export class ManualRecordDto {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Teacher Wallet Top-up (admin manually adds to teacher wallet)
+// ─────────────────────────────────────────────────────────────────
+
+export class TeacherTopupDto {
+  @ApiProperty({ description: 'Teacher user ID' })
+  @IsString() @IsNotEmpty()
+  teacherId: string;
+
+  @ApiProperty({ example: 3000 })
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  amount: number;
+
+  @ApiProperty({ description: 'Finance account to debit for the top-up' })
+  @IsString() @IsNotEmpty()
+  fromAccountId: string;
+
+  @ApiProperty({ description: 'Reason / reference for top-up' })
+  @IsString() @IsNotEmpty() @MaxLength(300)
+  description: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000)
+  adminNote?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Analytics
 // ─────────────────────────────────────────────────────────────────
 

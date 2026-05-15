@@ -256,7 +256,7 @@ export class InstituteClassPaymentService {
         paymentId: String(paymentId),
         userId: userIdStr,
         userType: user.userType as any,
-        username: `${submitter.firstName || ''} ${submitter.lastName || ''}`.trim() || submitter.nameWithInitials || 'Unknown',
+        username: submitter.nameWithInitials || 'Unknown',
         paymentDate: new Date(dto.paymentDate),
         receiptUrl: receiptUrl.trim(),
         receiptFilename: receiptUrl.split('/').pop() || 'receipt',
@@ -378,6 +378,14 @@ export class InstituteClassPaymentService {
       if (dto.targetAccountId && submission.submittedAmount) {
         try {
           const payment = await this.paymentRepository.findOne({ where: { id: submission.paymentId } });
+          const verifier = await this.userRepository.findOne({ where: { id: user.s }, select: ['id', 'nameWithInitials'] });
+          const verifierName = verifier?.nameWithInitials || String(user.s);
+          const studentMembership = payment ? await this.instituteUserRepository.findOne({
+            where: { userId: submission.userId, instituteId: payment.instituteId },
+            select: ['userIdByInstitute'],
+          }) : null;
+          const instituteUserId = studentMembership?.userIdByInstitute || null;
+          const studentNameWithId = instituteUserId ? `${submission.username} [${instituteUserId}]` : submission.username;
           await this.financeService.processSplit({
             paymentAmount: Number(submission.submittedAmount),
             targetAccountId: dto.targetAccountId,
@@ -386,10 +394,10 @@ export class InstituteClassPaymentService {
             teacherId: payment?.createdBy,
             referenceId: submission.paymentId,
             studentId: submission.userId,
-            studentName: submission.username,
+            studentName: studentNameWithId,
             description: `Class payment: ${payment?.title ?? submission.paymentId}`,
             userId: String(user.s),
-            createdByName: '',
+            createdByName: verifierName,
             instituteId: payment?.instituteId ?? '',
           });
         } catch (fe: any) {
@@ -867,14 +875,16 @@ export class InstituteClassPaymentService {
       });
       if (existingVerified) throw new BadRequestException({ success: false, message: 'Student already has a verified payment for this request', error: 'ALREADY_VERIFIED', data: { existingSubmissionId: existingVerified.id, existingStatus: existingVerified.status } });
 
-      const studentUser = await this.userRepository.findOne({ where: { id: studentIdStr }, select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'userType'] });
+      const studentUser = await this.userRepository.findOne({ where: { id: studentIdStr }, select: ['id', 'nameWithInitials', 'userType'] });
+      const adminUser = await this.userRepository.findOne({ where: { id: user.s }, select: ['id', 'nameWithInitials'] });
+      const adminName = adminUser?.nameWithInitials || String(user.s);
 
       const timestamp = new Date();
       const submission = this.submissionRepository.create({
         paymentId: paymentIdStr,
         userId: studentIdStr,
         userType: studentUser?.userType ?? UserType.USER,
-        username: studentUser ? (studentUser.nameWithInitials || `${studentUser.firstName || ''} ${studentUser.lastName || ''}`.trim()) : studentIdStr,
+        username: studentUser?.nameWithInitials || studentIdStr,
         paymentDate: new Date(dto.date),
         receiptUrl: '',
         receiptFilename: '',
@@ -894,6 +904,8 @@ export class InstituteClassPaymentService {
 
       if (dto.targetAccountId && saved.status === SubmissionStatus.VERIFIED) {
         try {
+          const instituteUserId = membership?.userIdByInstitute || null;
+          const studentNameWithId = instituteUserId ? `${saved.username} [${instituteUserId}]` : saved.username;
           await this.financeService.processSplit({
             paymentAmount: dto.amount,
             targetAccountId: dto.targetAccountId,
@@ -902,10 +914,10 @@ export class InstituteClassPaymentService {
             teacherId: payment.createdBy,
             referenceId: paymentIdStr,
             studentId: studentIdStr,
-            studentName: saved.username,
+            studentName: studentNameWithId,
             description: `Admin verified class payment`,
             userId: String(user.s),
-            createdByName: '',
+            createdByName: adminName,
             instituteId: payment.instituteId,
           });
         } catch (fe: any) {

@@ -310,6 +310,24 @@ export class FinanceService {
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
+    // Resolve createdByName for any rows where it was not stored (legacy entries)
+    const missingNameIds = [...new Set(
+      data.filter(r => !r.createdByName && r.createdByUserId).map(r => r.createdByUserId)
+    )];
+    if (missingNameIds.length > 0) {
+      const rows: { id: string; name_with_initials: string }[] = await this.dataSource.query(
+        `SELECT id, name_with_initials FROM users WHERE id IN (${missingNameIds.map(() => '?').join(',')})`,
+        missingNameIds,
+      );
+      const nameMap = new Map(rows.map(r => [String(r.id), r.name_with_initials]));
+      data.forEach(r => {
+        if (!r.createdByName && r.createdByUserId) {
+          r.createdByName = nameMap.get(String(r.createdByUserId)) || r.createdByUserId;
+        }
+      });
+    }
+
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
@@ -374,6 +392,69 @@ export class FinanceService {
     return { data: rows };
   }
 
+  // ─── Institute payment physical collect (no commission split) ────────
+
+  async recordInstitutePaymentCollect(params: {
+    paymentAmount: number;
+    targetAccountId: string;
+    referenceId?: string;
+    studentId?: string;
+    studentName?: string;
+    description?: string;
+    notes?: string;
+    userId: string;
+    createdByName: string;
+    instituteId: string;
+  }) {
+    const amount = params.paymentAmount.toFixed(2);
+    await this.dataSource.transaction(async manager => {
+      await this.creditAccount(manager, params.targetAccountId, amount);
+      await this.recordLedger(manager, {
+        instituteId: params.instituteId,
+        amount,
+        type: LedgerEntryType.CREDIT,
+        txSource: LedgerTxSource.PHYSICAL_COLLECT,
+        toAccountId: params.targetAccountId,
+        referenceId: params.referenceId,
+        studentId: params.studentId,
+        studentName: params.studentName,
+        description: params.description || params.notes,
+        createdByUserId: params.userId,
+        createdByName: params.createdByName,
+      });
+    });
+  }
+
+  // ─── Teacher wallet top-up ───────────────────────────────────────
+
+  async topupTeacherWallet(dto: { teacherId: string; amount: number; fromAccountId: string; description: string; adminNote?: string }, userId: string, createdByName: string, instituteId: string) {
+    const amount = dto.amount.toFixed(2);
+    return this.dataSource.transaction(async manager => {
+      await this.debitAccount(manager, dto.fromAccountId, amount);
+
+      let wallet = await manager.findOne(TeacherWalletEntity, { where: { teacherId: dto.teacherId, instituteId } });
+      if (!wallet) throw new NotFoundException('Teacher wallet not found. Initialize the wallet first.');
+
+      wallet.balance     = add(wallet.balance, amount);
+      wallet.totalEarned = add(wallet.totalEarned, amount);
+      await manager.save(wallet);
+
+      await this.recordLedger(manager, {
+        instituteId,
+        amount,
+        type: LedgerEntryType.CREDIT,
+        txSource: LedgerTxSource.TEACHER_TOPUP,
+        fromAccountId: dto.fromAccountId,
+        teacherId: dto.teacherId,
+        teacherAmount: amount,
+        description: dto.description,
+        adminNote: dto.adminNote,
+        createdByUserId: userId,
+        createdByName,
+      });
+    });
+  }
+
   // ─── Teacher advance ──────────────────────────────────────────────
 
   async giveTeacherAdvance(dto: TeacherAdvanceDto, userId: string, createdByName: string, instituteId: string) {
@@ -394,7 +475,7 @@ export class FinanceService {
       await this.recordLedger(manager, {
         instituteId,
         amount,
-        type: LedgerEntryType.CREDIT,
+        type: LedgerEntryType.DEBIT,
         txSource: LedgerTxSource.TEACHER_ADVANCE,
         fromAccountId: dto.fromAccountId,
         teacherId: dto.teacherId,

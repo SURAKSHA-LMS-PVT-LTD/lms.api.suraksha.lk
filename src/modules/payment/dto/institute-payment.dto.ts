@@ -590,4 +590,8 @@ export class AdminVerifyStudentPaymentDto {
   @IsOptional()
   @IsIn(['full', 'half', 'quarter'])
   paymentTier?: 'full' | 'half' | 'quarter';
+
+  @IsOptional()
+  @IsString()
+  targetAccountId?: string;
 }
