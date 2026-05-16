@@ -120,7 +120,8 @@ export class MigrateClassesAndSubjectsToUUID1790000000002 implements MigrationIn
       } catch { /* ignore */ }
     }
 
-    // A4: Swap institute_classes PK
+    // A4: Swap institute_classes PK (remove AUTO_INCREMENT first — MySQL requirement)
+    await queryRunner.query(`ALTER TABLE institute_classes MODIFY COLUMN id BIGINT NOT NULL`);
     await queryRunner.query(`ALTER TABLE institute_classes DROP PRIMARY KEY`);
     await queryRunner.query(`ALTER TABLE institute_classes MODIFY COLUMN id VARCHAR(36) NOT NULL DEFAULT ''`);
     await queryRunner.query(`UPDATE institute_classes SET id = uuid_new`);
@@ -204,7 +205,8 @@ export class MigrateClassesAndSubjectsToUUID1790000000002 implements MigrationIn
       } catch { /* ignore */ }
     }
 
-    // B4: Swap subjects PK
+    // B4: Swap subjects PK (remove AUTO_INCREMENT first — MySQL requirement)
+    await queryRunner.query(`ALTER TABLE subjects MODIFY COLUMN id BIGINT NOT NULL`);
     await queryRunner.query(`ALTER TABLE subjects DROP PRIMARY KEY`);
     await queryRunner.query(`ALTER TABLE subjects MODIFY COLUMN id VARCHAR(36) NOT NULL DEFAULT ''`);
     await queryRunner.query(`UPDATE subjects SET id = uuid_new`);

@@ -32,7 +32,7 @@ import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 // Active status: user.service.ts line 670, 1099
 @Index('idx_users_is_active', ['isActive'])
 export class UserEntity {
-  @PrimaryColumn({ type: 'bigint', unsigned: true })
+  @PrimaryColumn({ type: 'bigint' })
   id: string;
 
   // Assigns a random 9-digit numeric ID before insert so IDs are non-sequential

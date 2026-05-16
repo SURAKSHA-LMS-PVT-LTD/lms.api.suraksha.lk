@@ -129,6 +129,8 @@ export class MigrateInstitutesToUUID1790000000001 implements MigrationInterface 
     // (handled above via dynamic discovery)
 
     // ── Step 5: Swap institutes PK ───────────────────────────────────────────
+    // Must remove AUTO_INCREMENT before dropping PK (MySQL requirement)
+    await queryRunner.query(`ALTER TABLE institutes MODIFY COLUMN id BIGINT NOT NULL`);
     await queryRunner.query(`ALTER TABLE institutes DROP PRIMARY KEY`);
     await queryRunner.query(`ALTER TABLE institutes MODIFY COLUMN id VARCHAR(36) NOT NULL DEFAULT ''`);
     await queryRunner.query(`UPDATE institutes SET id = uuid_new`);
