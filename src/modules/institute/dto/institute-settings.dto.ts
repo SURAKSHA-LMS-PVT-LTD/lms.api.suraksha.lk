@@ -152,6 +152,15 @@ export class InstituteSettingsResponseDto {
   @Expose()
   reportFooterUrl?: string | null;
 
+  // Receipt printer banner images — separate from PDF report banners
+  @ApiPropertyOptional({ description: 'Full URL of the receipt header banner image (sized for thermal paper)' })
+  @Expose()
+  receiptHeaderUrl?: string | null;
+
+  @ApiPropertyOptional({ description: 'Full URL of the receipt footer banner image (sized for thermal paper)' })
+  @Expose()
+  receiptFooterUrl?: string | null;
+
   // Receipt printer settings
   @ApiPropertyOptional({ description: 'Receipt printer configuration' })
   @Expose()

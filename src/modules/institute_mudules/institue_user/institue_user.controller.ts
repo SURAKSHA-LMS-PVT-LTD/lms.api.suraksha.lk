@@ -376,8 +376,8 @@ export class InstitueUserController {
   @ApiResponse({ status: 403, description: 'Forbidden - Insufficient access' })
   @ApiResponse({ status: 404, description: 'User not found in this institute' })
   async getSpecificUser(
-    @Param('instituteId', ParseBigIntPipe) instituteId: string,
-    @Param('userId', ParseBigIntPipe) userId: string
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string
   ): Promise<SecureUserResponseDto> {
     return this.institueUserService.findOne(instituteId, userId);
   }

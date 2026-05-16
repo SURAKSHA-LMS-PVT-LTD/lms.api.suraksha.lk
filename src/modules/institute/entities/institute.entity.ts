@@ -258,6 +258,15 @@ export class InstituteEntity {
   @Column({ name: 'report_footer_url', type: 'varchar', length: 500, nullable: true, comment: 'S3 path for PDF report footer banner (~14:1 ratio)' })
   reportFooterUrl?: string;
 
+  // ── Receipt / Thermal-printer branding ──────────────────────────────────────
+  // Separate from PDF report banners — these are sized for thermal paper widths.
+
+  @Column({ name: 'receipt_header_url', type: 'varchar', length: 500, nullable: true, comment: 'S3 path for receipt printer header image (thermal paper width)' })
+  receiptHeaderUrl?: string;
+
+  @Column({ name: 'receipt_footer_url', type: 'varchar', length: 500, nullable: true, comment: 'S3 path for receipt printer footer image (thermal paper width)' })
+  receiptFooterUrl?: string;
+
   @Column({
     name: 'printer_settings',
     type: 'json',

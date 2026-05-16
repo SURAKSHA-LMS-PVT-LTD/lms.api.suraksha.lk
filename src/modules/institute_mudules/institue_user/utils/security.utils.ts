@@ -25,20 +25,28 @@ export class SecurityUtils {
   }
 
   /**
-   * Validate and sanitize BigInt ID parameter
+   * Validate and sanitize an ID parameter — accepts both numeric IDs (users) and UUIDs (institutes, classes, subjects).
    */
   static validateBigIntId(id: string, paramName: string): string {
     if (!id) {
       throw new BadRequestException(`${paramName} is required`);
     }
 
-    const numericId = id.toString().replace(/\D/g, ''); // Remove non-digits
-    
-    if (!numericId || numericId.length > 20) { // Reasonable limit for BigInt
-      throw new BadRequestException(`Invalid ${paramName}: must be a valid numeric ID`);
+    const str = id.toString().trim();
+
+    // UUID v4 format (institutes, classes, subjects after UUID migration)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(str)) {
+      return str;
     }
 
-    return numericId;
+    // Numeric ID (users — 9-digit BIGINT)
+    const numericId = str.replace(/\D/g, '');
+    if (numericId && numericId.length <= 20) {
+      return numericId;
+    }
+
+    throw new BadRequestException(`Invalid ${paramName}: must be a valid numeric ID or UUID`);
   }
 
   /**

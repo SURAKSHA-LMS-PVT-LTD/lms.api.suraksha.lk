@@ -261,6 +261,27 @@ export class UpdateInstituteSettingsDto {
   @MaxLength(500)
   reportFooterUrl?: string;
 
+  // ── Receipt printer banner images ─────────────────────────────────────────
+  // Separate from PDF report banners — sized for thermal paper widths.
+
+  @ApiPropertyOptional({
+    description: 'Receipt header banner S3 path — sized for thermal paper width (not PDF report)',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  receiptHeaderUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Receipt footer banner S3 path — sized for thermal paper width (not PDF report)',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  receiptFooterUrl?: string;
+
   // ── Receipt printer settings ───────────────────────────────────────────────
   @ApiPropertyOptional({ description: 'Receipt printer configuration for physical payment pages', type: PrinterSettingsDto })
   @IsOptional()

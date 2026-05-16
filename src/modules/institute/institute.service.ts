@@ -445,6 +445,9 @@ export class InstitutesService {
       // Report branding — returned as full URLs so frontend can fetch directly
       reportHeaderUrl: institute.reportHeaderUrl ? this.cloudStorageService.getFullUrl(institute.reportHeaderUrl) : null,
       reportFooterUrl: institute.reportFooterUrl ? this.cloudStorageService.getFullUrl(institute.reportFooterUrl) : null,
+      // Receipt printer banner images (separate from PDF report banners)
+      receiptHeaderUrl: institute.receiptHeaderUrl ? this.cloudStorageService.getFullUrl(institute.receiptHeaderUrl) : null,
+      receiptFooterUrl: institute.receiptFooterUrl ? this.cloudStorageService.getFullUrl(institute.receiptFooterUrl) : null,
       printerSettings: institute.printerSettings ?? null,
     });
   }
@@ -482,7 +485,7 @@ export class InstitutesService {
   async getPrintSettings(instituteId: string): Promise<import('./dto/institute-settings.dto').InstitutePrintSettingsResponseDto> {
     const institute = await this.instituteRepository.findOne({
       where: { id: instituteId, isActive: true },
-      select: ['id', 'printerSettings', 'reportHeaderUrl', 'reportFooterUrl'],
+      select: ['id', 'printerSettings', 'receiptHeaderUrl', 'receiptFooterUrl'],
     });
 
     if (!institute) {
@@ -490,11 +493,11 @@ export class InstitutesService {
     }
 
     const [headerImageDataUrl, footerImageDataUrl] = await Promise.all([
-      institute.reportHeaderUrl
-        ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.reportHeaderUrl))
+      institute.receiptHeaderUrl
+        ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.receiptHeaderUrl))
         : Promise.resolve(null),
-      institute.reportFooterUrl
-        ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.reportFooterUrl))
+      institute.receiptFooterUrl
+        ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.receiptFooterUrl))
         : Promise.resolve(null),
     ]);
 
@@ -630,6 +633,20 @@ export class InstitutesService {
         filesToDelete.push(institute.reportFooterUrl);
       }
       updateData.reportFooterUrl = dto.reportFooterUrl;
+    }
+
+    // Receipt printer banner images — separate from PDF report banners
+    if (dto.receiptHeaderUrl !== undefined) {
+      if (institute.receiptHeaderUrl && institute.receiptHeaderUrl !== dto.receiptHeaderUrl) {
+        filesToDelete.push(institute.receiptHeaderUrl);
+      }
+      updateData.receiptHeaderUrl = dto.receiptHeaderUrl;
+    }
+    if (dto.receiptFooterUrl !== undefined) {
+      if (institute.receiptFooterUrl && institute.receiptFooterUrl !== dto.receiptFooterUrl) {
+        filesToDelete.push(institute.receiptFooterUrl);
+      }
+      updateData.receiptFooterUrl = dto.receiptFooterUrl;
     }
 
     // Printer settings — merge with existing so partial updates work
