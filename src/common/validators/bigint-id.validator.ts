@@ -1,8 +1,10 @@
 import { registerDecorator, ValidationOptions, ValidationArguments } from 'class-validator';
+import { validate as isUUID } from 'uuid';
 
 /**
- * Validates that the string represents a valid BigInt ID
- * Used in DTOs for BigInt ID fields
+ * Validates that the string represents a valid ID — either a UUID (post-migration)
+ * or a legacy positive numeric BigInt string (pre-migration).
+ * Used in DTOs for institute_id, class_id, subject_id fields.
  */
 export function IsBigIntId(validationOptions?: ValidationOptions) {
   return function (object: Object, propertyName: string) {
@@ -12,26 +14,24 @@ export function IsBigIntId(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, args: ValidationArguments) {
+        validate(value: any, _args: ValidationArguments) {
           if (value === null || value === undefined) {
             return false;
           }
-          
-          // Convert to string if it's a number
-          const stringValue = String(value);
-          
-          // Check if it's a valid numeric string
-          if (!/^\d+$/.test(stringValue)) {
-            return false;
+          const stringValue = String(value).trim().toLowerCase();
+          // Accept UUID (post-migration institutes, classes, subjects)
+          if (isUUID(stringValue)) {
+            return true;
           }
-
-          try {
-            const bigIntValue = BigInt(stringValue);
-            // Must be positive
-            return bigIntValue > 0;
-          } catch (error) {
-            return false;
+          // Accept legacy positive numeric BigInt (users, etc.)
+          if (/^\d+$/.test(stringValue)) {
+            try {
+              return BigInt(stringValue) > 0n;
+            } catch {
+              return false;
+            }
           }
+          return false;
         },
         defaultMessage(args: ValidationArguments) {
           return `${args.property} must be a valid BigInt ID (positive numeric string)`;
@@ -42,8 +42,7 @@ export function IsBigIntId(validationOptions?: ValidationOptions) {
 }
 
 /**
- * Validates that the string represents a valid optional BigInt ID
- * Used in DTOs for optional BigInt ID fields
+ * Validates an optional ID field — either a UUID or a legacy positive numeric BigInt string.
  */
 export function IsOptionalBigIntId(validationOptions?: ValidationOptions) {
   return function (object: Object, propertyName: string) {
@@ -53,26 +52,22 @@ export function IsOptionalBigIntId(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, args: ValidationArguments) {
+        validate(value: any, _args: ValidationArguments) {
           if (value === null || value === undefined || value === '') {
-            return true; // Optional field can be empty
+            return true;
           }
-          
-          // Convert to string if it's a number
-          const stringValue = String(value);
-          
-          // Check if it's a valid numeric string
-          if (!/^\d+$/.test(stringValue)) {
-            return false;
+          const stringValue = String(value).trim().toLowerCase();
+          if (isUUID(stringValue)) {
+            return true;
           }
-
-          try {
-            const bigIntValue = BigInt(stringValue);
-            // Must be positive
-            return bigIntValue > 0;
-          } catch (error) {
-            return false;
+          if (/^\d+$/.test(stringValue)) {
+            try {
+              return BigInt(stringValue) > 0n;
+            } catch {
+              return false;
+            }
           }
+          return false;
         },
         defaultMessage(args: ValidationArguments) {
           return `${args.property} must be a valid BigInt ID (positive numeric string) or empty`;

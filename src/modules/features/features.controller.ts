@@ -16,13 +16,13 @@ export class FeaturesController {
   // Legacy route
   @Get('features/institute/:id')
   getInstituteFeatureTogglesLegacy(@Param('id') id: string) {
-    return this.featuresService.getFeaturesForInstitute(+id);
+    return this.featuresService.getFeaturesForInstitute(id);
   }
 
   // Route used by FeaturesContext: GET /institutes/:id/features
   @Get('institutes/:id/features')
   async getInstituteFeatures(@Param('id') id: string) {
-    const features = await this.featuresService.getFeaturesForInstitute(+id);
+    const features = await this.featuresService.getFeaturesForInstitute(id);
     return { features };
   }
 
@@ -32,6 +32,6 @@ export class FeaturesController {
     @Param('id') id: string,
     @Body() updateFeatureDto: UpdateFeatureTogglesDto,
   ) {
-    return this.featuresService.updateFeaturesForInstitute(+id, updateFeatureDto);
+    return this.featuresService.updateFeaturesForInstitute(id, updateFeatureDto);
   }
 }

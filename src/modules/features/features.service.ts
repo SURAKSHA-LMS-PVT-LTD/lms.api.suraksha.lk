@@ -14,9 +14,16 @@ export class FeaturesService {
     private readonly instituteFeatureTogglesRepository: Repository<InstituteFeatureToggles>,
   ) {}
 
-  async getFeaturesForInstitute(instituteId: number): Promise<any> {
+  async getFeaturesForInstitute(instituteId: string | number): Promise<any> {
     const allFeatures = await this.featureCatalogRepository.find();
-    const instituteToggles = await this.instituteFeatureTogglesRepository.find({ where: { instituteId } });
+
+    // institute_feature_toggles.institute_id is still a numeric BIGINT column (not yet migrated to UUID).
+    // UUID institute IDs cannot be cast to a number, so skip the toggle lookup for them and
+    // return all features enabled by default (they have no toggle rows anyway).
+    const numericId = typeof instituteId === 'number' ? instituteId : Number(instituteId);
+    const instituteToggles = isNaN(numericId)
+      ? []
+      : await this.instituteFeatureTogglesRepository.find({ where: { instituteId: numericId } });
 
     const features = allFeatures.map(feature => {
         const toggle = instituteToggles.find(t => t.featureKey === feature.key);
@@ -36,7 +43,7 @@ export class FeaturesService {
     }, {});
   }
 
-  async updateFeaturesForInstitute(instituteId: number, updateDto: UpdateFeatureTogglesDto): Promise<void> {
+  async updateFeaturesForInstitute(instituteId: string | number, updateDto: UpdateFeatureTogglesDto): Promise<void> {
     const entries = Object.entries(updateDto.features);
     if (entries.length === 0) return;
 

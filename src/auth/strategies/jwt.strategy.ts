@@ -106,20 +106,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Extract enhanced claims for new format
     const enhancedClaims = isEnhanced ? this.extractEnhancedClaims(payload as EnhancedJwtPayload) : null;
     
-    // Return optimized user object 
-    return { 
+    // Return optimized user object.
+    // IMPORTANT: spread payload FIRST, then override with normalized string values.
+    // payload.s may be a number (JWT numeric claim) — we always expose it as a string
+    // so that strict equality checks (currentUser.s === id) work correctly everywhere.
+    return {
+      ...payload, // Include all JWT fields for validation guards (spread first)
       id: userId,
-      userId: userId, 
+      userId: userId,
       sub: userId, // For backward compatibility
-      s: userId,   // Compact format
-      email: user.email, 
+      s: userId,   // Compact format — always a string, overrides numeric payload.s
+      email: user.email,
       userType: userType,
-      u: isEnhanced ? (payload as EnhancedJwtPayload).u : undefined, // Enhanced compact type
+      u: isEnhanced ? (payload as EnhancedJwtPayload).u : undefined,
       firstName: user.firstName,
       lastName: user.lastName,
       imageUrl: user.imageUrl,
       jwtPayload: payload,
-      ...payload, // Include all JWT fields for validation guards
       hasGlobalInstituteAccess: enhancedClaims?.hasGlobalAccess ?? false,
       enhancedInstituteAccess: enhancedClaims?.instituteAccess,
       enhancedChildrenAccess: enhancedClaims?.childrenAccess
