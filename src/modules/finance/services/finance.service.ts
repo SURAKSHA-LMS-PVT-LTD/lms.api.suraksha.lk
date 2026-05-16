@@ -341,7 +341,7 @@ export class FinanceService {
       monthly: '%Y-%m',
       yearly:  '%Y',
     };
-    const fmt = formatMap[period];
+    const fmt = formatMap[period] ?? formatMap['monthly'];
 
     let sql = `
       SELECT DATE_FORMAT(created_at, '${fmt}') AS period,

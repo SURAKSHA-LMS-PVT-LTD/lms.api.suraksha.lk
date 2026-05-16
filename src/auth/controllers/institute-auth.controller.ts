@@ -7,6 +7,9 @@ import { Throttle } from '@nestjs/throttler';
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { FlexibleAccessGuard } from '../guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../decorators/flexible-access.decorator';
+import { UserType } from '../../modules/user/enums/user-type.enum';
 import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { InstituteLoginService } from '../services/institute-login.service';
 import { InstituteSessionService } from '../services/institute-session.service';
@@ -143,7 +146,8 @@ export class InstituteAuthController {
    * Admin: list all active institute login sessions.
    * Requires JWT with INSTITUTE_ADMIN or SUPERADMIN role.
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('admin/:instituteId/sessions')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] List all active institute login sessions' })
@@ -163,7 +167,8 @@ export class InstituteAuthController {
   }
 
   /** Admin: force sign-out any session in the institute. */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Delete('admin/:instituteId/sessions/:sessionId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Force sign-out a session' })
@@ -182,7 +187,8 @@ export class InstituteAuthController {
   }
 
   /** Admin: sign out ALL sessions for a specific user in the institute. */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Delete('admin/:instituteId/users/:userId/sessions')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Sign out all sessions for a user' })
@@ -198,7 +204,8 @@ export class InstituteAuthController {
    * Admin: set the max-device limit for a specific user.
    * Body: { maxDevices: number | null }
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Put('admin/:instituteId/users/:userId/device-limit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Set max concurrent device limit for a user' })
@@ -212,7 +219,8 @@ export class InstituteAuthController {
   }
 
   /** Admin: apply a device limit to a specific list of user IDs */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Post('admin/:instituteId/users/bulk-device-limit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Admin] Apply device limit to specific users' })

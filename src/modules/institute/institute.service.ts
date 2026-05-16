@@ -515,8 +515,10 @@ export class InstitutesService {
   }
 
   private async fetchImageAsDataUrl(imageUrl: string): Promise<string | null> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, { signal: controller.signal });
       if (!response.ok) {
         this.logger.warn(`Failed to fetch report image ${imageUrl}: ${response.status} ${response.statusText}`);
         return null;
@@ -528,6 +530,8 @@ export class InstitutesService {
     } catch (error) {
       this.logger.warn(`Error fetching report image ${imageUrl}: ${error instanceof Error ? error.message : error}`);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

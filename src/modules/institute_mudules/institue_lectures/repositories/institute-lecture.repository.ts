@@ -126,7 +126,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
   async findByInstitute(instituteId: string): Promise<IInstituteLecture[]> {
     try {
       // Validate ID format
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
 
@@ -152,7 +152,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
   async findByClass(classId: string): Promise<IInstituteLecture[]> {
     try {
       // Validate ID format
-      if (!classId || isNaN(Number(classId))) {
+      if (!classId) {
         throw new BadRequestException('Invalid class ID format');
       }
 
@@ -277,7 +277,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
   async findUpcoming(instituteId: string, limit?: number): Promise<IInstituteLecture[]> {
     try {
       // Validate ID format
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
 
@@ -305,7 +305,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
   async findOngoing(instituteId: string): Promise<IInstituteLecture[]> {
     try {
       // Validate ID format
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
 
@@ -332,7 +332,7 @@ export class InstituteLectureRepository implements IInstituteLectureRepository {
   async findCompleted(instituteId: string, limit?: number): Promise<IInstituteLecture[]> {
     try {
       // Validate ID format
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
 

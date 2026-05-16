@@ -124,37 +124,29 @@ export class InstituteLoginService {
       select: ['id', 'firstName', 'lastName', 'nameWithInitials', 'imageUrl', 'email', 'userType'],
     });
 
-    // ── 4b. Session / device-limit check ──────────────────────────────────
-    const check = await this.instituteSessionService.checkSessionLimit(
+    // ── 4b. Pre-check: fast path for strict mode ───────────────────────────
+    // For STRICT mode we check BEFORE creating the session so we don't create
+    // a token that would be immediately invalidated.
+    // For RELAXED mode we create first then kick excess — this is intentional
+    // because we want the new session to exist before kicking the old one
+    // (avoids a window where the user has 0 sessions).
+    // Race condition note: both modes do a post-create re-verify to handle
+    // simultaneous logins from the same account.
+    const preCheck = await this.instituteSessionService.checkSessionLimit(
       instituteUser.instituteId,
       instituteUser.userId,
     );
 
-    if (!check.allowed) {
-      if (check.isStrict) {
-        // Strict mode: block the new login — admin must revoke an existing session first.
-        throw new ForbiddenException({
-          errorCode: 'DEVICE_LIMIT_REACHED',
-          message: `You have reached the maximum number of active sessions (${check.maxDevices}). Please contact your institute administrator to sign out an existing device before logging in again.`,
-          activeCount: check.activeCount,
-          maxDevices: check.maxDevices,
-          activeSessions: check.activeSessions,
-        });
-      } else {
-        // Relaxed mode: auto-kick the oldest session (lowest lastActiveAt) to make room.
-        // The displaced session appears in history as REPLACED_BY_NEW_SESSION.
-        const toKick = check.activeSessions.length - check.maxDevices! + 1;
-        await this.instituteSessionService.deactivateOldestSessions(
-          instituteUser.instituteId,
-          instituteUser.userId,
-          toKick,
-        );
-        this.logger.log(
-          `🔄 Relaxed session limit: kicked ${toKick} oldest session(s) for user=${instituteUser.userId}`,
-        );
-      }
+    if (!preCheck.allowed && preCheck.isStrict) {
+      throw new ForbiddenException({
+        errorCode: 'DEVICE_LIMIT_REACHED',
+        message: `You have reached the maximum number of active sessions (${preCheck.maxDevices}). Please contact your institute administrator to sign out an existing device before logging in again.`,
+        activeCount: preCheck.activeCount,
+        maxDevices: preCheck.maxDevices,
+        activeSessions: preCheck.activeSessions,
+      });
     }
-    // ── End session check ──────────────────────────────────────────────────
+    // ── End pre-check ──────────────────────────────────────────────────────
 
     // 5. Build JWT payload (institute-context aware)
     const payload = {
@@ -163,7 +155,6 @@ export class InstituteLoginService {
       instituteUserType: instituteUser.instituteUserType,
       userIdByInstitute: instituteUser.userIdByInstitute,
       loginType: 'institute',
-      // embed scope so the JWT itself carries the allowed host
       scopeHost: options?.scopeHost ?? null,
     };
 
@@ -183,7 +174,7 @@ export class InstituteLoginService {
     const refresh_expires_in = rememberMe ? 30 * 86400 : 7 * 86400;
 
     // 7. Persist session record
-    await this.instituteSessionService.createSession({
+    const newSession = await this.instituteSessionService.createSession({
       instituteId: instituteUser.instituteId,
       userId: instituteUser.userId,
       userIdByInstitute: instituteUser.userIdByInstitute,
@@ -194,6 +185,45 @@ export class InstituteLoginService {
       userAgent: options?.userAgent ?? null,
       refreshExpiresInSeconds: refresh_expires_in,
     });
+
+    // ── 7b. Post-create enforcement (handles race conditions) ──────────────
+    // Re-check AFTER inserting our new session. This catches simultaneous
+    // logins that both passed the pre-check.
+    const postCheck = await this.instituteSessionService.checkSessionLimit(
+      instituteUser.instituteId,
+      instituteUser.userId,
+    );
+
+    if (!postCheck.allowed) {
+      if (postCheck.isStrict) {
+        // Strict: revoke the session we just created and reject.
+        await this.instituteSessionService.deactivateSession(
+          newSession.id,
+          { requestingUserId: instituteUser.userId, requestingInstituteId: instituteUser.instituteId, isAdmin: true },
+          'CONCURRENT_LOGIN_REJECTED',
+        );
+        throw new ForbiddenException({
+          errorCode: 'DEVICE_LIMIT_REACHED',
+          message: `You have reached the maximum number of active sessions (${postCheck.maxDevices}). Please contact your institute administrator to sign out an existing device before logging in again.`,
+          activeCount: postCheck.maxDevices,
+          maxDevices: postCheck.maxDevices,
+          activeSessions: postCheck.activeSessions,
+        });
+      } else {
+        // Relaxed: kick oldest sessions to bring count back to limit.
+        // Our newly created session has the latest lastActiveAt so it survives.
+        const toKick = Math.max(1, postCheck.activeCount - postCheck.maxDevices);
+        await this.instituteSessionService.deactivateOldestSessions(
+          instituteUser.instituteId,
+          instituteUser.userId,
+          toKick,
+        );
+        this.logger.log(
+          `🔄 Relaxed session limit: kicked ${toKick} oldest session(s) for user=${instituteUser.userId}`,
+        );
+      }
+    }
+    // ── End enforcement ────────────────────────────────────────────────────
 
     this.logger.log(`✅ Institute login successful: user=${instituteUser.userId}, institute=${instituteUser.instituteId}, scope=${options?.scopeHost ?? 'main'}`);
 

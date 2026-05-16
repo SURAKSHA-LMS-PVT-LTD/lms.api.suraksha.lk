@@ -345,11 +345,11 @@ export class InstitutesController {
       // Access control will be handled by decorators
 
       // Validate input parameters
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
 
-      if (!classId || isNaN(Number(classId))) {
+      if (!classId) {
         throw new BadRequestException('Invalid class ID format');
       }
 

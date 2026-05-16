@@ -1007,10 +1007,10 @@ export class InstitueClassController {
       const { page = 1, limit = 10 } = queryDto;
       
       // Comprehensive input validation
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
-      
+
       if (!studentId || isNaN(Number(studentId))) {
         throw new BadRequestException('Invalid student ID format');
       }
@@ -1192,10 +1192,10 @@ export class InstitueClassController {
       const { page = 1, limit = 10 } = queryDto;
       
       // Comprehensive input validation
-      if (!instituteId || isNaN(Number(instituteId))) {
+      if (!instituteId) {
         throw new BadRequestException('Invalid institute ID format');
       }
-      
+
       if (!teacherId || isNaN(Number(teacherId))) {
         throw new BadRequestException('Invalid teacher ID format');
       }

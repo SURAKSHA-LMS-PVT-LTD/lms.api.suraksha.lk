@@ -1443,6 +1443,10 @@ export class AuthService {
     try {
       const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
 
+      if (!refreshSecret) {
+        throw new Error('JWT_REFRESH_SECRET is not configured');
+      }
+
       // Verify refresh token
       const payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: refreshSecret
@@ -1450,6 +1454,10 @@ export class AuthService {
 
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('Invalid token type');
+      }
+
+      if (!payload.sub) {
+        throw new UnauthorizedException('Invalid token payload');
       }
 
       // 🔐 SECURITY: Lookup by hashed token (with plain-text fallback for migration)
@@ -1752,6 +1760,10 @@ export class AuthService {
     try {
       const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
 
+      if (!refreshSecret) {
+        throw new Error('JWT_REFRESH_SECRET is not configured');
+      }
+
       // Verify refresh token
       const payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: refreshSecret
@@ -1759,6 +1771,10 @@ export class AuthService {
 
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('Invalid token type');
+      }
+
+      if (!payload.sub) {
+        throw new UnauthorizedException('Invalid token payload');
       }
 
       // 📱 SECURITY: Verify device ID matches token
