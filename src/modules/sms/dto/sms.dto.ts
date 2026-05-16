@@ -117,6 +117,66 @@ export class SendCustomSmsDto {
   scheduledAt?: Date;
 }
 
+export class SendByUserIdsDto {
+  @ApiProperty({
+    description: 'SMS message template with placeholders',
+    example: 'Dear {{firstName}}, your fee payment is due. Please contact admin.',
+    minLength: 1,
+    maxLength: 1000
+  })
+  @IsNotEmpty()
+  @IsString()
+  @Length(1, 1000)
+  messageTemplate: string;
+
+  @ApiPropertyOptional({
+    description: 'System-level user IDs (the 9-digit numeric IDs assigned to users)',
+    example: ['251041432', '318204965'],
+    type: [String]
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(500, { message: 'Maximum 500 user IDs allowed' })
+  userIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Institute-assigned user IDs (e.g. STU001, TCH002 — the userIdByInstitute field)',
+    example: ['STU001', 'STU042', 'TCH005'],
+    type: [String]
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(500, { message: 'Maximum 500 institute user IDs allowed' })
+  instituteUserIds?: string[];
+
+  @ApiProperty({
+    description: 'SMS mask ID to use (required)',
+    example: 'MASK_12345',
+    maxLength: 100
+  })
+  @IsNotEmpty()
+  @IsString()
+  @Length(1, 100)
+  maskId: string;
+
+  @ApiPropertyOptional({
+    description: 'Send message now (if true, scheduledAt is ignored)',
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  isNow?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Schedule message for later (optional, ignored if isNow is true)',
+    example: '2024-12-31T10:00:00Z'
+  })
+  @IsOptional()
+  scheduledAt?: Date;
+}
+
 export class SendBulkSmsDto {
   @ApiProperty({ 
     description: 'SMS message template with placeholders',

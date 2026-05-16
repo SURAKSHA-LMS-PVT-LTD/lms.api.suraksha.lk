@@ -29,6 +29,7 @@ export interface SmsFilterCriteria {
   classIds?: string[];
   subjectIds?: string[];
   customNumbers?: Array<{ number?: string; name?: string; phoneNumber?: string }>;  // For custom SMS recipients
+  userIds?: string[];  // For SPECIFIC_USERS sends (system user IDs or institute-assigned user IDs)
   instituteId: string;
 }
 

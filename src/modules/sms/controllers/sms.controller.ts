@@ -30,6 +30,7 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
 import {
   SendCustomSmsDto,
   SendBulkSmsDto,
+  SendByUserIdsDto,
   GetRecipientCountDto,
   SmsPaymentSubmissionDto,
   SmsResponseDto,
@@ -186,6 +187,42 @@ export class SmsController {
       null, // No user type needed
       dto
     );
+  }
+
+  /**
+   * 👤 Send SMS to specific users by system user ID or institute-assigned user ID.
+   * The backend resolves the phone numbers — admins don't need to know them.
+   * Supports sending to one or many user IDs in a single request (bulk mode).
+   * 🔒 Access: Institute Admin (own institute) OR SUPERADMIN (any institute)
+   */
+  @Post('send-by-user-ids')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Send SMS to users by user ID or institute-assigned user ID',
+    description: 'Looks up phone numbers from the database for the given user IDs and sends them an SMS. Use userIds for system IDs (9-digit numbers) or instituteUserIds for institute-assigned codes like STU001. Supports one or many IDs per request.',
+  })
+  @ApiResponse({ status: 200, description: 'SMS created successfully. Awaiting admin approval.', type: SmsResponseDto })
+  @ApiResponse({ status: 400, description: 'No valid users with phone numbers found' })
+  @ApiResponse({ status: 403, description: 'Insufficient credits or permissions' })
+  async sendByUserIds(
+    @Request() req,
+    @Body() dto: SendByUserIdsDto,
+    @Query('instituteId') queryInstituteId?: string,
+  ): Promise<SmsResponseDto> {
+    const instituteId = queryInstituteId || req.user.i?.[0]?.i;
+    const userId = req.user.s;
+
+    if (!instituteId) {
+      throw new BadRequestException('Institute ID is required. Provide instituteId query parameter or ensure JWT token contains institute access.');
+    }
+
+    if (!dto.userIds?.length && !dto.instituteUserIds?.length) {
+      throw new BadRequestException('Provide at least one entry in userIds or instituteUserIds');
+    }
+
+    return await this.smsService.sendByUserIds(instituteId, userId, null, dto);
   }
 
   /**

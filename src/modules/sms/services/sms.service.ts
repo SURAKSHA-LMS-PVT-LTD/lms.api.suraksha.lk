@@ -20,6 +20,7 @@ import { ParentEntity } from '../../parent/entities/parent.entity';
 import {
   SendCustomSmsDto,
   SendBulkSmsDto,
+  SendByUserIdsDto,
   GetRecipientCountDto,
   SmsPaymentSubmissionDto,
   SmsResponseDto,
@@ -368,6 +369,132 @@ export class SmsService implements OnModuleDestroy {
       }
       
       throw new InternalServerErrorException(`Failed to send bulk SMS: ${error.message}`);
+    }
+  }
+
+  /**
+   * 📱 Send SMS to specific users by system user ID or institute-assigned user ID.
+   * Resolves phone numbers from the users table via institute_user membership.
+   * Users without a phone number are silently skipped.
+   */
+  async sendByUserIds(
+    instituteId: string,
+    userId: string,
+    userType: UserType,
+    dto: SendByUserIdsDto,
+  ): Promise<SmsResponseDto> {
+    const startTime = nowTimestamp();
+
+    try {
+      if (!dto.userIds?.length && !dto.instituteUserIds?.length) {
+        throw new BadRequestException('At least one userIds or instituteUserIds entry is required');
+      }
+
+      if (!dto.messageTemplate?.trim()) {
+        throw new BadRequestException('Message template is required');
+      }
+
+      // Resolve phone numbers — query institute_user joined to users
+      const qb = this.dataSource
+        .createQueryBuilder()
+        .select(['iu.user_id AS userId', 'iu.user_id_institue AS userIdByInstitute', 'u.phone_number AS phoneNumber', 'u.first_name AS firstName', 'u.last_name AS lastName'])
+        .from('institute_user', 'iu')
+        .innerJoin('users', 'u', 'u.id = iu.user_id')
+        .where('iu.institute_id = :instituteId', { instituteId })
+        .andWhere('u.phone_number IS NOT NULL')
+        .andWhere("u.phone_number != ''");
+
+      const conditions: string[] = [];
+      const params: Record<string, any> = { instituteId };
+
+      if (dto.userIds?.length) {
+        conditions.push('iu.user_id IN (:...userIds)');
+        params.userIds = dto.userIds;
+      }
+      if (dto.instituteUserIds?.length) {
+        conditions.push('iu.user_id_institue IN (:...instituteUserIds)');
+        params.instituteUserIds = dto.instituteUserIds;
+      }
+
+      if (conditions.length > 0) {
+        qb.andWhere(`(${conditions.join(' OR ')})`, params);
+      }
+
+      const rows: Array<{ userId: string; userIdByInstitute: string; phoneNumber: string; firstName: string; lastName: string }> =
+        await qb.getRawMany();
+
+      // Deduplicate by phoneNumber
+      const seen = new Set<string>();
+      const recipients = rows
+        .filter(r => {
+          const normalized = this.normalizePhoneNumber(r.phoneNumber);
+          if (seen.has(normalized)) return false;
+          seen.add(normalized);
+          return true;
+        })
+        .map(r => ({
+          phoneNumber: this.normalizePhoneNumber(r.phoneNumber),
+          name: [r.firstName, r.lastName].filter(Boolean).join(' ') || 'User',
+          firstName: r.firstName || 'User',
+          lastName: r.lastName || '',
+        }));
+
+      if (recipients.length === 0) {
+        throw new BadRequestException('No users with registered phone numbers found for the given IDs');
+      }
+
+      const credentials = await this.getCachedCredentials(instituteId, userType);
+      this.validateMaskAuthorization(credentials, dto.maskId);
+      const maxBulkLimit = this.configService.get<number>('SMS_MAX_BULK_COUNT_DEFAULT', 1000);
+      this.validateBulkLimit(recipients.length, maxBulkLimit);
+      await this.validateSufficientCredits(credentials, recipients.length);
+
+      const allRequestedIds = [
+        ...(dto.userIds ?? []),
+        ...(dto.instituteUserIds ?? []),
+      ];
+
+      const context: SmsProcessingContextDto = {
+        instituteId,
+        userId,
+        userType,
+        messageType: SmsMessageType.SPECIFIC_USERS,
+        recipientFilterType: RecipientFilterType.CUSTOM,
+        messageTemplate: dto.messageTemplate,
+        recipients,
+        credentials: {
+          maskId: dto.maskId,
+          displayName: dto.maskId,
+          phoneNumber: '',
+          isActive: credentials.isActive,
+        },
+        scheduledAt: dto.isNow ? now() : dto.scheduledAt,
+        filterCriteria: {
+          recipientTypes: [RecipientFilterType.CUSTOM],
+          userIds: allRequestedIds,
+          instituteId,
+        },
+        requestedMaskId: dto.maskId,
+      };
+
+      const messageRecord = await this.createMessageRecord(context);
+      const processingTime = nowTimestamp() - startTime;
+
+      return {
+        success: true,
+        message: 'SMS by user ID created successfully. Awaiting admin approval.',
+        messageId: messageRecord.id,
+        totalRecipients: recipients.length,
+        status: SmsMessageStatus.PENDING_VERIFICATION,
+        estimatedCredits: recipients.length,
+        processingTime: `${processingTime}ms`,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Error in sendByUserIds for institute ${instituteId}: ${error.message}`, error.stack);
+      if (error instanceof BadRequestException || error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(`Failed to send SMS by user IDs: ${error.message}`);
     }
   }
 

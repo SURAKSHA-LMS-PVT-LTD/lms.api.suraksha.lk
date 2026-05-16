@@ -64,8 +64,9 @@ export class InstituteAuthController {
     summary: 'Institute-level login with institute user ID and password',
     description: 'Authenticates using institute-assigned user ID and institute-level password. Token is scoped to the originating subdomain/custom domain. Returns device limit info if max sessions reached.',
   })
-  @ApiResponse({ status: 200, description: 'Login successful or deviceLimitReached=true with activeSessions list' })
+  @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 403, description: 'Device limit reached — contact institute administrator' })
   @ApiResponse({ status: 429, description: 'Too many login attempts' })
   async login(
     @Body() dto: InstituteLoginDto,
@@ -81,13 +82,7 @@ export class InstituteAuthController {
       userAgent,
       scopeHost,
       loginMethod,
-      forceReplaceOldest: false,
     });
-
-    // If device limit reached, return 200 with flag — no cookie set
-    if (result.deviceLimitReached) {
-      return result;
-    }
 
     // Set refresh token cookie (same pattern as main login)
     const isProduction = process.env.NODE_ENV === 'production';
@@ -107,45 +102,6 @@ export class InstituteAuthController {
     return result;
   }
 
-  /**
-   * Force-replace the oldest session and complete login.
-   * Frontend calls this after user confirms "sign out oldest device".
-   */
-  @Public()
-  @Post('login/force')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 900000 } })
-  @ApiOperation({ summary: 'Login and forcefully replace the oldest active session' })
-  async loginForce(
-    @Body() dto: InstituteLoginDto,
-    @Req() req: ExpressRequest,
-    @Res({ passthrough: true }) res: ExpressResponse,
-  ) {
-    const ipAddress = getClientIp(req);
-    const userAgent = req.headers['user-agent'] as string | undefined;
-    const { loginMethod, scopeHost } = resolveLoginContext(req);
-
-    const result = await this.instituteLoginService.login(dto, {
-      ipAddress,
-      userAgent,
-      scopeHost,
-      loginMethod,
-      forceReplaceOldest: true,
-    });
-
-    const isProduction = process.env.NODE_ENV === 'production';
-    const cookieMaxAge = dto.rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-    res.cookie('refresh_token', result.refresh_token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: cookieMaxAge,
-      path: '/',
-      domain: isProduction ? '.suraksha.lk' : 'localhost',
-    });
-
-    return result;
-  }
 
   // ── Session management (user self-service) ────────────────────────────────
 

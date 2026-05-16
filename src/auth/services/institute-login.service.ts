@@ -1,6 +1,6 @@
-import { Injectable, Logger, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
@@ -74,17 +74,11 @@ export class InstituteLoginService {
     /** Resolved host (subdomain.suraksha.lk or customdomain.com) — null for main domain */
     scopeHost?: string | null;
     loginMethod?: InstituteSessionLoginMethod;
-    /** If true, forced logout the oldest session and retry instead of returning 409 */
-    forceReplaceOldest?: boolean;
   }): Promise<{
     access_token: string;
     refresh_token: string;
     expires_in: number;
     refresh_expires_in: number;
-    /** Present when device limit is reached and forceReplaceOldest is false */
-    deviceLimitReached?: boolean;
-    activeSessions?: ActiveSessionDto[];
-    maxDevices?: number;
     user: {
       userId: string;
       instituteId: string;
@@ -136,36 +130,16 @@ export class InstituteLoginService {
       instituteUser.userId,
     );
 
-    if (!check.allowed && !options?.forceReplaceOldest) {
-      // Return limit info so the frontend can show "sign out existing device" UI
-      return {
-        access_token: '',
-        refresh_token: '',
-        expires_in: 0,
-        refresh_expires_in: 0,
-        deviceLimitReached: true,
+    if (!check.allowed) {
+      // Device limit reached — users cannot self-service remove sessions.
+      // They must contact their institute admin to free a slot.
+      throw new ForbiddenException({
+        errorCode: 'DEVICE_LIMIT_REACHED',
+        message: `You have reached the maximum number of active sessions (${check.maxDevices}). Please contact your institute administrator to sign out an existing device before logging in again.`,
+        activeCount: check.activeCount,
+        maxDevices: check.maxDevices,
         activeSessions: check.activeSessions,
-        maxDevices: check.maxDevices ?? undefined,
-        user: {
-          userId: instituteUser.userId,
-          instituteId: instituteUser.instituteId,
-          userIdByInstitute: instituteUser.userIdByInstitute,
-          instituteUserType: instituteUser.instituteUserType,
-          instituteName: instituteUser.institute?.name || 'Unknown Institute',
-          firstName: user?.firstName,
-          lastName: user?.lastName,
-          imageUrl: user?.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
-        },
-      };
-    }
-
-    if (!check.allowed && options?.forceReplaceOldest) {
-      // Kick out the oldest session to free a slot
-      await this.instituteSessionService.deactivateOldestSessions(
-        instituteUser.instituteId,
-        instituteUser.userId,
-        1,
-      );
+      });
     }
     // ── End session check ──────────────────────────────────────────────────
 
@@ -350,18 +324,20 @@ export class InstituteLoginService {
         const student = await this.studentRepository.findOne({ where: { userId: instituteUser.userId } });
         if (student) {
           const parentIds = [student.fatherId, student.motherId, student.guardianId].filter(Boolean);
-          for (const parentId of parentIds) {
-            const parent = await this.parentRepository.findOne({ where: { userId: parentId }, relations: ['user'] });
-            if (parent?.user) {
-              if (dto.channel === InstitutePasswordResetChannel.EMAIL && parent.user.email) {
-                contactEmail = parent.user.email;
-                isParentContact = true;
-                break;
-              }
-              if (dto.channel === InstitutePasswordResetChannel.PHONE && parent.user.phoneNumber) {
-                contactPhone = parent.user.phoneNumber;
-                isParentContact = true;
-                break;
+          if (parentIds.length > 0) {
+            const parents = await this.parentRepository.find({ where: { userId: In(parentIds) }, relations: ['user'] });
+            for (const parent of parents) {
+              if (parent?.user) {
+                if (dto.channel === InstitutePasswordResetChannel.EMAIL && parent.user.email) {
+                  contactEmail = parent.user.email;
+                  isParentContact = true;
+                  break;
+                }
+                if (dto.channel === InstitutePasswordResetChannel.PHONE && parent.user.phoneNumber) {
+                  contactPhone = parent.user.phoneNumber;
+                  isParentContact = true;
+                  break;
+                }
               }
             }
           }
@@ -621,14 +597,18 @@ export class InstituteLoginService {
           { id: 'mother_phone', parentId: student.motherId, label: "Mother's phone" },
           { id: 'guardian_phone', parentId: student.guardianId, label: "Guardian's phone" },
         ];
-        for (const entry of parentEntries) {
-          if (!entry.parentId) continue;
-          const parent = await this.parentRepository.findOne({ where: { userId: entry.parentId }, relations: ['user'] });
-          if (parent?.user?.phoneNumber) {
-            // Only add if not already listed (avoid duplicates if father=guardian etc.)
-            const masked = this.maskPhone(parent.user.phoneNumber);
-            if (!contacts.some(c => c.id === entry.id)) {
-              contacts.push({ id: entry.id, label: entry.label, masked, type: 'PHONE' });
+        const parentIds = parentEntries.map(e => e.parentId).filter(Boolean);
+        if (parentIds.length > 0) {
+          const parents = await this.parentRepository.find({ where: { userId: In(parentIds) }, relations: ['user'] });
+          const parentMap = new Map(parents.map(p => [p.userId, p]));
+          for (const entry of parentEntries) {
+            if (!entry.parentId) continue;
+            const parent = parentMap.get(entry.parentId);
+            if (parent?.user?.phoneNumber) {
+              const masked = this.maskPhone(parent.user.phoneNumber);
+              if (!contacts.some(c => c.id === entry.id)) {
+                contacts.push({ id: entry.id, label: entry.label, masked, type: 'PHONE' });
+              }
             }
           }
         }

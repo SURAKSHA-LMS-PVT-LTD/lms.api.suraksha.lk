@@ -35,6 +35,8 @@ export enum RecipientFilterType {
 @Index('idx_sms_messages_pending', ['status', 'createdAt'])
 // Institute SMS history: sms.service.ts line 549, 550
 @Index('idx_sms_messages_institute_date', ['instituteId', 'createdAt'])
+// Institute + status filter (pending approval queries scoped per institute)
+@Index('idx_sms_messages_institute_status', ['instituteId', 'status'])
 // Status filtering
 @Index('idx_sms_messages_status', ['status'])
 // User's sent messages
