@@ -29,7 +29,7 @@ import {
   PaginatedInstituteResponseDto
 } from './dto/index.dto';
 import { UpdateInstituteSettingsDto } from './dto/update-institute-settings.dto';
-import { InstituteSettingsResponseDto, InstituteReportBrandingResponseDto, InstituteProfileResponseDto, AddGalleryImageDto } from './dto/institute-settings.dto';
+import { InstituteSettingsResponseDto, InstituteReportBrandingResponseDto, InstituteProfileResponseDto, InstitutePrintSettingsResponseDto, AddGalleryImageDto } from './dto/institute-settings.dto';
 import { UpdateUserExtraDataSchemaDto } from './dto/update-user-extra-data-schema.dto';
 
 @ApiTags('Institutes')
@@ -484,6 +484,22 @@ export class InstitutesController {
     @Request() req: JwtRequest,
   ): Promise<InstituteReportBrandingResponseDto> {
     return this.institutesService.getReportBranding(id, req.user);
+  }
+
+  @Get(':id/print-settings')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, student: true })
+  @ApiOperation({
+    summary: 'Get printer settings + header/footer images for receipt printing',
+    description: 'Returns the institute printer config (default paper size, language, custom header/footer text) together with the report header and footer banner images as base64 data URLs — all in a single request for use by payment collection pages.',
+  })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Print settings', type: InstitutePrintSettingsResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute not found' })
+  async getPrintSettings(
+    @Param('id', ParseIdPipe) id: string,
+  ): Promise<InstitutePrintSettingsResponseDto> {
+    return this.institutesService.getPrintSettings(id);
   }
 
   @Patch(':id/settings')

@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+
 import {
   IsOptional,
   IsString,
@@ -9,12 +10,39 @@ import {
   IsUrl,
   ArrayMaxSize,
   IsEnum,
+  IsObject,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { Country } from '../../user/enums/country.enum';
 import { District } from '../../user/enums/district.enum';
 import { Province } from '../../user/enums/province.enum';
 import { InstituteType } from '../enums/institute.enums';
 import { IsBoolean, IsInt, Min } from 'class-validator';
+
+export class PrinterSettingsDto {
+  @ApiPropertyOptional({ description: 'Default receipt paper size', enum: ['2inch', '3inch', '4inch', 'a4'], example: '3inch' })
+  @IsOptional()
+  @IsEnum(['2inch', '3inch', '4inch', 'a4'])
+  defaultSize?: '2inch' | '3inch' | '4inch' | 'a4';
+
+  @ApiPropertyOptional({ description: 'Receipt print language: en=English, si=Sinhala', enum: ['en', 'si'], example: 'en' })
+  @IsOptional()
+  @IsEnum(['en', 'si'])
+  language?: 'en' | 'si';
+
+  @ApiPropertyOptional({ description: 'Custom text printed at the top of each receipt (e.g. institute tagline)', maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  receiptHeader?: string;
+
+  @ApiPropertyOptional({ description: 'Custom text printed at the bottom of each receipt (e.g. thank-you message)', maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  receiptFooter?: string;
+}
 
 /**
  * Update Institute Settings DTO — Fields the Institute Admin can modify
@@ -232,4 +260,12 @@ export class UpdateInstituteSettingsDto {
   @IsString()
   @MaxLength(500)
   reportFooterUrl?: string;
+
+  // ── Receipt printer settings ───────────────────────────────────────────────
+  @ApiPropertyOptional({ description: 'Receipt printer configuration for physical payment pages', type: PrinterSettingsDto })
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => PrinterSettingsDto)
+  printerSettings?: PrinterSettingsDto;
 }

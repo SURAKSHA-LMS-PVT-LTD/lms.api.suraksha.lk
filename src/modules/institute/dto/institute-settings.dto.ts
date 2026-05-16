@@ -152,7 +152,51 @@ export class InstituteSettingsResponseDto {
   @Expose()
   reportFooterUrl?: string | null;
 
+  // Receipt printer settings
+  @ApiPropertyOptional({ description: 'Receipt printer configuration' })
+  @Expose()
+  printerSettings?: {
+    defaultSize?: '2inch' | '3inch' | '4inch' | 'a4';
+    language?: 'en' | 'si';
+    receiptHeader?: string;
+    receiptFooter?: string;
+  } | null;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
+    Object.assign(this, partial);
+  }
+}
+
+/**
+ * Combined print settings response for physical payment pages.
+ * Single endpoint so the page loads everything in one API call.
+ */
+export class InstitutePrintSettingsResponseDto {
+  @ApiPropertyOptional({ description: 'Default paper size', enum: ['2inch', '3inch', '4inch', 'a4'] })
+  @Expose()
+  defaultSize?: '2inch' | '3inch' | '4inch' | 'a4';
+
+  @ApiPropertyOptional({ description: 'Print language: en=English, si=Sinhala', enum: ['en', 'si'] })
+  @Expose()
+  language?: 'en' | 'si';
+
+  @ApiPropertyOptional({ description: 'Custom text at the top of each receipt' })
+  @Expose()
+  receiptHeader?: string | null;
+
+  @ApiPropertyOptional({ description: 'Custom text at the bottom of each receipt' })
+  @Expose()
+  receiptFooter?: string | null;
+
+  @ApiPropertyOptional({ description: 'Base64 data URL for the receipt/report header banner image' })
+  @Expose()
+  headerImageDataUrl?: string | null;
+
+  @ApiPropertyOptional({ description: 'Base64 data URL for the receipt/report footer banner image' })
+  @Expose()
+  footerImageDataUrl?: string | null;
+
+  constructor(partial: Partial<InstitutePrintSettingsResponseDto>) {
     Object.assign(this, partial);
   }
 }

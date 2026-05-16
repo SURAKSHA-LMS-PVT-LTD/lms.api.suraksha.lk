@@ -445,6 +445,7 @@ export class InstitutesService {
       // Report branding — returned as full URLs so frontend can fetch directly
       reportHeaderUrl: institute.reportHeaderUrl ? this.cloudStorageService.getFullUrl(institute.reportHeaderUrl) : null,
       reportFooterUrl: institute.reportFooterUrl ? this.cloudStorageService.getFullUrl(institute.reportFooterUrl) : null,
+      printerSettings: institute.printerSettings ?? null,
     });
   }
 
@@ -471,6 +472,40 @@ export class InstitutesService {
     return new InstituteReportBrandingResponseDto({
       instituteHeaderDataUrl: headerDataUrl,
       instituteFooterDataUrl: footerDataUrl,
+    });
+  }
+
+  /**
+   * Single endpoint for printing pages — returns printer config + header/footer data URLs.
+   * Uses FlexibleAccessGuard so all institute members (not just admin) can call it.
+   */
+  async getPrintSettings(instituteId: string): Promise<import('./dto/institute-settings.dto').InstitutePrintSettingsResponseDto> {
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+      select: ['id', 'printerSettings', 'reportHeaderUrl', 'reportFooterUrl'],
+    });
+
+    if (!institute) {
+      throw new NotFoundException(`Institute with ID ${instituteId} not found`);
+    }
+
+    const [headerImageDataUrl, footerImageDataUrl] = await Promise.all([
+      institute.reportHeaderUrl
+        ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.reportHeaderUrl))
+        : Promise.resolve(null),
+      institute.reportFooterUrl
+        ? this.fetchImageAsDataUrl(this.cloudStorageService.getFullUrl(institute.reportFooterUrl))
+        : Promise.resolve(null),
+    ]);
+
+    const { InstitutePrintSettingsResponseDto } = await import('./dto/institute-settings.dto');
+    return new InstitutePrintSettingsResponseDto({
+      defaultSize: institute.printerSettings?.defaultSize ?? '3inch',
+      language: institute.printerSettings?.language ?? 'en',
+      receiptHeader: institute.printerSettings?.receiptHeader ?? null,
+      receiptFooter: institute.printerSettings?.receiptFooter ?? null,
+      headerImageDataUrl,
+      footerImageDataUrl,
     });
   }
 
@@ -595,6 +630,14 @@ export class InstitutesService {
         filesToDelete.push(institute.reportFooterUrl);
       }
       updateData.reportFooterUrl = dto.reportFooterUrl;
+    }
+
+    // Printer settings — merge with existing so partial updates work
+    if (dto.printerSettings !== undefined) {
+      updateData.printerSettings = {
+        ...(institute.printerSettings ?? {}),
+        ...dto.printerSettings,
+      };
     }
 
     updateData.updatedAt = now();

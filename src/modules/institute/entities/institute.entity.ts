@@ -258,5 +258,18 @@ export class InstituteEntity {
   @Column({ name: 'report_footer_url', type: 'varchar', length: 500, nullable: true, comment: 'S3 path for PDF report footer banner (~14:1 ratio)' })
   reportFooterUrl?: string;
 
+  @Column({
+    name: 'printer_settings',
+    type: 'json',
+    nullable: true,
+    comment: 'Receipt printer configuration for physical payment pages',
+  })
+  printerSettings?: {
+    defaultSize?: '2inch' | '3inch' | '4inch' | 'a4';
+    language?: 'en' | 'si';
+    receiptHeader?: string;
+    receiptFooter?: string;
+  };
+
 }
 
