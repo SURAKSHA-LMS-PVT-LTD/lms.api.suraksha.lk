@@ -16,7 +16,7 @@ export class InstituteLoginSessionEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
 
-  @Column({ name: 'institute_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
   @Column({ name: 'user_id', type: 'bigint', unsigned: true })

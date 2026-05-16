@@ -442,6 +442,7 @@ export class InstitutesService {
       updatedAt: institute.updatedAt,
       isSessionLimitEnabled: institute.isSessionLimitEnabled,
       defaultSessionsPerUserCount: institute.defaultSessionsPerUserCount,
+      isStrictSessionLimit: institute.isStrictSessionLimit,
       // Report branding — returned as full URLs so frontend can fetch directly
       reportHeaderUrl: institute.reportHeaderUrl ? this.cloudStorageService.getFullUrl(institute.reportHeaderUrl) : null,
       reportFooterUrl: institute.reportFooterUrl ? this.cloudStorageService.getFullUrl(institute.reportFooterUrl) : null,
@@ -621,6 +622,7 @@ export class InstitutesService {
     // Session limits
     if (dto.isSessionLimitEnabled !== undefined) updateData.isSessionLimitEnabled = dto.isSessionLimitEnabled;
     if (dto.defaultSessionsPerUserCount !== undefined) updateData.defaultSessionsPerUserCount = dto.defaultSessionsPerUserCount;
+    if (dto.isStrictSessionLimit !== undefined) updateData.isStrictSessionLimit = dto.isStrictSessionLimit;
 
     // Report branding — S3 relative paths; track replaced paths for deletion
     if (dto.reportHeaderUrl !== undefined) {

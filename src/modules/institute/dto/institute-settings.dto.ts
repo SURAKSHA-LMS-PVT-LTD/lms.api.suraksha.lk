@@ -143,6 +143,10 @@ export class InstituteSettingsResponseDto {
   @Expose()
   defaultSessionsPerUserCount?: number;
 
+  @ApiPropertyOptional({ description: 'When true, over-limit login is blocked (strict). When false, oldest session is auto-kicked (relaxed).', example: false })
+  @Expose()
+  isStrictSessionLimit?: boolean;
+
   // PDF Report branding — full CDN URLs (or null if not set)
   @ApiPropertyOptional({ description: 'Full URL of the report header banner image (wide, ~8:1 ratio)' })
   @Expose()

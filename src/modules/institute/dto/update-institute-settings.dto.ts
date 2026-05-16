@@ -151,6 +151,11 @@ export class UpdateInstituteSettingsDto {
   @IsEnum(['NEW_USERS_ONLY', 'ALL_USERS', 'USERS_WITH_PREVIOUS_LIMIT'])
   sessionLimitUpdateMode?: 'NEW_USERS_ONLY' | 'ALL_USERS' | 'USERS_WITH_PREVIOUS_LIMIT';
 
+  @ApiPropertyOptional({ description: 'When true, new login is blocked if device limit reached. When false (relaxed), oldest session is auto-kicked.' })
+  @IsOptional()
+  @IsBoolean()
+  isStrictSessionLimit?: boolean;
+
   // Branding — S3 relative paths
   @ApiPropertyOptional({
     description: 'Logo S3 relative path (from /upload/verify-and-publish)',

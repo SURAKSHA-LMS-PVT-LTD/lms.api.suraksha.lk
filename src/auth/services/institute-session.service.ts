@@ -16,6 +16,11 @@ export interface SessionCheckResult {
   maxDevices: number | null;
   /** Active sessions list (id, deviceLabel, ipAddress, createdAt, lastActiveAt, scopeHost) */
   activeSessions: ActiveSessionDto[];
+  /**
+   * When true: over-limit login must be BLOCKED (strict enforcement).
+   * When false (default): over-limit login should auto-kick the oldest session (relaxed).
+   */
+  isStrict: boolean;
 }
 
 export interface ActiveSessionDto {
@@ -86,16 +91,18 @@ export class InstituteSessionService {
 
     // Fetch institute settings
     const institute = await this.sessionRepo.manager.query(
-      `SELECT custom_login_enabled, is_session_limit_enabled, default_sessions_per_user_count FROM institutes WHERE id = ?`,
+      `SELECT custom_login_enabled, is_session_limit_enabled, default_sessions_per_user_count, is_strict_session_limit FROM institutes WHERE id = ?`,
       [instituteId]
     ).then(res => res[0]);
 
-    if (!institute) return { allowed: true, activeCount: 0, maxDevices: null, activeSessions: [] };
+    if (!institute) return { allowed: true, activeCount: 0, maxDevices: null, activeSessions: [], isStrict: false };
 
     // Performance optimization: skip limit checks if feature disabled
     if (!institute.custom_login_enabled || !institute.is_session_limit_enabled) {
-      return { allowed: true, activeCount: 0, maxDevices: null, activeSessions: [] };
+      return { allowed: true, activeCount: 0, maxDevices: null, activeSessions: [], isStrict: false };
     }
+
+    const isStrict: boolean = !!institute.is_strict_session_limit;
 
     // Fetch institute user specific limit
     const iu = await this.instituteUserRepo.findOne({
@@ -106,7 +113,7 @@ export class InstituteSessionService {
     // If user has a custom limit, use it. Otherwise, use the institute's default limit.
     const maxDevices: number = (iu as any)?.maxDevicesPerUser ?? institute.default_sessions_per_user_count ?? 1;
 
-    // Fetch active sessions
+    // Fetch active sessions (oldest last — DESC means newest first)
     const activeSessions = await this.sessionRepo.find({
       where: { instituteId, userId, isActive: true },
       order: { lastActiveAt: 'DESC' },
@@ -119,6 +126,7 @@ export class InstituteSessionService {
       allowed,
       activeCount,
       maxDevices,
+      isStrict,
       activeSessions: activeSessions.map(s => ({
         id: s.id,
         deviceLabel: s.deviceLabel,

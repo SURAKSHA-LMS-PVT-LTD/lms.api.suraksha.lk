@@ -131,15 +131,28 @@ export class InstituteLoginService {
     );
 
     if (!check.allowed) {
-      // Device limit reached — users cannot self-service remove sessions.
-      // They must contact their institute admin to free a slot.
-      throw new ForbiddenException({
-        errorCode: 'DEVICE_LIMIT_REACHED',
-        message: `You have reached the maximum number of active sessions (${check.maxDevices}). Please contact your institute administrator to sign out an existing device before logging in again.`,
-        activeCount: check.activeCount,
-        maxDevices: check.maxDevices,
-        activeSessions: check.activeSessions,
-      });
+      if (check.isStrict) {
+        // Strict mode: block the new login — admin must revoke an existing session first.
+        throw new ForbiddenException({
+          errorCode: 'DEVICE_LIMIT_REACHED',
+          message: `You have reached the maximum number of active sessions (${check.maxDevices}). Please contact your institute administrator to sign out an existing device before logging in again.`,
+          activeCount: check.activeCount,
+          maxDevices: check.maxDevices,
+          activeSessions: check.activeSessions,
+        });
+      } else {
+        // Relaxed mode: auto-kick the oldest session (lowest lastActiveAt) to make room.
+        // The displaced session appears in history as REPLACED_BY_NEW_SESSION.
+        const toKick = check.activeSessions.length - check.maxDevices! + 1;
+        await this.instituteSessionService.deactivateOldestSessions(
+          instituteUser.instituteId,
+          instituteUser.userId,
+          toKick,
+        );
+        this.logger.log(
+          `🔄 Relaxed session limit: kicked ${toKick} oldest session(s) for user=${instituteUser.userId}`,
+        );
+      }
     }
     // ── End session check ──────────────────────────────────────────────────
 
