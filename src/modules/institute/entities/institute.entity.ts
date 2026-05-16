@@ -280,5 +280,13 @@ export class InstituteEntity {
     receiptFooter?: string;
   };
 
+  @Column({
+    name: 'allow_user_photo_upload',
+    type: 'boolean',
+    default: true,
+    comment: 'When false, institute users cannot upload their own profile photo — only admins can update it',
+  })
+  allowUserPhotoUpload: boolean = true;
+
 }
 

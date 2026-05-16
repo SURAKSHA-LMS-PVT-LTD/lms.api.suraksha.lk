@@ -449,6 +449,7 @@ export class InstitutesService {
       receiptHeaderUrl: institute.receiptHeaderUrl ? this.cloudStorageService.getFullUrl(institute.receiptHeaderUrl) : null,
       receiptFooterUrl: institute.receiptFooterUrl ? this.cloudStorageService.getFullUrl(institute.receiptFooterUrl) : null,
       printerSettings: institute.printerSettings ?? null,
+      allowUserPhotoUpload: institute.allowUserPhotoUpload,
     });
   }
 
@@ -655,6 +656,10 @@ export class InstitutesService {
         ...(institute.printerSettings ?? {}),
         ...dto.printerSettings,
       };
+    }
+
+    if (dto.allowUserPhotoUpload !== undefined) {
+      updateData.allowUserPhotoUpload = dto.allowUserPhotoUpload;
     }
 
     updateData.updatedAt = now();

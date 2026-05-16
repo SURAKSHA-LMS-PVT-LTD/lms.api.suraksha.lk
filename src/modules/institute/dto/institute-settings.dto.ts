@@ -171,6 +171,10 @@ export class InstituteSettingsResponseDto {
     receiptFooter?: string;
   } | null;
 
+  @ApiPropertyOptional({ description: 'Whether institute users can upload their own profile photo' })
+  @Expose()
+  allowUserPhotoUpload?: boolean;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
     Object.assign(this, partial);
   }

@@ -11,6 +11,9 @@ import {
   ArrayMaxSize,
   IsEnum,
   IsObject,
+  IsBoolean,
+  IsInt,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -18,7 +21,6 @@ import { Country } from '../../user/enums/country.enum';
 import { District } from '../../user/enums/district.enum';
 import { Province } from '../../user/enums/province.enum';
 import { InstituteType } from '../enums/institute.enums';
-import { IsBoolean, IsInt, Min } from 'class-validator';
 
 export class PrinterSettingsDto {
   @ApiPropertyOptional({ description: 'Default receipt paper size', enum: ['2inch', '3inch', '4inch', 'a4'], example: '3inch' })
@@ -289,4 +291,10 @@ export class UpdateInstituteSettingsDto {
   @ValidateNested()
   @Type(() => PrinterSettingsDto)
   printerSettings?: PrinterSettingsDto;
+
+  // ── User photo policy ──────────────────────────────────────────────────────
+  @ApiPropertyOptional({ description: 'Whether institute users can upload their own profile photo. Set false to restrict photo changes to admins only.' })
+  @IsOptional()
+  @IsBoolean()
+  allowUserPhotoUpload?: boolean;
 }

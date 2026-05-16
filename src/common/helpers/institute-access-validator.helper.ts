@@ -30,8 +30,8 @@ export class InstituteAccessValidator {
   ): void {
     const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
     
-    // Check if user has access to this institute
-    const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === instituteId);
+    // Check if user has access to this institute (String comparison handles UUID vs legacy numeric ID)
+    const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(instituteId));
     
     if (!instituteEntry) {
       // 🔑 PARENT ACCESS: Check if this is a parent accessing their child's data (read-only)
