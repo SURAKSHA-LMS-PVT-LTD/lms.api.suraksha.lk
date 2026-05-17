@@ -850,6 +850,33 @@ export class InstitutesService {
   }
 
   // ───────────────────────────────────────────────────
+  // Design Templates
+  // ───────────────────────────────────────────────────
+
+  async getDesignTemplates(instituteId: string, user: any): Promise<any[]> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+      select: ['id', 'designTemplates'],
+    });
+    if (!institute) throw new NotFoundException(`Institute ${instituteId} not found`);
+    return institute.designTemplates ?? [];
+  }
+
+  async saveDesignTemplates(instituteId: string, templates: any[], user: any): Promise<any[]> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+    const institute = await this.instituteRepository.findOne({
+      where: { id: instituteId, isActive: true },
+    });
+    if (!institute) throw new NotFoundException(`Institute ${instituteId} not found`);
+    await this.instituteRepository.update(instituteId, {
+      designTemplates: templates,
+      updatedAt: now(),
+    });
+    return templates;
+  }
+
+  // ───────────────────────────────────────────────────
   // Institute Profile (All institute members — minimal view)
   // ───────────────────────────────────────────────────
 

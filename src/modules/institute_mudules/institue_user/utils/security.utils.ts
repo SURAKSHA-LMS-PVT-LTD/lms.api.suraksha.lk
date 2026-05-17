@@ -118,7 +118,7 @@ export class SecurityUtils {
 
     // Enforce reasonable limits
     pageNum = Math.max(1, Math.min(pageNum, 1000)); // Max 1000 pages
-    limitNum = Math.max(1, Math.min(limitNum, 50)); // Max 50 items per page
+    limitNum = Math.max(1, Math.min(limitNum, 500)); // Max 500 items per page
 
     const skip = (pageNum - 1) * limitNum;
 

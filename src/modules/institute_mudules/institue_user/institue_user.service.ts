@@ -434,6 +434,26 @@ export class InstitueUserService {
       }
     }
 
+    // Apply date of birth range filter if provided
+    if (query.dobFrom) {
+      queryBuilder.andWhere('u.date_of_birth >= :dobFrom', { dobFrom: query.dobFrom });
+      countQueryBuilder.andWhere('u.date_of_birth >= :dobFrom', { dobFrom: query.dobFrom });
+    }
+    if (query.dobTo) {
+      queryBuilder.andWhere('u.date_of_birth <= :dobTo', { dobTo: query.dobTo });
+      countQueryBuilder.andWhere('u.date_of_birth <= :dobTo', { dobTo: query.dobTo });
+    }
+
+    // Apply joined date range filter if provided (iu.created_at is the join date)
+    if (query.joinedFrom) {
+      queryBuilder.andWhere('iu.created_at >= :joinedFrom', { joinedFrom: query.joinedFrom });
+      countQueryBuilder.andWhere('iu.created_at >= :joinedFrom', { joinedFrom: query.joinedFrom });
+    }
+    if (query.joinedTo) {
+      queryBuilder.andWhere('iu.created_at <= :joinedTo', { joinedTo: `${query.joinedTo} 23:59:59` });
+      countQueryBuilder.andWhere('iu.created_at <= :joinedTo', { joinedTo: `${query.joinedTo} 23:59:59` });
+    }
+
     // Apply city/address filter if provided (all user types)
     if (query.city) {
       const safeCity = SecurityUtils.sanitizeSearchInput(query.city);
@@ -1488,6 +1508,26 @@ export class InstitueUserService {
       countQueryBuilder.andWhere('u.gender = :gender', { gender: safeGender });
     }
 
+    // Apply date of birth range filter if provided
+    if (query.dobFrom) {
+      queryBuilder.andWhere('u.date_of_birth >= :dobFrom', { dobFrom: query.dobFrom });
+      countQueryBuilder.andWhere('u.date_of_birth >= :dobFrom', { dobFrom: query.dobFrom });
+    }
+    if (query.dobTo) {
+      queryBuilder.andWhere('u.date_of_birth <= :dobTo', { dobTo: query.dobTo });
+      countQueryBuilder.andWhere('u.date_of_birth <= :dobTo', { dobTo: query.dobTo });
+    }
+
+    // Apply joined date range filter if provided
+    if (query.joinedFrom) {
+      queryBuilder.andWhere('iu.created_at >= :joinedFrom', { joinedFrom: query.joinedFrom });
+      countQueryBuilder.andWhere('iu.created_at >= :joinedFrom', { joinedFrom: query.joinedFrom });
+    }
+    if (query.joinedTo) {
+      queryBuilder.andWhere('iu.created_at <= :joinedTo', { joinedTo: `${query.joinedTo} 23:59:59` });
+      countQueryBuilder.andWhere('iu.created_at <= :joinedTo', { joinedTo: `${query.joinedTo} 23:59:59` });
+    }
+
     // Apply student-specific filters (only for STUDENT type)
     if (userType === InstituteUserType.STUDENT) {
       // Filter by student ID
@@ -1679,6 +1719,33 @@ export class InstitueUserService {
       countQueryBuilder.andWhere(searchCondition, { search: `%${safeSearch}%` });
     }
 
+    // Apply gender filter if provided
+    if (query.gender) {
+      const safeGender = SecurityUtils.sanitizeSearchInput(query.gender);
+      queryBuilder.andWhere('u.gender = :gender', { gender: safeGender });
+      countQueryBuilder.andWhere('u.gender = :gender', { gender: safeGender });
+    }
+
+    // Apply date of birth range filter if provided
+    if (query.dobFrom) {
+      queryBuilder.andWhere('u.date_of_birth >= :dobFrom', { dobFrom: query.dobFrom });
+      countQueryBuilder.andWhere('u.date_of_birth >= :dobFrom', { dobFrom: query.dobFrom });
+    }
+    if (query.dobTo) {
+      queryBuilder.andWhere('u.date_of_birth <= :dobTo', { dobTo: query.dobTo });
+      countQueryBuilder.andWhere('u.date_of_birth <= :dobTo', { dobTo: query.dobTo });
+    }
+
+    // Apply joined date range filter if provided
+    if (query.joinedFrom) {
+      queryBuilder.andWhere('iu.created_at >= :joinedFrom', { joinedFrom: query.joinedFrom });
+      countQueryBuilder.andWhere('iu.created_at >= :joinedFrom', { joinedFrom: query.joinedFrom });
+    }
+    if (query.joinedTo) {
+      queryBuilder.andWhere('iu.created_at <= :joinedTo', { joinedTo: `${query.joinedTo} 23:59:59` });
+      countQueryBuilder.andWhere('iu.created_at <= :joinedTo', { joinedTo: `${query.joinedTo} 23:59:59` });
+    }
+
     // Apply student-specific filters (only for STUDENT type)
     if (userType === InstituteUserType.STUDENT) {
       // Filter by student ID
@@ -1711,13 +1778,6 @@ export class InstitueUserService {
       } else if (query.hasAllergies === 'false') {
         queryBuilder.andWhere('(s.allergies IS NULL OR s.allergies = "")');
         countQueryBuilder.andWhere('(s.allergies IS NULL OR s.allergies = "")');
-      }
-
-      // Filter by gender
-      if (query.gender) {
-        const safeGender = SecurityUtils.sanitizeSearchInput(query.gender);
-        queryBuilder.andWhere('u.gender = :gender', { gender: safeGender });
-        countQueryBuilder.andWhere('u.gender = :gender', { gender: safeGender });
       }
     }
 

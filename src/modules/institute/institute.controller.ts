@@ -672,6 +672,31 @@ export class InstitutesController {
     return this.institutesService.getUserExtraDataSchema(id, req.user);
   }
 
+  @Get(':id/design-templates')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Get institute design templates (certificates, birthday wishes, etc.)' })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  async getDesignTemplates(
+    @Param('id', ParseIdPipe) id: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.institutesService.getDesignTemplates(id, req.user);
+  }
+
+  @Post(':id/design-templates')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Save institute design templates (replaces all templates)' })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  async saveDesignTemplates(
+    @Param('id', ParseIdPipe) id: string,
+    @Body() body: { templates: any[] },
+    @Request() req: JwtRequest,
+  ) {
+    return this.institutesService.saveDesignTemplates(id, body.templates ?? [], req.user);
+  }
+
   @Patch(':id/user-extra-data-schema')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })

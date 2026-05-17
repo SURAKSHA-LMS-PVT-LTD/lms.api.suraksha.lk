@@ -23,16 +23,16 @@ export class SecureUserQueryDto {
   page?: string = '1';
 
   @ApiPropertyOptional({
-    description: 'Number of items per page (max 50)',
+    description: 'Number of items per page (max 500)',
     example: 10,
     minimum: 1,
-    maximum: 50
+    maximum: 500
   })
   @IsOptional()
   @IsNumberString({}, { message: 'Limit must be a valid number' })
   @Transform(({ value }) => {
     const num = parseInt(value);
-    return isNaN(num) || num < 1 ? '10' : Math.min(num, 50).toString(); // Max 50 items
+    return isNaN(num) || num < 1 ? '10' : Math.min(num, 500).toString(); // Max 500 items
   })
   limit?: string = '10';
 
@@ -299,6 +299,38 @@ export class SecureUserQueryDto {
     return String(value).trim();
   })
   houseId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by date of birth from (YYYY-MM-DD)',
+    example: '2000-01-01'
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dobFrom must be in YYYY-MM-DD format' })
+  dobFrom?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by date of birth to (YYYY-MM-DD)',
+    example: '2010-12-31'
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dobTo must be in YYYY-MM-DD format' })
+  dobTo?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by institute join date from (YYYY-MM-DD)',
+    example: '2023-01-01'
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'joinedFrom must be in YYYY-MM-DD format' })
+  joinedFrom?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by institute join date to (YYYY-MM-DD)',
+    example: '2024-12-31'
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'joinedTo must be in YYYY-MM-DD format' })
+  joinedTo?: string;
 }
 
 /**

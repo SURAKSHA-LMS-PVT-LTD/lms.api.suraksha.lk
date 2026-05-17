@@ -296,5 +296,13 @@ export class InstituteEntity {
   })
   allowUserPhotoUpload: boolean = true;
 
+  @Column({
+    name: 'design_templates',
+    type: 'json',
+    nullable: true,
+    comment: 'Institute-level design templates for certificates, birthday wishes, etc.',
+  })
+  designTemplates?: any[];
+
 }
 
