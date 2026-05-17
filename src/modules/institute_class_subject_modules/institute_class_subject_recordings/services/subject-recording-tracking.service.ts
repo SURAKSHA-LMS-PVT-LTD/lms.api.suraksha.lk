@@ -203,7 +203,14 @@ export class SubjectRecordingTrackingService {
     return { sessionId: saved.id, recordingId, userType };
   }
 
-  async endSession(sessionId: string, lastPositionSeconds?: number, userId?: string) {
+  async endSession(
+    sessionId: string,
+    lastPositionSeconds?: number,
+    totalWatchedSeconds?: number,
+    effectiveWatchedSeconds?: number,
+    lastPlaybackSpeed?: number,
+    userId?: string,
+  ) {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Session not found');
     if (userId && session.userId && session.userId !== userId) {
@@ -211,6 +218,15 @@ export class SubjectRecordingTrackingService {
     }
     const update: Partial<SubjectRecordingSession> = { endTime: new Date() };
     if (lastPositionSeconds !== undefined) update.lastPositionSeconds = lastPositionSeconds;
+    if (totalWatchedSeconds !== undefined && totalWatchedSeconds > session.totalWatchedSeconds) {
+      update.totalWatchedSeconds = totalWatchedSeconds;
+    }
+    if (effectiveWatchedSeconds !== undefined && effectiveWatchedSeconds > session.effectiveWatchedSeconds) {
+      update.effectiveWatchedSeconds = effectiveWatchedSeconds;
+    }
+    if (lastPlaybackSpeed !== undefined && lastPlaybackSpeed > 0) {
+      update.lastPlaybackSpeed = lastPlaybackSpeed;
+    }
     await this.sessionRepo.update(sessionId, update);
     return { success: true };
   }
@@ -234,25 +250,116 @@ export class SubjectRecordingTrackingService {
       throw new ForbiddenException('Not your session');
     }
 
-    const records = activities.map(act => {
-      const record = this.activityRepo.create({
+    const now = new Date();
+    const records = activities.map(act =>
+      this.activityRepo.create({
         sessionId,
         activityType: act.type,
         videoTimestamp: act.videoTimestamp,
         metadata: act.metadata,
-        wallClockTimestamp: act.wallTime ? new Date(act.wallTime) : new Date(),
-      });
-      return record;
-    });
+        wallClockTimestamp: act.wallTime ? new Date(act.wallTime) : now,
+      }),
+    );
     await this.activityRepo.save(records);
 
-    const lastPlay = [...activities].reverse().find(a => a.type === 'PLAY' || a.type === 'HEARTBEAT');
-    if (lastPlay !== undefined) {
-      await this.sessionRepo.update(sessionId, {
-        lastPositionSeconds: Math.floor(lastPlay.videoTimestamp),
-      });
+    // ── Compute per-segment watched time accounting for playback speed ────────
+    // Sort by wall time; fall back to videoTimestamp order if no wallTime supplied
+    const sorted = [...activities].sort((a, b) => {
+      if (a.wallTime !== undefined && b.wallTime !== undefined) return a.wallTime - b.wallTime;
+      return a.videoTimestamp - b.videoTimestamp;
+    });
+
+    let additionalVideoSeconds = 0;   // video content seconds covered (speed-inflated)
+    let additionalEffectiveSeconds = 0; // real wall-clock seconds spent watching
+
+    let playWallTime: number | null = null;
+    let playVideoTime: number | null = null;
+    let currentSpeed: number = session.lastPlaybackSpeed ?? 1;
+    let lastSpeed = currentSpeed;
+
+    for (const act of sorted) {
+      if (act.type === 'SPEED_CHANGE') {
+        const newSpeed = Number(act.metadata?.speed ?? act.metadata?.playbackRate ?? act.metadata?.rate ?? 1);
+        if (newSpeed > 0) {
+          // Close the current play segment at this speed before switching
+          if (playWallTime !== null && playVideoTime !== null) {
+            const wallElapsed = ((act.wallTime ?? now.getTime()) - playWallTime) / 1000;
+            const videoElapsed = act.videoTimestamp - playVideoTime;
+            const videoSec = Math.min(Math.max(videoElapsed, 0), Math.max(wallElapsed * currentSpeed, 0));
+            additionalVideoSeconds += videoSec;
+            additionalEffectiveSeconds += videoSec / currentSpeed;
+            // Rebase the play segment at the new speed
+            playWallTime = act.wallTime ?? now.getTime();
+            playVideoTime = act.videoTimestamp;
+          }
+          currentSpeed = newSpeed;
+          lastSpeed = newSpeed;
+        }
+        continue;
+      }
+
+      if (act.type === 'PLAY' || act.type === 'HEARTBEAT') {
+        if (playWallTime === null) {
+          playWallTime = act.wallTime ?? now.getTime();
+          playVideoTime = act.videoTimestamp;
+        }
+        continue;
+      }
+
+      if (act.type === 'PAUSE' || act.type === 'SEEK') {
+        if (playWallTime !== null && playVideoTime !== null) {
+          const wallElapsed = ((act.wallTime ?? now.getTime()) - playWallTime) / 1000;
+          const videoElapsed = act.videoTimestamp - playVideoTime;
+          const videoSec = Math.min(Math.max(videoElapsed, 0), Math.max(wallElapsed * currentSpeed, 0));
+          additionalVideoSeconds += videoSec;
+          additionalEffectiveSeconds += videoSec / currentSpeed;
+          playWallTime = null;
+          playVideoTime = null;
+        }
+        // After SEEK the speed stays the same; after PAUSE playback stops
+        if (act.type === 'SEEK') {
+          playWallTime = act.wallTime ?? now.getTime();
+          playVideoTime = act.videoTimestamp;
+        }
+      }
     }
-    return { success: true };
+
+    // Close any open play segment at end of batch (cap at 5 min to guard against stale batches)
+    if (playWallTime !== null && playVideoTime !== null) {
+      const wallElapsed = Math.min((now.getTime() - playWallTime) / 1000, 300);
+      const videoSec = wallElapsed * currentSpeed;
+      additionalVideoSeconds += videoSec;
+      additionalEffectiveSeconds += wallElapsed;
+    }
+
+    const sessionUpdate: Partial<SubjectRecordingSession> = {};
+    if (additionalVideoSeconds > 0) {
+      sessionUpdate.totalWatchedSeconds = session.totalWatchedSeconds + Math.round(additionalVideoSeconds);
+    }
+    if (additionalEffectiveSeconds > 0) {
+      sessionUpdate.effectiveWatchedSeconds = session.effectiveWatchedSeconds + Math.round(additionalEffectiveSeconds);
+    }
+    if (lastSpeed !== (session.lastPlaybackSpeed ?? 1)) {
+      sessionUpdate.lastPlaybackSpeed = lastSpeed;
+    }
+
+    const lastPositionAct = [...sorted].reverse().find(
+      a => a.type === 'PLAY' || a.type === 'HEARTBEAT' || a.type === 'PAUSE' || a.type === 'SEEK' || a.type === 'SPEED_CHANGE',
+    );
+    if (lastPositionAct) {
+      sessionUpdate.lastPositionSeconds = Math.floor(lastPositionAct.videoTimestamp);
+    }
+
+    if (Object.keys(sessionUpdate).length) {
+      await this.sessionRepo.update(sessionId, sessionUpdate);
+    }
+
+    return {
+      success: true,
+      addedVideoSeconds: Math.round(additionalVideoSeconds),
+      addedEffectiveSeconds: Math.round(additionalEffectiveSeconds),
+      currentSpeed,
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -260,18 +367,21 @@ export class SubjectRecordingTrackingService {
   // ─────────────────────────────────────────────────────────────────────────
 
   async getSessionReport(recordingId: string) {
-    const sessions = await this.sessionRepo.find({
-      where: { recordingId },
-      relations: ['user'],
-      order: { startTime: 'ASC' },
-    });
-    if (!sessions.length) return [];
+    const [recording, sessions] = await Promise.all([
+      this.recordingRepo.findOne({ where: { id: recordingId } }),
+      this.sessionRepo.find({
+        where: { recordingId },
+        relations: ['user'],
+        order: { startTime: 'ASC' },
+      }),
+    ]);
+
+    if (!recording) throw new NotFoundException('Recording not found');
 
     const sessionIds = sessions.map(s => s.id);
-    const allActivities = await this.activityRepo.find({
-      where: { sessionId: In(sessionIds) },
-      order: { createdAt: 'ASC' },
-    });
+    const allActivities = sessionIds.length
+      ? await this.activityRepo.find({ where: { sessionId: In(sessionIds) }, order: { createdAt: 'ASC' } })
+      : [];
 
     const actBySession = new Map<string, SubjectRecordingActivity[]>();
     for (const act of allActivities) {
@@ -280,25 +390,130 @@ export class SubjectRecordingTrackingService {
       actBySession.set(act.sessionId, arr);
     }
 
-    return sessions.map(s => ({
-      sessionId: s.id,
-      userId: s.userId,
-      name: s.userId
-        ? (s as any).user?.name ?? `${(s as any).user?.firstName ?? ''} ${(s as any).user?.lastName ?? ''}`.trim()
-        : s.guestName ?? 'Guest',
-      isGuest: !s.userId,
-      userType: s.userType,
-      startTime: s.startTime,
-      endTime: s.endTime,
-      totalWatchedSeconds: s.totalWatchedSeconds,
-      lastPositionSeconds: s.lastPositionSeconds,
-      backupStatus: s.backupStatus,
-      activities: (actBySession.get(s.id) ?? []).map(a => ({
-        type: a.activityType,
-        videoTimestamp: a.videoTimestamp,
-        at: a.createdAt,
-      })),
-    }));
+    // Per-user aggregation across multiple visits
+    const userMap = new Map<string, {
+      userId: string; name: string; userType: string; isGuest: boolean;
+      sessions: typeof sessions;
+      totalWatchedSeconds: number; totalEffectiveSeconds: number;
+      firstVisitAt: Date; lastVisitAt: Date; lastPositionSeconds: number;
+      maxSpeed: number;
+    }>();
+
+    for (const s of sessions) {
+      const key = s.userId ?? `guest:${s.guestEmail ?? s.guestName ?? s.id}`;
+      const name = s.userId
+        ? ((s as any).user?.name ?? (`${(s as any).user?.firstName ?? ''} ${(s as any).user?.lastName ?? ''}`.trim() || 'Unknown'))
+        : s.guestName ?? 'Guest';
+      const speed = s.lastPlaybackSpeed ?? 1;
+      const existing = userMap.get(key);
+      if (existing) {
+        existing.sessions.push(s);
+        existing.totalWatchedSeconds += s.totalWatchedSeconds;
+        existing.totalEffectiveSeconds += s.effectiveWatchedSeconds;
+        if (s.startTime > existing.lastVisitAt) existing.lastVisitAt = s.startTime;
+        if (s.lastPositionSeconds > existing.lastPositionSeconds) existing.lastPositionSeconds = s.lastPositionSeconds;
+        if (speed > existing.maxSpeed) existing.maxSpeed = speed;
+      } else {
+        userMap.set(key, {
+          userId: s.userId ?? key,
+          name,
+          userType: s.userType,
+          isGuest: !s.userId,
+          sessions: [s],
+          totalWatchedSeconds: s.totalWatchedSeconds,
+          totalEffectiveSeconds: s.effectiveWatchedSeconds,
+          firstVisitAt: s.startTime,
+          lastVisitAt: s.startTime,
+          lastPositionSeconds: s.lastPositionSeconds,
+          maxSpeed: speed,
+        });
+      }
+    }
+
+    const positionCompletion = (posSeconds: number) =>
+      recording.durationSeconds && recording.durationSeconds > 0
+        ? Math.min(100, Math.round((posSeconds / recording.durationSeconds) * 100))
+        : null;
+
+    const uniqueWatchers = userMap.size;
+    const totalSessions = sessions.length;
+    const avgWatchedSeconds = uniqueWatchers > 0
+      ? Math.round([...userMap.values()].reduce((a, u) => a + u.totalWatchedSeconds, 0) / uniqueWatchers)
+      : 0;
+    const fastWatchers = [...userMap.values()].filter(u => u.maxSpeed >= 1.5).length;
+
+    return {
+      recording: {
+        id: recording.id,
+        title: recording.title,
+        description: recording.description,
+        platform: recording.platform,
+        recordingUrl: recording.recordingUrl,
+        durationSeconds: recording.durationSeconds,
+        thumbnailUrl: recording.thumbnailUrl,
+        status: recording.status,
+        isActive: recording.isActive,
+        recAttendanceEnabled: recording.recAttendanceEnabled,
+        recAccessLevel: recording.recAccessLevel,
+        welcomeMessageEnabled: recording.welcomeMessageEnabled,
+        welcomeMessageText: recording.welcomeMessageText,
+        createdAt: recording.createdAt,
+      },
+      summary: {
+        uniqueWatchers,
+        totalSessions,
+        avgWatchedSeconds,
+        avgWatchedMinutes: Math.floor(avgWatchedSeconds / 60),
+        fastWatchers,
+      },
+      watchers: [...userMap.values()].map(u => {
+        const avgSpeed = u.totalEffectiveSeconds > 0
+          ? Math.round((u.totalWatchedSeconds / u.totalEffectiveSeconds) * 100) / 100
+          : 1;
+        return {
+          userId: u.userId,
+          name: u.name,
+          userType: u.userType,
+          isGuest: u.isGuest,
+          visitCount: u.sessions.length,
+          totalWatchedSeconds: u.totalWatchedSeconds,
+          totalWatchedMinutes: Math.floor(u.totalWatchedSeconds / 60),
+          totalEffectiveSeconds: u.totalEffectiveSeconds,
+          totalEffectiveMinutes: Math.floor(u.totalEffectiveSeconds / 60),
+          avgPlaybackSpeed: avgSpeed,
+          maxPlaybackSpeed: u.maxSpeed,
+          usedFastForward: u.maxSpeed >= 1.5,
+          lastPositionSeconds: u.lastPositionSeconds,
+          completionPercent: positionCompletion(u.lastPositionSeconds),
+          firstVisitAt: u.firstVisitAt,
+          lastVisitAt: u.lastVisitAt,
+          visits: u.sessions.map((s, idx) => ({
+            visitNumber: idx + 1,
+            sessionId: s.id,
+            startTime: s.startTime,
+            endTime: s.endTime ?? null,
+            watchedSeconds: s.totalWatchedSeconds,
+            watchedMinutes: Math.floor(s.totalWatchedSeconds / 60),
+            effectiveSeconds: s.effectiveWatchedSeconds,
+            effectiveMinutes: Math.floor(s.effectiveWatchedSeconds / 60),
+            playbackSpeed: s.lastPlaybackSpeed ?? 1,
+            lastPositionSeconds: s.lastPositionSeconds,
+            durationSeconds: s.endTime
+              ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000)
+              : null,
+            isCompleted: !!s.endTime,
+            backupStatus: s.backupStatus,
+            activityCount: (actBySession.get(s.id) ?? []).length,
+            activities: (actBySession.get(s.id) ?? []).map(a => ({
+              type: a.activityType,
+              videoTimestamp: a.videoTimestamp,
+              metadata: a.metadata,
+              at: a.createdAt,
+            })),
+          })),
+        };
+      }),
+    };
   }
 
   async getSessionTimeline(sessionId: string, userId?: string) {
@@ -436,7 +651,35 @@ export class SubjectRecordingTrackingService {
 
     return recordings.map(rec => {
       const recSessions = sessions.filter(s => String(s.recordingId) === String(rec.id));
+
+      if (!recSessions.length) {
+        return {
+          recording: {
+            id: rec.id,
+            title: rec.title,
+            platform: rec.platform,
+            durationSeconds: rec.durationSeconds,
+            recAttendanceEnabled: rec.recAttendanceEnabled,
+            createdAt: rec.createdAt,
+          },
+          watching: null,
+        };
+      }
+
       const totalWatchedSeconds = recSessions.reduce((acc, s) => acc + (s.totalWatchedSeconds || 0), 0);
+      const totalEffectiveSeconds = recSessions.reduce((acc, s) => acc + (s.effectiveWatchedSeconds || 0), 0);
+      const completedSessions = recSessions.filter(s => s.endTime);
+      const firstWatchedAt = recSessions[0].startTime;
+      const lastWatchedAt = recSessions[recSessions.length - 1].startTime;
+      const lastPosition = recSessions.reduce((max, s) => Math.max(max, s.lastPositionSeconds || 0), 0);
+      const lastSpeed = recSessions[recSessions.length - 1].lastPlaybackSpeed ?? 1;
+      const maxSpeed = recSessions.reduce((max, s) => Math.max(max, s.lastPlaybackSpeed ?? 1), 1);
+      const avgSpeed = totalEffectiveSeconds > 0
+        ? Math.round((totalWatchedSeconds / totalEffectiveSeconds) * 100) / 100
+        : 1;
+      const completionPercent = rec.durationSeconds && rec.durationSeconds > 0
+        ? Math.min(100, Math.round((lastPosition / rec.durationSeconds) * 100))
+        : null;
 
       return {
         recording: {
@@ -445,19 +688,39 @@ export class SubjectRecordingTrackingService {
           platform: rec.platform,
           durationSeconds: rec.durationSeconds,
           recAttendanceEnabled: rec.recAttendanceEnabled,
+          createdAt: rec.createdAt,
         },
-        watching: recSessions.length > 0
-          ? {
-              sessions: recSessions.map(s => ({
-                startTime: s.startTime,
-                endTime: s.endTime,
-                watchedSeconds: s.totalWatchedSeconds,
-                lastPosition: s.lastPositionSeconds,
-              })),
-              totalWatchedSeconds,
-              sessionCount: recSessions.length,
-            }
-          : null,
+        watching: {
+          sessionCount: recSessions.length,
+          completedSessionCount: completedSessions.length,
+          totalWatchedSeconds,
+          totalWatchedMinutes: Math.floor(totalWatchedSeconds / 60),
+          totalEffectiveSeconds,
+          totalEffectiveMinutes: Math.floor(totalEffectiveSeconds / 60),
+          avgPlaybackSpeed: avgSpeed,
+          maxPlaybackSpeed: maxSpeed,
+          lastPositionSeconds: lastPosition,
+          completionPercent,
+          firstWatchedAt,
+          lastWatchedAt,
+          sessions: recSessions.map((s, idx) => ({
+            visitNumber: idx + 1,
+            sessionId: s.id,
+            startTime: s.startTime,
+            endTime: s.endTime ?? null,
+            watchedSeconds: s.totalWatchedSeconds,
+            watchedMinutes: Math.floor(s.totalWatchedSeconds / 60),
+            effectiveSeconds: s.effectiveWatchedSeconds,
+            effectiveMinutes: Math.floor(s.effectiveWatchedSeconds / 60),
+            playbackSpeed: s.lastPlaybackSpeed ?? 1,
+            lastPosition: s.lastPositionSeconds,
+            durationSeconds: s.endTime
+              ? Math.round((s.endTime.getTime() - s.startTime.getTime()) / 1000)
+              : null,
+            isCompleted: !!s.endTime,
+            backupStatus: s.backupStatus,
+          })),
+        },
       };
     });
   }

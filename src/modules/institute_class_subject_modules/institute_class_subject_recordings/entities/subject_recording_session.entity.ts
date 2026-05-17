@@ -72,6 +72,15 @@ export class SubjectRecordingSession {
   @Column({ name: 'total_watched_seconds', type: 'int', unsigned: true, default: 0 })
   totalWatchedSeconds: number;
 
+  /** Wall-clock seconds actually spent watching — video seconds divided by playback speed.
+   *  Watching 60s of video at 2x = 30 effective seconds. Use this for real engagement metrics. */
+  @Column({ name: 'effective_watched_seconds', type: 'int', unsigned: true, default: 0 })
+  effectiveWatchedSeconds: number;
+
+  /** Last known playback speed (e.g. 1, 1.25, 1.5, 2). Updated on every SPEED_CHANGE and heartbeat batch. */
+  @Column({ name: 'last_playback_speed', type: 'float', default: 1 })
+  lastPlaybackSpeed: number;
+
   @Column({ name: 'last_position_seconds', type: 'int', unsigned: true, default: 0 })
   lastPositionSeconds: number;
 

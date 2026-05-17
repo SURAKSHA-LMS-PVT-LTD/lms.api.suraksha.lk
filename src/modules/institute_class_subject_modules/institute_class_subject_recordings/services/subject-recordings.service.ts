@@ -63,22 +63,6 @@ export class SubjectRecordingsService {
       recBgImageTtl: dto.recBgImageTtl ? new Date(dto.recBgImageTtl) : undefined,
       recUrlExpiresAt: dto.recUrlExpiresAt ? new Date(dto.recUrlExpiresAt) : undefined,
 
-      // Live watch-party
-      liveAttendanceEnabled: dto.liveAttendanceEnabled ?? false,
-      liveUrlId: dto.liveAttendanceEnabled ? (uuidv4().replace(/-/g, '').substring(0, 12)) : undefined,
-      liveAccessLevel: dto.liveAccessLevel ?? 'ENROLLED_ONLY' as any,
-      livePaymentId: dto.livePaymentId,
-      livePaymentStatuses: dto.livePaymentStatuses,
-      liveEntryBgUrl: dto.liveEntryBgUrl,
-      liveCardImageUrl: dto.liveCardImageUrl,
-      liveCardImageTtl: dto.liveCardImageTtl ? new Date(dto.liveCardImageTtl) : undefined,
-      liveBgImageTtl: dto.liveBgImageTtl ? new Date(dto.liveBgImageTtl) : undefined,
-      liveUrlExpiresAt: dto.liveUrlExpiresAt ? new Date(dto.liveUrlExpiresAt) : undefined,
-      meetingLink: dto.meetingLink,
-      meetingId: dto.meetingId,
-      meetingPassword: dto.meetingPassword,
-      maxParticipants: dto.maxParticipants,
-
       // Welcome message
       welcomeMessageEnabled: dto.welcomeMessageEnabled ?? false,
       welcomeMessageText: dto.welcomeMessageText?.trim() || undefined,
@@ -177,26 +161,6 @@ export class SubjectRecordingsService {
     if (dto.recCardImageTtl !== undefined) updates.recCardImageTtl = new Date(dto.recCardImageTtl);
     if (dto.recBgImageTtl !== undefined) updates.recBgImageTtl = new Date(dto.recBgImageTtl);
     if (dto.recUrlExpiresAt !== undefined) updates.recUrlExpiresAt = new Date(dto.recUrlExpiresAt);
-
-    // live tracking toggles
-    if (dto.liveAttendanceEnabled !== undefined) {
-      updates.liveAttendanceEnabled = dto.liveAttendanceEnabled;
-      if (dto.liveAttendanceEnabled && !rec.liveUrlId) {
-        updates.liveUrlId = uuidv4().replace(/-/g, '').substring(0, 12);
-      }
-    }
-    if (dto.liveAccessLevel !== undefined) updates.liveAccessLevel = dto.liveAccessLevel as any;
-    if (dto.livePaymentId !== undefined) updates.livePaymentId = dto.livePaymentId;
-    if (dto.livePaymentStatuses !== undefined) updates.livePaymentStatuses = dto.livePaymentStatuses;
-    if (dto.liveEntryBgUrl !== undefined) updates.liveEntryBgUrl = dto.liveEntryBgUrl;
-    if (dto.liveCardImageUrl !== undefined) updates.liveCardImageUrl = dto.liveCardImageUrl;
-    if (dto.liveCardImageTtl !== undefined) updates.liveCardImageTtl = new Date(dto.liveCardImageTtl);
-    if (dto.liveBgImageTtl !== undefined) updates.liveBgImageTtl = new Date(dto.liveBgImageTtl);
-    if (dto.liveUrlExpiresAt !== undefined) updates.liveUrlExpiresAt = new Date(dto.liveUrlExpiresAt);
-    if (dto.meetingLink !== undefined) updates.meetingLink = dto.meetingLink;
-    if (dto.meetingId !== undefined) updates.meetingId = dto.meetingId;
-    if (dto.meetingPassword !== undefined) updates.meetingPassword = dto.meetingPassword;
-    if (dto.maxParticipants !== undefined) updates.maxParticipants = dto.maxParticipants;
 
     if (dto.welcomeMessageEnabled !== undefined) updates.welcomeMessageEnabled = dto.welcomeMessageEnabled;
     if (dto.welcomeMessageText !== undefined) updates.welcomeMessageText = dto.welcomeMessageText?.trim() || undefined;

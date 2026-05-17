@@ -56,12 +56,25 @@ export class SubjectRecordingTrackingController {
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  @ApiOperation({ summary: 'End a watch session; optionally records last position' })
+  @ApiOperation({ summary: 'End a watch session; records position, watched seconds, and playback speed' })
   async endSession(
-    @Body() body: { sessionId: string; lastPositionSeconds?: number },
+    @Body() body: {
+      sessionId: string;
+      lastPositionSeconds?: number;
+      totalWatchedSeconds?: number;
+      effectiveWatchedSeconds?: number;
+      lastPlaybackSpeed?: number;
+    },
     @Req() req: any,
   ) {
-    return this.trackingService.endSession(body.sessionId, body.lastPositionSeconds, req.user?.id);
+    return this.trackingService.endSession(
+      body.sessionId,
+      body.lastPositionSeconds,
+      body.totalWatchedSeconds,
+      body.effectiveWatchedSeconds,
+      body.lastPlaybackSpeed,
+      req.user?.id,
+    );
   }
 
   @Post('heartbeat')

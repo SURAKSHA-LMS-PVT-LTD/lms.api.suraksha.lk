@@ -19,7 +19,6 @@ import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/i
       LectureLiveAttendance,
       LectureRecordingSession,
       LectureRecordingActivity,
-      // Needed for access validation
       InstituteClassStudentEntity,
       InstituteClassSubjectStudent,
       InstituteClassSubjectPaymentSubmission,
