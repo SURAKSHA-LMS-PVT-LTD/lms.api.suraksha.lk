@@ -30,6 +30,7 @@ import { InstituteClassStudentModule } from './modules/institute_class_modules/i
 import { InstituteClassSubjectModule } from './modules/institute_class_modules/institute_class_subject/institute_class_subject.module';
 import { InstituteClassSubjectExamsModule } from './modules/institute_class_subject_modules/institute_class_subject_exams/institute_class_subject_exams.module';
 import { InstituteClassSubjectLecturesModule } from './modules/institute_class_subject_modules/institute_class_subject_lectures/institute_class_subject_lectures.module';
+import { SubjectRecordingsModule } from './modules/institute_class_subject_modules/institute_class_subject_recordings/subject_recordings.module';
 import { InstituteClassSubjectResaultsModule } from './modules/institute_class_subject_modules/institute_class_subject_resaults/institute_class_subject_resaults.module';
 import { InstituteClassSubjectStudentsModule } from './modules/institute_class_subject_modules/institute_class_subject_students/institute_class_subject_students.module';
 import { InstituteClassSubjectHomeworksModule } from './modules/institute_class_subject_modules/institute_class_subject_homeworks/institute_class_subject_homeworks.module';
@@ -161,6 +162,7 @@ import { AppService } from './app.service';
     InstituteClassSubjectModule,
     InstituteClassSubjectExamsModule,
     InstituteClassSubjectLecturesModule,
+    SubjectRecordingsModule,
     InstituteClassSubjectResaultsModule,
     InstituteClassSubjectStudentsModule,
     InstituteClassSubjectHomeworksModule,
