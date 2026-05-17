@@ -14,22 +14,24 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
 
   use(req: Request, res: Response, next: NextFunction) {
     // 🔒 Content Security Policy (CSP) - Strict
+    // This middleware runs on the API server only (JSON responses, no HTML rendering).
+    // unsafe-eval and unsafe-inline are removed — they were only needed by browser-side
+    // script execution which does not happen on an API backend.
     const cspDirectives = [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
-      "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
-      "img-src 'self' data: https: blob:",
-      "media-src 'self' https:",
+      "default-src 'none'",
+      "script-src 'none'",
+      "style-src 'none'",
+      "font-src 'none'",
+      "img-src 'none'",
+      "media-src 'none'",
       "object-src 'none'",
       "frame-src 'none'",
-      "worker-src 'self'",
-      "child-src 'self'",
-      "form-action 'self'",
-      "connect-src 'self' https:",
-      "base-uri 'self'",
-      "manifest-src 'self'",
-      "upgrade-insecure-requests"
+      "worker-src 'none'",
+      "child-src 'none'",
+      "form-action 'none'",
+      "connect-src 'self'",
+      "base-uri 'none'",
+      "frame-ancestors 'none'",
     ];
     res.setHeader('Content-Security-Policy', cspDirectives.join('; '));
 

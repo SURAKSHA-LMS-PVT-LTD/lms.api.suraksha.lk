@@ -55,6 +55,7 @@ const FEATURES: FeatureRow[] = [
 
   // ── Institute scope — Admin Tools ─────────────────────────────────────────
   { key: 'device-management',            label: 'Devices',                  description: 'Manage connected attendance devices and user sessions',scope: 'INSTITUTE', category: 'SERVICES',       pricing: 'FREE',  billing_cycle: 'MONTHLY', is_core: false, dependencies: [],                        ui_targets: ['sidebar', 'dashboard'], is_active: true },
+  { key: 'institute-designs',            label: 'Designs',                  description: 'Design templates for ID cards, certificates, birthday wishes, and more. Generate and export in bulk.',                                           scope: 'INSTITUTE', category: 'SERVICES',       pricing: 'FREE',  billing_cycle: 'MONTHLY', is_core: false, dependencies: [],                        ui_targets: ['sidebar'],              is_active: true },
 
   // ── Institute scope — Services ────────────────────────────────────────────
   { key: 'transport',                     label: 'Transport',                description: 'Private transportation booking and management',        scope: 'INSTITUTE', category: 'TRANSPORT',      pricing: 'PAID',  billing_cycle: 'MONTHLY', is_core: false, dependencies: [],                        ui_targets: ['sidebar'],              is_active: true },

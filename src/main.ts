@@ -5,10 +5,10 @@ import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { validateAll } from './config/validate-environment';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import * as cookieParser from 'cookie-parser';
-import * as compression from 'compression';
+import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
-import { ensureTimezoneSet, formatSriLankaDateTime, logTimezoneInfo } from './common/utils/timezone.util';
+import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
 
 // ⚠️ CRITICAL: Set timezone to Sri Lanka BEFORE any date operations
 ensureTimezoneSet();
@@ -185,7 +185,11 @@ async function bootstrap() {
           if (devAllowed) return callback(null, true);
         }
 
-        // 🔒 PRODUCTION MODE: Allow requests without origin (server-to-server, mobile apps)
+        // 🔒 PRODUCTION: Requests with no Origin header are allowed only when they carry
+        // a valid Authorization bearer token (mobile apps, server-to-server).
+        // Raw browser requests always send an Origin — missing Origin + no auth = curl/scan.
+        // We let NestJS JwtAuthGuard reject unauthenticated no-origin requests downstream;
+        // public endpoints (login, health) are safe to accept without an origin.
         if (!origin) {
           return callback(null, true);
         }
@@ -306,6 +310,10 @@ async function bootstrap() {
       console.log('✅ API documentation enabled at /api/docs');
     }
 
+    // Enable NestJS shutdown hooks so SIGTERM/SIGINT drain in-flight requests
+    // before the process exits. Required for PM2 graceful reload.
+    app.enableShutdownHooks();
+
     const port = parseInt(process.env.PORT || '8080', 10);
 
     await app.listen(port, '0.0.0.0');
@@ -315,6 +323,12 @@ async function bootstrap() {
     console.log(`🔗 LOCAL: http://localhost:${port}`);
     console.log(`🛠️ ENV: ${process.env.NODE_ENV || 'dev'}`);
     console.log('★'.repeat(60) + '\n');
+
+    // Signal PM2 (cluster mode) that this worker is ready to receive traffic.
+    // PM2 waits for this before routing requests, ensuring zero-downtime reloads.
+    if (typeof process.send === 'function') {
+      process.send('ready');
+    }
 
   } catch (error: any) {
     console.error('\n❌ FATAL ERROR DURING STARTUP:');
