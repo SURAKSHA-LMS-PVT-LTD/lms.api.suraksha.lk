@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { InstituteUserTypeEntity } from '../entities/institute-user-type.entity';
+import { InstituteFeaturePermissionEntity } from '../entities/institute-feature-permission.entity';
 import { CreateUserTypeDto, UpdateUserTypeDto, UserTypeResponseDto } from '../dto/rbac.dto';
 
 @Injectable()
@@ -9,6 +10,9 @@ export class UserTypesService {
   constructor(
     @InjectRepository(InstituteUserTypeEntity)
     private readonly repo: Repository<InstituteUserTypeEntity>,
+    @InjectRepository(InstituteFeaturePermissionEntity)
+    private readonly permRepo: Repository<InstituteFeaturePermissionEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async list(instituteId: string): Promise<UserTypeResponseDto[]> {
@@ -45,6 +49,36 @@ export class UserTypesService {
     });
 
     const saved = await this.repo.save(entity);
+
+    // Copy permissions from base type if requested
+    if (dto.baseTypeSlug) {
+      const baseType = await this.repo.findOne({ where: { instituteId, slug: dto.baseTypeSlug } });
+      if (baseType) {
+        const basePerms = await this.permRepo.find({ where: { instituteId, userTypeId: baseType.id } });
+        if (basePerms.length) {
+          const placeholders = basePerms.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())').join(', ');
+          const params: any[] = [];
+          for (const p of basePerms) {
+            params.push(
+              instituteId, saved.id, p.featureKey,
+              p.canView ? 1 : 0, p.canCreate ? 1 : 0, p.canUpdate ? 1 : 0,
+              p.canDelete ? 1 : 0, p.canReport ? 1 : 0, p.canSubmit ? 1 : 0,
+            );
+          }
+          await this.dataSource.query(
+            `INSERT INTO institute_feature_permissions
+               (institute_id, user_type_id, feature_key, can_view, can_create, can_update, can_delete, can_report, can_submit, created_at, updated_at)
+             VALUES ${placeholders}
+             ON DUPLICATE KEY UPDATE
+               can_view=VALUES(can_view), can_create=VALUES(can_create), can_update=VALUES(can_update),
+               can_delete=VALUES(can_delete), can_report=VALUES(can_report), can_submit=VALUES(can_submit),
+               updated_at=NOW()`,
+            params,
+          );
+        }
+      }
+    }
+
     return this.toDto(saved);
   }
 

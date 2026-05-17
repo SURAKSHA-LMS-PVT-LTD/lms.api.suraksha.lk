@@ -355,16 +355,6 @@ export class LectureTrackingService {
     const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
     if (!lecture) throw new NotFoundException('Lecture not found');
 
-    // Idempotent for authenticated users: resume an existing active join instead of creating a duplicate
-    if (userId) {
-      const existing = await this.liveAttRepo.findOne({
-        where: { lectureId, userId, leaveTime: null as any },
-      });
-      if (existing) {
-        return { attendanceId: existing.id, lectureId, joinTime: existing.joinTime };
-      }
-    }
-
     const record = this.liveAttRepo.create({
       lectureId,
       instituteId: lecture.instituteId,
@@ -608,7 +598,14 @@ export class LectureTrackingService {
       // Build a map: studentId → lectureId → attendance entry
       const grid: Record<
         string,
-        Record<string, { attended: boolean; joinTime?: string; leaveTime?: string; durationMinutes?: number }>
+        Record<string, {
+          attended: boolean;
+          loginCount?: number;
+          joinTime?: string;
+          leaveTime?: string;
+          durationMinutes?: number;
+          visits?: Array<{ joinTime?: string; leaveTime?: string; durationMinutes?: number; ipAddress?: string; userAgent?: string }>;
+        }>
       > = {};
 
       for (const s of classStudents) {
@@ -642,15 +639,26 @@ export class LectureTrackingService {
 
           const accumulatedDuration = (existing?.durationMinutes ?? 0) + durationMinutes;
 
+          const prevVisits = existing?.visits ?? [];
+          const thisVisit = {
+            joinTime: join?.toISOString(),
+            leaveTime: leave?.toISOString(),
+            durationMinutes: durationMinutes > 0 ? durationMinutes : undefined,
+            ipAddress: row.ipAddress ?? undefined,
+            userAgent: row.userAgent ?? undefined,
+          };
+
           grid[sid][row.lectureId] = {
             attended: true,
+            loginCount: (existing?.loginCount ?? 0) + 1,
             joinTime: nextJoin?.toISOString() || undefined,
             leaveTime: nextLeave?.toISOString() || undefined,
             durationMinutes: accumulatedDuration > 0 ? accumulatedDuration : undefined,
+            visits: [...prevVisits, thisVisit],
           };
         } catch (timeError) {
           console.error('❌ Error processing attendance row times:', timeError);
-          grid[sid][row.lectureId] = { attended: true };
+          grid[sid][row.lectureId] = { attended: true, loginCount: (grid[sid][row.lectureId]?.loginCount ?? 0) + 1 };
         }
       }
 
@@ -699,27 +707,87 @@ export class LectureTrackingService {
       relations: ['user'],
       order: { joinTime: 'ASC' },
     });
-    return rows.map(r => {
+
+    // Group rows by userId (or guest key) so multi-login shows as one entry with visits[]
+    const grouped = new Map<string, {
+      id: string;
+      userId?: string;
+      name: string;
+      isGuest: boolean;
+      guestEmail?: string;
+      guestPhone?: string;
+      loginCount: number;
+      totalDurationMinutes: number;
+      firstJoinTime?: string;
+      lastLeaveTime?: string;
+      ipAddress?: string;
+      visits: Array<{ joinTime?: string; leaveTime?: string; durationMinutes?: number; ipAddress?: string; userAgent?: string }>;
+    }>();
+
+    for (const r of rows) {
+      const groupKey = r.userId ?? `guest-${r.guestEmail ?? r.guestPhone ?? r.id}`;
       const join = r.joinTime ? new Date(r.joinTime) : null;
       const leave = r.leaveTime ? new Date(r.leaveTime) : null;
-      return {
-        id: r.id,
-        userId: r.userId,
-        name: r.userId
-          ? (r as any).user?.name ??
-            `${(r as any).user?.firstName ?? ''} ${(r as any).user?.lastName ?? ''}`.trim()
-          : r.guestName ?? 'Guest',
-        isGuest: !r.userId,
-        guestEmail: r.guestEmail,
-        guestPhone: r.guestPhone,
+      const durationMinutes = join && leave && join.getTime() < leave.getTime()
+        ? Math.round((leave.getTime() - join.getTime()) / 60000)
+        : null;
+
+      const userName = r.userId
+        ? (((r as any).user?.name) ??
+            (`${(r as any).user?.firstName ?? ''} ${(r as any).user?.lastName ?? ''}`.trim() || 'Unknown'))
+        : (r.guestName ?? 'Guest');
+
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, {
+          id: r.id,
+          userId: r.userId ?? undefined,
+          name: userName,
+          isGuest: !r.userId,
+          guestEmail: r.guestEmail ?? undefined,
+          guestPhone: r.guestPhone ?? undefined,
+          loginCount: 0,
+          totalDurationMinutes: 0,
+          firstJoinTime: join?.toISOString(),
+          lastLeaveTime: leave?.toISOString(),
+          ipAddress: r.ipAddress ?? undefined,
+          visits: [],
+        });
+      }
+
+      const entry = grouped.get(groupKey)!;
+      entry.loginCount += 1;
+      entry.totalDurationMinutes += durationMinutes ?? 0;
+
+      if (join && (!entry.firstJoinTime || join.getTime() < new Date(entry.firstJoinTime).getTime())) {
+        entry.firstJoinTime = join.toISOString();
+      }
+      if (leave && (!entry.lastLeaveTime || leave.getTime() > new Date(entry.lastLeaveTime).getTime())) {
+        entry.lastLeaveTime = leave.toISOString();
+      }
+
+      entry.visits.push({
         joinTime: join?.toISOString(),
         leaveTime: leave?.toISOString(),
-        durationMinutes: join && leave
-          ? Math.round((leave.getTime() - join.getTime()) / 60000)
-          : null,
-        ipAddress: r.ipAddress,
-      };
-    });
+        durationMinutes: durationMinutes ?? undefined,
+        ipAddress: r.ipAddress ?? undefined,
+        userAgent: r.userAgent ?? undefined,
+      });
+    }
+
+    return Array.from(grouped.values()).map(entry => ({
+      id: entry.id,
+      userId: entry.userId,
+      name: entry.name,
+      isGuest: entry.isGuest,
+      guestEmail: entry.guestEmail,
+      guestPhone: entry.guestPhone,
+      loginCount: entry.loginCount,
+      joinTime: entry.firstJoinTime,
+      leaveTime: entry.lastLeaveTime,
+      durationMinutes: entry.totalDurationMinutes > 0 ? entry.totalDurationMinutes : null,
+      ipAddress: entry.ipAddress,
+      visits: entry.visits,
+    }));
   }
 
   async getRecordingActivityReport(lectureId: string) {

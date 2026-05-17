@@ -44,6 +44,13 @@ export class CreateUserTypeDto {
   @ApiPropertyOptional({ default: 100 })
   @IsOptional()
   sortOrder?: number;
+
+  /** Slug of an existing user type whose permissions will be copied to this new type */
+  @ApiPropertyOptional({ example: 'teacher', description: 'Copy permissions from this base user type slug' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  baseTypeSlug?: string;
 }
 
 export class UpdateUserTypeDto {

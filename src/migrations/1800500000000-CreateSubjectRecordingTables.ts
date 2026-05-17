@@ -11,7 +11,7 @@ export class CreateSubjectRecordingTables1800500000000 implements MigrationInter
         \`institute_id\`                VARCHAR(36)     NOT NULL,
         \`class_id\`                    VARCHAR(36)     NULL,
         \`subject_id\`                  VARCHAR(36)     NULL,
-        \`uploaded_by_id\`              BIGINT UNSIGNED NULL,
+        \`uploaded_by_id\`              BIGINT NULL,
 
         \`title\`                       VARCHAR(255)    NOT NULL,
         \`description\`                 TEXT            NULL,
@@ -62,7 +62,7 @@ export class CreateSubjectRecordingTables1800500000000 implements MigrationInter
         CONSTRAINT \`FK_sr_class\`        FOREIGN KEY (\`class_id\`)       REFERENCES \`institute_classes\`(\`id\`)   ON DELETE CASCADE,
         CONSTRAINT \`FK_sr_subject\`      FOREIGN KEY (\`subject_id\`)     REFERENCES \`subjects\`(\`id\`)            ON DELETE CASCADE,
         CONSTRAINT \`FK_sr_uploaded_by\`  FOREIGN KEY (\`uploaded_by_id\`) REFERENCES \`users\`(\`id\`)              ON DELETE SET NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
     `);
 
     // ── subject_recording_sessions ───────────────────────────────────────────
@@ -70,7 +70,7 @@ export class CreateSubjectRecordingTables1800500000000 implements MigrationInter
       CREATE TABLE \`subject_recording_sessions\` (
         \`id\`                     BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         \`recording_id\`           BIGINT UNSIGNED NOT NULL,
-        \`user_id\`                BIGINT UNSIGNED NULL,
+        \`user_id\`                BIGINT NULL,
         \`user_type\`              ENUM('enrolled','suraksha_user','guest')
                                    NOT NULL DEFAULT 'guest',
         \`guest_name\`             VARCHAR(255)    NULL,
@@ -100,7 +100,7 @@ export class CreateSubjectRecordingTables1800500000000 implements MigrationInter
 
         CONSTRAINT \`FK_srs_recording\` FOREIGN KEY (\`recording_id\`) REFERENCES \`subject_recordings\`(\`id\`) ON DELETE CASCADE,
         CONSTRAINT \`FK_srs_user\`      FOREIGN KEY (\`user_id\`)      REFERENCES \`users\`(\`id\`)             ON DELETE SET NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
     `);
 
     // ── subject_recording_activities ─────────────────────────────────────────
@@ -123,7 +123,7 @@ export class CreateSubjectRecordingTables1800500000000 implements MigrationInter
         INDEX \`IDX_sra_activity_type\`  (\`activity_type\`),
 
         CONSTRAINT \`FK_sra_session\` FOREIGN KEY (\`session_id\`) REFERENCES \`subject_recording_sessions\`(\`id\`) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
     `);
 
   }
