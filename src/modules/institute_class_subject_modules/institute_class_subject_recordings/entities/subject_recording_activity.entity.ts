@@ -35,6 +35,9 @@ export class SubjectRecordingActivity {
       'QUALITY_CHANGE',
       'FULLSCREEN_TOGGLE',
       'SUBTITLE_TOGGLE',
+      'WATCH_RANGE',
+      'TAB_HIDDEN',
+      'TAB_VISIBLE',
     ],
   })
   activityType:
@@ -45,7 +48,10 @@ export class SubjectRecordingActivity {
     | 'SPEED_CHANGE'
     | 'QUALITY_CHANGE'
     | 'FULLSCREEN_TOGGLE'
-    | 'SUBTITLE_TOGGLE';
+    | 'SUBTITLE_TOGGLE'
+    | 'WATCH_RANGE'
+    | 'TAB_HIDDEN'
+    | 'TAB_VISIBLE';
 
   @Column({ name: 'video_timestamp', type: 'float' })
   videoTimestamp: number;

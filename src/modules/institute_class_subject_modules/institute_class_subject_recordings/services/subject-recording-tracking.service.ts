@@ -234,7 +234,7 @@ export class SubjectRecordingTrackingService {
   async recordHeartbeats(
     sessionId: string,
     activities: Array<{
-      type: 'PLAY' | 'PAUSE' | 'SEEK' | 'HEARTBEAT' | 'SPEED_CHANGE' | 'QUALITY_CHANGE' | 'FULLSCREEN_TOGGLE' | 'SUBTITLE_TOGGLE';
+      type: string;
       videoTimestamp: number;
       wallTime?: number;
       metadata?: Record<string, any>;
@@ -251,103 +251,134 @@ export class SubjectRecordingTrackingService {
     }
 
     const now = new Date();
-    const records = activities.map(act =>
-      this.activityRepo.create({
-        sessionId,
-        activityType: act.type,
-        videoTimestamp: act.videoTimestamp,
-        metadata: act.metadata,
-        wallClockTimestamp: act.wallTime ? new Date(act.wallTime) : now,
-      }),
-    );
-    await this.activityRepo.save(records);
 
-    // ── Compute per-segment watched time accounting for playback speed ────────
-    // Sort by wall time; fall back to videoTimestamp order if no wallTime supplied
-    const sorted = [...activities].sort((a, b) => {
-      if (a.wallTime !== undefined && b.wallTime !== undefined) return a.wallTime - b.wallTime;
-      return a.videoTimestamp - b.videoTimestamp;
-    });
+    // Only persist storable types; unknown types are silently skipped
+    const storableTypes = new Set([
+      'PLAY', 'PAUSE', 'SEEK', 'HEARTBEAT',
+      'SPEED_CHANGE', 'QUALITY_CHANGE', 'FULLSCREEN_TOGGLE', 'SUBTITLE_TOGGLE',
+      'WATCH_RANGE', 'TAB_HIDDEN', 'TAB_VISIBLE',
+    ]);
 
-    let additionalVideoSeconds = 0;   // video content seconds covered (speed-inflated)
-    let additionalEffectiveSeconds = 0; // real wall-clock seconds spent watching
+    const records = activities
+      .filter(act => storableTypes.has(act.type))
+      .map(act =>
+        this.activityRepo.create({
+          sessionId,
+          activityType: act.type as any,
+          videoTimestamp: act.videoTimestamp,
+          metadata: act.metadata,
+          wallClockTimestamp: act.wallTime ? new Date(act.wallTime) : now,
+        }),
+      );
+    if (records.length) await this.activityRepo.save(records);
 
-    let playWallTime: number | null = null;
-    let playVideoTime: number | null = null;
-    let currentSpeed: number = session.lastPlaybackSpeed ?? 1;
-    let lastSpeed = currentSpeed;
+    // ── WATCH_RANGE fast-path: frontend already compressed PLAY→HB→PAUSE sequences ─
+    const rangeActs = activities.filter(a => a.type === 'WATCH_RANGE');
+    const sessionUpdate: Partial<SubjectRecordingSession> = {};
 
-    for (const act of sorted) {
-      if (act.type === 'SPEED_CHANGE') {
-        const newSpeed = Number(act.metadata?.speed ?? act.metadata?.playbackRate ?? act.metadata?.rate ?? 1);
-        if (newSpeed > 0) {
-          // Close the current play segment at this speed before switching
+    if (rangeActs.length > 0) {
+      let additionalVideoSeconds = 0;
+      let additionalEffectiveSeconds = 0;
+      let lastSpeed = session.lastPlaybackSpeed ?? 1;
+
+      for (const act of rangeActs) {
+        const rangeTo = Number(act.metadata?.rangeTo ?? act.videoTimestamp);
+        const rangeFrom = Number(act.metadata?.rangeFrom ?? act.videoTimestamp);
+        const speed = Number(act.metadata?.speed ?? 1) || 1;
+        const watchedWall = Number(act.metadata?.watchedSeconds ?? 0);
+        const videoSec = rangeTo - rangeFrom;
+        if (videoSec > 0) {
+          additionalVideoSeconds += videoSec;
+          additionalEffectiveSeconds += watchedWall > 0 ? watchedWall : videoSec / speed;
+        }
+        lastSpeed = speed;
+      }
+
+      if (additionalVideoSeconds > 0)
+        sessionUpdate.totalWatchedSeconds = session.totalWatchedSeconds + Math.round(additionalVideoSeconds);
+      if (additionalEffectiveSeconds > 0)
+        sessionUpdate.effectiveWatchedSeconds = session.effectiveWatchedSeconds + Math.round(additionalEffectiveSeconds);
+      if (lastSpeed !== (session.lastPlaybackSpeed ?? 1))
+        sessionUpdate.lastPlaybackSpeed = lastSpeed;
+
+      const maxRangeTo = Math.max(...rangeActs.map(a => Number(a.metadata?.rangeTo ?? a.videoTimestamp)));
+      sessionUpdate.lastPositionSeconds = Math.floor(maxRangeTo);
+    } else {
+      // ── Legacy PLAY/PAUSE/SEEK/HEARTBEAT computation (unchanged) ─────────────
+      const sorted = [...activities].sort((a, b) => {
+        if (a.wallTime !== undefined && b.wallTime !== undefined) return a.wallTime - b.wallTime;
+        return a.videoTimestamp - b.videoTimestamp;
+      });
+
+      let additionalVideoSeconds = 0;
+      let additionalEffectiveSeconds = 0;
+      let playWallTime: number | null = null;
+      let playVideoTime: number | null = null;
+      let currentSpeed: number = session.lastPlaybackSpeed ?? 1;
+      let lastSpeed = currentSpeed;
+
+      for (const act of sorted) {
+        if (act.type === 'SPEED_CHANGE') {
+          const newSpeed = Number(act.metadata?.speed ?? act.metadata?.playbackRate ?? act.metadata?.rate ?? 1);
+          if (newSpeed > 0) {
+            if (playWallTime !== null && playVideoTime !== null) {
+              const wallElapsed = ((act.wallTime ?? now.getTime()) - playWallTime) / 1000;
+              const videoElapsed = act.videoTimestamp - playVideoTime;
+              const videoSec = Math.min(Math.max(videoElapsed, 0), Math.max(wallElapsed * currentSpeed, 0));
+              additionalVideoSeconds += videoSec;
+              additionalEffectiveSeconds += videoSec / currentSpeed;
+              playWallTime = act.wallTime ?? now.getTime();
+              playVideoTime = act.videoTimestamp;
+            }
+            currentSpeed = newSpeed;
+            lastSpeed = newSpeed;
+          }
+          continue;
+        }
+
+        if (act.type === 'PLAY' || act.type === 'HEARTBEAT') {
+          if (playWallTime === null) {
+            playWallTime = act.wallTime ?? now.getTime();
+            playVideoTime = act.videoTimestamp;
+          }
+          continue;
+        }
+
+        if (act.type === 'PAUSE' || act.type === 'SEEK') {
           if (playWallTime !== null && playVideoTime !== null) {
             const wallElapsed = ((act.wallTime ?? now.getTime()) - playWallTime) / 1000;
             const videoElapsed = act.videoTimestamp - playVideoTime;
             const videoSec = Math.min(Math.max(videoElapsed, 0), Math.max(wallElapsed * currentSpeed, 0));
             additionalVideoSeconds += videoSec;
             additionalEffectiveSeconds += videoSec / currentSpeed;
-            // Rebase the play segment at the new speed
+            playWallTime = null;
+            playVideoTime = null;
+          }
+          if (act.type === 'SEEK') {
             playWallTime = act.wallTime ?? now.getTime();
             playVideoTime = act.videoTimestamp;
           }
-          currentSpeed = newSpeed;
-          lastSpeed = newSpeed;
-        }
-        continue;
-      }
-
-      if (act.type === 'PLAY' || act.type === 'HEARTBEAT') {
-        if (playWallTime === null) {
-          playWallTime = act.wallTime ?? now.getTime();
-          playVideoTime = act.videoTimestamp;
-        }
-        continue;
-      }
-
-      if (act.type === 'PAUSE' || act.type === 'SEEK') {
-        if (playWallTime !== null && playVideoTime !== null) {
-          const wallElapsed = ((act.wallTime ?? now.getTime()) - playWallTime) / 1000;
-          const videoElapsed = act.videoTimestamp - playVideoTime;
-          const videoSec = Math.min(Math.max(videoElapsed, 0), Math.max(wallElapsed * currentSpeed, 0));
-          additionalVideoSeconds += videoSec;
-          additionalEffectiveSeconds += videoSec / currentSpeed;
-          playWallTime = null;
-          playVideoTime = null;
-        }
-        // After SEEK the speed stays the same; after PAUSE playback stops
-        if (act.type === 'SEEK') {
-          playWallTime = act.wallTime ?? now.getTime();
-          playVideoTime = act.videoTimestamp;
         }
       }
-    }
 
-    // Close any open play segment at end of batch (cap at 5 min to guard against stale batches)
-    if (playWallTime !== null && playVideoTime !== null) {
-      const wallElapsed = Math.min((now.getTime() - playWallTime) / 1000, 300);
-      const videoSec = wallElapsed * currentSpeed;
-      additionalVideoSeconds += videoSec;
-      additionalEffectiveSeconds += wallElapsed;
-    }
+      if (playWallTime !== null && playVideoTime !== null) {
+        const wallElapsed = Math.min((now.getTime() - playWallTime) / 1000, 300);
+        additionalVideoSeconds += wallElapsed * currentSpeed;
+        additionalEffectiveSeconds += wallElapsed;
+      }
 
-    const sessionUpdate: Partial<SubjectRecordingSession> = {};
-    if (additionalVideoSeconds > 0) {
-      sessionUpdate.totalWatchedSeconds = session.totalWatchedSeconds + Math.round(additionalVideoSeconds);
-    }
-    if (additionalEffectiveSeconds > 0) {
-      sessionUpdate.effectiveWatchedSeconds = session.effectiveWatchedSeconds + Math.round(additionalEffectiveSeconds);
-    }
-    if (lastSpeed !== (session.lastPlaybackSpeed ?? 1)) {
-      sessionUpdate.lastPlaybackSpeed = lastSpeed;
-    }
+      if (additionalVideoSeconds > 0)
+        sessionUpdate.totalWatchedSeconds = session.totalWatchedSeconds + Math.round(additionalVideoSeconds);
+      if (additionalEffectiveSeconds > 0)
+        sessionUpdate.effectiveWatchedSeconds = session.effectiveWatchedSeconds + Math.round(additionalEffectiveSeconds);
+      if (lastSpeed !== (session.lastPlaybackSpeed ?? 1))
+        sessionUpdate.lastPlaybackSpeed = lastSpeed;
 
-    const lastPositionAct = [...sorted].reverse().find(
-      a => a.type === 'PLAY' || a.type === 'HEARTBEAT' || a.type === 'PAUSE' || a.type === 'SEEK' || a.type === 'SPEED_CHANGE',
-    );
-    if (lastPositionAct) {
-      sessionUpdate.lastPositionSeconds = Math.floor(lastPositionAct.videoTimestamp);
+      const lastPositionAct = [...sorted].reverse().find(
+        a => a.type === 'PLAY' || a.type === 'HEARTBEAT' || a.type === 'PAUSE' || a.type === 'SEEK' || a.type === 'SPEED_CHANGE',
+      );
+      if (lastPositionAct)
+        sessionUpdate.lastPositionSeconds = Math.floor(lastPositionAct.videoTimestamp);
     }
 
     if (Object.keys(sessionUpdate).length) {
@@ -356,9 +387,9 @@ export class SubjectRecordingTrackingService {
 
     return {
       success: true,
-      addedVideoSeconds: Math.round(additionalVideoSeconds),
-      addedEffectiveSeconds: Math.round(additionalEffectiveSeconds),
-      currentSpeed,
+      addedVideoSeconds: Math.round((sessionUpdate.totalWatchedSeconds ?? session.totalWatchedSeconds) - session.totalWatchedSeconds),
+      addedEffectiveSeconds: Math.round((sessionUpdate.effectiveWatchedSeconds ?? session.effectiveWatchedSeconds) - session.effectiveWatchedSeconds),
+      currentSpeed: sessionUpdate.lastPlaybackSpeed ?? (session.lastPlaybackSpeed ?? 1),
     };
   }
 

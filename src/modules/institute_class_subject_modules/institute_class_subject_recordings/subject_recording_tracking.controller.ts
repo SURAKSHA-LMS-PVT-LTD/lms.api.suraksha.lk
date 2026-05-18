@@ -81,19 +81,44 @@ export class SubjectRecordingTrackingController {
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60000 } })
-  @ApiOperation({ summary: 'Batch-send PLAY / PAUSE / SEEK / HEARTBEAT activity events' })
+  @ApiOperation({ summary: 'Batch-send player activity events' })
   async recordHeartbeat(
     @Body() body: {
       sessionId: string;
       activities: Array<{
-        type: 'PLAY' | 'PAUSE' | 'SEEK' | 'HEARTBEAT';
+        type: string;
         videoTimestamp: number;
         wallTime?: number;
+        rangeFrom?: number;
+        rangeTo?: number;
+        watchedSeconds?: number;
+        speed?: number;
+        screenWidth?: number;
+        screenHeight?: number;
+        tabWidth?: number;
+        tabHeight?: number;
+        tabVisible?: boolean;
       }>;
     },
     @Req() req: any,
   ) {
-    return this.trackingService.recordHeartbeats(body.sessionId, body.activities, req.user?.id);
+    const mapped = body.activities.map(act => ({
+      type: act.type as any,
+      videoTimestamp: act.videoTimestamp,
+      wallTime: act.wallTime,
+      metadata: {
+        ...(act.speed !== undefined && { speed: act.speed }),
+        ...(act.rangeFrom !== undefined && { rangeFrom: act.rangeFrom }),
+        ...(act.rangeTo !== undefined && { rangeTo: act.rangeTo }),
+        ...(act.watchedSeconds !== undefined && { watchedSeconds: act.watchedSeconds }),
+        ...(act.screenWidth !== undefined && { screenWidth: act.screenWidth }),
+        ...(act.screenHeight !== undefined && { screenHeight: act.screenHeight }),
+        ...(act.tabWidth !== undefined && { tabWidth: act.tabWidth }),
+        ...(act.tabHeight !== undefined && { tabHeight: act.tabHeight }),
+        ...(act.tabVisible !== undefined && { tabVisible: act.tabVisible }),
+      },
+    }));
+    return this.trackingService.recordHeartbeats(body.sessionId, mapped, req.user?.id);
   }
 
   // ─── Reports ─────────────────────────────────────────────────────────────

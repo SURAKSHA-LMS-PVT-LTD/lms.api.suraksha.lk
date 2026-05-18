@@ -460,7 +460,7 @@ export class LectureTrackingService {
   async recordHeartbeats(
     sessionId: string,
     activities: Array<{
-      type: 'PLAY' | 'PAUSE' | 'SEEK' | 'HEARTBEAT' | 'SPEED_CHANGE' | 'QUALITY_CHANGE' | 'FULLSCREEN_TOGGLE' | 'SUBTITLE_TOGGLE';
+      type: string;
       videoTimestamp: number;
       wallTime?: number;
       metadata?: Record<string, any>;
@@ -476,41 +476,43 @@ export class LectureTrackingService {
       throw new ForbiddenException('Not your session');
     }
 
-    const records = activities.map(act => {
-      const record = this.recActivityRepo.create({
-        sessionId,
-        activityType: act.type,
-        videoTimestamp: act.videoTimestamp,
-        metadata: act.metadata,
+    // Only persist storable types; unknown types are silently skipped
+    const storableTypes = new Set([
+      'PLAY', 'PAUSE', 'SEEK', 'HEARTBEAT',
+      'SPEED_CHANGE', 'QUALITY_CHANGE', 'FULLSCREEN_TOGGLE', 'SUBTITLE_TOGGLE',
+      'WATCH_RANGE', 'TAB_HIDDEN', 'TAB_VISIBLE',
+    ]);
+
+    const records = activities
+      .filter(act => storableTypes.has(act.type))
+      .map(act => {
+        const record = this.recActivityRepo.create({
+          sessionId,
+          activityType: act.type as any,
+          videoTimestamp: act.videoTimestamp,
+          metadata: act.metadata,
+        });
+        record.wallClockTimestamp = act.wallTime ? new Date(act.wallTime) : new Date();
+        return record;
       });
 
-      // If wallTime is provided as ISO string, convert to Date; if number (timestamp), convert from ms
-      if (act.wallTime) {
-        if (typeof act.wallTime === 'string') {
-          record.wallClockTimestamp = new Date(act.wallTime);
-        } else if (typeof act.wallTime === 'number') {
-          // Assume milliseconds since epoch
-          record.wallClockTimestamp = new Date(act.wallTime);
-        }
-      } else {
-        // Default to current server time if not provided
-        record.wallClockTimestamp = new Date();
+    if (records.length) await this.recActivityRepo.save(records);
+
+    // Update last known position — prefer rangeTo from WATCH_RANGE, else PLAY/HEARTBEAT position
+    const sessionUpdate: Record<string, any> = {};
+    const rangeActs = activities.filter(a => a.type === 'WATCH_RANGE' && a.metadata?.rangeTo !== undefined);
+    if (rangeActs.length) {
+      const maxRangeTo = Math.max(...rangeActs.map(a => Number(a.metadata!.rangeTo)));
+      sessionUpdate.lastPositionSeconds = Math.floor(maxRangeTo);
+      const totalWatched = rangeActs.reduce((sum, a) => sum + (Number(a.metadata?.watchedSeconds) || 0), 0);
+      if (totalWatched > 0) {
+        sessionUpdate.totalWatchedSeconds = () => `total_watched_seconds + ${totalWatched}`;
       }
-
-      return record;
-    });
-
-    await this.recActivityRepo.save(records);
-
-    // Update last known position from the most recent heartbeat/play event
-    const lastPlay = [...activities]
-      .reverse()
-      .find(a => a.type === 'PLAY' || a.type === 'HEARTBEAT');
-    if (lastPlay !== undefined) {
-      await this.recSessionRepo.update(sessionId, {
-        lastPositionSeconds: Math.floor(lastPlay.videoTimestamp),
-      });
+    } else {
+      const lastPlay = [...activities].reverse().find(a => a.type === 'PLAY' || a.type === 'HEARTBEAT');
+      if (lastPlay) sessionUpdate.lastPositionSeconds = Math.floor(lastPlay.videoTimestamp);
     }
+    if (Object.keys(sessionUpdate).length) await this.recSessionRepo.update(sessionId, sessionUpdate);
 
     return { success: true };
   }
