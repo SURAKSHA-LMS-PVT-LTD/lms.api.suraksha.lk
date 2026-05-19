@@ -1,6 +1,6 @@
 import {
   Controller, Post, Body, Param, Req,
-  UseGuards, HttpCode, HttpStatus,
+  UseGuards, HttpCode, HttpStatus, ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -8,10 +8,13 @@ import { InstituteApiKeyGuard } from '../guards/institute-api-key.guard';
 import { ApiKeyScope } from '../entities/institute-api-key.entity';
 import { ExternalAttendanceService } from '../services/external-attendance.service';
 import { BulkExternalAttendanceDto } from '../dto/external-attendance.dto';
-import { ForbiddenException } from '@nestjs/common';
+import { SkipOriginValidation } from '../../../common/decorators/skip-origin-validation.decorator';
+import { Public } from '../../../common/decorators/public.decorator';
 
 @ApiTags('External API — Attendance')
 @ApiBearerAuth()
+@Public()
+@SkipOriginValidation()
 @Controller('api/external/v1/attendance')
 @UseGuards(InstituteApiKeyGuard)
 export class ExternalAttendanceController {

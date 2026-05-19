@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { SKIP_ORIGIN_VALIDATION_KEY } from '../decorators/skip-origin-validation.decorator';
 
 /**
  * 🛡️ ORIGIN VALIDATION GUARD
@@ -50,6 +51,15 @@ export class OriginValidationGuard implements CanActivate {
 
     // ✅ BYPASS in development mode - Allow all requests
     if (this.isDevelopment) {
+      return true;
+    }
+
+    // ✅ BYPASS: endpoints decorated with @SkipOriginValidation() (external API key endpoints)
+    const skipOrigin = this.reflector.getAllAndOverride<boolean>(
+      SKIP_ORIGIN_VALIDATION_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (skipOrigin) {
       return true;
     }
 

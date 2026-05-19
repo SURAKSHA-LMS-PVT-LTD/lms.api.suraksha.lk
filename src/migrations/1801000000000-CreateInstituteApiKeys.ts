@@ -20,9 +20,7 @@ export class CreateInstituteApiKeys1801000000000 implements MigrationInterface {
         \`updated_at\`   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (\`id\`),
         UNIQUE KEY \`UQ_institute_api_keys_hash\` (\`key_hash\`),
-        KEY \`IDX_institute_api_keys_institute_active\` (\`institute_id\`, \`is_active\`),
-        CONSTRAINT \`FK_institute_api_keys_institute\`
-          FOREIGN KEY (\`institute_id\`) REFERENCES \`institutes\` (\`id\`) ON DELETE CASCADE
+        KEY \`IDX_institute_api_keys_institute_active\` (\`institute_id\`, \`is_active\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
   }
