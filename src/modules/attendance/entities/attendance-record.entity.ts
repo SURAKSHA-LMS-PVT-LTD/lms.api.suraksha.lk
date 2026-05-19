@@ -248,9 +248,10 @@ export class AttendanceRecordEntity {
 
   @Column({
     name: 'class_session_id',
-    type: 'bigint',
+    type: 'varchar',
+    length: 36,
     nullable: true,
-    comment: 'Links to institute_class_attendance_sessions.id',
+    comment: 'Links to institute_class_attendance_sessions.id (UUID)',
   })
   classSessionId: string | null;
 

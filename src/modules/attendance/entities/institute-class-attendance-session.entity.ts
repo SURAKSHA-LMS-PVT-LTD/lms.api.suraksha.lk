@@ -15,16 +15,16 @@ export enum PaymentMode {
 @Index('idx_icas_class_date', ['instituteId', 'classId', 'date'])
 @Index('idx_icas_group', ['sessionGroupId'])
 export class InstituteClassAttendanceSessionEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'institute_id', type: 'varchar', length: 64 })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
-  @Column({ name: 'class_id', type: 'varchar', length: 64 })
+  @Column({ name: 'class_id', type: 'varchar', length: 36 })
   classId: string;
 
-  @Column({ name: 'session_group_id', type: 'bigint', nullable: true })
+  @Column({ name: 'session_group_id', type: 'varchar', length: 36, nullable: true })
   sessionGroupId?: string;
 
   @Column({ type: 'varchar', length: 100 })

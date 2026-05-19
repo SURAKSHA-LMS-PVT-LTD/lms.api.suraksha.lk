@@ -3,13 +3,13 @@ import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 @Entity('institute_class_attendance_session_groups')
 @Index('idx_icasg_class', ['instituteId', 'classId'])
 export class InstituteClassAttendanceSessionGroupEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'institute_id', type: 'varchar', length: 64 })
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
   instituteId: string;
 
-  @Column({ name: 'class_id', type: 'varchar', length: 64 })
+  @Column({ name: 'class_id', type: 'varchar', length: 36 })
   classId: string;
 
   @Column({ type: 'varchar', length: 100 })
