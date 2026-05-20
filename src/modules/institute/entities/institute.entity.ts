@@ -251,7 +251,9 @@ export class InstituteEntity {
   userExtraDataSchema?: Array<{
     key: string;
     label: string;
-    type: 'text' | 'number' | 'date' | 'email' | 'phone';
+    type: 'text' | 'number' | 'date' | 'email' | 'phone' | 'boolean' | 'select';
+    /** Dropdown options — required when type is 'select' */
+    options?: string[];
     applicableTo?: string[]; // e.g. ['Student','Teacher'] — empty = all roles
   }>;
 

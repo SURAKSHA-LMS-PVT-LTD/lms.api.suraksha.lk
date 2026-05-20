@@ -7,10 +7,11 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
-const FIELD_TYPES = ['text', 'number', 'date', 'boolean', 'select'] as const;
+const FIELD_TYPES = ['text', 'number', 'date', 'email', 'phone', 'boolean', 'select'] as const;
 
 export class ExtraDataFieldDto {
   @ApiProperty({ maxLength: 50, description: 'Unique field key (snake_case)' })
@@ -26,6 +27,19 @@ export class ExtraDataFieldDto {
   @ApiProperty({ enum: FIELD_TYPES, description: 'Field data type' })
   @IsIn(FIELD_TYPES)
   type: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Dropdown options — required when type is "select". Max 100 options, each max 200 chars.',
+    example: ['Option A', 'Option B', 'Option C'],
+  })
+  @ValidateIf(o => o.type === 'select')
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  @ArrayMaxSize(100)
+  options?: string[];
 
   @ApiPropertyOptional({
     type: [String],
