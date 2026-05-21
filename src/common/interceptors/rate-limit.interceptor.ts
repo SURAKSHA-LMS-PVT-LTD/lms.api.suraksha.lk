@@ -10,14 +10,20 @@ import { Request } from 'express';
 
 /**
  * Rate Limiting Interceptor
- * Simple in-memory rate limiting for API endpoints
- * In production, use Redis or similar distributed cache
+ * Simple in-memory rate limiting for API endpoints.
+ * In production, prefer Redis-backed rate limiting for multi-instance deployments.
+ *
+ * Memory safety: the map is capped at MAX_ENTRIES. When the cap is hit, all
+ * expired entries are evicted first; if still over cap, the oldest 20 % are
+ * dropped (LRU-approximate) so the server can never OOM on unique-IP floods.
  */
 @Injectable()
 export class RateLimitInterceptor implements NestInterceptor {
   private readonly requests = new Map<string, { count: number; resetTime: number }>();
   private readonly maxRequests: number;
   private readonly windowMs: number;
+  private static readonly MAX_ENTRIES = 50_000;
+  private cleanupCallCount = 0;
 
   constructor(maxRequests: number = 100, windowMs: number = 60000) {
     this.maxRequests = maxRequests;
@@ -29,16 +35,22 @@ export class RateLimitInterceptor implements NestInterceptor {
     const identifier = this.getIdentifier(request);
 
     this.checkRateLimit(identifier);
-    this.cleanupExpiredEntries();
+
+    // Run cleanup every 500 requests to amortise the O(n) scan cost
+    this.cleanupCallCount++;
+    if (this.cleanupCallCount >= 500) {
+      this.cleanupCallCount = 0;
+      this.cleanupExpiredEntries();
+    }
 
     return next.handle();
   }
 
   private getIdentifier(request: Request): string {
-    // Use IP address and user agent for identification
     const ip = request.ip || request.socket.remoteAddress || 'unknown';
-    const userAgent = request.get('user-agent') || 'unknown';
-    return `${ip}:${userAgent.substring(0, 50)}`; // Limit user agent length
+    // Only first 50 chars of user-agent to bound key size
+    const userAgent = (request.get('user-agent') || 'unknown').substring(0, 50);
+    return `${ip}:${userAgent}`;
   }
 
   private checkRateLimit(identifier: string): void {
@@ -46,6 +58,7 @@ export class RateLimitInterceptor implements NestInterceptor {
     const current = this.requests.get(identifier);
 
     if (!current || now > current.resetTime) {
+      this.enforceSizeCap();
       this.requests.set(identifier, { count: 1, resetTime: now + this.windowMs });
       return;
     }
@@ -54,7 +67,7 @@ export class RateLimitInterceptor implements NestInterceptor {
       throw new BadRequestException({
         message: 'Rate limit exceeded. Too many requests.',
         error: 'RATE_LIMIT_EXCEEDED',
-        retryAfter: Math.ceil((current.resetTime - now) / 1000)
+        retryAfter: Math.ceil((current.resetTime - now) / 1000),
       });
     }
 
@@ -67,6 +80,23 @@ export class RateLimitInterceptor implements NestInterceptor {
       if (now > value.resetTime) {
         this.requests.delete(key);
       }
+    }
+  }
+
+  private enforceSizeCap(): void {
+    if (this.requests.size < RateLimitInterceptor.MAX_ENTRIES) return;
+
+    // First pass: remove expired entries
+    this.cleanupExpiredEntries();
+    if (this.requests.size < RateLimitInterceptor.MAX_ENTRIES) return;
+
+    // Second pass: drop oldest 20 % (Map iteration order is insertion order)
+    const dropCount = Math.ceil(this.requests.size * 0.2);
+    let dropped = 0;
+    for (const key of this.requests.keys()) {
+      if (dropped >= dropCount) break;
+      this.requests.delete(key);
+      dropped++;
     }
   }
 }

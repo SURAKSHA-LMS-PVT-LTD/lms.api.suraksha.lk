@@ -15,6 +15,12 @@ import {
 } from '../interfaces/exam.interface';
 import { EXAM_CONSTANTS } from '../constants/exam.constants';
 
+// Whitelist prevents arbitrary column names from being injected into query builder
+const EXAM_CRITERIA_KEYS: ReadonlySet<string> = new Set([
+  'id', 'instituteId', 'classId', 'subjectId', 'creatorId',
+  'status', 'examType', 'category', 'startTime', 'endTime', 'isActive',
+]);
+
 @Injectable()
 export class ExamRepository implements IExamRepository {
   constructor(
@@ -69,7 +75,7 @@ export class ExamRepository implements IExamRepository {
 
     // Build where conditions
     Object.keys(criteria).forEach(key => {
-      if (criteria[key] !== undefined) {
+      if (EXAM_CRITERIA_KEYS.has(key) && criteria[key] !== undefined) {
         queryBuilder.andWhere(`exam.${key} = :${key}`, { [key]: criteria[key] });
       }
     });
@@ -207,7 +213,7 @@ export class ExamRepository implements IExamRepository {
     });
 
     Object.keys(criteria).forEach(key => {
-      if (criteria[key] !== undefined) {
+      if (EXAM_CRITERIA_KEYS.has(key) && criteria[key] !== undefined) {
         queryBuilder.andWhere(`exam.${key} = :${key}`, { [key]: criteria[key] });
       }
     });
@@ -251,8 +257,9 @@ export class ExamRepository implements IExamRepository {
     
     if (criteria.date) {
       const targetDate = new Date(criteria.date);
-      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+      // Clone before mutating to avoid setHours side-effects on the original
+      const startOfDay = new Date(new Date(targetDate).setHours(0, 0, 0, 0));
+      const endOfDay = new Date(new Date(targetDate).setHours(23, 59, 59, 999));
       
       queryBuilder.where('exam.scheduleDate BETWEEN :startOfDay AND :endOfDay', {
         startOfDay,
@@ -308,7 +315,7 @@ export class ExamRepository implements IExamRepository {
     const queryBuilder = this.repository.createQueryBuilder('exam');
     
     Object.keys(criteria).forEach(key => {
-      if (criteria[key] !== undefined) {
+      if (EXAM_CRITERIA_KEYS.has(key) && criteria[key] !== undefined) {
         queryBuilder.andWhere(`exam.${key} = :${key}`, { [key]: criteria[key] });
       }
     });
@@ -323,7 +330,7 @@ export class ExamRepository implements IExamRepository {
     ]);
 
     const statusCounts = examsByStatus.reduce((acc, item) => {
-      acc[item.status] = parseInt(item.count);
+      acc[item.status] = parseInt(item.count, 10) || 0;
       return acc;
     }, {} as Record<string, number>);
 
@@ -346,7 +353,7 @@ export class ExamRepository implements IExamRepository {
     const queryBuilder = this.repository.createQueryBuilder('exam');
     
     Object.keys(criteria).forEach(key => {
-      if (criteria[key] !== undefined) {
+      if (EXAM_CRITERIA_KEYS.has(key) && criteria[key] !== undefined) {
         queryBuilder.andWhere(`exam.${key} = :${key}`, { [key]: criteria[key] });
       }
     });

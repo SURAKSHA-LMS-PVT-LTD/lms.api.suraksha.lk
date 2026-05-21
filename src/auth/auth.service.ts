@@ -724,7 +724,8 @@ export class AuthService {
   private async getAllInstitutes(): Promise<any[]> {
     try {
       const institutesRaw = await this.instituteRepository.find({
-        order: { createdAt: 'DESC' }
+        order: { createdAt: 'DESC' },
+        take: 500, // Safety cap — super-admin dashboard never needs all rows at once
       });
 
       // Map to return only needed fields

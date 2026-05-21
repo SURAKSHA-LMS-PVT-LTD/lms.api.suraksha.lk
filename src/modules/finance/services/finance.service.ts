@@ -16,14 +16,23 @@ import {
   LedgerQueryDto, AnalyticsQueryDto,
 } from '../dto/finance.dto';
 
+// Integer-cents arithmetic avoids IEEE-754 float precision errors (e.g. 0.1+0.2≠0.3).
+// All intermediate ops are done in integer cents; result is rounded to 2 dp.
+function toCents(v: string): number {
+  return Math.round(parseFloat(v) * 100);
+}
+function fromCents(c: number): string {
+  return (c / 100).toFixed(2);
+}
 function add(a: string, b: string): string {
-  return (parseFloat(a) + parseFloat(b)).toFixed(2);
+  return fromCents(toCents(a) + toCents(b));
 }
 function sub(a: string, b: string): string {
-  return (parseFloat(a) - parseFloat(b)).toFixed(2);
+  return fromCents(toCents(a) - toCents(b));
 }
 function pct(amount: string, percent: string): string {
-  return ((parseFloat(amount) * parseFloat(percent)) / 100).toFixed(2);
+  // Multiply cents by percent then divide by 100 (integer division, rounded)
+  return fromCents(Math.round((toCents(amount) * parseFloat(percent)) / 100));
 }
 
 @Injectable()
