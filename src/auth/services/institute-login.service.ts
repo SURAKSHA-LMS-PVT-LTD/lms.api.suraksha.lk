@@ -112,10 +112,20 @@ export class InstituteLoginService {
       });
     }
 
-    // 3. Verify password using same bcrypt+pepper approach
-    const isValid = await this.authService.comparePassword(dto.password, instituteUser.institutePassword);
+    // 3. Verify password (with legacy no-pepper fallback for accounts migrated from Thilina LMS)
+    const { match: isValid, isLegacy } = await this.authService.comparePasswordFull(dto.password, instituteUser.institutePassword);
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    // Silently upgrade legacy hash to peppered format so next login uses new format
+    if (isLegacy) {
+      this.authService.hashPassword(dto.password).then(newHash => {
+        const ts = now();
+        return this.instituteUserRepository.update(
+          { instituteId: instituteUser.instituteId, userId: instituteUser.userId },
+          { institutePassword: newHash, institutePasswordSetAt: ts, updatedAt: ts },
+        );
+      }).catch(() => {});
     }
 
     // 4. Get basic user info for the response (minimal DB read)

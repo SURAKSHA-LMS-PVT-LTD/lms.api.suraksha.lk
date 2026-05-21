@@ -9,9 +9,21 @@
  *
  * What it does:
  *   - Reads all STUDENT users + profiles from Thilina DB
- *   - Creates global Suraksha user (if not exists by email), reuses bcrypt hash
- *   - Upserts institute_user row with extra_data (whatsapp, school, guardian, etc.)
+ *   - Creates global Suraksha user (if not exists by email)
+ *   - Sets users.password = NULL  (no global system access for migrated students)
+ *   - Copies the Thilina bcrypt hash into institute_user.institute_password ONLY
  *   - Maps barcodeId → institute_card_id,  profile.instituteId → user_id_institue
+ *
+ * Password strategy:
+ *   Migrated students have NO global password (users.password = NULL).
+ *   They can ONLY log in via the institute login endpoint using their original
+ *   Thilina password, which is verified against institute_user.institute_password.
+ *   institute-login.service.ts accepts the plain-bcrypt Thilina hash via the
+ *   legacy no-pepper fallback in comparePasswordFull(), and auto-upgrades it to
+ *   the peppered format on first successful login.
+ *
+ *   Students log in with exactly the same password they used in Thilina LMS.
+ *   No password reset required.
  */
 
 import * as mysql from 'mysql2/promise';
@@ -64,7 +76,8 @@ async function main() {
   const state = loadState();
   const { instituteId } = state;
   if (!instituteId) { console.error('❌ instituteId missing in state. Run step1 first.'); process.exit(1); }
-  console.log(`   Institute ID: ${instituteId}\n`);
+  console.log(`   Institute ID : ${instituteId}`);
+  console.log(`   Passwords    : Thilina bcrypt hash reused as-is (legacy fallback in comparePasswordFull)\n`);
 
   const surDB = await mysql.createConnection({
     host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306),
@@ -81,7 +94,6 @@ async function main() {
   console.log('✅ Connected to both databases\n');
 
   try {
-    // Fetch all Thilina students
     const [thiUsers] = await thiDB.execute<mysql.RowDataPacket[]>(
       `SELECT
          u.id          AS t_user_id,
@@ -110,7 +122,7 @@ async function main() {
     console.log(`   Found ${thiUsers.length} students in Thilina DB\n`);
 
     const userIdMap: Record<string, string> = {};
-    let created = 0, skipped = 0, linked = 0;
+    let created = 0, skipped = 0, linked = 0, noPassword = 0;
     const errors: string[] = [];
 
     for (const row of thiUsers) {
@@ -120,14 +132,20 @@ async function main() {
       const now = fmt(new Date())!;
       let surUserId: string;
 
+      // Thilina hash is stored ONLY in institute_user.institute_password (not in users.password).
+      // Migrated students log in exclusively via institute login — no global system access.
+      const thilinaHash = (row.password as string || '').trim() || null;
+      if (!thilinaHash) noPassword++;
+
       try {
-        // Find or create global user
+        // ── Find or create global user ────────────────────────────────────────
         const [existing] = await surDB.execute<mysql.RowDataPacket[]>(
           'SELECT id FROM users WHERE email = ?', [email]
         );
 
         if (existing.length > 0) {
           surUserId = existing[0].id;
+          // Keep existing password — don't overwrite a peppered hash with a legacy one
         } else {
           surUserId = randomUserId();
           const { firstName, lastName } = splitName(row.full_name as string || '');
@@ -153,7 +171,7 @@ async function main() {
               firstName || null,
               lastName || null,
               email,
-              row.password || null,
+              null,            // password — NULL: no global login; institute_password is the only path
               'USER',
               row.phone || null,
               dobStr,
@@ -162,7 +180,7 @@ async function main() {
               true, false, false,
               'FREE', 'INCOMPLETE', 0,
               false, 'E', 'Sri Lanka',
-              row.password ? now : null,
+              null,            // password_set_at — NULL since no global password is set
               now, now,
             ]
           );
@@ -171,7 +189,7 @@ async function main() {
 
         userIdMap[row.t_user_id as string] = surUserId;
 
-        // Build extra_data
+        // ── Build extra_data ──────────────────────────────────────────────────
         const extraData: Record<string, string> = {};
         if (row.whatsapp_phone) extraData['whatsapp_phone'] = String(row.whatsapp_phone);
         if (row.school) extraData['school'] = String(row.school);
@@ -183,25 +201,33 @@ async function main() {
         const enrolledAt = row.enrolled_date ? fmt(new Date(row.enrolled_date)) : now;
         const iuStatus = mapStatus(row.status as string);
 
-        // Upsert institute_user
+        // ── Upsert institute_user ─────────────────────────────────────────────
+        // institute_password = same Thilina hash — comparePasswordFull legacy fallback accepts it
+        // institute_card_id  = barcodeId (used for RFID/barcode scanning)
+        // COALESCE: don't overwrite if the user has already set a peppered password
         await surDB.execute(
           `INSERT INTO institute_user
              (institute_id, user_id, user_id_institue, institute_card_id,
+              institute_password, institute_password_set_at,
               status, institute_user_type, image_verification_status,
               institute_user_image_url, extra_data, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE
-             user_id_institue         = VALUES(user_id_institue),
-             institute_card_id        = VALUES(institute_card_id),
-             status                   = VALUES(status),
-             extra_data               = VALUES(extra_data),
-             institute_user_image_url = VALUES(institute_user_image_url),
-             updated_at               = VALUES(updated_at)`,
+             user_id_institue          = VALUES(user_id_institue),
+             institute_card_id         = VALUES(institute_card_id),
+             institute_password        = COALESCE(institute_password, VALUES(institute_password)),
+             institute_password_set_at = COALESCE(institute_password_set_at, VALUES(institute_password_set_at)),
+             status                    = VALUES(status),
+             extra_data                = VALUES(extra_data),
+             institute_user_image_url  = VALUES(institute_user_image_url),
+             updated_at                = VALUES(updated_at)`,
           [
             instituteId,
             surUserId,
-            row.td_user_code || null,
-            row.barcode_id || null,
+            row.td_user_code || null,   // user_id_institue (institute index number)
+            row.barcode_id || null,      // institute_card_id (barcode on physical card)
+            thilinaHash,                 // institute_password (legacy hash, auto-upgraded on login)
+            thilinaHash ? now : null,    // institute_password_set_at
             iuStatus,
             'STUDENT',
             'PENDING',
@@ -219,17 +245,20 @@ async function main() {
       }
     }
 
-    // Save user map to state
     saveState({ userIdMap });
 
     console.log('═══════════════════════════════════════════════════════════');
     console.log('  STEP 2 COMPLETE ✅');
     console.log('═══════════════════════════════════════════════════════════');
-    console.log(`  Total students  : ${thiUsers.length}`);
-    console.log(`  Created         : ${created}`);
-    console.log(`  Already existed : ${thiUsers.length - created - skipped}`);
-    console.log(`  Linked to inst. : ${linked}`);
-    console.log(`  Skipped/errors  : ${skipped}`);
+    console.log(`  Total students       : ${thiUsers.length}`);
+    console.log(`  Created (new)        : ${created}`);
+    console.log(`  Already existed      : ${thiUsers.length - created - skipped}`);
+    console.log(`  Linked to institute  : ${linked}`);
+    console.log(`  No password in src   : ${noPassword}`);
+    console.log(`  Skipped/errors       : ${skipped}`);
+    console.log('');
+    console.log('  ℹ  Students log in with their original Thilina LMS password.');
+    console.log('  ℹ  Hash is auto-upgraded to peppered format on first login.');
     if (errors.length > 0) {
       console.log('\n  Errors:');
       errors.slice(0, 10).forEach(e => console.log('  ' + e));

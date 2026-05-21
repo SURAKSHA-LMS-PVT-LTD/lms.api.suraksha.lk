@@ -199,7 +199,7 @@ export class AuthService {
         this.logger.warn(`❌ Database password validation failed for user ${user.id}`);
         throw new UnauthorizedException('Invalid credentials');
       }
-      
+
       this.logger.log(`✅ Login successful from database for user ${user.id}`);
 
       // 💾 STEP 5: Cache the user data for future logins (only for email logins)
@@ -802,22 +802,40 @@ export class AuthService {
   }
 
   /**
-   * Compare password with hash
-   * Uses clean single pattern: password + pepper
+   * Compare password with hash.
+   *
+   * Tries peppered hash first (all new Suraksha accounts).
+   * Falls back to plain bcrypt (no pepper) for hashes migrated from Thilina LMS.
+   * Returns { match: true, isLegacy: true } on legacy match so the caller can
+   * re-hash inline and upgrade the stored value automatically.
    */
-  async comparePassword(password: string, hash: string): Promise<boolean> {
-    if (!password || !hash) {
-      return false;
-    }
-
+  async comparePasswordFull(
+    password: string,
+    hash: string,
+  ): Promise<{ match: boolean; isLegacy: boolean }> {
+    if (!password || !hash) return { match: false, isLegacy: false };
     try {
-      // Clean single pattern: password + pepper
-      const pepperedPassword = password + this.pepper;
-      return await bcrypt.compare(pepperedPassword, hash);
+      // Primary path: peppered (all accounts created in Suraksha)
+      if (await bcrypt.compare(password + this.pepper, hash)) {
+        return { match: true, isLegacy: false };
+      }
+      // Fallback: plain bcrypt (hashes migrated from Thilina LMS — no pepper)
+      if (await bcrypt.compare(password, hash)) {
+        return { match: true, isLegacy: true };
+      }
+      return { match: false, isLegacy: false };
     } catch (error) {
       this.logger.error(`Password comparison failed: ${error.message}`);
-      return false;
+      return { match: false, isLegacy: false };
     }
+  }
+
+  /**
+   * Compare password with hash — simple boolean for callers that don't need rehash.
+   */
+  async comparePassword(password: string, hash: string): Promise<boolean> {
+    const { match } = await this.comparePasswordFull(password, hash);
+    return match;
   }
 
   /**
