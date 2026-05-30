@@ -17,13 +17,10 @@ export class FeaturesService {
   async getFeaturesForInstitute(instituteId: string | number): Promise<any> {
     const allFeatures = await this.featureCatalogRepository.find();
 
-    // institute_feature_toggles.institute_id is still a numeric BIGINT column (not yet migrated to UUID).
-    // UUID institute IDs cannot be cast to a number, so skip the toggle lookup for them and
-    // return all features enabled by default (they have no toggle rows anyway).
-    const numericId = typeof instituteId === 'number' ? instituteId : Number(instituteId);
-    const instituteToggles = isNaN(numericId)
-      ? []
-      : await this.instituteFeatureTogglesRepository.find({ where: { instituteId: numericId } });
+    const instituteKey = String(instituteId);
+    const instituteToggles = await this.instituteFeatureTogglesRepository.find({
+      where: { instituteId: instituteKey },
+    });
 
     const features = allFeatures.map(feature => {
         const toggle = instituteToggles.find(t => t.featureKey === feature.key);
@@ -47,6 +44,8 @@ export class FeaturesService {
     const entries = Object.entries(updateDto.features);
     if (entries.length === 0) return;
 
+    const instituteKey = String(instituteId);
+
     // Bulk upsert — one query per changed feature using INSERT ... ON DUPLICATE KEY UPDATE
     const em = this.instituteFeatureTogglesRepository.manager;
     await Promise.all(
@@ -55,7 +54,7 @@ export class FeaturesService {
           `INSERT INTO institute_feature_toggles (institute_id, feature_key, enabled, enabled_source, enabled_at, created_at, updated_at)
            VALUES (?, ?, ?, 'ADMIN', NOW(), NOW(), NOW())
            ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), updated_at = NOW()`,
-          [instituteId, key, enabled ? 1 : 0],
+          [instituteKey, key, enabled ? 1 : 0],
         ),
       ),
     );

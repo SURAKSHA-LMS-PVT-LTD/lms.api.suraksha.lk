@@ -6,8 +6,8 @@ export class InstituteFeatureToggles {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'institute_id' })
-  instituteId: number;
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
+  instituteId: string;
 
   @Column({ name: 'feature_key' })
   featureKey: string;
