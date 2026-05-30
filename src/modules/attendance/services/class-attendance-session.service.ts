@@ -301,7 +301,13 @@ export class ClassAttendanceSessionService {
     const rows: any[] = await this.dataSource.query(`
       SELECT
         cs.student_user_id         AS studentId,
-        u.name_with_initials       AS studentName,
+        COALESCE(
+          NULLIF(u.name_with_initials, ''),
+          NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), ''),
+          NULLIF(u.first_name, ''),
+          NULLIF(u.last_name, ''),
+          'Unknown'
+        ) AS studentName,
         COALESCE(iu.institute_user_image_url, u.image_url) AS imageUrl,
         iu.user_id_institue        AS userIdInstitute,
         iu.institute_card_id       AS cardId,
@@ -692,7 +698,7 @@ export class ClassAttendanceSessionService {
       studentIds.length
         ? this.userRepo.find({
             where: { id: In(studentIds) },
-            select: ['id', 'nameWithInitials', 'imageUrl'],
+            select: ['id', 'nameWithInitials', 'firstName', 'lastName', 'imageUrl'],
           })
         : Promise.resolve([]),
     ]);
@@ -722,9 +728,11 @@ export class ClassAttendanceSessionService {
         };
       }
 
+      const nameWithInitials = (user?.nameWithInitials ?? '').trim();
+      const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
       return {
         studentId: s.studentUserId,
-        studentName: user?.nameWithInitials ?? 'Unknown',
+        studentName: nameWithInitials || fullName || 'Unknown',
         imageUrl: iu?.instituteUserImageUrl ?? user?.imageUrl ?? null,
         userIdInstitute: iu?.userIdByInstitute ?? null,
         cardId: iu?.instituteCardId ?? null,
