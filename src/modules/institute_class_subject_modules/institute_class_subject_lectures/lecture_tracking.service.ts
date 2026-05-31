@@ -1,14 +1,18 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { InstituteClassSubjectLecture } from './entities/institute_class_subject_lecture.entity';
 import { LectureLiveAttendance } from './entities/lecture_live_attendance.entity';
+import { LectureLiveAttendanceSession } from './entities/lecture_live_attendance_session.entity';
+import { LectureLiveAttendanceMark } from './entities/lecture_live_attendance_mark.entity';
 import { LectureRecordingSession } from './entities/lecture_recording_session.entity';
 import { LectureRecordingActivity } from './entities/lecture_recording_activity.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
-import { formatSriLankaDateTime, formatSriLankaTime } from '../../../common/utils/timezone.util';
+import { UserEntity } from '../../user/entities/user.entity';
+import { formatSriLankaDateTime, formatSriLankaTime, now } from '../../../common/utils/timezone.util';
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN ?? 'lms.suraksha.lk';
 
@@ -29,6 +33,10 @@ export class LectureTrackingService {
     private readonly lectureRepo: Repository<InstituteClassSubjectLecture>,
     @InjectRepository(LectureLiveAttendance)
     private readonly liveAttRepo: Repository<LectureLiveAttendance>,
+    @InjectRepository(LectureLiveAttendanceSession)
+    private readonly liveSessionRepo: Repository<LectureLiveAttendanceSession>,
+    @InjectRepository(LectureLiveAttendanceMark)
+    private readonly liveMarkRepo: Repository<LectureLiveAttendanceMark>,
     @InjectRepository(LectureRecordingSession)
     private readonly recSessionRepo: Repository<LectureRecordingSession>,
     @InjectRepository(LectureRecordingActivity)
@@ -39,6 +47,8 @@ export class LectureTrackingService {
     private readonly subjectStudentRepo: Repository<InstituteClassSubjectStudent>,
     @InjectRepository(InstituteClassSubjectPaymentSubmission)
     private readonly paymentSubmissionRepo: Repository<InstituteClassSubjectPaymentSubmission>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
 
   // ─────────────────────────────────────────────────────────────
@@ -138,22 +148,7 @@ export class LectureTrackingService {
     return allowedStatuses.some(s => s.toUpperCase() === submissionStatus);
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Live lecture access validation & join URL
-  // ─────────────────────────────────────────────────────────────
-
-  async validateLiveAccess(urlId: string, user: any) {
-    const lecture = await this.lectureRepo.findOne({
-      where: { liveUrlId: urlId, liveAttendanceEnabled: true },
-      relations: ['institute'],
-    });
-    if (!lecture) throw new NotFoundException('Lecture not found or attendance tracking is disabled');
-
-    // Check TTL
-    if (lecture.liveUrlExpiresAt && new Date() > new Date(lecture.liveUrlExpiresAt)) {
-      throw new ForbiddenException('This lecture link has expired');
-    }
-
+  private async resolveLiveAccess(lecture: InstituteClassSubjectLecture, user: any) {
     let hasAccess = false;
     let requirePayment = false;
     let notPaidPaymentId: string | undefined;
@@ -206,6 +201,85 @@ export class LectureTrackingService {
       }
     }
 
+    return { hasAccess, requirePayment, notPaidPaymentId };
+  }
+
+  private async loadStudentRoster(
+    instituteId: string,
+    classId: string,
+    subjectId?: string | null,
+  ): Promise<{ studentIds: string[]; students: Array<{ id: string; name: string; imageUrl?: string | null }> }> {
+    let studentIds: string[] = [];
+
+    if (subjectId) {
+      const subjectRows = await this.subjectStudentRepo.find({
+        where: {
+          instituteId,
+          classId,
+          subjectId,
+          isActive: true,
+          verificationStatus: In(['verified', 'enrolled_free_card'] as any),
+        },
+        select: ['studentId'],
+      });
+      studentIds = subjectRows.map(s => String(s.studentId));
+
+      if (!studentIds.length) {
+        const classRows = await this.classStudentRepo.find({
+          where: { classId, instituteId, isActive: true, isVerified: true },
+          select: ['studentUserId'],
+        });
+        studentIds = classRows.map(s => String(s.studentUserId));
+      }
+    } else {
+      const classRows = await this.classStudentRepo.find({
+        where: { classId, instituteId, isActive: true, isVerified: true },
+        select: ['studentUserId'],
+      });
+      studentIds = classRows.map(s => String(s.studentUserId));
+    }
+
+    studentIds = Array.from(new Set(studentIds));
+    if (!studentIds.length) return { studentIds: [], students: [] };
+
+    const users = await this.userRepo.find({
+      where: { id: In(studentIds) },
+      select: ['id', 'nameWithInitials', 'firstName', 'lastName', 'imageUrl'],
+    });
+    const userMap = new Map(users.map(u => [String(u.id), u]));
+
+    const students = studentIds.map(id => {
+      const u = userMap.get(String(id));
+      const nameWithInitials = (u?.nameWithInitials ?? '').trim();
+      const fullName = [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim();
+      return {
+        id,
+        name: nameWithInitials || fullName || id,
+        imageUrl: u?.imageUrl ?? null,
+      };
+    });
+
+    return { studentIds, students };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Live lecture access validation & join URL
+  // ─────────────────────────────────────────────────────────────
+
+  async validateLiveAccess(urlId: string, user: any) {
+    const lecture = await this.lectureRepo.findOne({
+      where: { liveUrlId: urlId, liveAttendanceEnabled: true },
+      relations: ['institute'],
+    });
+    if (!lecture) throw new NotFoundException('Lecture not found or attendance tracking is disabled');
+
+    // Check TTL
+    if (lecture.liveUrlExpiresAt && new Date() > new Date(lecture.liveUrlExpiresAt)) {
+      throw new ForbiddenException('This lecture link has expired');
+    }
+
+    const { hasAccess, requirePayment, notPaidPaymentId } = await this.resolveLiveAccess(lecture, user);
+
     const inst = lecture.institute as any;
     const liveJoinUrl = buildPublicUrl(
       `live-lecture/${urlId}`,
@@ -225,7 +299,7 @@ export class LectureTrackingService {
       instituteLogoUrl: inst?.logoUrl,
       subdomain: inst?.subdomain,
       customDomain: inst?.customDomain,
-      accessLevel: level,
+      accessLevel: lecture.liveAccessLevel,
       bgUrl: lecture.liveEntryBgUrl,
       cardImageUrl: lecture.liveCardImageUrl,
       liveJoinUrl,
@@ -381,6 +455,243 @@ export class LectureTrackingService {
     }
     await this.liveAttRepo.update(attendanceId, { leaveTime: new Date() });
     return { success: true };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Live attendance link sessions (one-click attendance)
+  // ─────────────────────────────────────────────────────────────
+
+  private mapLiveAttendanceSession(session: LectureLiveAttendanceSession, lecture: InstituteClassSubjectLecture, markedCount?: number) {
+    const inst = lecture.institute as any;
+    const isExpired = session.expiresAt ? new Date() > new Date(session.expiresAt) : false;
+    return {
+      id: session.id,
+      urlId: session.urlId,
+      validSeconds: session.validSeconds,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      isExpired,
+      markedCount: markedCount ?? 0,
+      publicUrl: buildPublicUrl(
+        `live-attendance/${session.urlId}`,
+        inst?.subdomain,
+        inst?.customDomain,
+      ),
+    };
+  }
+
+  async createLiveAttendanceSession(
+    lectureId: string,
+    validSeconds?: number,
+    userId?: string,
+  ) {
+    const lecture = await this.lectureRepo.findOne({
+      where: { id: lectureId },
+      relations: ['institute'],
+    });
+    if (!lecture) throw new NotFoundException('Lecture not found');
+    if (!lecture.liveAttendanceEnabled) {
+      throw new BadRequestException('Live attendance is disabled for this lecture');
+    }
+
+    const seconds = validSeconds != null ? Math.floor(Number(validSeconds)) : 300;
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      throw new BadRequestException('validSeconds must be a positive number');
+    }
+
+    const createdAt = now();
+    const expiresAt = new Date(createdAt.getTime() + seconds * 1000);
+
+    const session = this.liveSessionRepo.create({
+      lectureId: lecture.id,
+      urlId: uuidv4().replace(/-/g, '').substring(0, 10),
+      validSeconds: seconds,
+      expiresAt,
+      createdBy: userId,
+      createdAt,
+    });
+    const saved = await this.liveSessionRepo.save(session);
+
+    return this.mapLiveAttendanceSession(saved, lecture);
+  }
+
+  async getLiveAttendanceSessionGrid(
+    lectureId: string,
+    classId: string,
+    instituteId: string,
+  ) {
+    const lecture = await this.lectureRepo.findOne({
+      where: { id: lectureId },
+      relations: ['institute'],
+    });
+    if (!lecture) throw new NotFoundException('Lecture not found');
+    if (lecture.instituteId !== instituteId) {
+      throw new ForbiddenException('Lecture does not belong to this institute');
+    }
+    if (lecture.classId && lecture.classId !== classId) {
+      throw new ForbiddenException('Lecture does not belong to this class');
+    }
+
+    const roster = await this.loadStudentRoster(instituteId, classId, lecture.subjectId ?? null);
+    const classStudents = roster.students;
+
+    const sessions = await this.liveSessionRepo.find({
+      where: { lectureId },
+      order: { createdAt: 'ASC', id: 'ASC' } as any,
+    });
+
+    const sessionIds = sessions.map(s => s.id);
+    const marks = sessionIds.length
+      ? await this.liveMarkRepo.find({
+          where: { sessionId: In(sessionIds) },
+          order: { markedAt: 'ASC', id: 'ASC' } as any,
+        })
+      : [];
+
+    const markCountBySession = new Map<string, number>();
+    for (const m of marks) {
+      markCountBySession.set(m.sessionId, (markCountBySession.get(m.sessionId) ?? 0) + 1);
+    }
+
+    const grid: Record<string, Record<string, { marked: boolean; markedAt?: string }>> = {};
+    for (const s of classStudents) {
+      const sid = s.id;
+      grid[sid] = {};
+      for (const sess of sessions) {
+        grid[sid][sess.id] = { marked: false };
+      }
+    }
+
+    for (const mark of marks) {
+      if (!grid[mark.studentId]) grid[mark.studentId] = {};
+      grid[mark.studentId][mark.sessionId] = {
+        marked: true,
+        markedAt: mark.markedAt?.toISOString(),
+      };
+    }
+
+    const students = classStudents.map(s => ({
+      id: s.id,
+      name: s.name,
+      imageUrl: s.imageUrl ?? null,
+    }));
+
+    return {
+      lecture: {
+        id: lecture.id,
+        title: lecture.title ?? 'Untitled Lecture',
+        startTime: lecture.startTime,
+        subjectId: lecture.subjectId ?? null,
+      },
+      sessions: sessions.map(s => this.mapLiveAttendanceSession(s, lecture, markCountBySession.get(s.id))),
+      students,
+      grid,
+    };
+  }
+
+  async validateLiveAttendanceSessionAccess(urlId: string, user: any) {
+    const session = await this.liveSessionRepo.findOne({
+      where: { urlId },
+      relations: ['lecture', 'lecture.institute'],
+    });
+    if (!session) throw new NotFoundException('Attendance link not found');
+
+    const lecture = session.lecture;
+    if (!lecture || !lecture.liveAttendanceEnabled) {
+      throw new NotFoundException('Lecture not found or attendance tracking is disabled');
+    }
+
+    const existing = user?.id
+      ? await this.liveMarkRepo.findOne({ where: { sessionId: session.id, studentId: user.id } })
+      : null;
+
+    const isExpired = session.expiresAt ? new Date() > new Date(session.expiresAt) : false;
+    if (isExpired && !existing) {
+      throw new ForbiddenException('This attendance link has expired');
+    }
+
+    const { hasAccess, requirePayment, notPaidPaymentId } = await this.resolveLiveAccess(lecture, user);
+    const loginRequired = !user;
+    const effectiveAccess = !!user && hasAccess;
+
+    const inst = lecture.institute as any;
+    return {
+      lectureId: lecture.id,
+      title: lecture.title,
+      description: lecture.description,
+      startTime: lecture.startTime,
+      endTime: lecture.endTime,
+      instituteId: lecture.instituteId,
+      instituteName: inst?.name,
+      instituteLogoUrl: inst?.logoUrl,
+      subdomain: inst?.subdomain,
+      customDomain: inst?.customDomain,
+      sessionId: session.id,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      validSeconds: session.validSeconds,
+      accessLevel: lecture.liveAccessLevel,
+      hasAccess: effectiveAccess,
+      requirePayment,
+      notPaidPaymentId,
+      alreadyMarked: !!existing,
+      markedAt: existing?.markedAt,
+      isExpired,
+      loginRequired,
+    };
+  }
+
+  async markLiveAttendanceSession(
+    urlId: string,
+    user: any,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const session = await this.liveSessionRepo.findOne({
+      where: { urlId },
+      relations: ['lecture'],
+    });
+    if (!session) throw new NotFoundException('Attendance link not found');
+
+    const lecture = session.lecture;
+    if (!lecture || !lecture.liveAttendanceEnabled) {
+      throw new NotFoundException('Lecture not found or attendance tracking is disabled');
+    }
+
+    if (!user?.id) {
+      throw new ForbiddenException('Login required to mark attendance');
+    }
+
+    const existing = await this.liveMarkRepo.findOne({
+      where: { sessionId: session.id, studentId: user.id },
+    });
+    if (existing) {
+      return { status: 'ALREADY_MARKED', markedAt: existing.markedAt };
+    }
+
+    const isExpired = session.expiresAt ? new Date() > new Date(session.expiresAt) : false;
+    if (isExpired) {
+      throw new ForbiddenException('This attendance link has expired');
+    }
+
+    const { hasAccess, requirePayment } = await this.resolveLiveAccess(lecture, user);
+    if (!hasAccess) {
+      if (requirePayment) {
+        throw new ForbiddenException('Student has not completed payment for this lecture');
+      }
+      throw new ForbiddenException('You do not have access to mark attendance');
+    }
+
+    const record = this.liveMarkRepo.create({
+      sessionId: session.id,
+      lectureId: lecture.id,
+      studentId: user.id,
+      ipAddress,
+      userAgent,
+    });
+    const saved = await this.liveMarkRepo.save(record);
+
+    return { status: 'MARKED', markedAt: saved.markedAt };
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -552,34 +863,10 @@ export class LectureTrackingService {
         ? lectures[0]?.subjectId
         : null;
 
-      let classStudents = [];
+      let classStudents: Array<{ id: string; name: string; imageUrl?: string | null }> = [];
       try {
-        if (subjectId) {
-          classStudents = await this.subjectStudentRepo.find({
-            where: {
-              instituteId,
-              classId,
-              subjectId,
-              isActive: true,
-              verificationStatus: In(['verified', 'enrolled_free_card'] as any),
-            },
-            relations: ['student'],
-            order: { createdAt: 'ASC' },
-          });
-
-          // If the subject roster is empty, fall back to the class roster so the report still renders.
-          if (!classStudents.length) {
-            classStudents = await this.classStudentRepo.find({
-              where: { classId, instituteId, isActive: true, isVerified: true },
-              relations: ['student'],
-            });
-          }
-        } else {
-          classStudents = await this.classStudentRepo.find({
-            where: { classId, instituteId, isActive: true, isVerified: true },
-            relations: ['student'],
-          });
-        }
+        const roster = await this.loadStudentRoster(instituteId, classId, subjectId);
+        classStudents = roster.students;
       } catch (dbError) {
         console.error('❌ Error loading students:', dbError);
         classStudents = [];
@@ -611,7 +898,7 @@ export class LectureTrackingService {
       > = {};
 
       for (const s of classStudents) {
-        const sid = s.studentUserId;
+        const sid = s.id;
         grid[sid] = {};
         for (const lid of validIds) {
           grid[sid][lid] = { attended: false };
@@ -664,25 +951,11 @@ export class LectureTrackingService {
         }
       }
 
-      const studentList = classStudents.map(s => {
-        try {
-          const student = (s as any).student;
-          const name = student?.name ?? 
-            (`${student?.firstName ?? ''} ${student?.lastName ?? ''}`.trim() || s.studentUserId);
-          return {
-            id: s.studentUserId,
-            name,
-            imageUrl: student?.imageUrl ?? null,
-          };
-        } catch (err) {
-          console.error('❌ Error mapping student:', err);
-          return {
-            id: s.studentUserId,
-            name: s.studentUserId,
-            imageUrl: null,
-          };
-        }
-      });
+      const studentList = classStudents.map(s => ({
+        id: s.id,
+        name: s.name,
+        imageUrl: s.imageUrl ?? null,
+      }));
 
       const lectureList = lectures.map(l => ({
         id: l.id,

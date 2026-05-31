@@ -7,7 +7,10 @@ import { Throttle } from '@nestjs/throttler';
 import { LectureTrackingService } from './lecture_tracking.service';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../../auth/guards/optional-jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
+import { UserType } from '../../user/enums/user-type.enum';
 
 @ApiTags('Lecture Tracking & Access')
 @Controller('lecture-tracking')
@@ -68,6 +71,69 @@ export class LectureTrackingController {
   @ApiOperation({ summary: 'Record user leaving a live lecture' })
   async leaveLive(@Body() body: { attendanceId: string }, @Req() req: any) {
     return this.trackingService.recordLiveLeave(body.attendanceId, req.user?.id);
+  }
+
+  // ─── Live attendance link sessions (one-click attendance) ───────────────
+
+  @Post('live-attendance/sessions')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+  })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a live attendance link session for a lecture' })
+  async createLiveAttendanceSession(
+    @Body() body: { lectureId: string; validSeconds?: number },
+    @Req() req: any,
+  ) {
+    if (!body?.lectureId) throw new BadRequestException('lectureId is required');
+    return this.trackingService.createLiveAttendanceSession(
+      body.lectureId,
+      body.validSeconds,
+      req.user?.id,
+    );
+  }
+
+  @Get('live-attendance/session-grid')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Attendance grid for live attendance link sessions' })
+  @ApiQuery({ name: 'lectureId', type: String })
+  @ApiQuery({ name: 'classId', type: String })
+  @ApiQuery({ name: 'instituteId', type: String })
+  async getLiveAttendanceSessionGrid(
+    @Query('lectureId') lectureId: string,
+    @Query('classId') classId: string,
+    @Query('instituteId') instituteId: string,
+  ) {
+    if (!lectureId || !classId || !instituteId) {
+      throw new BadRequestException('lectureId, classId, and instituteId are required');
+    }
+    return this.trackingService.getLiveAttendanceSessionGrid(lectureId, classId, instituteId);
+  }
+
+  @Get('live-attendance/access/:urlId')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Validate access and status for a live attendance link' })
+  async getLiveAttendanceSessionAccess(@Param('urlId') urlId: string, @Req() req: any) {
+    return this.trackingService.validateLiveAttendanceSessionAccess(urlId, req.user);
+  }
+
+  @Post('live-attendance/mark/:urlId')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: 'Mark attendance for a live attendance link' })
+  async markLiveAttendanceSession(@Param('urlId') urlId: string, @Req() req: any) {
+    return this.trackingService.markLiveAttendanceSession(
+      urlId,
+      req.user,
+      req.ip,
+      req.headers['user-agent'],
+    );
   }
 
   // ─── Recording session ──────────────────────────────────────────────────
