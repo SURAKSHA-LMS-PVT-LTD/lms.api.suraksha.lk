@@ -94,8 +94,14 @@ export class SecureUserResponseDto {
   @ApiProperty({ example: '+94****789', description: 'Phone number (respects IS_PHONENUMBERS_MASKED env)' })
   phoneNumber?: string;
 
-  @ApiProperty({ example: 'https://example.com/profile.jpg', description: 'Profile image URL' })
+  @ApiProperty({ example: 'https://example.com/profile.jpg', description: 'Profile image URL (institute image if exists, else global)' })
   imageUrl?: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com/institute-profile.jpg', description: 'Institute-specific image URL (null if not set)' })
+  instituteUserImageUrl?: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com/global-profile.jpg', description: 'Global user image URL (null if not set)' })
+  globalImageUrl?: string;
 
   @ApiProperty({ enum: Gender, description: 'Gender' })
   gender?: Gender;
@@ -152,6 +158,10 @@ export class SecureUserResponseDto {
     // ✅ CRITICAL FIX: Use imageUrl from instituteUserData if provided (priority logic applied in service)
     // Otherwise fall back to user imageUrl with both naming conventions
     this.imageUrl = (instituteUserData as any)?.imageUrl || user.imageUrl || (user as any).image_url || (user as any).user_image_url;
+
+    // Expose both institute-level and global images separately so frontend can apply its own priority
+    this.instituteUserImageUrl = (instituteUserData as any)?.instituteUserImageUrl || (user as any).institute_user_image_url || null;
+    this.globalImageUrl = (instituteUserData as any)?.globalImageUrl || user.imageUrl || (user as any).image_url || (user as any).user_image_url || null;
 
     this.gender = user.gender;
 

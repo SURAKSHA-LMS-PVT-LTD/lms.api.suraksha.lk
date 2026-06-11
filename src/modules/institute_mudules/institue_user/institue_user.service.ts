@@ -594,7 +594,15 @@ export class InstitueUserService {
       name: [row.first_name, row.last_name].filter(Boolean).join(' '),
       email: row.email ?? '',
       phoneNumber: row.phone_number ?? '',
-      imageUrl: row.institute_user_image_url || row.user_image_url || null,
+      imageUrl: (row.institute_user_image_url || row.user_image_url)
+        ? this.cloudStorageService.getFullUrl(row.institute_user_image_url || row.user_image_url)
+        : null,
+      instituteUserImageUrl: row.institute_user_image_url
+        ? this.cloudStorageService.getFullUrl(row.institute_user_image_url)
+        : null,
+      globalImageUrl: row.user_image_url
+        ? this.cloudStorageService.getFullUrl(row.user_image_url)
+        : null,
       userIdByInstitute: row.userIdByInstitute ?? null,
       status: row.status ?? 'active',
       isActive: row.is_active ?? true,
@@ -1880,6 +1888,12 @@ export class InstitueUserService {
         verified_at: raw.verified_at,
         verifiedByName: raw.verifier_name,
         imageUrl: finalImageUrl, // Use the verified imageUrl logic
+        instituteUserImageUrl: raw.institute_user_image_url
+          ? this.cloudStorageService.getFullUrl(raw.institute_user_image_url)
+          : null,
+        globalImageUrl: raw.user_image_url
+          ? this.cloudStorageService.getFullUrl(raw.user_image_url)
+          : null,
         house_id: raw.house_id,
         house_name: raw.house_name,
         extra_data: raw.extra_data,

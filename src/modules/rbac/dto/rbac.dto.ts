@@ -106,8 +106,8 @@ export class UserTypeResponseDto {
   @ApiProperty() isPublic: boolean;
   @ApiProperty() isActive: boolean;
   @ApiProperty() sortOrder: number;
-  @ApiProperty() createdAt: string;
-  @ApiProperty() updatedAt: string;
+  @ApiPropertyOptional() createdAt?: string | null;
+  @ApiPropertyOptional() updatedAt?: string | null;
 }
 
 // ── Permission Matrix DTOs ──────────────────────────────────────────────────

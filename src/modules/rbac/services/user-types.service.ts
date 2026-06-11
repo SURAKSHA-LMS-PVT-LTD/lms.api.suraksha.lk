@@ -20,7 +20,59 @@ export class UserTypesService {
       where: { instituteId, isActive: true },
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
-    return types.map(this.toDto);
+    const mapped = types.map(this.toDto);
+
+    // Inject synthetic entries for built-in enum roles not stored as table rows
+    const existingSlugs = new Set(mapped.map(t => t.slug));
+    const systemTypes: UserTypeResponseDto[] = [
+      {
+        id: 'system-institute-admin',
+        instituteId,
+        name: 'Institute Admin',
+        namePlural: 'Institute Admins',
+        slug: 'institute_admin',
+        description: 'Full administrative access to the institute',
+        color: '#EF4444',
+        isSystemType: true,
+        isPublic: false,
+        isActive: true,
+        sortOrder: 0,
+        createdAt: null,
+        updatedAt: null,
+      },
+      {
+        id: 'system-teacher',
+        instituteId,
+        name: 'Teacher',
+        namePlural: 'Teachers',
+        slug: 'teacher',
+        description: 'Teaching staff',
+        color: '#10B981',
+        isSystemType: true,
+        isPublic: true,
+        isActive: true,
+        sortOrder: 2,
+        createdAt: null,
+        updatedAt: null,
+      },
+      {
+        id: 'system-attendance-marker',
+        instituteId,
+        name: 'Attendance Marker',
+        namePlural: 'Attendance Markers',
+        slug: 'attendance_marker',
+        description: 'Can mark attendance only',
+        color: '#F59E0B',
+        isSystemType: true,
+        isPublic: true,
+        isActive: true,
+        sortOrder: 3,
+        createdAt: null,
+        updatedAt: null,
+      },
+    ].filter(s => !existingSlugs.has(s.slug));
+
+    return [...systemTypes, ...mapped];
   }
 
   async getById(instituteId: string, id: string): Promise<UserTypeResponseDto> {
