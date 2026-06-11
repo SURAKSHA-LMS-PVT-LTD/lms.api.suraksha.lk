@@ -84,6 +84,9 @@ export class SubjectRecordingSession {
   @Column({ name: 'last_position_seconds', type: 'int', unsigned: true, default: 0 })
   lastPositionSeconds: number;
 
+  @Column({ name: 'times_viewed', type: 'int', unsigned: true, default: 1 })
+  timesViewed: number;
+
   // ─── Sync / backup ────────────────────────────────────────────────────────
 
   @Column({

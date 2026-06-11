@@ -69,6 +69,9 @@ export class LectureRecordingSession {
   @Column({ name: 'last_position_seconds', type: 'int', default: 0 })
   lastPositionSeconds: number;
 
+  @Column({ name: 'times_viewed', type: 'int', unsigned: true, default: 1 })
+  timesViewed: number;
+
   @Column({ name: 'ip_address', type: 'varchar', length: 50, nullable: true })
   ipAddress?: string;
 

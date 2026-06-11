@@ -185,6 +185,29 @@ export class SubjectRecordingTrackingService {
 
     const userType = await this.determineUserType(userId, rec.instituteId, rec.classId, rec.subjectId);
 
+    // ── One session per logged-in user per recording ─────────────────────
+    if (userId) {
+      const existing = await this.sessionRepo.findOne({ where: { recordingId, userId } });
+      if (existing) {
+        await this.sessionRepo.update(existing.id, {
+          timesViewed: existing.timesViewed + 1,
+          ipAddress,
+          userAgent,
+        });
+        const watchedRanges = await this.getWatchedRanges(existing.id);
+        return {
+          sessionId: existing.id,
+          recordingId,
+          userType,
+          lastPosition: existing.lastPositionSeconds,
+          totalWatchedSeconds: existing.totalWatchedSeconds,
+          effectiveWatchedSeconds: existing.effectiveWatchedSeconds,
+          timesViewed: existing.timesViewed + 1,
+          watchedRanges,
+        };
+      }
+    }
+
     const session = this.sessionRepo.create({
       recordingId,
       userId,
@@ -196,11 +219,36 @@ export class SubjectRecordingTrackingService {
       startTime: new Date(),
       lastPositionSeconds: 0,
       totalWatchedSeconds: 0,
+      effectiveWatchedSeconds: 0,
+      timesViewed: 1,
       backupStatus: 'pending',
       ipAddress, userAgent,
     });
     const saved = await this.sessionRepo.save(session);
-    return { sessionId: saved.id, recordingId, userType };
+    return {
+      sessionId: saved.id,
+      recordingId,
+      userType,
+      lastPosition: 0,
+      totalWatchedSeconds: 0,
+      effectiveWatchedSeconds: 0,
+      timesViewed: 1,
+      watchedRanges: [],
+    };
+  }
+
+  private async getWatchedRanges(sessionId: string): Promise<Array<{ from: number; to: number; speed: number }>> {
+    const activities = await this.activityRepo.find({
+      where: { sessionId, activityType: 'WATCH_RANGE' as any },
+      order: { videoTimestamp: 'ASC' },
+    });
+    return activities
+      .map(a => ({
+        from:  Number((a.metadata as any)?.rangeFrom ?? a.videoTimestamp),
+        to:    Number((a.metadata as any)?.rangeTo   ?? a.videoTimestamp),
+        speed: Number((a.metadata as any)?.speed ?? 1),
+      }))
+      .filter(r => r.to > r.from);
   }
 
   async endSession(
@@ -534,11 +582,20 @@ export class SubjectRecordingTrackingService {
               : null,
             isCompleted: !!s.endTime,
             backupStatus: s.backupStatus,
+            timesViewed: s.timesViewed ?? 1,
             activityCount: (actBySession.get(s.id) ?? []).length,
             activities: (actBySession.get(s.id) ?? []).map(a => ({
               type: a.activityType,
               videoTimestamp: a.videoTimestamp,
-              metadata: a.metadata,
+              wallTime: a.wallClockTimestamp ? new Date(a.wallClockTimestamp).getTime() : null,
+              speed: (a.metadata as any)?.speed ?? null,
+              rangeFrom: (a.metadata as any)?.rangeFrom ?? null,
+              rangeTo: (a.metadata as any)?.rangeTo ?? null,
+              watchedSeconds: (a.metadata as any)?.watchedSeconds ?? null,
+              tabWidth: (a.metadata as any)?.tabWidth ?? null,
+              tabHeight: (a.metadata as any)?.tabHeight ?? null,
+              screenWidth: (a.metadata as any)?.screenWidth ?? null,
+              screenHeight: (a.metadata as any)?.screenHeight ?? null,
               at: a.createdAt,
             })),
           })),
