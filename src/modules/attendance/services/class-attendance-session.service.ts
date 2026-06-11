@@ -62,12 +62,6 @@ function resolveAutoStatus(
   return 1; // Present
 }
 
-function toSLTimeString(date: Date | string | null): string | null {
-  if (!date) return null;
-  const d = typeof date === 'string' ? new Date(date) : date;
-  const sl = new Date(d.getTime() + SL_OFFSET_MS);
-  return sl.toUTCString().slice(17, 25); // HH:MM:SS
-}
 
 function mapGroup(g: InstituteClassAttendanceSessionGroupEntity): SessionGroupResponse {
   return {
@@ -79,13 +73,26 @@ function mapGroup(g: InstituteClassAttendanceSessionGroupEntity): SessionGroupRe
   };
 }
 
+function normSessionDate(raw: any): string {
+  if (raw instanceof Date) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(raw);
+  }
+  return String(raw).substring(0, 10);
+}
+
+// MySQL TIME columns return "HH:MM:SS" — trim to "HH:MM" for display/form inputs
+function normTime(raw: any): string | null {
+  if (!raw) return null;
+  return String(raw).substring(0, 5);
+}
+
 function mapSession(s: InstituteClassAttendanceSessionEntity): SessionResponse {
   return {
     id: s.id,
     name: s.name,
-    date: s.date,
-    startTime: s.startTime,
-    endTime: s.endTime,
+    date: normSessionDate(s.date),
+    startTime: normTime(s.startTime) ?? s.startTime,
+    endTime: normTime(s.endTime),
     lateAfterMinutes: s.lateAfterMinutes,
     leftEarlyBeforeMinutes: s.leftEarlyBeforeMinutes,
     isClosed: s.isClosed,
@@ -312,7 +319,7 @@ export class ClassAttendanceSessionService {
         iu.user_id_institue        AS userIdInstitute,
         iu.institute_card_id       AS cardId,
         ar.status                  AS statusCode,
-        ar.created_at              AS markedAt,
+        ar.\`timestamp\`            AS markedAt,
         ar.remarks                 AS remarks,
         ${session.linkedPaymentId ? `
         CASE
@@ -362,7 +369,7 @@ export class ClassAttendanceSessionService {
         cardId: r.cardId ?? null,
         statusCode,
         statusLabel: label,
-        markedAt: r.markedAt ? toSLTimeString(r.markedAt) : null,
+        markedAt: r.markedAt != null ? new Date(Number(r.markedAt)).toISOString() : null,
         remarks: r.remarks ?? null,
         isFromOtherSource: false,
         paymentStatus: r.paymentStatus ?? null,
@@ -686,7 +693,7 @@ export class ClassAttendanceSessionService {
       studentIds.length && sessionIds.length
         ? this.recordRepo.find({
             where: { classSessionId: In(sessionIds), studentId: In(studentIds) },
-            select: ['studentId', 'classSessionId', 'status', 'createdAt'],
+            select: ['studentId', 'classSessionId', 'status', 'timestamp'],
           })
         : Promise.resolve([]),
       studentIds.length
@@ -724,7 +731,7 @@ export class ClassAttendanceSessionService {
         sessionRecords[sess.id] = {
           statusCode: code,
           statusLabel: code !== null ? (STATUS_LABEL[code] ?? 'Unknown') : 'NotMarked',
-          markedAt: rec ? toSLTimeString(rec.createdAt) : null,
+          markedAt: rec?.timestamp != null ? new Date(Number(rec.timestamp)).toISOString() : null,
         };
       }
 
