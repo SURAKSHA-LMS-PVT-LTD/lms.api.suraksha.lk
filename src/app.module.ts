@@ -67,6 +67,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { InstituteApiKeysModule } from './modules/institute-api-keys/institute-api-keys.module';
 import { InstituteBankAccountsModule } from './modules/institute-bank-accounts/institute-bank-accounts.module';
+import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -194,6 +195,7 @@ import { AppService } from './app.service';
     InstituteApiKeysModule, // Per-institute API keys for external system integrations
     InstituteBankAccountsModule, // Institute-level bank accounts for payment collection
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
+    ErrorReportsModule, // User error reporting with admin status management
   ],
   controllers: [AppController],
   providers: [
