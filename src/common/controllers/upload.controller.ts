@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Query, Body, UseGuards, HttpStatus, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Delete, Get, Query, Body, UseGuards, HttpStatus, BadRequestException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsNumber, IsEnum } from 'class-validator';
 import { CloudStorageService } from '../services/cloud-storage.service';
@@ -738,6 +738,61 @@ export class UploadController {
         `File size exceeds absolute maximum limit of ${absoluteMaxMB} MB. Your file: ${currentSizeMB} MB`
       );
     }
+  }
+
+  @Delete('file')
+  @ApiOperation({
+    summary: '🗑️ Delete an uploaded file from storage',
+    description: 'Deletes a previously uploaded file by its relative path. Only allows deletion of files in known managed folders.'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['relativePath'],
+      properties: {
+        relativePath: {
+          type: 'string',
+          example: 'profile-images/avatar-uuid.jpg',
+          description: 'Relative storage path returned from signed URL upload flow'
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'File deleted successfully' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid or disallowed path' })
+  async deleteUploadedFile(@Body('relativePath') relativePath: string) {
+    if (!relativePath || typeof relativePath !== 'string') {
+      throw new BadRequestException('relativePath is required');
+    }
+
+    // Reject full URLs or absolute paths — only allow relative storage paths
+    if (relativePath.startsWith('http://') || relativePath.startsWith('https://') || relativePath.startsWith('/')) {
+      throw new BadRequestException('Only relative storage paths can be deleted');
+    }
+
+    // Reject path traversal
+    if (relativePath.includes('..') || relativePath.includes('\0')) {
+      throw new BadRequestException('Invalid path');
+    }
+
+    // Only allow deletion within known managed folders
+    const allowedFolders = [
+      'profile-images', 'student-images', 'institute-images', 'institute-user-images',
+      'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts',
+      'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts',
+      'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images',
+      'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents',
+      'lecture-thumbnails', 'institute-branding', 'sms-payment-receipts',
+      'advertisement-images', 'lecture-covers',
+    ];
+
+    const folder = relativePath.split('/')[0];
+    if (!allowedFolders.includes(folder)) {
+      throw new BadRequestException(`Deletion not allowed for folder: ${folder}`);
+    }
+
+    const deleted = await this.cloudStorageService.deleteFile(relativePath);
+    return { success: deleted, relativePath };
   }
 
   /**
