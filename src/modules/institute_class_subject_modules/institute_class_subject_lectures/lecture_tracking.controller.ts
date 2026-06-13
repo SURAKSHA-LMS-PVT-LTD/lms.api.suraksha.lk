@@ -297,9 +297,12 @@ export class LectureTrackingController {
   @Get('reports/:lectureId/recording')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Recording session + activity report for one lecture' })
-  async getRecordingReport(@Param('lectureId') lectureId: string) {
-    return this.trackingService.getRecordingActivityReport(lectureId);
+  @ApiOperation({ summary: 'Recording session + activity report for one lecture; optional ?studentId to filter to one student' })
+  async getRecordingReport(
+    @Param('lectureId') lectureId: string,
+    @Query('studentId') studentId?: string,
+  ) {
+    return this.trackingService.getRecordingActivityReport(lectureId, studentId);
   }
 
   @Get('student/:studentId/activities')

@@ -1112,9 +1112,11 @@ export class LectureTrackingService {
     }));
   }
 
-  async getRecordingActivityReport(lectureId: string) {
+  async getRecordingActivityReport(lectureId: string, studentId?: string) {
+    const where: any = { lectureId };
+    if (studentId) where.userId = studentId;
     const sessions = await this.recSessionRepo.find({
-      where: { lectureId },
+      where,
       relations: ['user'],
       order: { startTime: 'ASC' },
     });
