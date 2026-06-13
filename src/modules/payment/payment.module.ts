@@ -13,6 +13,9 @@ import { UserEntity } from '../user/entities/user.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteClassStudentEntity } from '../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
+import { PackageDefinitionEntity } from './entities/package-definition.entity';
+import { PackageDefinitionService } from './services/package-definition.service';
+import { PackageDefinitionController } from './controllers/package-definition.controller';
 import { PaymentController } from './controllers/payment.controller';
 import { InstituteClassSubjectPaymentController } from './controllers/institute-class-subject-payment.controller';
 import { InstituteClassSubjectPaymentSubmissionController } from './controllers/institute-class-subject-payment-submission.controller';
@@ -36,6 +39,7 @@ import { FinanceModule } from '../finance/finance.module';
     CacheModule,
     FinanceModule,
     TypeOrmModule.forFeature([
+      PackageDefinitionEntity,
       PaymentEntity,
       InstituteClassSubjectPayment,
       InstituteClassSubjectPaymentSubmission,
@@ -90,6 +94,7 @@ import { FinanceModule } from '../finance/finance.module';
     ConfigModule,
   ],
   controllers: [
+    PackageDefinitionController,
     PaymentController,
     InstituteClassSubjectPaymentController,
     InstituteClassSubjectPaymentSubmissionController,
@@ -99,6 +104,7 @@ import { FinanceModule } from '../finance/finance.module';
     InstitutePaymentSubmissionController,
   ],
   providers: [
+    PackageDefinitionService,
     PaymentService,
     InstituteClassSubjectPaymentService,
     InstituteClassPaymentService,

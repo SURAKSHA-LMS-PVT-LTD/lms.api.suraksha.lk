@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column,  ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index, AfterLoad } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
+import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
 
 export enum PaymentStatus {
   PENDING = 'PENDING',
@@ -62,6 +63,14 @@ export class PaymentEntity {
 
   @Column({ type: 'varchar', length: 200, nullable: true })
   notes?: string;
+
+  /** The subscription plan the user is requesting — set at submission, used by admin during verification */
+  @Column({ name: 'target_plan', type: 'enum', enum: SubscriptionPlan, nullable: true })
+  targetPlan?: SubscriptionPlan;
+
+  /** Number of validity periods purchased — validityDays = package.validityDays × quantity */
+  @Column({ name: 'quantity', type: 'int', default: 1 })
+  quantity: number;
 
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

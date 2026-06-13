@@ -45,6 +45,12 @@ export class PaymentResponseDto {
   @ApiPropertyOptional({ description: 'Notes' })
   notes?: string;
 
+  @ApiPropertyOptional({ description: 'Subscription plan the user requested', enum: SubscriptionPlan })
+  targetPlan?: SubscriptionPlan;
+
+  @ApiPropertyOptional({ description: 'Number of validity periods purchased (price = unit price × quantity)' })
+  quantity?: number;
+
   @ApiProperty({ description: 'Created at', type: 'string', example: '2025-10-27T12:34:56.789Z' })
   createdAt: string;
 

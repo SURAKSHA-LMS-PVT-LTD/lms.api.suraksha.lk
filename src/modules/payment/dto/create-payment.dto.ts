@@ -1,7 +1,8 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsNumber, MaxLength, Min, Max, IsUrl } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsNumber, MaxLength, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { PaymentMethod } from '../entities/payment.entity';
+import { SubscriptionPlan } from '../../user/enums/subscription-plan.enum';
 
 export class CreatePaymentDto {
   @ApiProperty({ 
@@ -62,11 +63,31 @@ export class CreatePaymentDto {
   @MaxLength(255)
   notes?: string;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Payment slip relative path from /upload/verify-and-publish',
     example: 'payment-receipts/receipt-uuid.jpg'
   })
   @IsOptional()
   @IsString()
   paymentSlipUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'The subscription plan the user is requesting (shown to admin during verification)',
+    enum: SubscriptionPlan,
+  })
+  @IsOptional()
+  @IsEnum(SubscriptionPlan)
+  targetPlan?: SubscriptionPlan;
+
+  @ApiPropertyOptional({
+    description: 'Number of validity periods (units) the user is purchasing — price = package.price × quantity, validity = package.validityDays × quantity',
+    minimum: 1,
+    maximum: 36,
+    example: 3,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(36)
+  quantity?: number;
 }

@@ -49,6 +49,10 @@ export class TenantService {
     private readonly smsCredentialsRepository: Repository<InstituteSmsCredentialsEntity>,
     @InjectRepository(SenderMaskEntity)
     private readonly senderMaskRepository: Repository<SenderMaskEntity>,
+    @InjectRepository(PackageDefinitionEntity)
+    private readonly packageDefinitionRepository: Repository<PackageDefinitionEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
     private readonly dataSource: DataSource,
     private readonly instituteCreditsService: InstituteCreditsService,
   ) {}

@@ -360,3 +360,4 @@ export class TenantServicePaymentFilterDto {
   @Max(100)
   limit?: number;
 }
+

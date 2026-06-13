@@ -83,6 +83,8 @@ export class PaymentService {
       paymentDate: new Date(createPaymentDto.paymentDate),
       paymentMonth: createPaymentDto.paymentMonth,
       notes: createPaymentDto.notes,
+      targetPlan: createPaymentDto.targetPlan,
+      quantity: createPaymentDto.quantity ?? 1,
       status: PaymentStatus.PENDING,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -477,6 +479,8 @@ export class PaymentService {
       verifiedAt: payment.verifiedAt instanceof Date ? payment.verifiedAt.toISOString() : payment.verifiedAt,
       rejectionReason: payment.rejectionReason,
       notes: payment.notes,
+      targetPlan: payment.targetPlan,
+      quantity: payment.quantity,
       createdAt: payment.createdAt instanceof Date ? payment.createdAt.toISOString() : payment.createdAt,
       updatedAt: payment.updatedAt instanceof Date ? payment.updatedAt.toISOString() : payment.updatedAt,
     };
