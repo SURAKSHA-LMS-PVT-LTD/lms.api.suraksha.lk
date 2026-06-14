@@ -4,15 +4,35 @@ export class PackageUpgradeSystem1800000000007 implements MigrationInterface {
   name = 'PackageUpgradeSystem1800000000007';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add target_plan and quantity columns to payments table
-    await queryRunner.query(`
-      ALTER TABLE payments
-        ADD COLUMN IF NOT EXISTS target_plan ENUM(
-          'FREE','WHATSAPP','TELEGRAM','EMAIL',
-          'PRO-WHATSAPP','PRO-SMS','PRO-TELEGRAM','PRO-EMAIL','DYNAMAD'
-        ) NULL AFTER notes,
-        ADD COLUMN IF NOT EXISTS quantity INT NOT NULL DEFAULT 1 AFTER target_plan
-    `);
+    // ADD COLUMN IF NOT EXISTS is MySQL 8.0.29+ only — use INFORMATION_SCHEMA guard instead
+    const db = await queryRunner.getCurrentDatabase();
+
+    const [targetPlanRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'target_plan'`,
+      [db],
+    );
+    if (Number(targetPlanRows.cnt) === 0) {
+      await queryRunner.query(`
+        ALTER TABLE payments
+          ADD COLUMN target_plan ENUM(
+            'FREE','WHATSAPP','TELEGRAM','EMAIL',
+            'PRO-WHATSAPP','PRO-SMS','PRO-TELEGRAM','PRO-EMAIL','DYNAMAD'
+          ) NULL AFTER notes
+      `);
+    }
+
+    const [quantityRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'quantity'`,
+      [db],
+    );
+    if (Number(quantityRows.cnt) === 0) {
+      await queryRunner.query(`
+        ALTER TABLE payments
+          ADD COLUMN quantity INT NOT NULL DEFAULT 1 AFTER target_plan
+      `);
+    }
 
     // Create package_definitions table
     await queryRunner.query(`
@@ -104,10 +124,24 @@ export class PackageUpgradeSystem1800000000007 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS package_definitions`);
-    await queryRunner.query(`
-      ALTER TABLE payments
-        DROP COLUMN IF EXISTS quantity,
-        DROP COLUMN IF EXISTS target_plan
-    `);
+    const db = await queryRunner.getCurrentDatabase();
+
+    const [quantityRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'quantity'`,
+      [db],
+    );
+    if (Number(quantityRows.cnt) > 0) {
+      await queryRunner.query(`ALTER TABLE payments DROP COLUMN quantity`);
+    }
+
+    const [targetPlanRows] = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'target_plan'`,
+      [db],
+    );
+    if (Number(targetPlanRows.cnt) > 0) {
+      await queryRunner.query(`ALTER TABLE payments DROP COLUMN target_plan`);
+    }
   }
 }

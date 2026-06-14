@@ -69,6 +69,7 @@ import { InstituteApiKeysModule } from './modules/institute-api-keys/institute-a
 import { InstituteBankAccountsModule } from './modules/institute-bank-accounts/institute-bank-accounts.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { InstituteDesignsModule } from './modules/institute-designs/institute-designs.module';
+import { PaymentGatewayModule } from './modules/payment-gateway/payment-gateway.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -198,6 +199,7 @@ import { AppService } from './app.service';
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
     ErrorReportsModule, // User error reporting with admin status management
     InstituteDesignsModule, // Design template approval, credit-billed generation, multi-output
+    PaymentGatewayModule,   // Real-time credit top-up via payment gateway (PayHere, etc.)
   ],
   controllers: [AppController],
   providers: [

@@ -12,7 +12,11 @@ export class AddPaymentLinkToAttendanceSessions1754200000000 implements Migratio
     }
   }
   async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`institute_class_attendance_sessions\` DROP COLUMN IF EXISTS \`payment_mode\``);
-    await queryRunner.query(`ALTER TABLE \`institute_class_attendance_sessions\` DROP COLUMN IF EXISTS \`linked_payment_id\``);
+    for (const col of ['payment_mode', 'linked_payment_id']) {
+      const exists = await queryRunner.hasColumn('institute_class_attendance_sessions', col);
+      if (exists) {
+        await queryRunner.query(`ALTER TABLE \`institute_class_attendance_sessions\` DROP COLUMN \`${col}\``);
+      }
+    }
   }
 }

@@ -50,8 +50,11 @@ export class AddLessonLectureNumberProviderToStructuredLectures1751600000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`structured_lectures\` DROP COLUMN IF EXISTS \`provider\``);
-    await queryRunner.query(`ALTER TABLE \`structured_lectures\` DROP COLUMN IF EXISTS \`lecture_number\``);
-    await queryRunner.query(`ALTER TABLE \`structured_lectures\` DROP COLUMN IF EXISTS \`lesson_number\``);
+    for (const col of ['provider', 'lecture_number', 'lesson_number']) {
+      const exists = await queryRunner.hasColumn('structured_lectures', col);
+      if (exists) {
+        await queryRunner.query(`ALTER TABLE \`structured_lectures\` DROP COLUMN \`${col}\``);
+      }
+    }
   }
 }

@@ -1,22 +1,10 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * One session row per user per recording.
- *
- * Changes:
- * 1. Add `times_viewed` (int, default 1) to both session tables.
- * 2. Add UNIQUE KEY (lecture_id, user_id) on lecture_recording_sessions   — for logged-in users.
- * 3. Add UNIQUE KEY (recording_id, user_id) on subject_recording_sessions — for logged-in users.
- *    Guest rows keep user_id = NULL so multiple guest rows can coexist.
- * 4. Add missing composite + single indexes to lecture_recording_sessions
- *    (subject table already has them from the original migration).
- * 5. Deduplicate any existing duplicate (lecture_id, user_id) rows first,
- *    keeping the row with the highest total_watched_seconds.
- */
 export class OneSessionPerUserPerRecording1804000000000 implements MigrationInterface {
   async up(qr: QueryRunner): Promise<void> {
+    const db = await qr.getCurrentDatabase();
+
     // ── 1. Deduplicate lecture_recording_sessions ─────────────────────────
-    // Keep the row with the highest total_watched_seconds per (lecture_id, user_id).
     await qr.query(`
       DELETE lrs
       FROM lecture_recording_sessions lrs
@@ -47,45 +35,100 @@ export class OneSessionPerUserPerRecording1804000000000 implements MigrationInte
     `);
 
     // ── 3. Add times_viewed to lecture_recording_sessions ─────────────────
-    await qr.query(`
-      ALTER TABLE lecture_recording_sessions
-        ADD COLUMN times_viewed INT UNSIGNED NOT NULL DEFAULT 1
-          AFTER last_position_seconds
-    `);
+    const [lrsTv] = await qr.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'lecture_recording_sessions' AND COLUMN_NAME = 'times_viewed'`,
+      [db],
+    );
+    if (Number(lrsTv.cnt) === 0) {
+      await qr.query(`
+        ALTER TABLE lecture_recording_sessions
+          ADD COLUMN times_viewed INT UNSIGNED NOT NULL DEFAULT 1
+            AFTER last_position_seconds
+      `);
+    }
 
     // ── 4. Add times_viewed to subject_recording_sessions ────────────────
-    await qr.query(`
-      ALTER TABLE subject_recording_sessions
-        ADD COLUMN times_viewed INT UNSIGNED NOT NULL DEFAULT 1
-          AFTER last_position_seconds
-    `);
+    const [srsTv] = await qr.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'subject_recording_sessions' AND COLUMN_NAME = 'times_viewed'`,
+      [db],
+    );
+    if (Number(srsTv.cnt) === 0) {
+      await qr.query(`
+        ALTER TABLE subject_recording_sessions
+          ADD COLUMN times_viewed INT UNSIGNED NOT NULL DEFAULT 1
+            AFTER last_position_seconds
+      `);
+    }
 
-    // ── 5. Add indexes + unique constraint to lecture_recording_sessions ──
-    await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_lecture  (lecture_id)`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_user     (user_id)`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_user_type (user_type)`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_backup   (backup_status)`);
-    // Unique only for logged-in users — NULL user_id (guests) are excluded
-    await qr.query(`
-      ALTER TABLE lecture_recording_sessions
-        ADD UNIQUE KEY UQ_lrs_lecture_user (lecture_id, user_id)
-    `);
+    // ── 5. Add indexes to lecture_recording_sessions ──────────────────────
+    const lrsIndexes = await qr.query(
+      `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'lecture_recording_sessions'`,
+      [db],
+    );
+    const lrsIdxNames = new Set(lrsIndexes.map((r: any) => r.INDEX_NAME));
+
+    if (!lrsIdxNames.has('IDX_lrs_lecture')) {
+      await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_lecture (lecture_id)`);
+    }
+    if (!lrsIdxNames.has('IDX_lrs_user')) {
+      await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_user (user_id)`);
+    }
+    if (!lrsIdxNames.has('IDX_lrs_user_type')) {
+      await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_user_type (user_type)`);
+    }
+    if (!lrsIdxNames.has('IDX_lrs_backup')) {
+      await qr.query(`ALTER TABLE lecture_recording_sessions ADD INDEX IDX_lrs_backup (backup_status)`);
+    }
+    if (!lrsIdxNames.has('UQ_lrs_lecture_user')) {
+      await qr.query(`
+        ALTER TABLE lecture_recording_sessions
+          ADD UNIQUE KEY UQ_lrs_lecture_user (lecture_id, user_id)
+      `);
+    }
 
     // ── 6. Add unique constraint to subject_recording_sessions ────────────
-    await qr.query(`
-      ALTER TABLE subject_recording_sessions
-        ADD UNIQUE KEY UQ_srs_recording_user (recording_id, user_id)
-    `);
+    const srsIndexes = await qr.query(
+      `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'subject_recording_sessions'`,
+      [db],
+    );
+    const srsIdxNames = new Set(srsIndexes.map((r: any) => r.INDEX_NAME));
+
+    if (!srsIdxNames.has('UQ_srs_recording_user')) {
+      await qr.query(`
+        ALTER TABLE subject_recording_sessions
+          ADD UNIQUE KEY UQ_srs_recording_user (recording_id, user_id)
+      `);
+    }
   }
 
   async down(qr: QueryRunner): Promise<void> {
-    await qr.query(`ALTER TABLE subject_recording_sessions DROP INDEX UQ_srs_recording_user`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions  DROP INDEX UQ_lrs_lecture_user`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions  DROP INDEX IDX_lrs_backup`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions  DROP INDEX IDX_lrs_user_type`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions  DROP INDEX IDX_lrs_user`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions  DROP INDEX IDX_lrs_lecture`);
-    await qr.query(`ALTER TABLE subject_recording_sessions  DROP COLUMN times_viewed`);
-    await qr.query(`ALTER TABLE lecture_recording_sessions  DROP COLUMN times_viewed`);
+    const db = await qr.getCurrentDatabase();
+    const dropIdx = async (table: string, name: string) => {
+      const [row] = await qr.query(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+        [db, table, name],
+      );
+      if (Number(row.cnt) > 0) {
+        await qr.query(`ALTER TABLE \`${table}\` DROP INDEX \`${name}\``);
+      }
+    };
+    const dropCol = async (table: string, col: string) => {
+      const exists = await qr.hasColumn(table, col);
+      if (exists) await qr.query(`ALTER TABLE \`${table}\` DROP COLUMN \`${col}\``);
+    };
+
+    await dropIdx('subject_recording_sessions', 'UQ_srs_recording_user');
+    await dropIdx('lecture_recording_sessions',  'UQ_lrs_lecture_user');
+    await dropIdx('lecture_recording_sessions',  'IDX_lrs_backup');
+    await dropIdx('lecture_recording_sessions',  'IDX_lrs_user_type');
+    await dropIdx('lecture_recording_sessions',  'IDX_lrs_user');
+    await dropIdx('lecture_recording_sessions',  'IDX_lrs_lecture');
+    await dropCol('subject_recording_sessions', 'times_viewed');
+    await dropCol('lecture_recording_sessions',  'times_viewed');
   }
 }

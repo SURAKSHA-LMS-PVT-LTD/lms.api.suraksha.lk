@@ -47,6 +47,14 @@ export class FinanceExtensions1800000000002 implements MigrationInterface {
           'TEACHER_PAYOUT','TEACHER_DEDUCTION','MANUAL'
         ) NOT NULL DEFAULT 'MANUAL'
     `);
-    await queryRunner.query(`ALTER TABLE institute_class_payments DROP COLUMN IF EXISTS teacher_commission_pct`);
+    const [col] = await queryRunner.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME   = 'institute_class_payments'
+        AND COLUMN_NAME  = 'teacher_commission_pct'
+    `);
+    if (col) {
+      await queryRunner.query(`ALTER TABLE institute_class_payments DROP COLUMN teacher_commission_pct`);
+    }
   }
 }

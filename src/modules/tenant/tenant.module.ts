@@ -9,6 +9,8 @@ import { MonthlyBillingSummaryEntity } from './entities/monthly-billing-summary.
 import { TenantServicePaymentEntity } from './entities/tenant-billing-payment.entity';
 import { InstituteSmsCredentialsEntity } from '../sms/entities/institute-sms-credentials.entity';
 import { SenderMaskEntity } from '../sms/entities/sender-mask.entity';
+import { PackageDefinitionEntity } from '../payment/entities/package-definition.entity';
+import { UserEntity } from '../user/entities/user.entity';
 import { NotificationCreditsModule } from '../notification-credits/notification-credits.module';
 
 @Module({
@@ -22,6 +24,8 @@ import { NotificationCreditsModule } from '../notification-credits/notification-
       TenantServicePaymentEntity,
       InstituteSmsCredentialsEntity,
       SenderMaskEntity,
+      PackageDefinitionEntity,
+      UserEntity,
     ]),
   ],
   controllers: [TenantController],
