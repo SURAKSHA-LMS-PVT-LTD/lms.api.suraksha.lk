@@ -1,13 +1,13 @@
 ﻿import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AdvertisementEntity, MediaType } from './entities/advertisement.entity';
 import { UserType } from '../user/enums/user-type.enum';
 import { Gender } from '../user/enums/gender.enum';
 import { SubscriptionPlan } from '../user/enums/subscription-plan.enum';
 import { AdvertisementResponseDto, AdvertisementListResponseDto, CreateAdvertisementDto } from './dto/advertisement.dto';
 import { ManualAdvertisementSendDto, BulkManualAdvertisementSendDto, ManualSendResponseDto, ManualSendTargetType } from './dto/manual-advertisement.dto';
-import { getCurrentSriLankaDate, getCurrentSriLankaISO, formatSriLankaTime } from '../../common/utils/timezone.util';
+import { getCurrentSriLankaDate, formatSriLankaTime, now } from '../../common/utils/timezone.util';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
@@ -67,40 +67,15 @@ export class AdvertisementService {
     }
   }
 
+  /**
+   * PERF-B FIX: Route through the cache service instead of issuing an uncached
+   * DB query on every public /active request. The cache service owns the canonical
+   * active-ads query (same filters) and a shared TTL, so the matching path and the
+   * public endpoint now hit the same warm cache.
+   */
   async findActive(): Promise<AdvertisementEntity[]> {
     try {
-      const currentTime = new Date();
-      return await this.advertisementRepository
-        .createQueryBuilder('ad')
-        .select([
-          'ad.id',
-          'ad.title',
-          'ad.description',
-          'ad.mediaUrl',
-          'ad.mediaType',
-          'ad.targetUserTypes',
-          'ad.targetGenders',
-          'ad.minBornYear',
-          'ad.maxBornYear',
-          'ad.targetSubscriptionPlans',
-          'ad.priority',
-          'ad.isActive',
-          'ad.startDate',
-          'ad.endDate',
-          'ad.maxSendings',
-          'ad.currentSendings',
-          'ad.supportivePlatforms',
-          'ad.modeOfSending',
-          'ad.createdAt'
-        ])
-        .where('ad.isActive = :isActive', { isActive: true })
-        .andWhere('ad.startDate <= :currentTime', { currentTime })
-        .andWhere('ad.endDate >= :currentTime', { currentTime })
-        .andWhere('ad.currentSendings < ad.maxSendings')
-        .orderBy('ad.priority', 'DESC')
-        .addOrderBy('ad.createdAt', 'DESC')
-        .limit(50)
-        .getMany();
+      return await this.advertisementCacheService.getActiveAdvertisements();
     } catch (error) {
       this.logger.error(`Failed to fetch active advertisements: ${error.message}`, error.stack);
       return [];
@@ -108,7 +83,10 @@ export class AdvertisementService {
   }
 
   async create(createDto: CreateAdvertisementDto): Promise<AdvertisementEntity> {
-    const timestamp = getCurrentSriLankaISO();
+    // BUG-B FIX: use now() (real UTC). getCurrentSriLankaISO() produced a fake-UTC
+    // value that, combined with mysql2 timezone:'+05:30', double-offset createdAt
+    // by ~5h30m and made freshness/age math wrong.
+    const timestamp = now();
     const advertisement = this.advertisementRepository.create({
         title: createDto.title,
         accessKey: createDto.accessKey,

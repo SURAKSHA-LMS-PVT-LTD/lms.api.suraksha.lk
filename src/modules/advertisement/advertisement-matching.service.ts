@@ -9,7 +9,6 @@ import { Province } from '../user/enums/province.enum';
 import { District } from '../user/enums/district.enum';
 import { Occupation } from '../user/enums/occupation.enum';
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
-import { getCurrentSriLankaTime } from '../../common/utils/timezone.util';
 
 export interface UserProfile {
   userId: string;

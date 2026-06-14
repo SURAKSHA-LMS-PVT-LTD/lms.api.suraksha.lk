@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { AdvertisementEntity } from '../entities/advertisement.entity';
 import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
 import { AdvertisementMatchingService, UserProfile } from '../advertisement-matching.service';
+import { AdvertisementCacheService } from './advertisement-cache.service';
 import { AttendanceNotificationService, AttendanceNotificationData } from '../../attendance/services/attendance-notification.service';
 import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
@@ -21,6 +22,7 @@ export interface AdvertisementDeliveryResult {
   advertisementSendingUrl?: string;
   supportivePlatforms?: string[];
   modeOfSending?: string[];
+  cascadeToParents?: boolean;
   matchScore?: number;
   deliveryMethod: 'database' | 'default' | 'none';
   reason?: string;
@@ -76,6 +78,7 @@ export class AdvertisementDeliveryService {
     @InjectRepository(InstituteUserEntity)
     private instituteUserRepository: Repository<InstituteUserEntity>,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
+    private readonly advertisementCacheService: AdvertisementCacheService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
     private readonly dataSource: DataSource,
   ) {
@@ -103,8 +106,14 @@ export class AdvertisementDeliveryService {
     const startTime = Date.now();
     
     try {
-      // Step 1: Select and attach advertisement
-      const advertisementResult = await this.selectAdvertisementForUser(studentId, attendanceData.subscriptionPlan);
+      // Step 1: Select and attach advertisement.
+      // PERF-D FIX: pass the institute the caller already knows (from the attendance
+      // session) so buildUserProfile skips its own institute_users lookup.
+      const advertisementResult = await this.selectAdvertisementForUser(
+        studentId,
+        attendanceData.subscriptionPlan,
+        (attendanceData as any).instituteId,
+      );
       
       // Step 2: Attach advertisement to notification data
       if (advertisementResult.success && advertisementResult.advertisementId) {
@@ -124,31 +133,35 @@ export class AdvertisementDeliveryService {
       // Step 3: Send notification with advertisement to the student
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(attendanceData);
 
-      // Step 4: Record impression if advertisement was delivered successfully
+      // Step 4: On successful delivery, record an impression AND count the send.
+      // BUG-A FIX: trackSending() was previously dead code — currentSendings was never
+      // incremented in the attendance path, so the maxSendings cap was never enforced
+      // and ads never retired. Now every successful delivery counts toward the cap.
       if (advertisementResult.success && advertisementResult.advertisementId && notificationResult.successfulChannels > 0) {
-        await this.recordAdvertisementImpression(advertisementResult.advertisementId, studentId);
+        await Promise.allSettled([
+          this.recordAdvertisementImpression(advertisementResult.advertisementId, studentId),
+          this.advertisementCacheService.trackSending(advertisementResult.advertisementId),
+        ]);
       }
 
       // Step 5: FEAT-4 — cascadeToParents delivery
-      // If the matched ad has cascadeToParents=true, send the same ad to student's parents
+      // If the matched ad has cascadeToParents=true, send the same ad to student's parents.
+      // PERF-C FIX: cascadeToParents now comes from the match result (no extra findOne).
       if (
         advertisementResult.success &&
         advertisementResult.advertisementId &&
+        advertisementResult.cascadeToParents &&
         notificationResult.successfulChannels > 0
       ) {
-        // Fetch full ad entity to check cascadeToParents flag
         try {
-          const ad = await this.advertisementRepository.findOne({
-            where: { id: advertisementResult.advertisementId },
-            select: ['id', 'cascadeToParents'],
-          });
-
-          if (ad?.cascadeToParents) {
-            await this.cascadeAdToParents(studentId, attendanceData);
+          const cascadeSends = await this.cascadeAdToParents(studentId, attendanceData);
+          // Count each parent delivery toward the ad's send cap
+          for (let s = 0; s < cascadeSends; s++) {
+            await this.advertisementCacheService.trackSending(advertisementResult.advertisementId);
           }
         } catch (cascadeErr) {
           // Non-fatal — log and continue
-          this.logger.warn(`⚠️ cascadeToParents check failed for student ${studentId}: ${cascadeErr.message}`);
+          this.logger.warn(`⚠️ cascadeToParents delivery failed for student ${studentId}: ${cascadeErr.message}`);
         }
       }
 
@@ -194,18 +207,23 @@ export class AdvertisementDeliveryService {
   }
 
   /**
-   * FEAT-4: Cascade advertisement to all parents of a student.
-   * Sends the same advertisement (via attendanceData) to father, mother, and guardian.
-   * Each parent gets sent individually so one failure doesn't block others.
+   * FEAT-4: Cascade advertisement to ALL of the student's parents.
+   * When the matched ad has cascadeToParents=true, the SAME ad that matched the
+   * student is delivered to father, mother AND guardian (each independently, so one
+   * failure doesn't block the others). Returns the number of parents successfully reached
+   * so the caller can count each toward the ad's maxSendings cap.
+   *
+   * (When cascadeToParents is false, parents are NOT touched here — they receive their
+   * own independently-matched ads through the normal per-user delivery path.)
    */
   private async cascadeAdToParents(
     studentId: string,
     attendanceData: AttendanceNotificationData
-  ): Promise<void> {
+  ): Promise<number> {
     try {
       const student = await this.studentRepository.findOne({
         where: { userId: studentId },
-        relations: ['father', 'mother', 'guardian', 'father.user', 'mother.user', 'guardian.user'],
+        relations: ['father', 'father.user', 'mother', 'mother.user', 'guardian', 'guardian.user'],
         select: {
           userId: true,
           father: { userId: true, user: { id: true, email: true, phoneNumber: true } },
@@ -214,18 +232,19 @@ export class AdvertisementDeliveryService {
         },
       });
 
-      if (!student) return;
+      if (!student) return 0;
 
-      const parents = [student.father, student.mother, student.guardian].filter(Boolean);
+      const parents = [student.father, student.mother, student.guardian].filter(
+        (p): p is NonNullable<typeof p> => !!p?.user,
+      );
 
       if (parents.length === 0) {
         this.logger.debug(`No parents found to cascade ad for student ${studentId}`);
-        return;
+        return 0;
       }
 
-      // Build parent notification tasks (non-fatal each)
-      const cascadeTasks = parents.map(async (parent) => {
-        if (!parent?.user) return;
+      // Send to each parent concurrently; each resolves to 1 on success, 0 otherwise.
+      const cascadeTasks = parents.map(async (parent): Promise<number> => {
         try {
           const parentNotificationData: AttendanceNotificationData = {
             ...attendanceData,
@@ -235,17 +254,25 @@ export class AdvertisementDeliveryService {
             parentEmail: parent.user.email || null,
             parentTelegramId: null,
           };
-          await this.attendanceNotificationService.sendAttendanceNotification(parentNotificationData);
+          const result = await this.attendanceNotificationService.sendAttendanceNotification(parentNotificationData);
           this.logger.debug(`✅ cascadeToParents: ad sent to parent ${parent.userId}`);
+          return result.successfulChannels > 0 ? 1 : 0;
         } catch (err) {
-          this.logger.warn(`⚠️ cascadeToParents: failed for parent ${parent?.userId}: ${err.message}`);
+          this.logger.warn(`⚠️ cascadeToParents: failed for parent ${parent.userId}: ${err.message}`);
+          return 0;
         }
       });
 
-      await Promise.allSettled(cascadeTasks);
-      this.logger.log(`📨 cascadeToParents: cascaded to ${parents.length} parent(s) for student ${studentId}`);
+      const outcomes = await Promise.allSettled(cascadeTasks);
+      const delivered = outcomes.reduce(
+        (sum, o) => sum + (o.status === 'fulfilled' ? o.value : 0),
+        0,
+      );
+      this.logger.log(`📨 cascadeToParents: reached ${delivered}/${parents.length} parent(s) for student ${studentId}`);
+      return delivered;
     } catch (err) {
       this.logger.warn(`⚠️ cascadeAdToParents error for student ${studentId}: ${err.message}`);
+      return 0;
     }
   }
 
@@ -259,7 +286,8 @@ export class AdvertisementDeliveryService {
    */
   async selectAdvertisementForUser(
     studentId: string,
-    subscriptionPlan: string
+    subscriptionPlan: string,
+    knownInstituteId?: string,
   ): Promise<AdvertisementDeliveryResult> {
     try {
       // Check if advertisements are enabled for this subscription plan
@@ -274,7 +302,7 @@ export class AdvertisementDeliveryService {
 
       // Database-driven advertisement selection
       if (this.isAdsFromDatabase) {
-        return await this.selectDatabaseAdvertisement(studentId, subscriptionPlan);
+        return await this.selectDatabaseAdvertisement(studentId, subscriptionPlan, knownInstituteId);
       }
 
       // Default environment-based advertisement
@@ -296,11 +324,12 @@ export class AdvertisementDeliveryService {
    */
   private async selectDatabaseAdvertisement(
     studentId: string,
-    subscriptionPlan: string
+    subscriptionPlan: string,
+    knownInstituteId?: string,
   ): Promise<AdvertisementDeliveryResult> {
     try {
       // Build user profile for matching
-      const userProfile = await this.buildUserProfile(studentId, subscriptionPlan);
+      const userProfile = await this.buildUserProfile(studentId, subscriptionPlan, knownInstituteId);
       
       if (!userProfile) {
         this.logger.warn(`Could not build user profile for student ${studentId}, cannot query database (IS_ADS_FROM_DB=true)`);
@@ -338,6 +367,9 @@ export class AdvertisementDeliveryService {
         advertisementSendingUrl: bestMatch.advertisement.sendingUrl,
         supportivePlatforms: bestMatch.advertisement.supportivePlatforms || [],
         modeOfSending: bestMatch.advertisement.modeOfSending || [],
+        // PERF-C FIX: surface cascadeToParents from the already-loaded match so the
+        // caller no longer issues a separate findOne() just to read this flag.
+        cascadeToParents: bestMatch.advertisement.cascadeToParents || false,
         matchScore: bestMatch.matchScore,
         deliveryMethod: 'database',
         timestamp: getCurrentSriLankaTime()
@@ -373,12 +405,18 @@ export class AdvertisementDeliveryService {
   /**
    * Build user profile for advertisement matching
    */
-  private async buildUserProfile(studentId: string, subscriptionPlan: string): Promise<UserProfile | null> {
+  private async buildUserProfile(
+    studentId: string,
+    subscriptionPlan: string,
+    knownInstituteId?: string,
+  ): Promise<UserProfile | null> {
     try {
-      // Fetch student with related user and parent data
+      // Fetch student with related user and parent data.
+      // PERF-E FIX: only join father.user (the single geo fallback the matcher reads);
+      // mother/guardian contribute occupation only, so their user joins were dropped.
       const student = await this.studentRepository.findOne({
         where: { userId: studentId },
-        relations: ['user', 'father', 'mother', 'guardian', 'father.user', 'mother.user', 'guardian.user'],
+        relations: ['user', 'father', 'mother', 'guardian', 'father.user'],
         select: {
           userId: true,
           user: {
@@ -423,17 +461,21 @@ export class AdvertisementDeliveryService {
       // Use parent data if available, otherwise use student data
       const parentData = student.father || student.mother || student.guardian;
 
-      // ✅ FIXED: Query institute_users to get actual instituteId for ad targeting
-      let instituteId: string | undefined;
-      try {
-        const instituteUser = await this.instituteUserRepository.findOne({
-          where: { userId: studentId, status: 'ACTIVE' as any },
-          select: ['instituteId'],
-          order: { instituteId: 'ASC' },
-        });
-        instituteId = instituteUser?.instituteId;
-      } catch (err) {
-        this.logger.warn(`Could not fetch instituteId for user ${studentId}: ${err.message}`);
+      // PERF-D FIX: prefer the instituteId the caller already resolved (attendance
+      // session) and only fall back to an institute_users lookup when it's absent.
+      // This removes one DB round-trip per student in the attendance hot path.
+      let instituteId: string | undefined = knownInstituteId;
+      if (!instituteId) {
+        try {
+          const instituteUser = await this.instituteUserRepository.findOne({
+            where: { userId: studentId, status: 'ACTIVE' as any },
+            select: ['instituteId'],
+            order: { instituteId: 'ASC' },
+          });
+          instituteId = instituteUser?.instituteId;
+        } catch (err) {
+          this.logger.warn(`Could not fetch instituteId for user ${studentId}: ${err.message}`);
+        }
       }
 
       return {

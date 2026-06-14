@@ -34,14 +34,14 @@ export enum SendingMode {
 }
 
 @Entity('advertisements')
-@Index(['isActive', 'startDate', 'endDate']) // For active ads queries (CRITICAL for attendance notifications)
-@Index(['priority']) // For priority sorting
-@Index(['mediaType']) // For media type filtering
-@Index(['createdBy']) // For created by filtering
-@Index(['targetUserTypes']) // For user type targeting
-@Index(['targetSubscriptionPlans']) // For subscription targeting
-@Index(['minBornYear', 'maxBornYear']) // For age targeting
-@Index(['targetGenders']) // For gender targeting
+// PERF-F FIX: The active-ads query filters isActive + date window + currentSendings<maxSendings
+// and orders by priority,createdAt. This composite index covers the WHERE/ORDER BY of that
+// hot query (attendance notifications). The remaining demographic targeting (userTypes,
+// subscriptionPlans, genders, age) is filtered in application code against the cached set,
+// NOT in SQL — and MySQL cannot use a plain B-tree index on SET columns for FIND_IN_SET
+// membership anyway, so those per-column indexes were pure write/storage overhead and are removed.
+@Index('idx_ads_active_window', ['isActive', 'startDate', 'endDate', 'priority'])
+@Index('idx_ads_created_by', ['createdBy'])
 export class AdvertisementEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cache } from 'cache-manager';
 import { AdvertisementEntity } from '../entities/advertisement.entity';
-import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
+import { now } from '../../../common/utils/timezone.util';
 
 /**
  * Advertisement Cache Service with Metrics Tracking
@@ -62,19 +62,37 @@ export class AdvertisementCacheService {
       const cached = await this.cacheManager.get<AdvertisementEntity[]>(this.ADS_CACHE_KEY);
 
       if (cached && Array.isArray(cached)) {
-        return cached;
+        // BUG-C FIX: account for buffered (not-yet-synced) sendings so an ad that has
+        // hit its cap between DB syncs is no longer handed out for matching/delivery.
+        return await this.excludeCappedAds(cached);
       }
 
       // Cache miss - fetch from database and cache
       const ads = await this.fetchFromDatabase();
       await this.cacheManager.set(this.ADS_CACHE_KEY, ads, this.CACHE_TTL);
-      
-      return ads;
-      
+
+      return await this.excludeCappedAds(ads);
+
     } catch (error) {
       this.logger.error('❌ Cache error - falling back to database', error);
       return await this.fetchFromDatabase();
     }
+  }
+
+  /**
+   * Filter out ads whose effective send count (DB currentSendings + buffered
+   * in-cache sendings) has reached maxSendings. Prevents overshooting the cap
+   * during the window between metric syncs.
+   */
+  private async excludeCappedAds(ads: AdvertisementEntity[]): Promise<AdvertisementEntity[]> {
+    if (ads.length === 0) return ads;
+    const metrics = await this.getMetricsFromCache();
+    if (Object.keys(metrics.data).length === 0) return ads;
+
+    return ads.filter(ad => {
+      const buffered = metrics.data[ad.id]?.sendings || 0;
+      return (ad.currentSendings + buffered) < ad.maxSendings;
+    });
   }
 
   /**
@@ -90,13 +108,12 @@ export class AdvertisementCacheService {
       }
 
       const metrics = await this.getMetricsFromCache();
-      const now = getCurrentSriLankaTime();
-      
+
       if (!metrics.data[adId]) {
         metrics.data[adId] = { sendings: 0 };
       }
       metrics.data[adId].sendings += 1;
-      metrics.lastUpdated = now;
+      metrics.lastUpdated = now();
       
       await this.cacheManager.set(this.METRICS_CACHE_KEY, metrics, this.CACHE_TTL * 24);
       
@@ -116,7 +133,7 @@ export class AdvertisementCacheService {
     lastSyncTime: Date | null;
   }> {
     const metrics = await this.cacheManager.get<any>(this.METRICS_CACHE_KEY);
-    return metrics || { data: {}, lastUpdated: getCurrentSriLankaTime(), lastSyncTime: null };
+    return metrics || { data: {}, lastUpdated: now(), lastSyncTime: null };
   }
 
   /**
@@ -128,15 +145,13 @@ export class AdvertisementCacheService {
     lastSyncTime: Date | null;
   }): Promise<void> {
     try {
-      const now = getCurrentSriLankaTime();
-      
       if (!metrics.lastSyncTime) {
         // First time - sync immediately
         await this.syncMetricsToDB(metrics);
         return;
       }
 
-      const minutesSinceLastSync = (now.getTime() - new Date(metrics.lastSyncTime).getTime()) / 60000;
+      const minutesSinceLastSync = (now().getTime() - new Date(metrics.lastSyncTime).getTime()) / 60000;
       
       if (minutesSinceLastSync >= this.METRICS_SYNC_INTERVAL) {
         await this.syncMetricsToDB(metrics);
@@ -167,11 +182,11 @@ export class AdvertisementCacheService {
       const snapshot = { ...metrics.data };
       
       // Step 2: Clear cache FIRST to prevent double-counting on crash
-      const now = getCurrentSriLankaTime();
+      const syncedAt = now();
       const clearedMetrics = {
         data: {},
-        lastUpdated: now,
-        lastSyncTime: now
+        lastUpdated: syncedAt,
+        lastSyncTime: syncedAt
       };
       await this.cacheManager.set(this.METRICS_CACHE_KEY, clearedMetrics, this.CACHE_TTL * 24);
 
@@ -188,7 +203,13 @@ export class AdvertisementCacheService {
       );
 
       await Promise.allSettled(syncTasks);
-      
+
+      // BUG-D FIX: the cached active-ads list still holds the pre-sync currentSendings.
+      // After flushing buffered counts to the DB we must drop that list so the next
+      // read reloads fresh counts; otherwise a capped ad reappears once the buffer
+      // (which excludeCappedAds relies on) is cleared.
+      await this.invalidateCache();
+
     } catch (error) {
       this.logger.error('❌ Failed to sync metrics to database (cache already cleared to prevent double-counting)', error);
     }
@@ -198,8 +219,10 @@ export class AdvertisementCacheService {
    * Fetch from database with optimized query
    */
   private async fetchFromDatabase(): Promise<AdvertisementEntity[]> {
+    // Real UTC — compared against startDate/endDate columns which are now stored
+    // as real UTC (see AdvertisementService.create using now()).
     const currentTime = new Date();
-    
+
     const ads = await this.advertisementRepository
       .createQueryBuilder('ad')
       .where('ad.isActive = :isActive', { isActive: true })
@@ -208,8 +231,9 @@ export class AdvertisementCacheService {
       .andWhere('ad.currentSendings < ad.maxSendings')
       .orderBy('ad.priority', 'DESC')
       .addOrderBy('ad.createdAt', 'DESC')
+      .limit(200) // hard cap — matching only needs the top candidates by priority
       .getMany();
-    
+
     return ads;
   }
 
