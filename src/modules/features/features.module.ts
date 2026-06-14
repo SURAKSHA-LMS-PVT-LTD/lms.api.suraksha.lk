@@ -13,5 +13,6 @@ import { AuthModule } from '../../auth/auth.module';
   ],
   controllers: [FeaturesController],
   providers: [FeaturesService],
+  exports: [FeaturesService],
 })
 export class FeaturesModule {}

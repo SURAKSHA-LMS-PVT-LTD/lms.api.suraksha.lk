@@ -361,9 +361,17 @@ export class AttendanceNotificationService {
   }
 
   /**
-   * Send WhatsApp notification with subscription-based logic:
-   * - PREMIUM (WhatsApp-only): Use template messages (requires pre-approval)
-   * - PLATINUM/packages with WhatsApp: Use session messages (no cost, 24hr window)
+   * Send WhatsApp notification — SESSION MESSAGES ONLY (free, within the 24h customer
+   * service window). Template messages are NEVER used here because they cost money.
+   *
+   * Flow:
+   *   1) If the 24h session window for this number is closed, skip WhatsApp silently.
+   *      Other channels (push/email/SMS per plan) still fire. We never fall back to a
+   *      paid template to force delivery.
+   *   2) Send the attendance message (ad media + caption) as a free session message.
+   *   3) Send a follow-up interactive "keep me updated" button + thank-you. When the
+   *      parent taps it (or replies), their inbound message re-opens the 24h window,
+   *      letting us keep sending free session messages indefinitely.
    */
   private async sendWhatsAppNotification(
     data: AttendanceNotificationData
@@ -372,47 +380,143 @@ export class AttendanceNotificationService {
       return { success: false };
     }
 
+    // Gate: only send inside an open 24h session window. Closed window → skip silently
+    // (never send a paid template). Other channels still deliver this notification.
+    if (!this.isWhatsAppSessionOpen(data.parentContact)) {
+      this.logger.debug(
+        `[WhatsApp] Session window closed for ${this.maskPhone(data.parentContact)} — skipping (other channels still fire)`,
+      );
+      return { success: false };
+    }
+
     const message = this.buildAttendanceMessage(data, false, 'whatsapp');
-    const subscriptionPlan = data.subscriptionPlan.toUpperCase();
-    const channels = this.getNotificationChannels(subscriptionPlan);
-    
-    // Check if this is WhatsApp-only subscription (PREMIUM with only WhatsApp)
-    const isWhatsAppOnly = subscriptionPlan === 'PREMIUM' && 
-                          channels.length === 1 && 
-                          channels[0] === 'whatsapp';
 
     try {
-      // PREMIUM WhatsApp-only: Use template message (requires pre-approval from Meta)
-      if (isWhatsAppOnly && process.env.WHATSAPP_TEMPLATE_ENABLED === 'true') {
-        const templateResult = await this.sendWhatsAppTemplateMessage(
-          data.parentContact,
-          data
-        );
-
-        if (templateResult.success) {
-          return templateResult;
-        }
-        
-        // Fallback to session message if template fails
-        this.logger.warn(`⚠️ Template message failed, trying session message`);
-      }
-
-      // PLATINUM or packages with multiple channels: Use session message (no cost)
+      // Main session message: attendance text + ad media (free, no cost)
       const sessionResult = await this.sendWhatsAppSessionMessage(
         data.parentContact,
         message,
         data.advertisementData
       );
 
-      if (sessionResult.success) {
-        return sessionResult;
+      if (!sessionResult.success) {
+        return { success: false };
       }
 
-      return { success: false };
+      // Follow-up: polite thank-you + interactive keep-alive button. A tap/reply re-opens
+      // the 24h window. Fire-and-forget — failure here must not fail the attendance message.
+      this.sendWhatsAppKeepAliveButton(data.parentContact, data).catch(err =>
+        this.logger.debug(`[WhatsApp] Keep-alive button send failed: ${err.message}`),
+      );
 
+      // Record that we just interacted with this number so the window stays open.
+      this.markWhatsAppInteraction(data.parentContact);
+
+      return sessionResult;
     } catch (error: any) {
       this.logger.error(`❌ WhatsApp notification failed: ${error.message}`);
       return { success: false };
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // WhatsApp 24h session window tracking (webhook-ready)
+  //
+  // WhatsApp's customer-service window opens for 24h after the USER's last inbound
+  // message. The backend can only observe inbound messages via a webhook (not built
+  // yet). Until then we approximate the window using the last time WE interacted with
+  // the number, which is a safe upper bound: if we never interacted, treat as open so
+  // the first message can go out and invite a reply.
+  //
+  // When the inbound webhook is added later, call markWhatsAppInteraction(phone) from it
+  // with the real inbound timestamp — no other change is needed; the gate already reads
+  // through isWhatsAppSessionOpen().
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** In-memory last-interaction map: normalized phone → epoch ms. */
+  private readonly whatsappSessionWindow = new Map<string, number>();
+  private static readonly WHATSAPP_SESSION_MS = 24 * 60 * 60 * 1000;
+
+  private normalizePhone(phone: string): string {
+    return (phone || '').replace(/[^0-9]/g, '');
+  }
+
+  private maskPhone(phone: string): string {
+    const p = this.normalizePhone(phone);
+    return p.length <= 4 ? '****' : `${'*'.repeat(p.length - 4)}${p.slice(-4)}`;
+  }
+
+  /**
+   * True when we may send a free session message to this number. Open if we have no
+   * record yet (first contact) or the last interaction was within the 24h window.
+   */
+  isWhatsAppSessionOpen(phone: string): boolean {
+    const key = this.normalizePhone(phone);
+    const last = this.whatsappSessionWindow.get(key);
+    if (last === undefined) return true; // first contact — allowed, invites a reply
+    return Date.now() - last < AttendanceNotificationService.WHATSAPP_SESSION_MS;
+  }
+
+  /**
+   * Record an interaction (outbound send, or — once the webhook exists — an inbound
+   * reply/button tap) that (re)opens the 24h session window for this number.
+   */
+  markWhatsAppInteraction(phone: string): void {
+    this.whatsappSessionWindow.set(this.normalizePhone(phone), Date.now());
+  }
+
+  /**
+   * Send the polite thank-you + interactive reply button. Tapping the button sends an
+   * inbound message that re-opens the 24h session. Free session message (interactive type).
+   */
+  private async sendWhatsAppKeepAliveButton(
+    phoneNumber: string,
+    data: AttendanceNotificationData,
+  ): Promise<{ success: boolean; deliveryId?: string; error?: string }> {
+    try {
+      const instituteName = data.instituteName || 'Suraksha LMS';
+      const interactiveData = {
+        messaging_product: 'whatsapp',
+        to: phoneNumber.replace('+', ''),
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text:
+              `Thank you for staying connected with ${instituteName}. 🙏\n\n` +
+              `To keep receiving these free attendance updates, please tap the button below. ` +
+              `If you don't, future updates may stop.`,
+          },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: { id: 'keep_updates_on', title: 'Keep me updated 👍' },
+              },
+            ],
+          },
+        },
+      };
+
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(interactiveData),
+        },
+      );
+
+      const result = await response.json();
+      if (response.ok && result.messages) {
+        return { success: true, deliveryId: result.messages[0]?.id };
+      }
+      return { success: false, error: result.error?.message || 'Keep-alive button failed' };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
     }
   }
 
@@ -500,113 +604,6 @@ export class AttendanceNotificationService {
       };
 
     } catch (error) {
-      return {
-        success: false,
-        error: (error as Error).message
-      };
-    }
-  }
-
-  /**
-   * Send WhatsApp template message (requires pre-approval from Meta)
-   * Template name: suraksha_attendance_with_ad
-   * See: docs/WHATSAPP_TEMPLATE_MESSAGE_APPROVAL_REQUEST.md
-   */
-  private async sendWhatsAppTemplateMessage(
-    phoneNumber: string,
-    data: AttendanceNotificationData
-  ): Promise<{ success: boolean; deliveryId?: string; error?: string }> {
-    try {
-      const statusIcon = data.attendanceStatus === 'PRESENT' ? '✅' : '❌';
-      const statusText = data.attendanceStatus === 'PRESENT' ? 'PRESENT' : 'ABSENT';
-      const adUrl = data.advertisementData?.sendingUrl || data.advertisementData?.mediaUrl || '';
-      
-      const templateData = {
-        messaging_product: 'whatsapp',
-        to: phoneNumber.replace('+', ''),
-        type: 'template',
-        template: {
-          name: 'suraksha_attendance_with_ad', // Must be pre-approved by Meta
-          language: {
-            code: 'en'
-          },
-          components: [
-            // Header with media (if available)
-            ...(data.advertisementData?.mediaUrl ? [{
-              type: 'header',
-              parameters: [
-                {
-                  type: data.advertisementData.mediaType === 'video' ? 'video' : 'image',
-                  [data.advertisementData.mediaType === 'video' ? 'video' : 'image']: {
-                    link: data.advertisementData.mediaUrl
-                  }
-                }
-              ]
-            }] : []),
-            
-            // Body with all 11 variables
-            {
-              type: 'body',
-              parameters: [
-                { type: 'text', text: data.studentName },                          // {{1}}
-                { type: 'text', text: data.date },                                 // {{2}}
-                { type: 'text', text: data.time },                                 // {{3}}
-                { type: 'text', text: `${statusIcon} ${statusText}` },            // {{4}}
-                { type: 'text', text: data.location || 'Not specified' },         // {{5}}
-                { type: 'text', text: data.instituteName || 'School' },           // {{6}}
-                { type: 'text', text: data.bookhireName || 'Transport' },         // {{7}}
-                { type: 'text', text: data.advertisementData?.title || '' },      // {{8}}
-                { type: 'text', text: data.advertisementData?.content || '' },    // {{9}}
-                { type: 'text', text: adUrl },                                     // {{10}}
-                { type: 'text', text: data.instituteName || 'School' }            // {{11}}
-              ]
-            },
-            
-            // Button (optional - if URL available)
-            ...(adUrl ? [{
-              type: 'button',
-              sub_type: 'url',
-              index: '0',
-              parameters: [
-                {
-                  type: 'text',
-                  text: adUrl
-                }
-              ]
-            }] : [])
-          ]
-        }
-      };
-
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(templateData)
-        }
-      );
-
-      const result = await response.json();
-
-      if (response.ok && result.messages) {
-        return {
-          success: true,
-          deliveryId: result.messages[0]?.id
-        };
-      }
-
-      this.logger.error(`❌ Template message failed: ${result.error?.message}`);
-      return {
-        success: false,
-        error: result.error?.message || 'Template message failed'
-      };
-
-    } catch (error: any) {
-      this.logger.error(`❌ WhatsApp template error: ${error.message}`);
       return {
         success: false,
         error: (error as Error).message
@@ -1405,10 +1402,12 @@ export class AttendanceNotificationService {
       message += ` at ${formattedTime} on ${formattedDate}.`;
     }
 
-    // Add footer only for WhatsApp
+    // Add footer only for WhatsApp. The actionable keep-alive prompt is delivered as a
+    // separate interactive button message (sendWhatsAppKeepAliveButton), so here we only
+    // close with a brief, polite thank-you to avoid duplicating the call-to-action.
     if (platform === 'whatsapp') {
       message += `\n\n━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `\n_If you require further updates within the next 24 hours, please reply or react to this message._`;
+      message += `\n_Thank you for staying connected._ 🙏`;
     }
 
     return message;

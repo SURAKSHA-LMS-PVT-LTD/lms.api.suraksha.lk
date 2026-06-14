@@ -18,6 +18,7 @@ export enum CreditTransactionType {
   PUSH_NOTIFICATION = 'PUSH_NOTIFICATION', // Push notification (future)
   FEATURE_PURCHASE = 'FEATURE_PURCHASE',   // Feature/addon purchase (future)
   STORAGE_PURCHASE = 'STORAGE_PURCHASE',   // Storage purchase (future)
+  DESIGN_GENERATION = 'DESIGN_GENERATION', // Design template generation (PNG/PDF/WhatsApp)
 }
 
 /**

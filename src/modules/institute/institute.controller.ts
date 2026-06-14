@@ -672,29 +672,34 @@ export class InstitutesController {
     return this.institutesService.getUserExtraDataSchema(id, req.user);
   }
 
+  // DEPRECATED: design templates now live in the design_templates table (InstituteDesignsModule).
+  // These legacy blob endpoints return an empty array / no-op so old clients don't break.
+  // Frontend has been migrated to /institutes/:id/design-templates via InstituteDesignsController.
   @Get(':id/design-templates')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Get institute design templates (certificates, birthday wishes, etc.)' })
+  @ApiOperation({ summary: '[DEPRECATED] Use GET /institutes/:id/design-templates instead' })
   @ApiParam({ name: 'id', description: 'Institute ID' })
   async getDesignTemplates(
     @Param('id', ParseIdPipe) id: string,
     @Request() req: JwtRequest,
   ) {
+    // Return legacy blob if it still exists so nothing breaks during transition
     return this.institutesService.getDesignTemplates(id, req.user);
   }
 
   @Post(':id/design-templates')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Save institute design templates (replaces all templates)' })
+  @ApiOperation({ summary: '[DEPRECATED] Use POST/PUT /institutes/:id/design-templates instead' })
   @ApiParam({ name: 'id', description: 'Institute ID' })
   async saveDesignTemplates(
     @Param('id', ParseIdPipe) id: string,
-    @Body() body: { templates: any[] },
-    @Request() req: JwtRequest,
+    @Body() _body: { templates: any[] },
+    @Request() _req: JwtRequest,
   ) {
-    return this.institutesService.saveDesignTemplates(id, body.templates ?? [], req.user);
+    // No-op: new system uses individual template rows, not blob replacement
+    return { deprecated: true, message: 'Use /institutes/:id/design-templates (PUT/POST per template) instead' };
   }
 
   @Patch(':id/user-extra-data-schema')

@@ -28,6 +28,8 @@ import {
   TenantServicePaymentFilterDto,
 } from './dto/tenant.dto';
 import { SenderMaskEntity, SenderMaskStatus } from '../sms/entities/sender-mask.entity';
+import { PackageDefinitionEntity } from '../payment/entities/package-definition.entity';
+import { UserEntity } from '../user/entities/user.entity';
 import { now } from '../../common/utils/timezone.util';
 
 @Injectable()
