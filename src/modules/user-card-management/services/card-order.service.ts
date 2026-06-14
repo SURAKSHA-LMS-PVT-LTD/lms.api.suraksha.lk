@@ -310,6 +310,23 @@ export class CardOrderService {
 
     const updatedOrder = await this.orderRepository.save(order);
 
+    // Clear rfid/cardId from user when card is deactivated so QR/NFC scans are blocked naturally
+    if (
+      updateCardStatusDto.status !== CardStatus.ACTIVE &&
+      order.rfidNumber
+    ) {
+      const user = await this.userRepository.findOne({ where: { id: order.userId } });
+      if (user) {
+        if (order.cardType === CardType.NFC && user.rfid === order.rfidNumber) {
+          user.rfid = null;
+          await this.userRepository.save(user);
+        } else if (order.cardType !== CardType.NFC && user.cardId === order.rfidNumber) {
+          user.cardId = null;
+          await this.userRepository.save(user);
+        }
+      }
+    }
+
     return this.toResponseDto(updatedOrder);
   }
 

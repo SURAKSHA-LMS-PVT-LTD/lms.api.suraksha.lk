@@ -7,6 +7,7 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
 import { AdvertisementDeliveryService } from './services/advertisement-delivery.service';
 import { AdvertisementCacheService } from './services/advertisement-cache.service';
 import { AdvertisementMatchingService } from './advertisement-matching.service';
+import { DailyAdAssignmentService } from './services/daily-ad-assignment.service';
 
 // ⚠️ MULTER REMOVED: All file uploads now use signed URL client-side direct upload
 // See: /signed-urls/advertisement endpoint for new upload flow
@@ -27,7 +28,46 @@ export class AdvertisementController {
     private readonly advertisementDeliveryService: AdvertisementDeliveryService,
     private readonly advertisementCacheService: AdvertisementCacheService,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
+    private readonly dailyAdAssignmentService: DailyAdAssignmentService,
   ) {}
+
+  @Post('daily-assignment/reassign')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({
+    summary: 'Manually rebuild today\'s per-user ad assignments',
+    description: 'Truncates and recomputes the daily user→ad pre-assignment table used by the attendance hot path. Run after creating/changing campaigns to refresh mid-day.',
+  })
+  @ApiResponse({ status: 201, description: 'Reassignment completed' })
+  @ApiResponse({ status: 403, description: 'Forbidden - SUPERADMIN role required' })
+  async reassignDailyAds() {
+    try {
+      const summary = await this.dailyAdAssignmentService.reassignAll('manual');
+      return { success: true, ...summary };
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to reassign daily ads' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('daily-assignment/status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({ summary: 'Get current daily ad assignment status' })
+  @ApiResponse({ status: 200, description: 'Assignment status' })
+  async dailyAdAssignmentStatus() {
+    try {
+      const status = await this.dailyAdAssignmentService.getStatus();
+      return { success: true, ...status };
+    } catch (error) {
+      throw new HttpException(
+        { success: false, message: error.message || 'Failed to get assignment status' },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)

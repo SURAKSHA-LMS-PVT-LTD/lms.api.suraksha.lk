@@ -1182,6 +1182,7 @@ export class AuthService {
       language?: string;
       createdAt: Date;
       updatedAt: Date;
+      rfid?: string;
       // Student-specific fields
       studentId?: string;
       emergencyContact?: string;
@@ -1258,7 +1259,7 @@ export class AuthService {
       // 📊 STEP 2: Cache MISS - Fallback to database with student/parent joins
       this.logger.warn(`⚠️ Cache miss for user ${userId}, falling back to database`);
       
-      const user = await this.userRepository.findOne({ 
+      const user = await this.userRepository.findOne({
         where: { id: userId },
         select: [
           'id', 'firstName', 'lastName', 'nameWithInitials', 'email', 'phoneNumber', 'userType',
@@ -1266,8 +1267,9 @@ export class AuthService {
           'addressLine1', 'addressLine2', 'city', 'district', 'province',
           'postalCode', 'country', 'imageUrl',
           'subscriptionPlan', 'paymentExpiresAt',
-          'language', 'createdAt', 'updatedAt'
-        ]
+          'language', 'createdAt', 'updatedAt',
+          'rfid',
+        ],
       });
 
       if (!user) {
@@ -1344,6 +1346,7 @@ export class AuthService {
           language: user.language,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
+          rfid: user.rfid,
           // Student-specific fields (if exists)
           ...(studentData && {
             studentId: studentData.studentId,

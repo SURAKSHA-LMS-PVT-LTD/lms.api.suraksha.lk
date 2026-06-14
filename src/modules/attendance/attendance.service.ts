@@ -23,6 +23,7 @@ import { InstituteUserStatus } from '../institute_mudules/institue_user/enums/in
 import { InstituteUserType } from '../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { AdvertisementEntity } from '../advertisement/entities/advertisement.entity';
 import { AdvertisementMatchingService } from '../advertisement/advertisement-matching.service';
+import { DailyAdAssignmentService } from '../advertisement/services/daily-ad-assignment.service';
 import { CardStatus } from '../user-card-management/enums/card-status.enum';
 import { MarkingMethod } from './dto/attendance.dto';
 import { getCurrentSriLankaDate, getCurrentSriLankaISO, nowTimestamp, formatSriLankaTime, now } from '../../common/utils/timezone.util';
@@ -38,6 +39,17 @@ import { BulkMarkClassFromInstituteDto } from './dto/class-attendance-from-insti
 import { BulkMarkSubjectFromClassDto } from './dto/subject-attendance-from-class.dto';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
 
+/** Student + resolved primary-parent contact data used by the notification path. */
+interface StudentParentData {
+  student: StudentEntity | null;
+  primaryParent: UserEntity | null;
+  parentContact: string | null;
+  parentEmail: string | null;
+  parentTelegramId: string | null;
+  parentUserId: string | null;
+  subscriptionPlan: string;
+}
+
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
@@ -50,6 +62,7 @@ export class AttendanceService {
     private readonly dynamoAttendanceService: DynamoDBAttendanceService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
     private readonly advertisementMatchingService: AdvertisementMatchingService,
+    private readonly dailyAdAssignmentService: DailyAdAssignmentService,
     private readonly instituteCalendarService: InstituteCalendarService,
     private readonly calendarDayCacheService: CalendarDayCacheService,
     @InjectRepository(StudentEntity)
@@ -746,11 +759,19 @@ export class AttendanceService {
       }
 
       // âœ… STEP 10: Send notifications ONLY for students (teachers/admins skip parent notifications)
+      // BULK N+1 FIX: batch-fetch parent data for ALL student results in one query, then pass
+      // each student's data into the notification path so it never re-queries per student.
       if (this.notificationsEnabled) {
-        results.forEach(result => {
-          const userData = userDataMap.get(result.studentId);
-          // Only send parent notifications for STUDENT type
-          if (userData?.userType === AttendanceUserType.STUDENT) {
+        const studentResults = results.filter(
+          r => userDataMap.get(r.studentId)?.userType === AttendanceUserType.STUDENT,
+        );
+
+        if (studentResults.length > 0) {
+          const parentDataMap = await this.fetchStudentsWithParentDataBatch(
+            studentResults.map(r => r.studentId),
+          );
+
+          for (const result of studentResults) {
             const markAttendanceDto: MarkAttendanceDto = {
               studentId: result.studentId,
               studentName: result.studentName,
@@ -767,9 +788,15 @@ export class AttendanceService {
               userType: AttendanceUserType.STUDENT,
             };
 
-            this.scheduleAttendanceNotification(markAttendanceDto, result);
+            // Pass pre-fetched parent data (may be undefined if the student row was missing;
+            // scheduleAttendanceNotification handles a null and skips cleanly).
+            this.scheduleAttendanceNotification(
+              markAttendanceDto,
+              result,
+              parentDataMap.get(result.studentId),
+            );
           }
-        });
+        }
       }
 
       // âœ… Fetch available events for this date so frontend can show event picker
@@ -984,41 +1011,6 @@ export class AttendanceService {
     };
   }
 
-  /**
-   * âœ… CARD VALIDATION HELPER
-   * Validates card status and expiry for both RFID and normal cards
-   */
-  private validateCardForAttendance(
-    user: UserEntity,
-    cardType: 'rfid' | 'normal',
-    cardIdValue: string
-  ): { valid: boolean; cardStatus?: CardStatus; cardExpiryDate?: Date; error?: string } {
-    const status = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
-    const expiryDate = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
-
-    // Check card status
-    if (status && status !== CardStatus.ACTIVE) {
-      return {
-        valid: false,
-        cardStatus: status,
-        cardExpiryDate: expiryDate,
-        error: `Card ${cardIdValue} is ${status}. Only ACTIVE cards can mark attendance.`
-      };
-    }
-
-    // Check expiry date
-    if (expiryDate && new Date(expiryDate) < new Date()) {
-      return {
-        valid: false,
-        cardStatus: CardStatus.EXPIRED,
-        cardExpiryDate: expiryDate,
-        error: `Card ${cardIdValue} has expired on ${new Date(expiryDate).toISOString().split('T')[0]}. Please renew your card.`
-      };
-    }
-
-    return { valid: true, cardStatus: status, cardExpiryDate: expiryDate };
-  }
-
   async markAttendanceByCard(markAttendanceByCardDto: MarkAttendanceByCardDto, markedBy: string): Promise<any> {
     const { studentCardId, markingMethod } = markAttendanceByCardDto;
     const isNfc = markingMethod === MarkingMethod.RFID_NFC;
@@ -1066,22 +1058,6 @@ export class AttendanceService {
       throw new Error(errorDetails.message);
     }
 
-    // âœ… VALIDATE CARD STATUS & EXPIRY
-    const validation = this.validateCardForAttendance(user, cardType, studentCardId);
-    if (!validation.valid) {
-      return {
-        success: false,
-        message: validation.error,
-        cardInfo: {
-          cardId: studentCardId,
-          cardType,
-          cardStatus: validation.cardStatus,
-          cardExpiryDate: validation.cardExpiryDate,
-          isExpired: validation.cardStatus === CardStatus.EXPIRED
-        }
-      };
-    }
-
     const markAttendanceDto: MarkAttendanceDto = {
       studentId: user.id.toString(),
       studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
@@ -1099,15 +1075,11 @@ export class AttendanceService {
 
     const result = await this.markAttendance(markAttendanceDto, markedBy);
 
-    // âœ… Enrich response with card info
     return {
       ...result,
       cardInfo: {
         cardId: studentCardId,
         cardType,
-        cardStatus: validation.cardStatus || CardStatus.ACTIVE,
-        cardExpiryDate: validation.cardExpiryDate,
-        isExpired: false
       }
     };
   }
@@ -1148,23 +1120,7 @@ export class AttendanceService {
       ? new Map(users.map(u => [u.rfid, u]))
       : new Map(users.map(u => [u.cardId, u]));
 
-    // âœ… VALIDATE CARD STATUS for each student
     const invalidCards: any[] = [];
-    for (const student of bulkCardAttendanceDto.students) {
-      const user = userMap.get(student.studentCardId);
-      if (user) {
-        const validation = this.validateCardForAttendance(user, cardType, student.studentCardId);
-        if (!validation.valid) {
-          invalidCards.push({
-            cardId: student.studentCardId,
-            userName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
-            reason: validation.error,
-            cardStatus: validation.cardStatus,
-            cardExpiryDate: validation.cardExpiryDate
-          });
-        }
-      }
-    }
 
     // Check institute_user for verified images for all users
     const userIds = users.map(u => u.id.toString());
@@ -1184,11 +1140,9 @@ export class AttendanceService {
     );
 
     // Map students, skip invalid cards & not-found
-    const invalidCardIds = new Set(invalidCards.map(ic => ic.cardId));
     const notFound: string[] = [];
     const students = bulkCardAttendanceDto.students
       .filter(student => {
-        if (invalidCardIds.has(student.studentCardId)) return false;
         const user = userMap.get(student.studentCardId);
         if (!user) {
           notFound.push(student.studentCardId);
@@ -1824,8 +1778,7 @@ export class AttendanceService {
       this.logger.debug(`[Notification] Skipped — ENABLE_ATTENDANCE_NOTIFICATIONS is false`);
       return;
     }
-    const status = markAttendanceDto.status;
-    this.logger.log(`[Notification] Scheduling for student=${markAttendanceDto.studentId} status=${status}`);
+    // Fire-and-forget — never log per-student on the hot path (5000/sec would flood logs).
     this.sendAttendanceNotificationWithAdvertising(markAttendanceDto, attendanceResult, studentData).catch((err) => this.logger.warn(`Attendance notification failed: ${err.message}`));
   }
 
@@ -1864,7 +1817,7 @@ export class AttendanceService {
       const isAdsEnabled = this.adsDeliveryEnabled && packageConfig?.isAds === true;
       const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
-      this.logger.log(
+      this.logger.debug(
         `[Notification] student=${sid} plan=${normalizedPlan} channels=${channels.join(',')} ` +
         `contact=${!!data.parentContact} email=${!!data.parentEmail} telegram=${!!data.parentTelegramId} ads=${isAdsEnabled}`,
       );
@@ -1920,9 +1873,8 @@ export class AttendanceService {
         advertisementData
       };
 
-      this.logger.log(`[Notification] Sending via attendanceNotificationService for student=${sid}`);
       const notificationResult = await this.attendanceNotificationService.sendAttendanceNotification(notificationData);
-      this.logger.log(
+      this.logger.debug(
         `[Notification] Result for student=${sid}: total=${notificationResult.totalChannels} ` +
         `success=${notificationResult.successfulChannels} failed=${notificationResult.failedChannels} ` +
         `channels=${notificationResult.results.map(r => `${r.channel}:${r.success ? 'ok' : r.errorMessage}`).join(', ')}`,
@@ -2217,89 +2169,63 @@ export class AttendanceService {
    * Uses multi-factor matching: userType, subscriptionPlan, age, gender, location, institute
    * Returns the best personalized advertisement based on complete user profile
    */
+  /**
+   * Get the advertisement pre-assigned to this user for today (HOT PATH).
+   *
+   * The expensive multi-factor matching no longer runs here — it runs once daily in
+   * DailyAdAssignmentService. This method does:
+   *   1) one indexed lookup of the user's assigned ad, then
+   *   2) a single atomic conditional increment of currentSendings that enforces the
+   *      maxSendings cap. If the increment affects 0 rows (cap reached or ad deleted),
+   *      we return null so the notification simply goes out with no ad.
+   *
+   * Returns null when there is no ad to send (no assignment / over cap / inactive).
+   * The subscriptionPlan/instituteId params are kept for the call sites but are no
+   * longer used for matching (the daily assignment already accounted for them).
+   */
   private async getMatchingAdvertisementFromDB(
-    subscriptionPlan: string,
+    _subscriptionPlan: string,
     studentData: any,
-    instituteId: string
+    _instituteId: string
   ): Promise<any> {
     try {
-      // ðŸŽ¯ Build complete user profile for sophisticated matching
-      const userProfile = {
-        userId: studentData.userId,
-        userType: studentData.user.userType || 'STUDENT',
-        subscriptionPlan: subscriptionPlan as any,
-        instituteId: instituteId,
-        // Extract additional profile data if available
-        city: studentData.user.city || null,
-        province: studentData.user.province || null,
-        district: studentData.user.district || null,
-        birthYear: studentData.user.dateOfBirth
-          ? new Date(studentData.user.dateOfBirth).getFullYear()
-          : null,
-        gender: studentData.user.gender || null,
-        occupation: null  // No occupation column on user entity
-      };
+      const userId = studentData?.userId;
+      if (!userId) return null;
 
-      // Use sophisticated multi-factor matching service
-      const matches = await this.advertisementMatchingService.findMostMatchingAdvertisements(
-        userProfile,
-        1  // Get only the BEST match
-      );
+      const assigned = await this.dailyAdAssignmentService.getAssignedAd(String(userId));
+      if (!assigned) return null;
 
-      if (matches.length > 0) {
-        const bestMatch = matches[0];
-        const advertisement = bestMatch.advertisement;
+      // Send-time cap enforcement: atomically bump currentSendings only while under cap.
+      // 0 affected rows => the ad hit its cap (or was removed) => don't send it.
+      const updateResult = await this.advertisementRepository
+        .createQueryBuilder()
+        .update(AdvertisementEntity)
+        .set({ currentSendings: () => 'currentSendings + 1' })
+        .where('id = :id', { id: assigned.id })
+        .andWhere('isActive = true')
+        .andWhere('currentSendings < maxSendings')
+        .execute();
 
-        // âœ… BUG-B FIX: currentSendings increment moved to AFTER successful notification delivery
-        // (see sendImmediateNotification and sendAttendanceNotificationWithAdvertising)
-
-        return {
-          id: advertisement.id,
-          mediaUrl: advertisement.mediaUrl,
-          mediaType: advertisement.mediaType,
-          title: advertisement.title,
-          content: advertisement.description || '',
-          sendingUrl: advertisement.sendingUrl || undefined,
-          supportivePlatforms: advertisement.supportivePlatforms || [],
-          modeOfSending: advertisement.modeOfSending || [],
-          matchScore: bestMatch.matchScore,
-          matchReasons: bestMatch.matchReasons,
-          cascadeToParents: advertisement.cascadeToParents || false  // ðŸŽ¯ Include cascade flag
-        };
+      if (!updateResult.affected || updateResult.affected === 0) {
+        return null; // capped or inactive — no ad this time
       }
 
-      this.logger.warn(`âš ï¸ No matching advertisement found for user ${userProfile.userId}, using default fallback`);
-
-      // Fallback to default ad if no matching ad found
       return {
-        id: 'default-fallback',
-        mediaUrl: process.env.DEFAULT_AD_URL || '',
-        mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-        title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
-        content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
-        sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
-        supportivePlatforms: [],  // Default ads support all platforms
-        modeOfSending: [],  // Default ads use all available channels
-        matchScore: 0,
-        matchReasons: ['No matching advertisement found in database'],
-        cascadeToParents: false  // Default ads don't cascade
+        id: assigned.id,
+        mediaUrl: assigned.mediaUrl,
+        mediaType: assigned.mediaType,
+        title: assigned.title,
+        content: assigned.content || '',
+        sendingUrl: assigned.sendingUrl || undefined,
+        supportivePlatforms: assigned.supportivePlatforms || [],
+        modeOfSending: assigned.modeOfSending || [],
+        cascadeToParents: assigned.cascadeToParents || false,
+        // Counter already incremented above, so downstream must NOT increment again.
+        sendingAlreadyCounted: true,
       };
     } catch (error) {
-      this.logger.error(`âŒ Failed to fetch matching advertisement: ${error.message}`, error.stack);
-      // Return default ad on error
-      return {
-        id: 'default-error-fallback',
-        mediaUrl: process.env.DEFAULT_AD_URL || '',
-        mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-        title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
-        content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
-        sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
-        supportivePlatforms: [],  // Default ads support all platforms
-        modeOfSending: [],  // Default ads use all available channels
-        matchScore: 0,
-        matchReasons: ['Error occurred while fetching advertisement'],
-        cascadeToParents: false  // Default ads don't cascade
-      };
+      this.logger.error(`Failed to fetch assigned advertisement: ${error.message}`);
+      return null; // hot path degrades to "no ad"
     }
   }
 
@@ -2374,6 +2300,12 @@ export class AttendanceService {
       return false;
     }
 
+    // Pre-assigned ads already incremented currentSendings atomically at fetch time
+    // (send-time cap check). Counting again here would double-count.
+    if (advertisementData?.sendingAlreadyCounted === true) {
+      return false;
+    }
+
     // Fallback/default IDs are not persisted campaign rows, so they must not be counted.
     return !adId.startsWith('default-');
   }
@@ -2418,6 +2350,101 @@ export class AttendanceService {
     }
   }
 
+  /**
+   * The same student+parent select used by both the single and batch fetch. Defined once
+   * so the two paths stay in sync.
+   */
+  private readonly STUDENT_PARENT_SELECT = {
+    userId: true,
+    fatherId: true,
+    motherId: true,
+    guardianId: true,
+    studentId: true,
+    emergencyContact: true,
+    isActive: true,
+    user: {
+      id: true, firstName: true, lastName: true, nameWithInitials: true,
+      email: true, phoneNumber: true, subscriptionPlan: true, telegramId: true,
+      imageUrl: true, userType: true, dateOfBirth: true, gender: true,
+      city: true, district: true, province: true,
+    },
+    father: {
+      userId: true,
+      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true },
+    },
+    mother: {
+      userId: true,
+      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true },
+    },
+    guardian: {
+      userId: true,
+      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true },
+    },
+  } as const;
+
+  private readonly STUDENT_PARENT_RELATIONS = ['user', 'father', 'father.user', 'mother', 'mother.user', 'guardian', 'guardian.user'];
+
+  /** Shape returned by both single and batch parent-data fetch. */
+  private mapStudentToParentData(student: StudentEntity): StudentParentData {
+    let primaryParent: UserEntity | null = null;
+    if (student.father?.user) primaryParent = student.father.user;
+    else if (student.mother?.user) primaryParent = student.mother.user;
+    else if (student.guardian?.user) primaryParent = student.guardian.user;
+
+    let parentContact: string | null = null;
+    let parentEmail: string | null = null;
+    let parentTelegramId: string | null = null;
+
+    if (primaryParent) {
+      const rawPhone = primaryParent.phoneNumber || '';
+      const digits = rawPhone.replace(/\D/g, '');
+      parentContact = digits.length >= 7 ? rawPhone : null;
+      parentEmail = primaryParent.email || null;
+      parentTelegramId = primaryParent.telegramId || null;
+    }
+
+    if (!parentContact && student.emergencyContact) {
+      const ecDigits = (student.emergencyContact || '').replace(/\D/g, '');
+      parentContact = ecDigits.length >= 7 ? student.emergencyContact : null;
+    }
+
+    return {
+      student,
+      primaryParent,
+      parentContact,
+      parentEmail,
+      parentTelegramId,
+      parentUserId: primaryParent?.id || null,
+      subscriptionPlan: student.user?.subscriptionPlan || 'FREE',
+    };
+  }
+
+  /**
+   * BULK N+1 FIX: fetch student+parent data for many students in ONE query and return a
+   * Map keyed by studentId (userId). The bulk notification loop uses this so each student's
+   * notification path no longer re-queries the 6-relation join individually.
+   */
+  private async fetchStudentsWithParentDataBatch(studentIds: string[]): Promise<Map<string, StudentParentData>> {
+    const result = new Map<string, StudentParentData>();
+    if (studentIds.length === 0) return result;
+
+    try {
+      const students = await this.studentRepository.find({
+        where: { userId: In(studentIds) },
+        relations: this.STUDENT_PARENT_RELATIONS,
+        select: this.STUDENT_PARENT_SELECT as any,
+      });
+
+      for (const student of students) {
+        result.set(student.userId, this.mapStudentToParentData(student));
+      }
+    } catch (error) {
+      this.logger.error(`Batch student+parent fetch failed: ${error.message}`);
+    }
+
+    return result;
+  }
+
   private async fetchStudentWithParentData(studentId: string): Promise<{
     student: StudentEntity | null;
     primaryParent: UserEntity | null;
@@ -2430,73 +2457,8 @@ export class AttendanceService {
     try {
       const student = await this.studentRepository.findOne({
         where: { userId: studentId },
-        relations: ['user', 'father', 'father.user', 'mother', 'mother.user', 'guardian', 'guardian.user'],
-        select: {
-          userId: true,
-          fatherId: true,
-          motherId: true,
-          guardianId: true,
-          studentId: true,
-          emergencyContact: true,
-          isActive: true,
-          user: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            nameWithInitials: true,
-            email: true,
-            phoneNumber: true,
-            subscriptionPlan: true,
-            telegramId: true,
-            imageUrl: true,
-            // Required for advertisement targeting
-            userType: true,
-            dateOfBirth: true,
-            gender: true,
-            city: true,
-            district: true,
-            province: true,
-          },
-          father: {
-            userId: true,
-            user: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              nameWithInitials: true,
-              email: true,
-              phoneNumber: true,
-              telegramId: true,
-              firstLoginCompleted: true
-            }
-          },
-          mother: {
-            userId: true,
-            user: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              nameWithInitials: true,
-              email: true,
-              phoneNumber: true,
-              telegramId: true,
-              firstLoginCompleted: true
-            }
-          },
-          guardian: {
-            userId: true,
-            user: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              nameWithInitials: true,
-              email: true,
-              phoneNumber: true,
-              telegramId: true,
-              firstLoginCompleted: true
-            }
-          }
-        }
+        relations: this.STUDENT_PARENT_RELATIONS,
+        select: this.STUDENT_PARENT_SELECT as any,
       });
 
       if (!student) {
@@ -2511,56 +2473,9 @@ export class AttendanceService {
         };
       }
 
-      let primaryParent: UserEntity | null = null;
-      let parentContact: string | null = null;
-      let parentEmail: string | null = null;
-      let parentTelegramId: string | null = null;
-
-      // Priority: Father â†’ Mother â†’ Guardian
-      if (student.father?.user) {
-        primaryParent = student.father.user;
-      } else if (student.mother?.user) {
-        primaryParent = student.mother.user;
-      } else if (student.guardian?.user) {
-        primaryParent = student.guardian.user;
-      }
-
-      if (primaryParent) {
-        // Only keep phone if it has enough digits to be a real number (>= 7 digits after stripping non-numeric)
-        const rawPhone = primaryParent.phoneNumber || '';
-        const digits = rawPhone.replace(/\D/g, '');
-        parentContact = digits.length >= 7 ? rawPhone : null;
-        parentEmail = primaryParent.email || null;
-        parentTelegramId = primaryParent.telegramId || null;
-      }
-
-      // Fallback: Use student's emergency contact if no parent contact found
-      if (!parentContact && student.emergencyContact) {
-        const ecDigits = (student.emergencyContact || '').replace(/\D/g, '');
-        parentContact = ecDigits.length >= 7 ? student.emergencyContact : null;
-      }
-
-      const subscriptionPlan = student.user?.subscriptionPlan || 'FREE';
-
-      this.logger.log(
-        `[FetchStudent] student=${studentId} plan=${subscriptionPlan} ` +
-        `father=${!!student.father} mother=${!!student.mother} guardian=${!!student.guardian} ` +
-        `parentContact=${parentContact || 'null'} parentEmail=${!!parentEmail} parentTelegram=${!!parentTelegramId}`,
-      );
-
-      return {
-        student,
-        primaryParent,
-        parentContact,
-        parentEmail,
-        parentTelegramId,
-        parentUserId: primaryParent?.id || null,
-        subscriptionPlan
-      };
-
+      return this.mapStudentToParentData(student);
     } catch (error) {
-      this.logger.error(`âŒ Failed to fetch student data: ${error.message}`);
-      this.logger.error(`   Stack: ${error.stack}`);
+      this.logger.error(`Failed to fetch student data: ${error.message}`);
       return {
         student: null,
         primaryParent: null,

@@ -81,6 +81,65 @@ export class AdvertisementMatchingService {
   }
 
   /**
+   * Load the active ad set once for the daily assignment job.
+   * Exposed so DailyAdAssignmentService can score many users against ONE pre-loaded set
+   * instead of re-fetching ads per user.
+   */
+  async getActiveAdvertisementsForAssignment(): Promise<AdvertisementEntity[]> {
+    return this.advertisementCacheService.getActiveAdvertisements();
+  }
+
+  /**
+   * Pick the single best ad for a profile from an already-loaded active set.
+   * No DB/cache access — pure scoring. Used by the daily assignment job.
+   * Returns a denormalized snapshot (or null if nothing scores > 0).
+   */
+  pickBestFromSet(
+    activeAds: AdvertisementEntity[],
+    userProfile: UserProfile,
+  ): {
+    id: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    title?: string;
+    content?: string;
+    sendingUrl?: string;
+    supportivePlatforms: string[];
+    modeOfSending: string[];
+    cascadeToParents: boolean;
+  } | null {
+    if (!activeAds || activeAds.length === 0) return null;
+
+    let best: AdvertisementMatch | null = null;
+    for (const ad of activeAds) {
+      const match = this.calculateMatchScore(ad, userProfile);
+      if (match.matchScore <= 0) continue;
+      if (
+        !best ||
+        match.matchScore > best.matchScore ||
+        (match.matchScore === best.matchScore && ad.priority > best.advertisement.priority)
+      ) {
+        best = match;
+      }
+    }
+
+    if (!best) return null;
+
+    const ad = best.advertisement;
+    return {
+      id: ad.id,
+      mediaUrl: ad.mediaUrl,
+      mediaType: ad.mediaType,
+      title: ad.title,
+      content: ad.description || '',
+      sendingUrl: ad.sendingUrl || undefined,
+      supportivePlatforms: (ad.supportivePlatforms as unknown as string[]) || [],
+      modeOfSending: (ad.modeOfSending as unknown as string[]) || [],
+      cascadeToParents: ad.cascadeToParents || false,
+    };
+  }
+
+  /**
    * Calculate match score between an advertisement and user profile
    * @param advertisement Advertisement to evaluate
    * @param userProfile User profile for matching

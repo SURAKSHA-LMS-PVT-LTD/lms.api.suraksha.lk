@@ -4,6 +4,8 @@ import { AdvertisementController } from './advertisement.controller';
 import { AdvertisementService } from './advertisement.service';
 import { AdvertisementMatchingService } from './advertisement-matching.service';
 import { AdvertisementEntity } from './entities/advertisement.entity';
+import { DailyAdAssignmentEntity } from './entities/daily-ad-assignment.entity';
+import { DailyAdAssignmentService } from './services/daily-ad-assignment.service';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
@@ -20,6 +22,7 @@ import { AttendanceModule } from '../attendance/attendance.module';
   imports: [
     TypeOrmModule.forFeature([
       AdvertisementEntity,
+      DailyAdAssignmentEntity,
       UserEntity,
       StudentEntity,
       ParentEntity,
@@ -31,17 +34,19 @@ import { AttendanceModule } from '../attendance/attendance.module';
   ],
   controllers: [AdvertisementController],
   providers: [
-    AdvertisementService, 
+    AdvertisementService,
     AdvertisementMatchingService,
     AdvertisementDeliveryService,
     AdvertisementCacheService,
+    DailyAdAssignmentService,
     CloudStorageService,
   ],
   exports: [
-    AdvertisementService, 
-    AdvertisementMatchingService, 
+    AdvertisementService,
+    AdvertisementMatchingService,
     AdvertisementDeliveryService,
-    AdvertisementCacheService
+    AdvertisementCacheService,
+    DailyAdAssignmentService,
   ],
 })
 export class AdvertisementModule {}

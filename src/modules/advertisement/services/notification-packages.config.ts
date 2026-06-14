@@ -1,28 +1,33 @@
 export const NOTIFICATION_PACKAGES_CONFIG = {
   packages: {
     // ─── Base Plans ──────────────────────────────────────────────────────────
+    // ─── Ad eligibility rule ─────────────────────────────────────────────────
+    // Only plans that carry an ad package run the advertisement path. FREE and the
+    // base single-channel plans do NOT receive ads, so attendance marking for those
+    // users skips the ad lookup entirely (no daily-assignment read, no send).
+    // Currently only DYNAMAD carries ads. Flip a plan's isAds to true to opt it in.
     FREE: {
       channels: ["whatsapp", "telegram", "email", "sms", "push"],
-      isAds: true,
+      isAds: false,
       priority: 1,
       retryCount: 1,
       retryDelay: 10000
     },
     WHATSAPP: {
       channels: ["whatsapp", "push"],
-      isAds: true,
+      isAds: false,
       retryCount: 2,
       retryDelay: 7000
     },
     TELEGRAM: {
       channels: ["telegram", "push"],
-      isAds: true,
+      isAds: false,
       retryCount: 2,
       retryDelay: 7000
     },
     EMAIL: {
       channels: ["email", "push"],
-      isAds: true,
+      isAds: false,
       retryCount: 2,
       retryDelay: 7000
     },
