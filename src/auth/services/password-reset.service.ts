@@ -10,6 +10,7 @@ import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
 import { detectIdentifierType } from '../../common/utils/identifier.util';
 import { maskPii } from '../../common/utils/pii-masking.util';
+import { normalizeSriLankanPhone } from '../../common/utils/phone-normalizer.util';
 
 export interface InitiatePasswordResetDto {
   identifier: string;
@@ -616,6 +617,149 @@ export class PasswordResetService {
    */
   private generateOTP(): string {
     return crypto.randomInt(100000, 999999).toString();
+  }
+
+  // ============================================================
+  // 💬 WHATSAPP-LINK PASSWORD-RESET OTP (reverse-OTP)
+  //
+  // Same wa.me model as phone verification. The token is bound to the user's
+  // phone number; the webhook confirms it (code + sender phone must match) and
+  // sets isOtpVerified. The site then completes the reset on the "Next" click
+  // by passing the same OTP to /reset/complete (unchanged).
+  // ============================================================
+
+  private buildWhatsAppOtpLink(otpCode: string): string {
+    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
+    const text = encodeURIComponent(`OTP ${otpCode}`);
+    return `https://wa.me/${businessNumber}?text=${text}`;
+  }
+
+  /**
+   * Initiate a WhatsApp-link password reset. The user must have a phone number
+   * on file (the WhatsApp sender is bound to it). Returns a wa.me link.
+   */
+  async initiatePasswordResetWhatsApp(
+    dto: InitiatePasswordResetDto,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<{ success: boolean; message: string; waLink?: string; expiresInMinutes: number }> {
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
+    const { type, normalized } = this.detectIdentifierType(dto.identifier);
+    const whereClause: any = { isActive: true };
+    switch (type) {
+      case 'email': whereClause.email = normalized; break;
+      case 'phone': whereClause.phoneNumber = normalized; break;
+      case 'system_id': whereClause.id = normalized; break;
+      case 'birth_certificate': whereClause.birthCertificateNo = normalized; break;
+    }
+
+    const user = await this.userRepository.findOne({
+      where: whereClause,
+      select: ['id', 'email', 'phoneNumber', 'isActive'],
+    });
+
+    // Don't reveal existence; but we can only do WhatsApp if a phone exists.
+    if (!user || !user.phoneNumber) {
+      return {
+        success: true,
+        message: 'If an account with this identifier exists and has a phone number, you can verify via WhatsApp.',
+        expiresInMinutes: 15,
+      };
+    }
+
+    const phone = normalizeSriLankanPhone(user.phoneNumber);
+    if (!phone) {
+      return {
+        success: true,
+        message: 'If an account with this identifier exists and has a phone number, you can verify via WhatsApp.',
+        expiresInMinutes: 15,
+      };
+    }
+
+    // Rate limit (reuse email key, same as SMS/email path)
+    const fifteenMinutesAgo = nowTimestamp() - 15 * 60 * 1000;
+    const recentTokens = await this.passwordResetTokenRepository.count({
+      where: { email: user.email || phone, tokenType: 'PASSWORD_RESET', createdAt: new Date(fifteenMinutesAgo) },
+    });
+    if (recentTokens >= 3) {
+      throw new BadRequestException('Too many password reset requests. Please wait 15 minutes before trying again.');
+    }
+
+    const otp = this.generateOTP();
+    const expiresAt = now();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    // Invalidate existing unused reset tokens (keyed by email if present, else phone)
+    await this.passwordResetTokenRepository.update(
+      { email: user.email || phone, tokenType: 'PASSWORD_RESET', isUsed: false },
+      { isUsed: true, updatedAt: now() },
+    );
+
+    const resetToken = this.passwordResetTokenRepository.create({
+      email: user.email || phone, // keep a value in the (non-null) email column
+      otp,
+      tokenType: 'PASSWORD_RESET',
+      deliveryMethod: 'WHATSAPP',
+      phoneNumber: phone,
+      expiresAt,
+      createdAt: now(),
+      updatedAt: now(),
+      ipAddress,
+      userAgent,
+    });
+    await this.passwordResetTokenRepository.save(resetToken);
+
+    return {
+      success: true,
+      message: 'Send the WhatsApp message to verify, then return and continue.',
+      waLink: this.buildWhatsAppOtpLink(otp),
+      expiresInMinutes: 15,
+    };
+  }
+
+  /**
+   * One-shot status check for the WhatsApp password-reset OTP ("Next" click).
+   * Returns { verified, expired } and the OTP only AFTER verification so the
+   * client can pass it straight to /reset/complete. The code is never exposed
+   * before the webhook confirms the WhatsApp sender.
+   */
+  async getPasswordResetWhatsAppStatus(
+    dto: InitiatePasswordResetDto,
+  ): Promise<{ verified: boolean; expired: boolean; otp?: string }> {
+    const { type, normalized } = this.detectIdentifierType(dto.identifier);
+    const whereClause: any = { isActive: true };
+    switch (type) {
+      case 'email': whereClause.email = normalized; break;
+      case 'phone': whereClause.phoneNumber = normalized; break;
+      case 'system_id': whereClause.id = normalized; break;
+      case 'birth_certificate': whereClause.birthCertificateNo = normalized; break;
+    }
+
+    const user = await this.userRepository.findOne({
+      where: whereClause,
+      select: ['id', 'email', 'phoneNumber'],
+    });
+    if (!user) return { verified: false, expired: false };
+
+    const phone = normalizeSriLankanPhone(user.phoneNumber);
+    const token = await this.passwordResetTokenRepository.findOne({
+      where: {
+        email: user.email || phone || undefined,
+        tokenType: 'PASSWORD_RESET',
+        deliveryMethod: 'WHATSAPP',
+        isUsed: false,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!token) return { verified: false, expired: false };
+
+    const expired = !token.isOtpVerified && token.expiresAt.getTime() <= nowTimestamp();
+    // Only return the OTP once the webhook has verified it, so the client can
+    // complete the reset without the user re-typing anything.
+    return { verified: token.isOtpVerified, expired, otp: token.isOtpVerified ? token.otp : undefined };
   }
 
   /**

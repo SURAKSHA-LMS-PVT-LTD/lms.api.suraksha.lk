@@ -3699,6 +3699,34 @@ export class UsersService {
     return this.userOtpService.verifyPhoneOtp(phoneNumber, otpCode);
   }
 
+  /**
+   * 💬 Request WhatsApp-link phone OTP (reverse-OTP, registration)
+   */
+  async requestPhoneOtpWhatsApp(phoneNumber: string, ipAddress?: string) {
+    return this.userOtpService.requestPhoneOtpWhatsApp(phoneNumber, ipAddress);
+  }
+
+  /**
+   * 🔎 Check WhatsApp phone OTP status (the "Next" click)
+   */
+  async getPhoneOtpStatus(phoneNumber: string, purpose?: any) {
+    return this.userOtpService.getPhoneOtpStatus(phoneNumber, purpose);
+  }
+
+  /**
+   * 💬 Request WhatsApp-link phone-change OTP (authenticated user)
+   */
+  async requestPhoneChangeOtpWhatsApp(userId: string, newPhoneNumber: string, ipAddress?: string) {
+    return this.userOtpService.requestPhoneChangeOtpWhatsApp(userId, newPhoneNumber, ipAddress);
+  }
+
+  /**
+   * ✅ Commit phone change once WhatsApp-verified (authenticated user)
+   */
+  async commitPhoneChangeIfVerified(userId: string, newPhoneNumber: string) {
+    return this.userOtpService.commitPhoneChangeIfVerified(userId, newPhoneNumber);
+  }
+
   // ============================================================
   // 📱 PHONE NUMBER CHANGE (AUTHENTICATED USERS ONLY)
   // ============================================================

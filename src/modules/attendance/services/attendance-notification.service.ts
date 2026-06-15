@@ -380,19 +380,14 @@ export class AttendanceNotificationService {
       return { success: false };
     }
 
-    // Gate: only send inside an open 24h session window. Closed window → skip silently
-    // (never send a paid template). Other channels still deliver this notification.
-    if (!this.isWhatsAppSessionOpen(data.parentContact)) {
-      this.logger.debug(
-        `[WhatsApp] Session window closed for ${this.maskPhone(data.parentContact)} — skipping (other channels still fire)`,
-      );
-      return { success: false };
-    }
-
+    // We only ever send FREE session messages (sendWhatsAppSessionMessage), never paid
+    // templates. So we simply attempt the send: if the parent's 24h window is closed,
+    // WhatsApp rejects it and we record a free failure — no charge, no state to track.
+    // Keeping the window open is the parent's responsibility (they reply / tap to re-open).
     const message = this.buildAttendanceMessage(data, false, 'whatsapp');
 
     try {
-      // Main session message: attendance text + ad media (free, no cost)
+      // Main session message: attendance text + ad media (free within the 24h window).
       const sessionResult = await this.sendWhatsAppSessionMessage(
         data.parentContact,
         message,
@@ -400,6 +395,8 @@ export class AttendanceNotificationService {
       );
 
       if (!sessionResult.success) {
+        // Closed window or provider error — fails for free. Other channels still fire.
+        this.logger.debug(`[WhatsApp] Send not delivered for ${this.maskPhone(data.parentContact)} (likely closed 24h window)`);
         return { success: false };
       }
 
@@ -409,33 +406,12 @@ export class AttendanceNotificationService {
         this.logger.debug(`[WhatsApp] Keep-alive button send failed: ${err.message}`),
       );
 
-      // Record that we just interacted with this number so the window stays open.
-      this.markWhatsAppInteraction(data.parentContact);
-
       return sessionResult;
     } catch (error: any) {
       this.logger.error(`❌ WhatsApp notification failed: ${error.message}`);
       return { success: false };
     }
   }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // WhatsApp 24h session window tracking (webhook-ready)
-  //
-  // WhatsApp's customer-service window opens for 24h after the USER's last inbound
-  // message. The backend can only observe inbound messages via a webhook (not built
-  // yet). Until then we approximate the window using the last time WE interacted with
-  // the number, which is a safe upper bound: if we never interacted, treat as open so
-  // the first message can go out and invite a reply.
-  //
-  // When the inbound webhook is added later, call markWhatsAppInteraction(phone) from it
-  // with the real inbound timestamp — no other change is needed; the gate already reads
-  // through isWhatsAppSessionOpen().
-  // ───────────────────────────────────────────────────────────────────────────
-
-  /** In-memory last-interaction map: normalized phone → epoch ms. */
-  private readonly whatsappSessionWindow = new Map<string, number>();
-  private static readonly WHATSAPP_SESSION_MS = 24 * 60 * 60 * 1000;
 
   private normalizePhone(phone: string): string {
     return (phone || '').replace(/[^0-9]/g, '');
@@ -447,22 +423,20 @@ export class AttendanceNotificationService {
   }
 
   /**
-   * True when we may send a free session message to this number. Open if we have no
-   * record yet (first contact) or the last interaction was within the 24h window.
+   * We no longer track the 24h WhatsApp session window in app memory (it was unreliable
+   * across restarts/instances and only ever avoided a free, self-failing API call).
+   * We always attempt the send; a closed window fails for free at the provider.
+   *
+   * These two methods are kept as no-op stubs so callers (e.g. the admin messaging page,
+   * which shows a "session open" badge / "only-open" filter) keep compiling. They now
+   * report every number as "open" (i.e. "we'll attempt it") and record nothing.
    */
-  isWhatsAppSessionOpen(phone: string): boolean {
-    const key = this.normalizePhone(phone);
-    const last = this.whatsappSessionWindow.get(key);
-    if (last === undefined) return true; // first contact — allowed, invites a reply
-    return Date.now() - last < AttendanceNotificationService.WHATSAPP_SESSION_MS;
+  isWhatsAppSessionOpen(_phone: string): boolean {
+    return true; // not tracked — always attempt; provider rejects closed windows for free
   }
 
-  /**
-   * Record an interaction (outbound send, or — once the webhook exists — an inbound
-   * reply/button tap) that (re)opens the 24h session window for this number.
-   */
-  markWhatsAppInteraction(phone: string): void {
-    this.whatsappSessionWindow.set(this.normalizePhone(phone), Date.now());
+  markWhatsAppInteraction(_phone: string): void {
+    // no-op — session window is not tracked anymore
   }
 
   /**

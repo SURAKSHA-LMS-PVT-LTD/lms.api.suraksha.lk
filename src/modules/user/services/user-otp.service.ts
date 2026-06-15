@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, Logger, Inject, forwardRef, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
-import { UserOtpEntity, OtpType, OtpPurpose } from '../entities/user-otp.entity';
+import { UserOtpEntity, OtpType, OtpPurpose, OtpDeliveryMethod } from '../entities/user-otp.entity';
 import { UserEntity } from '../entities/user.entity';
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
@@ -337,6 +337,225 @@ export class UserOtpService {
       success: true,
       message: 'Phone number verified successfully',
     };
+  }
+
+  // ============================================================
+  // 💬 WHATSAPP-LINK PHONE OTP (reverse-OTP)
+  //
+  // The server generates the code and returns a wa.me deep link. The user
+  // sends the code from their OWN WhatsApp to the business number; the
+  // whatsapp-webhook service confirms it (code + sender phone must match) and
+  // flips is_verified. The site then polls/checks status on the "Next" click.
+  // No SMS is sent for this path.
+  // ============================================================
+
+  /** Build the wa.me deep link the user taps/scans to send the OTP to us. */
+  private buildWhatsAppOtpLink(otpCode: string): string {
+    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
+    // Message text the webhook will parse. Keep "OTP" prefix so it's unambiguous.
+    const text = encodeURIComponent(`OTP ${otpCode}`);
+    return `https://wa.me/${businessNumber}?text=${text}`;
+  }
+
+  /**
+   * Request a WhatsApp-link OTP for phone verification (registration).
+   * Returns a wa.me link; the code is embedded in the link text only.
+   */
+  async requestPhoneOtpWhatsApp(
+    phoneNumber: string,
+    ipAddress?: string,
+  ): Promise<{ success: boolean; message: string; waLink: string; expiresAt: Date; remainingAttempts: number }> {
+    const normalizedPhone = normalizeSriLankanPhone(phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format');
+    }
+
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
+    // Phone must not already be registered
+    const existingUser = await this.userRepository.findOne({
+      where: { phoneNumber: normalizedPhone },
+    });
+    if (existingUser) {
+      throw new ConflictException({
+        message: 'This phone number is already registered. Please login or use a different phone number.',
+        userId: existingUser.id,
+        statusCode: 409,
+      });
+    }
+
+    // Daily limit (shared counter with any other OTP for this phone)
+    const { allowed, remaining } = await this.checkDailyLimit(normalizedPhone, OtpType.PHONE);
+    if (!allowed) {
+      throw new BadRequestException(
+        `Daily OTP limit reached. Maximum ${this.MAX_REQUESTS_PER_DAY} requests per day. Retry after ${this.getTomorrowDate()}.`,
+      );
+    }
+
+    // Invalidate previous pending OTPs for this phone
+    await this.otpRepository.update(
+      { phoneNumber: normalizedPhone, isVerified: false, expiresAt: MoreThan(now()) },
+      { expiresAt: now() },
+    );
+
+    const otpCode = this.generateOtpCode();
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    const otp = this.otpRepository.create({
+      phoneNumber: normalizedPhone,
+      otpCode,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.VERIFICATION,
+      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      expiresAt,
+      createdAt: now(),
+      createdDate: this.getTodayDate(),
+      ipAddress,
+    });
+    await this.otpRepository.save(otp);
+
+    return {
+      success: true,
+      message: `Tap the WhatsApp link (or scan the QR) and send the message to verify. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s).`,
+      waLink: this.buildWhatsAppOtpLink(otpCode),
+      expiresAt,
+      remainingAttempts: remaining - 1,
+    };
+  }
+
+  /**
+   * One-shot status check for the "Next" click.
+   * Returns whether the latest WhatsApp OTP for this phone+purpose is verified.
+   * Never returns the code itself.
+   */
+  async getPhoneOtpStatus(
+    phoneNumber: string,
+    purpose: OtpPurpose = OtpPurpose.VERIFICATION,
+  ): Promise<{ verified: boolean; expired: boolean }> {
+    const normalizedPhone = normalizeSriLankanPhone(phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format');
+    }
+
+    const otp = await this.otpRepository.findOne({
+      where: {
+        phoneNumber: normalizedPhone,
+        otpPurpose: purpose,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) return { verified: false, expired: false };
+
+    const expired = !otp.isVerified && otp.expiresAt.getTime() <= nowTimestamp();
+    return { verified: otp.isVerified, expired };
+  }
+
+  /**
+   * Request a WhatsApp-link OTP to change phone number (authenticated user).
+   */
+  async requestPhoneChangeOtpWhatsApp(
+    userId: string,
+    newPhoneNumber: string,
+    ipAddress?: string,
+  ): Promise<{ success: boolean; message: string; waLink: string; expiresAt: Date; remainingAttempts: number }> {
+    const normalizedPhone = normalizeSriLankanPhone(newPhoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format.');
+    }
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
+    const requestingUser = await this.userRepository.findOne({ where: { id: userId } });
+    if (!requestingUser) throw new BadRequestException('User not found');
+
+    if (requestingUser.phoneNumber === normalizedPhone) {
+      throw new BadRequestException('The new phone number is the same as your current phone number.');
+    }
+
+    const conflict = await this.userRepository.findOne({ where: { phoneNumber: normalizedPhone } });
+    if (conflict) {
+      throw new BadRequestException('This phone number is already registered to another account.');
+    }
+
+    const { allowed, remaining } = await this.checkDailyLimit(normalizedPhone, OtpType.PHONE);
+    if (!allowed) {
+      throw new BadRequestException(
+        `Daily OTP limit reached. Maximum ${this.MAX_REQUESTS_PER_DAY} requests per day. Retry after ${this.getTomorrowDate()}.`,
+      );
+    }
+
+    await this.otpRepository.update(
+      { userId, phoneNumber: normalizedPhone, isVerified: false, expiresAt: MoreThan(now()) },
+      { expiresAt: now() },
+    );
+
+    const otpCode = this.generateOtpCode();
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    const otp = this.otpRepository.create({
+      userId,
+      phoneNumber: normalizedPhone,
+      otpCode,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.PHONE_CHANGE,
+      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      expiresAt,
+      createdAt: now(),
+      createdDate: this.getTodayDate(),
+      ipAddress,
+    });
+    await this.otpRepository.save(otp);
+
+    return {
+      success: true,
+      message: `Tap the WhatsApp link (or scan the QR) and send the message to verify your new number.`,
+      waLink: this.buildWhatsAppOtpLink(otpCode),
+      expiresAt,
+      remainingAttempts: remaining - 1,
+    };
+  }
+
+  /**
+   * After a WhatsApp OTP for PHONE_CHANGE is confirmed by the webhook, commit
+   * the phone-number update. Called on the user's "Next" click.
+   */
+  async commitPhoneChangeIfVerified(
+    userId: string,
+    newPhoneNumber: string,
+  ): Promise<{ success: boolean; message: string; newPhoneNumber: string }> {
+    const normalizedPhone = normalizeSriLankanPhone(newPhoneNumber);
+    if (!normalizedPhone) throw new BadRequestException('Invalid phone number format.');
+
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId,
+        phoneNumber: normalizedPhone,
+        otpPurpose: OtpPurpose.PHONE_CHANGE,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+        isVerified: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) {
+      throw new BadRequestException('Phone number not yet verified via WhatsApp. Please send the WhatsApp message first.');
+    }
+
+    // Race-condition guard — number must still be free
+    const conflict = await this.userRepository.findOne({ where: { phoneNumber: normalizedPhone } });
+    if (conflict && conflict.id !== userId) {
+      throw new BadRequestException('This phone number has just been registered by another account.');
+    }
+
+    await this.userRepository.update({ id: userId }, { phoneNumber: normalizedPhone });
+    this.logger.log(`✅ Phone changed (WhatsApp-verified) for userId=${userId} → ${normalizedPhone}`);
+
+    return { success: true, message: 'Phone number updated successfully.', newPhoneNumber: normalizedPhone };
   }
 
   // ============================================================

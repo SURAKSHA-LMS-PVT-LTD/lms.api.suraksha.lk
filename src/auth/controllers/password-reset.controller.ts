@@ -213,6 +213,49 @@ export class PasswordResetController {
   }
 
   /**
+   * 💬 Initiate WhatsApp-link password reset (reverse-OTP).
+   * Returns a wa.me link the user sends from their own WhatsApp. No email/SMS.
+   */
+  @Post('reset/initiate-whatsapp')
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
+  async initiatePasswordResetWhatsApp(
+    @Body(ValidationPipe) initiateDto: InitiatePasswordResetDto,
+    @Req() req: ExpressRequest,
+  ) {
+    try {
+      const result = await this.passwordResetService.initiatePasswordResetWhatsApp(
+        initiateDto,
+        req.ip || req.connection.remoteAddress || 'unknown',
+        req.get('User-Agent') || 'unknown',
+      );
+      return { success: true, message: result.message, data: result };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * 🔎 Status check for WhatsApp password reset ("Next" click).
+   * Returns { verified, expired, otp? } — otp present only once verified.
+   */
+  @Post('reset/whatsapp-status')
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
+  async passwordResetWhatsAppStatus(
+    @Body(ValidationPipe) dto: InitiatePasswordResetDto,
+  ) {
+    try {
+      const result = await this.passwordResetService.getPasswordResetWhatsAppStatus(dto);
+      return { success: true, data: result };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
    * Verify the OTP sent for password reset
    */
   @Post('reset/verify-otp')

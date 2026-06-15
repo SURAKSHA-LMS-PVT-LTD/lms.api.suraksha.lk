@@ -5,6 +5,12 @@ export enum OtpType {
   PHONE = 'PHONE',
 }
 
+export enum OtpDeliveryMethod {
+  SMS = 'SMS',
+  WHATSAPP = 'WHATSAPP',
+  EMAIL = 'EMAIL',
+}
+
 export enum OtpPurpose {
   VERIFICATION = 'VERIFICATION',
   PASSWORD_RESET = 'PASSWORD_RESET',
@@ -43,6 +49,9 @@ export class UserOtpEntity {
   @Column({ name: 'otp_purpose', type: 'enum', enum: OtpPurpose, default: OtpPurpose.VERIFICATION })
   otpPurpose: OtpPurpose;
 
+  @Column({ name: 'delivery_method', type: 'enum', enum: OtpDeliveryMethod, default: OtpDeliveryMethod.SMS })
+  deliveryMethod: OtpDeliveryMethod;
+
   @Column({ name: 'expires_at', type: 'timestamp' })
   expiresAt: Date;
 
@@ -57,6 +66,11 @@ export class UserOtpEntity {
 
   @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress?: string;
+
+  // Phone number (normalized) that confirmed this OTP via WhatsApp — audit +
+  // proof of the sender-phone binding check.
+  @Column({ name: 'wa_sender_phone', type: 'varchar', length: 20, nullable: true })
+  waSenderPhone?: string;
 
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

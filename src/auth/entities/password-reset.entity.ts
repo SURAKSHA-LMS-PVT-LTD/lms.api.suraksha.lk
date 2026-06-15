@@ -25,6 +25,15 @@ export class PasswordResetTokenEntity {
   @Column({ type: 'varchar', length: 50, name: 'tokenType' })
   tokenType: 'FIRST_LOGIN' | 'PASSWORD_RESET' | 'EMAIL_VERIFICATION' | 'CHANGE_PASSWORD';
 
+  // How the OTP was delivered. EMAIL is the historical default; WHATSAPP uses
+  // the reverse-OTP wa.me flow confirmed by the webhook.
+  @Column({ type: 'enum', enum: ['SMS', 'WHATSAPP', 'EMAIL'], default: 'EMAIL', name: 'delivery_method' })
+  deliveryMethod: 'SMS' | 'WHATSAPP' | 'EMAIL';
+
+  // Phone number (normalized) the WhatsApp sender must match for WHATSAPP delivery.
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'phone_number' })
+  phoneNumber?: string;
+
   @Column({ type: 'boolean', default: false, name: 'isUsed' })
   isUsed: boolean;
 
@@ -39,6 +48,10 @@ export class PasswordResetTokenEntity {
 
   @Column({ type: 'varchar', length: 45, nullable: true, name: 'ipAddress' })
   ipAddress?: string;
+
+  // Phone number (normalized) that confirmed this token via WhatsApp.
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'wa_sender_phone' })
+  waSenderPhone?: string;
 
   @Column({ type: 'text', nullable: true, name: 'userAgent' })
   userAgent?: string;

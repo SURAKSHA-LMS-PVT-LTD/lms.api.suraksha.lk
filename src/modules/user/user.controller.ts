@@ -3639,10 +3639,59 @@ export class UsersController {
     @Body() body: PhoneOtpVerifyDto,
   ) {
     const requestId = `req_${nowTimestamp()}_${crypto.randomBytes(6).toString('base64url')}`;
-    
+
     const result = await this.usersService.verifyPhoneOtp(body.phoneNumber, body.otpCode);
-    
+
     return result;
+  }
+
+  /**
+   * 💬 Request WhatsApp-link Phone OTP (reverse-OTP, registration)
+   *
+   * Generates a 6-digit code and returns a wa.me deep link. The user sends the
+   * code from their OWN WhatsApp to the business number; the webhook confirms
+   * it (code + sender phone must match) and flips the verified flag. No SMS.
+   * The frontend renders the link as a QR (desktop) or a tap link (mobile) and
+   * polls /create-phone-number-otp/status on the "Next" click.
+   */
+  @Public()
+  @Post('create-phone-number-otp/request-whatsapp')
+  @UseGuards(ApiKeyOrJwtGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request Phone OTP via WhatsApp link (reverse-OTP)',
+    description: 'Returns a wa.me link the user sends from their own WhatsApp to verify. No SMS is sent.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['phoneNumber'],
+      properties: { phoneNumber: { type: 'string', example: '0771234567' } },
+    },
+  })
+  async requestPhoneOtpWhatsApp(
+    @Body() body: PhoneNumberDto,
+    @Request() req: any,
+  ) {
+    const ipAddress = req.ip || req.connection?.remoteAddress;
+    return this.usersService.requestPhoneOtpWhatsApp(body.phoneNumber, ipAddress);
+  }
+
+  /**
+   * 🔎 WhatsApp Phone OTP status check (the "Next" click)
+   *
+   * Returns only { verified, expired } — never the code. Used by the frontend
+   * after the user reports they have sent the WhatsApp message.
+   */
+  @Public()
+  @Get('create-phone-number-otp/status')
+  @UseGuards(ApiKeyOrJwtGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check WhatsApp phone OTP verification status' })
+  async getPhoneOtpStatus(
+    @Query('phoneNumber') phoneNumber: string,
+  ) {
+    return this.usersService.getPhoneOtpStatus(phoneNumber);
   }
 
   /**
@@ -3778,6 +3827,45 @@ export class UsersController {
   ) {
     const ipAddress = req.ip || (req as any).connection?.remoteAddress;
     return this.usersService.requestPhoneChangeOtp(req.user.s, body.phoneNumber, ipAddress);
+  }
+
+  /**
+   * 💬 Request WhatsApp-link OTP to change phone number (authenticated user).
+   * Returns a wa.me link; no SMS is sent.
+   */
+  @Post('phone/change/request-otp-whatsapp')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Request phone-change OTP via WhatsApp link (reverse-OTP)' })
+  @ApiBody({
+    schema: { type: 'object', required: ['phoneNumber'], properties: { phoneNumber: { type: 'string', example: '0771234567' } } },
+  })
+  async requestPhoneChangeOtpWhatsApp(
+    @Body() body: PhoneNumberDto,
+    @Request() req: JwtRequest,
+  ) {
+    const ipAddress = req.ip || (req as any).connection?.remoteAddress;
+    return this.usersService.requestPhoneChangeOtpWhatsApp(req.user.s, body.phoneNumber, ipAddress);
+  }
+
+  /**
+   * 🔎 Status check + commit for WhatsApp phone-change (the "Next" click).
+   * If the webhook has confirmed the OTP, commits the phone-number update.
+   */
+  @Post('phone/change/commit-whatsapp')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Commit phone change once WhatsApp-verified' })
+  @ApiBody({
+    schema: { type: 'object', required: ['phoneNumber'], properties: { phoneNumber: { type: 'string', example: '0771234567' } } },
+  })
+  async commitPhoneChangeWhatsApp(
+    @Body() body: PhoneNumberDto,
+    @Request() req: JwtRequest,
+  ) {
+    return this.usersService.commitPhoneChangeIfVerified(req.user.s, body.phoneNumber);
   }
 
   /**
