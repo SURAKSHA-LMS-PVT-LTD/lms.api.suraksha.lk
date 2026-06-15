@@ -35,6 +35,7 @@ import { UsersModule } from '../../user/user.module';
   providers: [
     InstitueUserService,
     JwtAuthGuard,
+    // UsersService is provided by UsersModule (imported above) — no need to re-declare
   ],
   exports: [InstitueUserService]
 })

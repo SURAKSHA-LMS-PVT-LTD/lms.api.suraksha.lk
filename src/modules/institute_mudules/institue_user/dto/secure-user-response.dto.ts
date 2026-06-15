@@ -133,6 +133,13 @@ export class SecureUserResponseDto {
   @ApiPropertyOptional({ example: 3, description: 'Max simultaneous active login sessions for this user' })
   maxDevicesPerUser?: number | null;
 
+  @ApiPropertyOptional({
+    enum: UserType,
+    example: UserType.USER_WITHOUT_PARENT,
+    description: 'Global (system-level) user type — determines upgrade eligibility',
+  })
+  globalUserType?: UserType;
+
   constructor(user: UserEntity | UserLikeData, userIdByInstitute?: string, instituteUserData?: InstituteUserEntity | InstituteUserLikeData, maskSensitiveData: boolean = false) {
     // ✅ Handle both camelCase and snake_case field names from raw query results
     this.id = user.id || (user as any).user_id;
@@ -184,6 +191,12 @@ export class SecureUserResponseDto {
         this.extraData = typeof rawExtra === 'string' ? JSON.parse(rawExtra) : rawExtra;
       }
       this.maxDevicesPerUser = (instituteUserData as any).maxDevicesPerUser !== undefined ? (instituteUserData as any).maxDevicesPerUser : (instituteUserData as any).max_devices_per_user;
+    }
+
+    // Global user type — present on UserEntity (camelCase) or raw query (snake_case)
+    const rawGlobalType = (user as UserEntity).userType || (user as any).user_type;
+    if (rawGlobalType) {
+      this.globalUserType = rawGlobalType as UserType;
     }
   }
 }

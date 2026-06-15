@@ -5,6 +5,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody
 import { Request } from 'express';
 import { JwtRequest } from '../../../common/interfaces/jwt-request.interface';
 import { InstitueUserService } from './institue_user.service';
+import { UsersService } from '../../user/user.service';
+import { UpgradeUserTypeDto } from '../../user/dto/upgrade-user-type.dto';
 import { CreateInstitueUserDto } from './dto/create-institue_user.dto';
 import { UpdateInstitueUserDto } from './dto/update-institue_user.dto';
 import { AssignUserToInstituteDto } from './dto/assign-user-institute.dto';
@@ -49,7 +51,10 @@ import { SecurityUtils } from './utils/security.utils';
 @UseGuards(JwtAuthGuard)
 @Controller('institute-users')
 export class InstitueUserController {
-  constructor(private readonly institueUserService: InstitueUserService) {}
+  constructor(
+    private readonly institueUserService: InstitueUserService,
+    private readonly usersService: UsersService,
+  ) {}
 
   // =================== DEPRECATED UNSAFE ENDPOINTS ===================
   // These endpoints are disabled for security - they exposed sensitive data
@@ -806,6 +811,52 @@ export class InstitueUserController {
   }> {
     const changedBy = req.user.s;
     return this.institueUserService.changeInstituteUserRole(instituteId, userId, body.newRole, changedBy);
+  }
+
+  @Patch('institute/:instituteId/users/:userId/upgrade-type')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Admin: Upgrade a user\'s global type to USER',
+    description: `Allows an institute admin or super admin to upgrade a user from USER_WITHOUT_PARENT or USER_WITHOUT_STUDENT to full USER.
+All supplementary data fields are optional — the admin can submit empty/null data.
+This creates the missing parent or student record with whatever (possibly empty) data is supplied.`,
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        studentData: {
+          type: 'object',
+          properties: {
+            emergencyContact: { type: 'string', nullable: true },
+            medicalConditions: { type: 'string', nullable: true },
+            allergies: { type: 'string', nullable: true },
+            bloodGroup: { type: 'string', nullable: true },
+          },
+        },
+        parentData: {
+          type: 'object',
+          properties: {
+            occupation: { type: 'string', nullable: true },
+            workplace: { type: 'string', nullable: true },
+            workPhone: { type: 'string', nullable: true },
+            educationLevel: { type: 'string', nullable: true },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'User type upgraded to USER successfully' })
+  @ApiResponse({ status: 400, description: 'User type cannot be upgraded (already USER or incompatible type)' })
+  @ApiResponse({ status: 403, description: 'Forbidden — institute admin access required' })
+  @HttpCode(HttpStatus.OK)
+  async adminUpgradeUserType(
+    @Param('instituteId', ParseIdPipe) _instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
+    @Body() dto: UpgradeUserTypeDto,
+  ) {
+    return this.usersService.upgradeUserType(userId, dto);
   }
 
   @Delete(':instituteId/:userId')
