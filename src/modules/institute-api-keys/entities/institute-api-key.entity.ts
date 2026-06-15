@@ -6,6 +6,9 @@ import { InstituteEntity } from '../../institute/entities/institute.entity';
 
 export enum ApiKeyScope {
   ATTENDANCE_MARK = 'ATTENDANCE_MARK',
+  STUDENT_CREATE = 'STUDENT_CREATE',
+  CLASS_READ = 'CLASS_READ',
+  SESSION_CREATE = 'SESSION_CREATE',
 }
 
 @Entity('institute_api_keys')

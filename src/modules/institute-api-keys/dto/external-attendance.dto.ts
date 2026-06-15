@@ -33,6 +33,16 @@ export class ExternalAttendanceRecordDto {
   @IsString()
   @IsOptional()
   remarks?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Original check-in time (ISO 8601). Used when migrating historical attendance from another system ' +
+      'so the original timestamp is preserved. If omitted, the server records the current time.',
+    example: '2026-06-15T08:32:00.000Z',
+  })
+  @IsString()
+  @IsOptional()
+  checkInTime?: string;
 }
 
 export class BulkExternalAttendanceDto {
