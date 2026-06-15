@@ -4,6 +4,7 @@ import { AttendanceController } from './attendance.controller';
 import { AttendanceAliasController } from './attendance-alias.controller';
 import { CalendarAttendanceController } from './calendar-attendance.controller';
 import { ClassAttendanceSessionController } from './class-attendance-session.controller';
+import { AdminWhatsAppController } from './admin-whatsapp.controller';
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
@@ -63,7 +64,7 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
       InstituteClassAttendanceSessionGroupEntity,
     ])
   ],
-  controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController, ClassAttendanceSessionController],
+  controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController, ClassAttendanceSessionController, AdminWhatsAppController],
   providers: [
     AttendanceService,
     DynamoDBAttendanceService,

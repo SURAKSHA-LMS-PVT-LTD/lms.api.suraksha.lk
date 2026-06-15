@@ -765,8 +765,7 @@ export class AdvertisementController {
   @Post('send-bulk-manual')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    global: [UserType.SUPERADMIN],
-    instituteAdmin: true
+    global: [UserType.SUPERADMIN]
   })
   @ApiOperation({ 
     summary: 'Send multiple advertisements manually in bulk (Admin only)',
@@ -828,8 +827,7 @@ export class AdvertisementController {
   @Get('analytics/manual-sends')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    global: [UserType.SUPERADMIN],
-    instituteAdmin: true
+    global: [UserType.SUPERADMIN]
   })
   @ApiOperation({ 
     summary: 'Get manual advertisement sending analytics (Admin only)',

@@ -194,7 +194,7 @@ export class PaymentService {
       throw new NotFoundException('Payment not found');
     }
 
-    return this.mapToResponseDto(payment);
+    return await this.mapToResponseDto(payment);
   }
 
   async getUserPayments(
@@ -211,7 +211,7 @@ export class PaymentService {
     });
 
     return {
-      payments: payments.map(payment => this.mapToResponseDto(payment)),
+      payments: await Promise.all(payments.map(payment => this.mapToResponseDto(payment))),
       total,
       page,
       limit,
@@ -243,7 +243,7 @@ export class PaymentService {
     });
 
     return {
-      payments: payments.map(payment => this.mapToResponseDto(payment)),
+      payments: await Promise.all(payments.map(payment => this.mapToResponseDto(payment))),
       total,
       page,
       limit,
@@ -370,7 +370,7 @@ export class PaymentService {
         message: newStatus === PaymentStatus.VERIFIED 
           ? `Payment verified successfully. User subscription updated to ${subscriptionPlan} for ${paymentValidityDays} days.`
           : `Payment status updated to ${newStatus}.`,
-        payment: this.mapToResponseDto(updatedPayment!),
+        payment: await this.mapToResponseDto(updatedPayment!),
         subscriptionPlan: newStatus === PaymentStatus.VERIFIED ? subscriptionPlan : undefined,
         paymentExpiresAt: expirationDate,
         paymentValidityDays: newStatus === PaymentStatus.VERIFIED ? paymentValidityDays : undefined,
@@ -409,7 +409,7 @@ export class PaymentService {
       currentMonth,
       paymentExpiresAt: user.paymentExpiresAt,
       subscriptionPlan: user.subscriptionPlan,
-      latestPayment: latestPayment ? this.mapToResponseDto(latestPayment) : undefined,
+      latestPayment: latestPayment ? await this.mapToResponseDto(latestPayment) : undefined,
     };
   }
 
@@ -462,15 +462,14 @@ export class PaymentService {
     return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
   }
 
-  private mapToResponseDto(payment: PaymentEntity): PaymentResponseDto {
+  private async mapToResponseDto(payment: PaymentEntity): Promise<PaymentResponseDto> {
     return {
       id: payment.id,
       userId: payment.userId,
       paymentAmount: payment.paymentAmount,
       paymentMethod: payment.paymentMethod,
       paymentReference: payment.paymentReference,
-      // ✅ OOP: Transform relative path to full URL for response
-      paymentSlipUrl: payment.paymentSlipUrl ? this.cloudStorageService.getFullUrl(payment.paymentSlipUrl) : undefined,
+      paymentSlipUrl: await this.resolveSlipUrl(payment.paymentSlipUrl),
       paymentSlipFilename: payment.paymentSlipFilename,
       status: payment.status,
       paymentDate: payment.paymentDate instanceof Date ? payment.paymentDate.toISOString() : payment.paymentDate,
@@ -484,6 +483,54 @@ export class PaymentService {
       createdAt: payment.createdAt instanceof Date ? payment.createdAt.toISOString() : payment.createdAt,
       updatedAt: payment.updatedAt instanceof Date ? payment.updatedAt.toISOString() : payment.updatedAt,
     };
+  }
+
+  /**
+   * Resolve a stored slip path/URL to a viewable URL.
+   *
+   * Three cases stored in the DB:
+   *  1. Relative path like "payment-slips/private/…"  → generate fresh signed GetObject URL (1h).
+   *  2. Old mistake: full PutObject S3 signed URL (contains "x-id=PutObject") → extract the
+   *     S3 key from the URL path and generate a fresh signed GetObject URL.
+   *  3. Any other full URL (legacy public storage.suraksha.lk link) → return as-is.
+   */
+  private async resolveSlipUrl(raw: string | null | undefined): Promise<string | undefined> {
+    if (!raw) return undefined;
+
+    // Case 1: relative private path — generate a signed GetObject URL
+    if (raw.startsWith('payment-slips/private/')) {
+      try {
+        return await this.cloudStorageService.getSignedUrl(raw, 3600);
+      } catch {
+        return undefined;
+      }
+    }
+
+    // Case 2: stored PutObject S3 signed URL — extract key and re-sign as GetObject
+    if (raw.startsWith('https://') && raw.includes('x-id=PutObject')) {
+      try {
+        const parsed = new URL(raw);
+        // S3 URL path starts with /<bucket>/<key> or just /<key> depending on bucket style
+        // Strip leading slash; bucket is the hostname's first subdomain segment for path-style
+        // For path-style: hostname = s3.<region>.amazonaws.com, path = /<bucket>/<key>
+        // For virtual-hosted: hostname = <bucket>.s3.<region>.amazonaws.com, path = /<key>
+        const isVirtualHosted = parsed.hostname.match(/^[^.]+\.s3\.[^.]+\.amazonaws\.com$/);
+        const keyPath = isVirtualHosted
+          ? parsed.pathname.replace(/^\//, '')
+          : parsed.pathname.replace(/^\/[^/]+\//, ''); // strip /<bucket>/
+        if (keyPath.startsWith('payment-slips/private/')) {
+          return await this.cloudStorageService.getSignedUrl(keyPath, 3600);
+        }
+      } catch {
+        // fall through to return undefined for unresolvable URLs
+      }
+      return undefined;
+    }
+
+    // Case 3: any other full URL (legacy public URL) — return as-is
+    return raw.startsWith('https://') || raw.startsWith('http://')
+      ? raw
+      : this.cloudStorageService.getFullUrl(raw);
   }
 
   /**
