@@ -71,6 +71,7 @@ import { InstituteBankAccountsModule } from './modules/institute-bank-accounts/i
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { InstituteDesignsModule } from './modules/institute-designs/institute-designs.module';
 import { PaymentGatewayModule } from './modules/payment-gateway/payment-gateway.module';
+import { WhatsAppBroadcastModule } from './modules/whatsapp-broadcast/whatsapp-broadcast.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { OriginValidationGuard } from './common/guards/origin-validation.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -201,6 +202,7 @@ import { AppService } from './app.service';
     ErrorReportsModule, // User error reporting with admin status management
     InstituteDesignsModule, // Design template approval, credit-billed generation, multi-output
     PaymentGatewayModule,   // Real-time credit top-up via payment gateway (PayHere, etc.)
+    WhatsAppBroadcastModule, // System-admin WhatsApp broadcast portal (filter → count → send)
   ],
   controllers: [AppController],
   providers: [
