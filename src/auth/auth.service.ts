@@ -905,10 +905,12 @@ export class AuthService {
       // Step 4: Hash the new password with bcrypt + pepper
       const hashedPassword = await this.hashPassword(newPassword);
 
-      // Step 5: Update password in database
+      // Step 5: Update password in database.
+      // passwordSetAt is bumped so any access token issued before this change is
+      // rejected by JwtStrategy (M1 fix — access tokens must not outlive a password change).
       const updateResult = await userRepository.update(
         { id: userId.trim() },
-        { password: hashedPassword }
+        { password: hashedPassword, passwordSetAt: now() }
       );
 
       // Verify update was successful
@@ -980,8 +982,8 @@ export class AuthService {
       // 2. Hash new password
       const hashedNewPassword = await this.hashPassword(newPassword);
 
-      // 3. Update password in database
-      await manager.update(UserEntity, { id: userId }, { password: hashedNewPassword });
+      // 3. Update password in database (bump passwordSetAt to invalidate pre-change tokens)
+      await manager.update(UserEntity, { id: userId }, { password: hashedNewPassword, passwordSetAt: now() });
 
       return {
         message: 'Password reset successfully',
@@ -1411,7 +1413,8 @@ export class AuthService {
 
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
-      expiresIn: refreshExpiresIn as any
+      expiresIn: refreshExpiresIn as any,
+      algorithm: 'HS256', // M2: pin signing algorithm
     });
 
     // Calculate expiry date
@@ -1472,7 +1475,8 @@ export class AuthService {
 
       // Verify refresh token
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: refreshSecret
+        secret: refreshSecret,
+        algorithms: ['HS256'], // M2: pin verification algorithm
       });
 
       if (payload.type !== 'refresh') {
@@ -1577,7 +1581,8 @@ export class AuthService {
       
       // Verify token to get userId
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: refreshSecret
+        secret: refreshSecret,
+        algorithms: ['HS256'], // M2: pin verification algorithm
       });
 
       // 🔐 SECURITY: Revoke by hashed token (with plain-text fallback)
@@ -1730,7 +1735,8 @@ export class AuthService {
 
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
-      expiresIn: refreshExpiresIn as any
+      expiresIn: refreshExpiresIn as any,
+      algorithm: 'HS256', // M2: pin signing algorithm
     });
 
     // Calculate expiry date
@@ -1791,7 +1797,8 @@ export class AuthService {
 
       // Verify refresh token
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: refreshSecret
+        secret: refreshSecret,
+        algorithms: ['HS256'], // M2: pin verification algorithm
       });
 
       if (payload.type !== 'refresh') {
@@ -1905,7 +1912,8 @@ export class AuthService {
       
       // Verify token to get userId
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: refreshSecret
+        secret: refreshSecret,
+        algorithms: ['HS256'], // M2: pin verification algorithm
       });
 
       // 🔐 SECURITY: Revoke by hashed token (with plain-text fallback)
@@ -2146,12 +2154,21 @@ export class AuthService {
 
     if (record) return record;
 
-    // 2. Fallback: plain-text lookup (legacy tokens before migration)
+    // 2. Fallback: plain-text lookup (legacy tokens before migration).
+    // L2: this widens the lookup surface to any un-migrated plaintext token. It's kept ON
+    // by default so existing sessions don't break, but can be disabled once all rows are
+    // hashed by setting REFRESH_TOKEN_PLAINTEXT_FALLBACK=false. Every hit is logged so the
+    // remaining legacy tokens are observable before you turn it off.
+    if (process.env.REFRESH_TOKEN_PLAINTEXT_FALLBACK === 'false') {
+      return null;
+    }
+
     record = await this.refreshTokenRepository.findOne({
       where: { token: token, ...additionalWhere }
     });
 
     if (record) {
+      this.logger.warn(`Legacy plaintext refresh token used (id=${record.id}) — auto-migrating to hash`);
       // 🔄 Auto-migrate: update plain-text token to hashed version
       await this.refreshTokenRepository.update(
         { id: record.id },

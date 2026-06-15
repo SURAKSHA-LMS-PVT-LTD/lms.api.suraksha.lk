@@ -17,6 +17,7 @@ import { InstituteSessionLoginMethod } from '../entities/institute-login-session
 import {
   InstituteLoginDto,
   InstituteSetPasswordDto,
+  AdminSetInstitutePasswordDto,
   InstituteChangePasswordDto,
   InstitutePasswordResetInitiateDto,
   InstitutePasswordResetVerifyDto,
@@ -158,7 +159,8 @@ export class InstituteAuthController {
     @Query('limit') limit: string | undefined,
     @Req() req: ExpressRequest,
   ) {
-    // TODO: add role guard for admin — for now trusts JWT institute context
+    // Authorization is enforced by FlexibleAccessGuard + @RequireAnyOfRoles above:
+    // the :instituteId path param binds the INSTITUTE_ADMIN check to this institute.
     return this.instituteSessionService.listInstituteSessions(instituteId, {
       userId,
       page: page ? parseInt(page) : 1,
@@ -238,13 +240,28 @@ export class InstituteAuthController {
 
   // ── Password management (unchanged) ───────────────────────────────────────
 
-  @UseGuards(JwtAuthGuard)
-  @Post('set-password')
+  /**
+   * Admin: set the institute (tenant) password for a user in this institute.
+   * instituteId + userId come from the URL path, so FlexibleAccessGuard binds the
+   * INSTITUTE_ADMIN check to THIS institute (and SUPERADMIN globally). The previous
+   * body-only form had no authorization and allowed any logged-in user to set any
+   * user's institute password (account takeover) — fixed by path-scoping + guard.
+   */
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @Post('admin/:instituteId/users/:userId/set-password')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: 'Set institute password for a user (admin action)' })
-  async setPassword(@Body() dto: InstituteSetPasswordDto & { targetUserId: string }, @Req() req: ExpressRequest) {
-    return this.instituteLoginService.setPassword(dto, dto.targetUserId);
+  @ApiOperation({ summary: '[Admin] Set institute password for a user' })
+  async setPassword(
+    @Param('instituteId') instituteId: string,
+    @Param('userId') userId: string,
+    @Body() body: AdminSetInstitutePasswordDto,
+  ) {
+    return this.instituteLoginService.setPassword(
+      { instituteId, newPassword: body.newPassword } as InstituteSetPasswordDto,
+      userId,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

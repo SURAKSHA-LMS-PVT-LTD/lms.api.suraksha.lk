@@ -59,6 +59,15 @@ export class InstituteSetPasswordDto {
   newPassword: string;
 }
 
+/** Body for the admin set-password endpoint (instituteId + userId come from the URL path). */
+export class AdminSetInstitutePasswordDto {
+  @ApiProperty({ description: 'New institute password (min 8 characters)', minLength: 8 })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  newPassword: string;
+}
+
 export class InstituteChangePasswordDto {
   @ApiProperty({
     description: 'Institute ID',

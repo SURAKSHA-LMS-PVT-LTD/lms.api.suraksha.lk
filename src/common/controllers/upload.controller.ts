@@ -44,6 +44,16 @@ class VerifyUploadDto {
 export class UploadController {
   private readonly logger = new Logger(UploadController.name);
 
+  /** Folders an authenticated caller may upload into and publish. Single source of truth. */
+  private static readonly PUBLISHABLE_FOLDERS = new Set<string>([
+    'profile-images', 'student-images', 'institute-images', 'institute-user-images',
+    'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts',
+    'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts',
+    'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images',
+    'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents',
+    'lecture-thumbnails', 'institute-branding',
+  ]);
+
   constructor(
     private readonly cloudStorageService: CloudStorageService,
     private readonly configService: ConfigService
@@ -162,10 +172,9 @@ export class UploadController {
       return `${base}.${ext}`;
     })();
 
-    // Validate folder type
-    const validFolders = ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails', 'institute-branding'];
-    if (!validFolders.includes(folder)) {
-      throw new BadRequestException(`Invalid folder. Must be one of: ${validFolders.join(', ')}`);
+    // Validate folder type (shared allowlist — see PUBLISHABLE_FOLDERS)
+    if (!UploadController.PUBLISHABLE_FOLDERS.has(folder)) {
+      throw new BadRequestException(`Invalid folder. Must be one of: ${[...UploadController.PUBLISHABLE_FOLDERS].join(', ')}`);
     }
 
     // Use sanitized filename for validation and signed URL generation
@@ -619,7 +628,20 @@ export class UploadController {
   async verifyAndPublish(@Body() dto: VerifyUploadDto) {
     try {
       this.logger.log(`Verify and publish request for: ${dto.relativePath}`);
-      
+
+      // M4: validate path shape + restrict to known upload folders. Previously ANY
+      // relativePath could be made public; now only the recognised folders are allowed,
+      // and traversal / absolute paths are rejected.
+      const rp = (dto.relativePath || '').trim();
+      if (!rp || rp.includes('..') || rp.includes('\0') || rp.startsWith('/') || !/^[^/]+\/.+/.test(rp)) {
+        throw new BadRequestException('Invalid relativePath format. Expected: folder/filename.ext');
+      }
+      const folder = rp.split('/')[0];
+      if (!UploadController.PUBLISHABLE_FOLDERS.has(folder)) {
+        this.logger.warn(`verifyAndPublish blocked — folder not allowed: ${folder}`);
+        throw new BadRequestException(`Folder '${folder}' is not allowed for publishing`);
+      }
+
       // Verify file exists and make it public
       const publicUrl = await this.cloudStorageService.verifyAndMakePublic(dto.relativePath);
 

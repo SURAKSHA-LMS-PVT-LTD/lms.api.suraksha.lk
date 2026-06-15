@@ -86,7 +86,13 @@ import { TenantModule } from '../modules/tenant/tenant.module';
 
         return {
           secret: jwtSecret,
-          signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') || '15m') as any },
+          // M2: pin HS256 for both signing and verification so alg:none / algorithm-confusion
+          // tokens are rejected. Applies to all JwtService.sign/verify calls that don't override it.
+          signOptions: {
+            expiresIn: (config.get<string>('JWT_EXPIRES_IN') || '15m') as any,
+            algorithm: 'HS256',
+          },
+          verifyOptions: { algorithms: ['HS256'] },
         };
       },
     }),

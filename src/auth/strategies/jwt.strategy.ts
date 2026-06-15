@@ -54,6 +54,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: jwtSecret,
+      algorithms: ['HS256'], // M2: pin algorithm — reject alg:none / RS256-confusion tokens
     });
 
   }
@@ -77,11 +78,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const userId = payload.s.toString();
     
     // Only select essential fields to avoid performance issues
-    const user = await this.userRepository.findOne({ 
+    const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'firstName', 'lastName', 'isActive', 'userType', 'imageUrl']
+      select: ['id', 'email', 'firstName', 'lastName', 'isActive', 'userType', 'imageUrl', 'passwordSetAt']
     });
-    
+
     if (!user) {
       this.logger.error(`User not found for ID: ${userId}`);
       throw new UnauthorizedException('User not found');
@@ -91,6 +92,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user.isActive) {
       this.logger.error(`Inactive user attempted login: ${userId}`);
       throw new UnauthorizedException('User account is inactive');
+    }
+
+    // M1: reject access tokens issued BEFORE the user's last password change/reset.
+    // passwordSetAt is bumped on every credential change; if the token was issued before
+    // it, the token belongs to a pre-change session and must not be honored.
+    // Legacy payloads carry `iat`; enhanced payloads carry the issue time in `t`.
+    const issuedAtSec = (payload as any).iat ?? (payload as EnhancedJwtPayload).t;
+    if (user.passwordSetAt && typeof issuedAtSec === 'number') {
+      const pwdChangedSec = Math.floor(new Date(user.passwordSetAt).getTime() / 1000);
+      // 5s skew tolerance so a token minted in the same second as the change isn't killed.
+      if (issuedAtSec < pwdChangedSec - 5) {
+        this.logger.warn(`Stale token rejected for user ${userId} (issued before password change)`);
+        throw new UnauthorizedException('Session expired — please sign in again');
+      }
     }
     
     // Extract user type

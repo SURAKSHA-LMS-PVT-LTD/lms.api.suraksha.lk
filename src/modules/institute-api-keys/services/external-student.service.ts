@@ -80,7 +80,7 @@ export class ExternalStudentService {
     record: ExternalStudentRecordDto,
   ): Promise<Omit<ExternalStudentResult, 'index'>> {
     return this.dataSource.transaction(async (manager) => {
-      const { user, created } = await this.resolveOrCreateUser(manager, record);
+      const { user, created } = await this.resolveOrCreateUser(manager, instituteId, record);
 
       // Ensure a students row exists (student-capable users always have one).
       await this.ensureStudentRecord(manager, user.id);
@@ -158,18 +158,34 @@ export class ExternalStudentService {
   }
 
   /**
-   * 1. Explicit userId  → load that user (link directly).
+   * 1. Explicit userId  → link that user, but only if they don't already belong to a
+   *    DIFFERENT institute (prevents an API key from hijacking another tenant's user).
    * 2. phoneNumber match → link that existing active user.
    * 3. otherwise         → create a new USER_WITHOUT_PARENT (student-capable, never a parent).
    */
   private async resolveOrCreateUser(
     manager: EntityManager,
+    instituteId: string,
     record: ExternalStudentRecordDto,
   ): Promise<{ user: UserEntity; created: boolean }> {
     // 1. Explicit user ID
     if (record.userId) {
       const existing = await manager.findOne(UserEntity, { where: { id: record.userId } });
-      if (existing) return { user: existing, created: false };
+      if (existing) {
+        // Guard against cross-institute hijack: refuse to link a user who is already a
+        // member of another institute. Allowed only if they have no membership yet, or
+        // are already in THIS institute.
+        const otherMembership = await manager.findOne(InstituteUserEntity, {
+          where: { userId: existing.id },
+          select: ['instituteId'],
+        });
+        if (otherMembership && String(otherMembership.instituteId) !== String(instituteId)) {
+          throw new Error(
+            `User ${existing.id} already belongs to another institute and cannot be linked by userId`,
+          );
+        }
+        return { user: existing, created: false };
+      }
       // userId given but not found — fall through to phone match / creation rather than erroring.
     }
 

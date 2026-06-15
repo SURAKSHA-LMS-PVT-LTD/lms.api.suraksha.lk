@@ -170,8 +170,12 @@ export class FlexibleAccessGuard implements CanActivate {
       const hasOnlyInstituteChecks = hasInstituteBasedChecks && !config.global && !config.parent;
       
       if (hasOnlyInstituteChecks) {
+        // L1: don't echo token internals (userId/userType/claims) back to the client.
+        this.logger.warn(
+          `Access denied — no institute access. userId=${user.s} userType=${user.u} hasInstituteAccess=${user.i ? 'yes' : 'no'}`,
+        );
         throw new ForbiddenException(
-          `User has no institute access but endpoint requires institute roles. Please re-login to refresh your token. Token info: userId=${user.s}, userType=${user.u}, hasInstituteAccess=${user.i ? 'yes' : 'no'}`,
+          'You do not have access to this institute resource. Please re-login to refresh your session.',
         );
       }
     }

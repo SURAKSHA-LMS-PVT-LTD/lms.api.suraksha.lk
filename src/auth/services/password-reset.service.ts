@@ -243,12 +243,16 @@ export class PasswordResetService {
     });
 
     if (!resetToken) {
-      // Increment failed attempts for security monitoring
-      await this.passwordResetTokenRepository.increment(
-        { email: user.email, tokenType: 'PASSWORD_RESET' },
-        'attemptCount',
-        1
-      );
+      // L4: count the failed attempt on the SAME token the brute-force cap reads
+      // (latestToken), not across all matching rows — otherwise the cap could be evaded
+      // by spreading attempts across multiple outstanding OTP rows.
+      if (latestToken) {
+        await this.passwordResetTokenRepository.increment(
+          { id: latestToken.id },
+          'attemptCount',
+          1
+        );
+      }
       throw new BadRequestException('Invalid or expired OTP code');
     }
 
@@ -361,7 +365,8 @@ export class PasswordResetService {
 
     // Update user password
     await this.userRepository.update(user.id, {
-      password: hashedPassword
+      password: hashedPassword,
+      passwordSetAt: now(), // invalidate pre-reset access tokens (M1)
     });
 
     // Mark token as used
@@ -431,7 +436,8 @@ export class PasswordResetService {
 
     // Update user password
     await this.userRepository.update(userId, {
-      password: hashedPassword
+      password: hashedPassword,
+      passwordSetAt: now(), // invalidate pre-reset access tokens (M1)
     });
 
     // 🔐 SECURITY: Revoke all refresh tokens on password change
@@ -581,7 +587,8 @@ export class PasswordResetService {
 
     // Update user password
     await this.userRepository.update(user.id, {
-      password: hashedPassword
+      password: hashedPassword,
+      passwordSetAt: now(), // invalidate pre-reset access tokens (M1)
     });
 
     // Mark token as used

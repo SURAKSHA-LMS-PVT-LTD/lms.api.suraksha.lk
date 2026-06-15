@@ -1,7 +1,8 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ApiKeyThrottlerGuard } from './common/guards/api-key-throttler.guard';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
@@ -214,10 +215,10 @@ import { AppService } from './app.service';
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
-    // 🔒 GLOBAL RATE LIMITING: Apply to all routes
+    // 🔒 GLOBAL RATE LIMITING: per-API-key when API-key authenticated, else per-IP (M3)
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: ApiKeyThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,

@@ -62,6 +62,12 @@ export class PayHereAdapter implements PaymentGatewayProvider {
     return crypto.createHash('md5').update(input).digest('hex').toUpperCase();
   }
 
+  /** Constant-time string compare (length-guarded) to avoid timing side-channels. */
+  private timingSafeEqual(a: string, b: string): boolean {
+    if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  }
+
   private secretFor(platform?: string): string {
     return platform === 'app' ? this.secretApp : this.secretWeb;
   }
@@ -132,7 +138,8 @@ export class PayHereAdapter implements PaymentGatewayProvider {
     const sigApp = this.buildWebhookHash(order_id, payhere_amount, payhere_currency, status_code, this.secretApp);
     const incoming = md5sig.toUpperCase();
 
-    if (incoming !== sigWeb && incoming !== sigApp) {
+    // L3: constant-time compare to avoid leaking signature info via timing.
+    if (!this.timingSafeEqual(incoming, sigWeb) && !this.timingSafeEqual(incoming, sigApp)) {
       this.logger.warn(`PayHere md5sig mismatch for order ${order_id} (tried web + app secrets)`);
       return this.invalidResult(payload);
     }
