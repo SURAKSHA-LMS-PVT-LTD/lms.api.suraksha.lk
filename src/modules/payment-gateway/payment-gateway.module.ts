@@ -7,12 +7,16 @@ import { PaymentGatewayController } from './payment-gateway.controller';
 import { PayHereAdapter } from './providers/payhere.adapter';
 import { PaymentGatewayRegistry } from './providers/payment-gateway.registry';
 import { TenantModule } from '../tenant/tenant.module';
+import { PackageDefinitionEntity } from '../payment/entities/package-definition.entity';
+import { UserEntity } from '../user/entities/user.entity';
+import { CacheModule } from '../../common/modules/cache.module';
 
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([GatewayPaymentOrderEntity]),
+    TypeOrmModule.forFeature([GatewayPaymentOrderEntity, PackageDefinitionEntity, UserEntity]),
     TenantModule,
+    CacheModule,
   ],
   controllers: [PaymentGatewayController],
   providers: [PayHereAdapter, PaymentGatewayRegistry, PaymentGatewayService],

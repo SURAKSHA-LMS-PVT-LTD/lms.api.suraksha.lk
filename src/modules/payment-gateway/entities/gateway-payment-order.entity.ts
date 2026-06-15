@@ -69,6 +69,20 @@ export class GatewayPaymentOrderEntity {
   @Column({ name: 'credits_granted', type: 'boolean', default: false })
   creditsGranted: boolean;
 
+  // ─── User package purchase fields (nullable — only set for package orders) ───
+
+  /** The user who is purchasing a subscription package (null for institute credit orders) */
+  @Column({ name: 'user_id', type: 'bigint', nullable: true })
+  userId?: string;
+
+  /** Target subscription plan to activate on success */
+  @Column({ name: 'target_plan', type: 'varchar', length: 50, nullable: true })
+  targetPlan?: string;
+
+  /** Validity days for the target plan */
+  @Column({ name: 'target_validity_days', type: 'int', nullable: true })
+  targetValidityDays?: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

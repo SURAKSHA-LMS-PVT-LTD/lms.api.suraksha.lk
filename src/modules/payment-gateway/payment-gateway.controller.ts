@@ -5,15 +5,27 @@ import {
 import { Request, Response } from 'express';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { UserType } from '../user/enums/user-type.enum';
 import { PaymentGatewayService } from './payment-gateway.service';
-import { InitiateGatewayPaymentDto } from './dto/payment-gateway.dto';
+import { InitiateGatewayPaymentDto, InitiateUserPackageCheckoutDto } from './dto/payment-gateway.dto';
 
 interface JwtRequest extends Request { user: { s: string } }
 
 @Controller('payment-gateway')
 export class PaymentGatewayController {
   constructor(private readonly svc: PaymentGatewayService) {}
+
+  /**
+   * Public: returns whether the payment gateway is enabled on this server.
+   * Frontend reads this on mount to decide whether to show gateway UI.
+   * No auth required — it's just a boolean flag.
+   */
+  @Get('config')
+  gatewayConfig() {
+    const enabled = this.svc.isGatewayEnabled();
+    return { paymentGatewaySupportive: enabled };
+  }
 
   /**
    * Institute admin: initiate a gateway credit top-up.
@@ -58,6 +70,32 @@ export class PaymentGatewayController {
     @Query('limit') limit = '20',
   ) {
     return this.svc.listOrders(instituteId, Number(page), Number(limit));
+  }
+
+  // ─── User package checkout ──────────────────────────────────────────────────
+
+  /**
+   * Authenticated user: buy a subscription package via gateway.
+   * Subscription is activated instantly on webhook SUCCESS — no admin review needed.
+   */
+  @Post('users/package-checkout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async initiateUserPackageCheckout(
+    @Body() dto: InitiateUserPackageCheckoutDto,
+    @Req() req: JwtRequest,
+  ) {
+    return this.svc.initiateUserPackageCheckout(req.user.s, dto);
+  }
+
+  /** Poll user package order status */
+  @Get('users/package-orders/:orderId')
+  @UseGuards(JwtAuthGuard)
+  async getUserPackageOrderStatus(
+    @Param('orderId') orderId: string,
+    @Req() req: JwtRequest,
+  ) {
+    return this.svc.getUserPackageOrderStatus(orderId, req.user.s);
   }
 
   /**

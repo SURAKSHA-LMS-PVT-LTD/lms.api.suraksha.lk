@@ -27,6 +27,30 @@ export class InitiateGatewayPaymentDto {
   returnBaseUrl?: string;
 }
 
+export class InitiateUserPackageCheckoutDto {
+  /** Package definition ID to purchase */
+  @IsString()
+  packageId: string;
+
+  /** Number of units (months/periods) to purchase. Defaults to 1. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  provider?: string;
+
+  @IsOptional()
+  @IsIn(['web', 'app'])
+  platform?: 'web' | 'app';
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  returnBaseUrl?: string;
+}
+
 export class GatewayCheckoutResponseDto {
   orderId: string;
   gatewayUrl: string;

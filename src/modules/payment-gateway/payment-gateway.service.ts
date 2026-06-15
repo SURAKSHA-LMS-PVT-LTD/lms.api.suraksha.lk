@@ -1,6 +1,7 @@
 import {
   Injectable, Logger, BadRequestException,
   NotFoundException, ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -9,13 +10,16 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { GatewayPaymentOrderEntity, GatewayOrderStatus } from './entities/gateway-payment-order.entity';
 import { PaymentGatewayRegistry } from './providers/payment-gateway.registry';
-import { InitiateGatewayPaymentDto } from './dto/payment-gateway.dto';
+import { InitiateGatewayPaymentDto, InitiateUserPackageCheckoutDto } from './dto/payment-gateway.dto';
 import { TenantService } from '../tenant/tenant.service';
 import {
   TenantServicePaymentStatus,
   TenantServiceType,
 } from '../tenant/entities/tenant-billing-payment.entity';
-import { now } from '../../common/utils/timezone.util';
+import { now, nowTimestamp } from '../../common/utils/timezone.util';
+import { PackageDefinitionEntity } from '../payment/entities/package-definition.entity';
+import { UserEntity } from '../user/entities/user.entity';
+import { UserManagementService } from '../../common/services/cache-user-management.service';
 
 /** LKR credit pricing — 1 credit = CREDIT_PRICE_LKR */
 const CREDIT_PRICE_LKR = 1.0;
@@ -27,8 +31,13 @@ export class PaymentGatewayService {
   constructor(
     @InjectRepository(GatewayPaymentOrderEntity)
     private readonly orderRepo: Repository<GatewayPaymentOrderEntity>,
+    @InjectRepository(PackageDefinitionEntity)
+    private readonly packageRepo: Repository<PackageDefinitionEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly registry: PaymentGatewayRegistry,
     private readonly tenantService: TenantService,
+    private readonly userManagementService: UserManagementService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
   ) {}
@@ -41,6 +50,18 @@ export class PaymentGatewayService {
     return this.config.get<string>('API_BASE_URL') ?? 'https://lmsapi.suraksha.lk';
   }
 
+  /** Returns true only when PAYMENT_GATEWAY_SUPPORTIVE=true in env */
+  isGatewayEnabled(): boolean {
+    return this.config.get<string>('PAYMENT_GATEWAY_SUPPORTIVE') === 'true';
+  }
+
+  /** Throws 503 if PAYMENT_GATEWAY_SUPPORTIVE is not exactly "true" */
+  private assertGatewayEnabled(): void {
+    if (!this.isGatewayEnabled()) {
+      throw new ServiceUnavailableException('Payment gateway is not enabled on this server');
+    }
+  }
+
   /**
    * Step 1 — institute admin calls this to get checkout fields.
    * We create a PENDING order, generate the provider hash server-side,
@@ -51,6 +72,7 @@ export class PaymentGatewayService {
     userId: string,
     dto: InitiateGatewayPaymentDto,
   ) {
+    this.assertGatewayEnabled();
     const provider = this.registry.resolve(dto.provider ?? 'PAYHERE');
     const orderId  = uuidv4();
     const amount   = dto.credits * CREDIT_PRICE_LKR;
@@ -167,11 +189,19 @@ export class PaymentGatewayService {
       return;
     }
 
-    await this.dataSource.transaction(async (manager) => {
-      // Create a TenantServicePayment record for audit trail
-      const billingMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    if (order.targetPlan && order.userId) {
+      // ── User package purchase: activate subscription directly ──────────────
+      await this.handleUserPackageSuccess(order);
+    } else {
+      // ── Institute credit top-up ────────────────────────────────────────────
+      await this.handleInstituteCreditsSuccess(order);
+    }
+  }
 
-      // Use tenant service to submit + immediately verify (auto-flow)
+  private async handleInstituteCreditsSuccess(order: GatewayPaymentOrderEntity): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const billingMonth = new Date().toISOString().slice(0, 7);
+
       const submitted = await this.tenantService.submitServicePayment(
         order.instituteId,
         order.submittedBy,
@@ -187,24 +217,134 @@ export class PaymentGatewayService {
         },
       );
 
-      // Auto-verify — no human approval needed for gateway payments
       await this.tenantService.verifyServicePayment(submitted.id, 'SYSTEM', {
         status:           TenantServicePaymentStatus.VERIFIED,
         grantedQuantity:  order.requestedCredits,
         notes:            `Auto-verified via ${order.provider} gateway. Payment ID: ${order.gatewayPaymentId}`,
       });
 
-      // Mark order complete inside the same transaction scope
       await manager.update(GatewayPaymentOrderEntity, order.id, {
-        status:         GatewayOrderStatus.SUCCESS,
-        creditsGranted: true,
+        status:          GatewayOrderStatus.SUCCESS,
+        creditsGranted:  true,
         tenantPaymentId: submitted.id,
       });
     });
 
     this.logger.log(
-      `✅ Gateway payment success: order=${order.id} credits=${order.requestedCredits} institute=${order.instituteId}`,
+      `✅ Institute credits success: order=${order.id} credits=${order.requestedCredits} institute=${order.instituteId}`,
     );
+  }
+
+  private async handleUserPackageSuccess(order: GatewayPaymentOrderEntity): Promise<void> {
+    const validityMs    = (order.targetValidityDays ?? 30) * 24 * 60 * 60 * 1000;
+    const expiresAt     = new Date(nowTimestamp() + validityMs);
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(UserEntity, order.userId!, {
+        subscriptionPlan: order.targetPlan as any,
+        paymentExpiresAt: expiresAt,
+        updatedAt:        new Date(),
+      });
+
+      await manager.update(GatewayPaymentOrderEntity, order.id, {
+        status:         GatewayOrderStatus.SUCCESS,
+        creditsGranted: true, // re-use as "fulfilled" flag for idempotency
+      });
+    });
+
+    // Refresh user cache outside transaction (non-critical)
+    try {
+      await this.userManagementService.refreshUserCache(order.userId!);
+    } catch (e) {
+      this.logger.warn(`Cache refresh failed after package activation for user ${order.userId}: ${e.message}`);
+    }
+
+    this.logger.log(
+      `✅ User package success: order=${order.id} userId=${order.userId} plan=${order.targetPlan} expiresAt=${expiresAt.toISOString()}`,
+    );
+  }
+
+  /**
+   * User package checkout — authenticated user buys a subscription plan via gateway.
+   * On webhook SUCCESS the plan is activated instantly (no admin review).
+   */
+  async initiateUserPackageCheckout(
+    userId: string,
+    dto: InitiateUserPackageCheckoutDto,
+  ) {
+    this.assertGatewayEnabled();
+    const pkg = await this.packageRepo.findOne({ where: { id: dto.packageId, isActive: true } });
+    if (!pkg) throw new NotFoundException('Package not found or inactive');
+
+    const quantity     = dto.quantity ?? 1;
+    const totalPrice   = Number(pkg.price) * quantity;
+    const totalDays    = pkg.validityDays * quantity;
+    const provider     = this.registry.resolve(dto.provider ?? 'PAYHERE');
+    const orderId      = uuidv4();
+    const currency     = 'LKR';
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const firstName = user?.firstName ?? 'User';
+    const lastName  = user?.lastName  ?? '';
+    const email     = user?.email     ?? 'user@suraksha.lk';
+    const phone     = (user as any)?.phoneNumber ?? '0000000000';
+
+    const order = this.orderRepo.create({
+      id:                 orderId,
+      instituteId:        'USER_PACKAGE',   // placeholder — not institute-scoped
+      submittedBy:        userId,
+      userId,
+      provider:           provider.name,
+      serviceType:        'USER_PACKAGE',
+      amount:             totalPrice,
+      currency,
+      requestedCredits:   0,
+      status:             GatewayOrderStatus.PENDING,
+      creditsGranted:     false,
+      targetPlan:         pkg.subscriptionPlan,
+      targetValidityDays: totalDays,
+    });
+    await this.orderRepo.save(order);
+
+    const result = await provider.buildCheckout({
+      orderId,
+      amount:    totalPrice,
+      currency,
+      items:     `${pkg.name} × ${quantity}`,
+      firstName,
+      lastName,
+      email,
+      phone,
+      address:   'N/A',
+      city:      'Colombo',
+      country:   'Sri Lanka',
+      notifyUrl: `${this.apiBaseUrl}/payment-gateway/webhook/${provider.name.toLowerCase()}`,
+      returnUrl: `${dto.returnBaseUrl ?? this.appBaseUrl}/payment/return?order_id=${orderId}&type=package`,
+      cancelUrl: `${dto.returnBaseUrl ?? this.appBaseUrl}/payment/cancel?order_id=${orderId}&type=package`,
+      custom1:   userId,
+      custom2:   'USER_PACKAGE',
+      platform:  dto.platform ?? 'web',
+    });
+
+    this.logger.log(`User package checkout: order=${orderId} userId=${userId} plan=${pkg.subscriptionPlan} amount=${totalPrice}`);
+
+    return { orderId, gatewayUrl: result.gatewayUrl, fields: result.fields, provider: result.provider };
+  }
+
+  /** Poll user package order status (user-scoped) */
+  async getUserPackageOrderStatus(orderId: string, userId: string) {
+    const order = await this.orderRepo.findOne({ where: { id: orderId } });
+    if (!order || order.userId !== userId) throw new NotFoundException('Order not found');
+    return {
+      orderId:            order.id,
+      status:             order.status,
+      subscriptionPlan:   order.targetPlan,
+      validityDays:       order.targetValidityDays,
+      amount:             order.amount,
+      currency:           order.currency,
+      provider:           order.provider,
+      createdAt:          order.createdAt,
+    };
   }
 
   /** Polling endpoint — frontend calls this after return_url redirect */
