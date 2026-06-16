@@ -83,6 +83,7 @@ export class InstituteDesignsService {
     return this.templateRepo.find({
       where: { instituteId },
       order: { createdAt: 'DESC' },
+      take: 500,
     });
   }
 

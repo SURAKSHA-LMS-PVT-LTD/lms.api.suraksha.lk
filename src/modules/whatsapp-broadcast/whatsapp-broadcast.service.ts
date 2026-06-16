@@ -190,23 +190,25 @@ export class WhatsAppBroadcastService {
     return { joins: joins.join('\n'), where: where.join('\n  AND '), params };
   }
 
-  /** Count the audience for a filter (cheap COUNT(DISTINCT u.id)). */
+  /**
+   * Count the audience for a filter in a single pass.
+   * Conditional aggregation gives both the total and the with-phone subset
+   * from one scan of the joined set (was two near-identical COUNT queries).
+   */
   async countAudience(filter: AudienceFilter): Promise<{ total: number; withPhone: number }> {
     const { joins, where, params } = this.buildQuery(filter);
 
-    const totalRow: any[] = await this.dataSource.query(
-      `SELECT COUNT(DISTINCT u.id) AS total FROM users u ${joins} WHERE ${where}`,
-      params,
-    );
-    const phoneRow: any[] = await this.dataSource.query(
-      `SELECT COUNT(DISTINCT u.id) AS total FROM users u ${joins}
-       WHERE ${where} AND u.phone_number IS NOT NULL AND u.phone_number <> ''`,
+    const row: any[] = await this.dataSource.query(
+      `SELECT
+         COUNT(DISTINCT u.id) AS total,
+         COUNT(DISTINCT CASE WHEN u.phone_number IS NOT NULL AND u.phone_number <> '' THEN u.id END) AS withPhone
+       FROM users u ${joins} WHERE ${where}`,
       params,
     );
 
     return {
-      total: Number(totalRow[0]?.total || 0),
-      withPhone: Number(phoneRow[0]?.total || 0),
+      total: Number(row[0]?.total || 0),
+      withPhone: Number(row[0]?.withPhone || 0),
     };
   }
 
@@ -267,7 +269,7 @@ export class WhatsAppBroadcastService {
 
   // ── Template CRUD ──
   listTemplates() {
-    return this.templateRepo.find({ where: { isActive: true }, order: { updatedAt: 'DESC' } });
+    return this.templateRepo.find({ where: { isActive: true }, order: { updatedAt: 'DESC' }, take: 200 });
   }
 
   async saveTemplate(dto: Partial<WhatsAppMessageTemplateEntity>, userId?: string) {
