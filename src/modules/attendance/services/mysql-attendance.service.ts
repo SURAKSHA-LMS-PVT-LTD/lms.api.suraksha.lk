@@ -834,6 +834,7 @@ export class MysqlAttendanceService {
     month: number,
     classId?: string,
     subjectId?: string,
+    eventId?: string,
   ): Promise<{
     totalRecords: number;
     presentCount: number;
@@ -860,6 +861,10 @@ export class MysqlAttendanceService {
       qb.andWhere('(ar.subjectId IS NULL OR ar.subjectId = :defaultSubject)', { defaultSubject: 'default' });
     } else if (!classId && !subjectId) {
       qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
+    }
+
+    if (eventId) {
+      qb.andWhere('ar.eventId = :eventId', { eventId });
     }
 
     const rows = await qb
@@ -921,6 +926,7 @@ export class MysqlAttendanceService {
     month: number,
     classId?: string,
     subjectId?: string,
+    eventId?: string,
   ): Promise<{ date: string; day: number; presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }[]> {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
@@ -938,6 +944,10 @@ export class MysqlAttendanceService {
       qb.andWhere('(ar.subjectId IS NULL OR ar.subjectId = :defaultSubject)', { defaultSubject: 'default' });
     } else if (!classId && !subjectId) {
       qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
+    }
+
+    if (eventId) {
+      qb.andWhere('ar.eventId = :eventId', { eventId });
     }
 
     const rows = await qb

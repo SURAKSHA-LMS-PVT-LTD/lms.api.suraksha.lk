@@ -144,7 +144,7 @@ export class AdminWhatsAppController {
          u.last_name    AS lastName,
          u.phone_number AS phone,
          iu.user_id_institue AS instituteUserId,
-         iu.user_type   AS userType
+         iu.institute_user_type AS userType
        FROM institute_user iu
        JOIN users u ON u.id = iu.user_id
        WHERE iu.institute_id = ?

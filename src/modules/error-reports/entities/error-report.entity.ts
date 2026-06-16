@@ -34,35 +34,35 @@ export class ErrorReportEntity {
   status: ErrorReportStatus;
 
   // ── Error details ───────────────────────────────────────────────────────────
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ name: 'error_message', type: 'varchar', length: 500 })
   errorMessage: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'error_stack', type: 'text', nullable: true })
   errorStack: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'component_stack', type: 'text', nullable: true })
   componentStack: string | null;
 
   /** HTTP status code for API errors */
-  @Column({ type: 'int', nullable: true })
+  @Column({ name: 'http_status', type: 'int', nullable: true })
   httpStatus: number | null;
 
   /** Backend requestId (from ApiError.requestId) — for cross-referencing server logs */
-  @Column({ type: 'varchar', length: 100, nullable: true })
+  @Column({ name: 'request_id', type: 'varchar', length: 100, nullable: true })
   requestId: string | null;
 
   /** The URL/endpoint that failed */
-  @Column({ type: 'varchar', length: 1000, nullable: true })
+  @Column({ name: 'api_path', type: 'varchar', length: 1000, nullable: true })
   apiPath: string | null;
 
   // ── Context ─────────────────────────────────────────────────────────────────
-  @Column({ type: 'varchar', length: 2000 })
+  @Column({ name: 'page_url', type: 'varchar', length: 2000 })
   pageUrl: string;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ name: 'user_agent', type: 'varchar', length: 500 })
   userAgent: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
+  @Column({ name: 'app_version', type: 'varchar', length: 20, nullable: true })
   appVersion: string | null;
 
   @Column({ type: 'varchar', length: 20, nullable: true })
@@ -74,11 +74,11 @@ export class ErrorReportEntity {
 
   // ── Screenshot ──────────────────────────────────────────────────────────────
   /** base64 JPEG data-url (≤ ~200 KB after 0.5× scale) stored inline */
-  @Column({ type: 'mediumtext', nullable: true })
+  @Column({ name: 'screenshot_data_url', type: 'mediumtext', nullable: true })
   screenshotDataUrl: string | null;
 
   // ── Reporter ────────────────────────────────────────────────────────────────
-  @Column({ type: 'bigint', nullable: true })
+  @Column({ name: 'user_id', type: 'bigint', nullable: true })
   userId: string | null;
 
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
@@ -86,17 +86,17 @@ export class ErrorReportEntity {
   user: UserEntity | null;
 
   // ── Admin resolution ────────────────────────────────────────────────────────
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'admin_note', type: 'text', nullable: true })
   adminNote: string | null;
 
-  @Column({ type: 'bigint', nullable: true })
+  @Column({ name: 'resolved_by_user_id', type: 'bigint', nullable: true })
   resolvedByUserId: string | null;
 
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'resolved_by_user_id' })
   resolvedBy: UserEntity | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'resolved_at', type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
 
   // ── Timestamps ──────────────────────────────────────────────────────────────

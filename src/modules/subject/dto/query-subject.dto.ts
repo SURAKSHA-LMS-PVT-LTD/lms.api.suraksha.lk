@@ -1,4 +1,4 @@
-import { IsBigIntId, IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
+import { IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
 import { IsOptional, IsString, IsBoolean, IsInt, IsIn, Min, Max, IsEnum } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -43,9 +43,10 @@ export class QuerySubjectDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiProperty({ description: 'Filter subjects by institute ID - REQUIRED', example: '1' })
-  @IsBigIntId()
-  instituteId: string;
+  @ApiPropertyOptional({ description: 'Filter subjects by institute ID (required unless caller is SUPERADMIN)', example: '1' })
+  @IsOptional()
+  @IsOptionalBigIntId()
+  instituteId?: string;
 
   @ApiPropertyOptional({ description: 'Filter subjects by class ID (requires instituteId)' })
   @IsOptionalBigIntId()

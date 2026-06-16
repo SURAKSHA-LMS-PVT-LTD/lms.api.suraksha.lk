@@ -995,7 +995,8 @@ export class DynamoDBAttendanceService {
     startDate?: string,
     endDate?: string,
     limit?: number,
-    includeRecords: boolean = false
+    includeRecords: boolean = false,
+    eventId?: string,
   ): Promise<any> {
     const maxItems = limit || 10000; // Default safety limit
     const params: QueryCommandInput = {
@@ -1038,6 +1039,12 @@ export class DynamoDBAttendanceService {
       attributeNames['#date'] = 'date';
       attributeValues[':startDate'] = startDate;
       attributeValues[':endDate'] = endDate;
+    }
+
+    if (eventId) {
+      filterConditions.push('#eventId = :eventId');
+      attributeNames['#eventId'] = 'eventId';
+      attributeValues[':eventId'] = eventId;
     }
 
     if (filterConditions.length > 0) {
@@ -1125,6 +1132,7 @@ export class DynamoDBAttendanceService {
     month: number,
     classId?: string,
     subjectId?: string,
+    eventId?: string,
   ): Promise<{ date: string; day: number; presentCount: number; absentCount: number; lateCount: number; leftCount: number; leftEarlyCount: number; leftLatelyCount: number; totalRecords: number }[]> {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
@@ -1164,6 +1172,12 @@ export class DynamoDBAttendanceService {
     attributeNames['#date'] = 'date';
     attributeValues[':startDate'] = startDate;
     attributeValues[':endDate'] = endDate;
+
+    if (eventId) {
+      filterConditions.push('#eventId = :eventId');
+      attributeNames['#eventId'] = 'eventId';
+      attributeValues[':eventId'] = eventId;
+    }
 
     params.FilterExpression = filterConditions.join(' AND ');
     params.ExpressionAttributeNames = attributeNames;
@@ -1215,6 +1229,7 @@ export class DynamoDBAttendanceService {
     month: number,
     classId?: string,
     subjectId?: string,
+    eventId?: string,
   ): Promise<{
     totalRecords: number;
     presentCount: number;
@@ -1230,7 +1245,7 @@ export class DynamoDBAttendanceService {
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const summary = await this.getAttendanceSummary(
-      instituteId, classId, subjectId, startDate, endDate, undefined, false,
+      instituteId, classId, subjectId, startDate, endDate, undefined, false, eventId,
     );
 
     return {

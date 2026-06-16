@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Patch, Query, Param, Body, HttpException, HttpStatus, Req, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AttendanceService } from './attendance.service';
 import { MarkAttendanceDto, BulkAttendanceDto, AttendanceResponseDto, GetStudentAttendanceDto, GetStudentAttendanceQueryDto, StudentAttendanceResponseDto, MyAttendanceQueryDto, MyAttendanceResponseDto } from './dto/attendance.dto';
@@ -2060,11 +2060,13 @@ pagination, status filter, and optional single-institute filter.\n\n
     description: 'Returns aggregated attendance counts (present, absent, late, left, leftEarly, leftLate) for an entire institute for a given month.',
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Filter to a specific calendar event ID' })
   @ApiResponse({ status: 200, description: 'Monthly attendance counts retrieved' })
   async getInstituteMonthlyCount(
     @Param('instituteId') instituteId: string,
     @Query('year') year: string,
     @Query('month') month: string,
+    @Query('eventId') eventId?: string,
   ): Promise<any> {
     const y = parseInt(year, 10);
     const m = parseInt(month, 10);
@@ -2075,7 +2077,7 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getInstituteMonthlyCount(instituteId, y, m);
+      return await this.attendanceService.getInstituteMonthlyCount(instituteId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get institute monthly attendance count'); }
   }
 
@@ -2093,12 +2095,14 @@ pagination, status filter, and optional single-institute filter.\n\n
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Filter to a specific calendar event ID' })
   @ApiResponse({ status: 200, description: 'Monthly class attendance counts retrieved' })
   async getClassMonthlyCount(
     @Param('instituteId') instituteId: string,
     @Param('classId') classId: string,
     @Query('year') year: string,
     @Query('month') month: string,
+    @Query('eventId') eventId?: string,
   ): Promise<any> {
     const y = parseInt(year, 10);
     const m = parseInt(month, 10);
@@ -2109,7 +2113,7 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m);
+      return await this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get class monthly attendance count'); }
   }
 
@@ -2162,11 +2166,13 @@ pagination, status filter, and optional single-institute filter.\n\n
     description: 'Returns day-by-day attendance counts (present, absent, late, left, leftEarly, leftLate) for an entire institute for a given month.',
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Filter to a specific calendar event ID' })
   @ApiResponse({ status: 200, description: 'Daily attendance counts retrieved' })
   async getInstituteDailyCount(
     @Param('instituteId') instituteId: string,
     @Query('year') year: string,
     @Query('month') month: string,
+    @Query('eventId') eventId?: string,
   ): Promise<any> {
     const y = parseInt(year, 10);
     const m = parseInt(month, 10);
@@ -2177,7 +2183,7 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getInstituteDailyCount(instituteId, y, m);
+      return await this.attendanceService.getInstituteDailyCount(instituteId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get institute daily attendance count'); }
   }
 
@@ -2195,12 +2201,14 @@ pagination, status filter, and optional single-institute filter.\n\n
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Filter to a specific calendar event ID' })
   @ApiResponse({ status: 200, description: 'Daily class attendance counts retrieved' })
   async getClassDailyCount(
     @Param('instituteId') instituteId: string,
     @Param('classId') classId: string,
     @Query('year') year: string,
     @Query('month') month: string,
+    @Query('eventId') eventId?: string,
   ): Promise<any> {
     const y = parseInt(year, 10);
     const m = parseInt(month, 10);
@@ -2211,7 +2219,7 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getClassDailyCount(instituteId, classId, y, m);
+      return await this.attendanceService.getClassDailyCount(instituteId, classId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get class daily attendance count'); }
   }
 

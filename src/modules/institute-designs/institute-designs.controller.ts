@@ -43,7 +43,7 @@ export class InstituteDesignsController {
   @Post('institutes/:id/design-templates')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Create a new design template (starts as PENDING)' })
+  @ApiOperation({ summary: 'Create a new design template (starts as DRAFT)' })
   @ApiParam({ name: 'id', description: 'Institute ID' })
   async createTemplate(
     @Param('id', ParseIdPipe) id: string,
@@ -56,7 +56,7 @@ export class InstituteDesignsController {
   @Put('institutes/:id/design-templates/:templateId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ summary: 'Update a design template (resets to PENDING)' })
+  @ApiOperation({ summary: 'Update a design template (drops to DRAFT; blocked while PENDING review)' })
   @ApiParam({ name: 'id', description: 'Institute ID' })
   @ApiParam({ name: 'templateId', description: 'Template ID' })
   async updateTemplate(
@@ -66,6 +66,20 @@ export class InstituteDesignsController {
     @Request() req: JwtRequest,
   ) {
     return this.service.upsertTemplate(id, { ...dto, id: templateId }, req.user);
+  }
+
+  @Put('institutes/:id/design-templates/:templateId/submit-for-review')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Submit a DRAFT template for admin review (moves to PENDING, locks editing)' })
+  @ApiParam({ name: 'id', description: 'Institute ID' })
+  @ApiParam({ name: 'templateId', description: 'Template ID' })
+  async submitForReview(
+    @Param('id', ParseIdPipe) id: string,
+    @Param('templateId') templateId: string,
+    @Request() req: JwtRequest,
+  ) {
+    return this.service.submitForReview(id, templateId, req.user);
   }
 
   @Delete('institutes/:id/design-templates/:templateId')

@@ -3657,6 +3657,7 @@ export class UsersController {
   @Public()
   @Post('create-phone-number-otp/request-whatsapp')
   @UseGuards(ApiKeyOrJwtGuard)
+  @Throttle({ default: { limit: 5, ttl: 900000 } }) // 5 per 15 min per IP
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Request Phone OTP via WhatsApp link (reverse-OTP)',
@@ -3686,6 +3687,7 @@ export class UsersController {
   @Public()
   @Get('create-phone-number-otp/status')
   @UseGuards(ApiKeyOrJwtGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } }) // 30 polls per 15 min (user clicks Next repeatedly)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Check WhatsApp phone OTP verification status' })
   async getPhoneOtpStatus(

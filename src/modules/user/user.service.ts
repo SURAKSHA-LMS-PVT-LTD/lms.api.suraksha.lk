@@ -2725,7 +2725,7 @@ export class UsersService {
           's.guardian_id as guardianId'
         ])
         .where('iu.institute_id IN (:...instituteIds)', { instituteIds })
-        .andWhere('iu.user_type = :userType', { userType: InstituteUserType.STUDENT })
+        .andWhere('iu.institute_user_type = :userType', { userType: InstituteUserType.STUDENT })
         .getRawMany();
 
 
@@ -2869,7 +2869,7 @@ export class UsersService {
           's.guardian_id as guardianId'
         ])
         .where('iu.institute_id = :instituteId', { instituteId })
-        .andWhere('iu.user_type = :userType', { userType: InstituteUserType.STUDENT })
+        .andWhere('iu.institute_user_type = :userType', { userType: InstituteUserType.STUDENT })
         .getRawMany();
 
 

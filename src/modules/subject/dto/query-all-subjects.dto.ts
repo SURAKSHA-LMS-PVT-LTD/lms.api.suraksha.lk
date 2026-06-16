@@ -1,4 +1,4 @@
-import { IsBigIntId } from '../../../common/validators/bigint-id.validator';
+import { IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
 import { IsOptional, IsString, IsBoolean, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -16,8 +16,9 @@ export class QueryAllSubjectsDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @IsBigIntId()
-  instituteId: string;
+  @IsOptional()
+  @IsOptionalBigIntId()
+  instituteId?: string;
 
   @IsOptional()
   @IsString()

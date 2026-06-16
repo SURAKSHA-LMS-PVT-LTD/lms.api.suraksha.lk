@@ -4,6 +4,7 @@ import {
 } from 'typeorm';
 
 export enum DesignTemplateStatus {
+  DRAFT     = 'DRAFT',
   PENDING   = 'PENDING',
   APPROVED  = 'APPROVED',
   REJECTED  = 'REJECTED',
@@ -39,7 +40,7 @@ export class DesignTemplateEntity {
     name: 'status',
     type: 'enum',
     enum: DesignTemplateStatus,
-    default: DesignTemplateStatus.PENDING,
+    default: DesignTemplateStatus.DRAFT,
   })
   status: DesignTemplateStatus;
 

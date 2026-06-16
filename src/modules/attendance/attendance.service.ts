@@ -1677,11 +1677,11 @@ export class AttendanceService {
   // MONTHLY ATTENDANCE COUNT APIs
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  async getInstituteMonthlyCount(instituteId: string, year: number, month: number): Promise<any> {
+  async getInstituteMonthlyCount(instituteId: string, year: number, month: number, eventId?: string): Promise<any> {
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
       : this.dynamoAttendanceService;
-    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month);
+    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month, undefined, undefined, eventId);
     return {
       success: true,
       message: 'Institute monthly attendance count retrieved successfully',
@@ -1692,11 +1692,11 @@ export class AttendanceService {
     };
   }
 
-  async getClassMonthlyCount(instituteId: string, classId: string, year: number, month: number): Promise<any> {
+  async getClassMonthlyCount(instituteId: string, classId: string, year: number, month: number, eventId?: string): Promise<any> {
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
       : this.dynamoAttendanceService;
-    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month, classId);
+    const counts = await dbService.getMonthlyAttendanceCount(instituteId, year, month, classId, undefined, eventId);
     return {
       success: true,
       message: 'Class monthly attendance count retrieved successfully',
@@ -1725,11 +1725,11 @@ export class AttendanceService {
     };
   }
 
-  async getInstituteDailyCount(instituteId: string, year: number, month: number): Promise<any> {
+  async getInstituteDailyCount(instituteId: string, year: number, month: number, eventId?: string): Promise<any> {
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
       : this.dynamoAttendanceService;
-    const days = await dbService.getDailyAttendanceCount(instituteId, year, month);
+    const days = await dbService.getDailyAttendanceCount(instituteId, year, month, undefined, undefined, eventId);
     return {
       success: true,
       message: 'Institute daily attendance count retrieved successfully',
@@ -1740,11 +1740,11 @@ export class AttendanceService {
     };
   }
 
-  async getClassDailyCount(instituteId: string, classId: string, year: number, month: number): Promise<any> {
+  async getClassDailyCount(instituteId: string, classId: string, year: number, month: number, eventId?: string): Promise<any> {
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
       : this.dynamoAttendanceService;
-    const days = await dbService.getDailyAttendanceCount(instituteId, year, month, classId);
+    const days = await dbService.getDailyAttendanceCount(instituteId, year, month, classId, undefined, eventId);
     return {
       success: true,
       message: 'Class daily attendance count retrieved successfully',

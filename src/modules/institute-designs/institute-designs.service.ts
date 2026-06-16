@@ -106,10 +106,16 @@ export class InstituteDesignsService {
       });
       if (!existing) throw new NotFoundException(`Template ${dto.id} not found`);
 
-      // Any edit resets to PENDING
+      // PENDING means it's actively in the admin's review queue — locked until they decide.
+      if (existing.status === DesignTemplateStatus.PENDING) {
+        throw new ConflictException('Template is pending review and cannot be edited until reviewed');
+      }
+
+      // Any edit drops a non-draft template back to DRAFT; the institute admin must
+      // explicitly submit it for review again via submitForReview().
       existing.name = dto.name.trim().substring(0, 255);
       existing.definition = dto.definition;
-      existing.status = DesignTemplateStatus.PENDING;
+      existing.status = DesignTemplateStatus.DRAFT;
       existing.rejectionReason = undefined;
       existing.adminNotes = undefined;
       existing.reviewedBy = undefined;
@@ -118,16 +124,31 @@ export class InstituteDesignsService {
       return this.templateRepo.save(existing);
     }
 
-    // Create new
+    // Create new — starts as DRAFT, freely editable until submitted for review
     const tpl = this.templateRepo.create({
       id: uuidv4(),
       instituteId,
       name: dto.name.trim().substring(0, 255),
       definition: dto.definition,
-      status: DesignTemplateStatus.PENDING,
+      status: DesignTemplateStatus.DRAFT,
       costPng: 0, costPdf: 0, costWhatsapp: 0, costPrint: 0,
       allowPng: false, allowPdf: false, allowWhatsapp: false, allowPrint: false,
     });
+    return this.templateRepo.save(tpl);
+  }
+
+  /** Move a DRAFT template into the admin review queue. Locks it from further edits. */
+  async submitForReview(instituteId: string, templateId: string, user: any): Promise<DesignTemplateEntity> {
+    InstituteAccessValidator.validateInstituteAccess(user, instituteId);
+    await this.assertFeatureEnabled(instituteId);
+
+    const tpl = await this.templateRepo.findOne({ where: { id: templateId, instituteId } });
+    if (!tpl) throw new NotFoundException(`Template ${templateId} not found`);
+    if (tpl.status !== DesignTemplateStatus.DRAFT) {
+      throw new ConflictException(`Only DRAFT templates can be submitted for review (status: ${tpl.status})`);
+    }
+
+    tpl.status = DesignTemplateStatus.PENDING;
     return this.templateRepo.save(tpl);
   }
 
