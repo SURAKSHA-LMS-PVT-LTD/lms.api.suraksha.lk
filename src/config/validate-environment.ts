@@ -24,6 +24,43 @@ interface ValidationResult {
 }
 
 /**
+ * Validate NODE_ENV.
+ *
+ * Several security protections (origin-validation guard enforcement, disabling
+ * Swagger, quiet logging) are keyed off `NODE_ENV === 'production'`. If NODE_ENV
+ * is unset or misspelled on a production host, the app silently runs in
+ * DEVELOPMENT mode — origin checks bypass and Swagger exposes every route.
+ * This makes that failure mode LOUD instead of silent.
+ */
+function validateNodeEnv(): ValidationResult {
+  const result: ValidationResult = { valid: true, errors: [], warnings: [] };
+  const raw = process.env.NODE_ENV;
+  const env = (raw || '').trim().toLowerCase();
+  const known = ['production', 'development', 'test'];
+
+  if (!raw) {
+    result.warnings.push(
+      '⚠️  NODE_ENV is NOT set — the app will run in DEVELOPMENT mode.\n' +
+      '   In dev mode the origin-validation guard is BYPASSED and Swagger is exposed.\n' +
+      '   On a production host you MUST set: NODE_ENV=production',
+    );
+  } else if (!known.includes(env)) {
+    result.warnings.push(
+      `⚠️  NODE_ENV="${raw}" is not one of production|development|test — treated as non-production.\n` +
+      '   On a production host set exactly: NODE_ENV=production',
+    );
+  } else if (env !== raw) {
+    // e.g. "Production" or " production " — code compares against exact 'production'
+    result.warnings.push(
+      `⚠️  NODE_ENV="${raw}" has unexpected case/whitespace. Security gates compare against the\n` +
+      '   exact string "production". Set it to lowercase, no spaces: NODE_ENV=production',
+    );
+  }
+
+  return result;
+}
+
+/**
  * Validate JWT_SECRET
  */
 function validateJwtSecret(): ValidationResult {
@@ -282,6 +319,7 @@ function validateAll(): boolean {
   console.log('='.repeat(60));
 
   const validations = [
+    { name: 'Node Environment', fn: validateNodeEnv },
     { name: 'JWT Secret', fn: validateJwtSecret },
     { name: 'Bcrypt Pepper', fn: validateBcryptPepper },
     { name: 'Bcrypt Salt Rounds', fn: validateBcryptSaltRounds },

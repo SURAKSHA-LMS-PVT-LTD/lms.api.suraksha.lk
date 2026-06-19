@@ -1,5 +1,4 @@
 import { NestFactory, Reflector } from '@nestjs/core';
-console.log('\n[DEBUG] main.ts is loading...\n');
 import { AppModule } from './app.module';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { validateAll } from './config/validate-environment';
@@ -171,10 +170,22 @@ async function bootstrap() {
     };
 
     app.enableCors({
-      origin: (origin, callback) => {
+      // When an origin is allowed we return the ORIGIN STRING (not boolean `true`).
+      // With `credentials: true`, the `cors` package only reliably emits
+      // `Access-Control-Allow-Credentials: true` when Allow-Origin is a specific
+      // origin. Returning `true` can reflect the origin yet drop the credentials
+      // header, which breaks cookie/credentialed requests (login, token refresh).
+      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) => {
+        // No Origin header (mobile apps, server-to-server, curl): allow — there
+        // are no browser credentials semantics, and auth guards reject
+        // unauthenticated calls downstream.
+        if (!origin) {
+          return callback(null, true);
+        }
+
         // ✅ Development: only allow local origins (never a blanket pass-all)
         if (isDevelopment) {
-          const devAllowed = !origin || [
+          const devAllowed = [
             'http://localhost:5173',
             'http://localhost:3000',
             'http://localhost:3001',
@@ -182,37 +193,28 @@ async function bootstrap() {
             'http://127.0.0.1:3000',
             'http://127.0.0.1:3001',
           ].includes(origin);
-          if (devAllowed) return callback(null, true);
-        }
-
-        // 🔒 PRODUCTION: Requests with no Origin header are allowed only when they carry
-        // a valid Authorization bearer token (mobile apps, server-to-server).
-        // Raw browser requests always send an Origin — missing Origin + no auth = curl/scan.
-        // We let NestJS JwtAuthGuard reject unauthenticated no-origin requests downstream;
-        // public endpoints (login, health) are safe to accept without an origin.
-        if (!origin) {
-          return callback(null, true);
+          if (devAllowed) return callback(null, origin);
         }
 
         // Check if origin is in static whitelist
         if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
+          return callback(null, origin);
         }
 
         // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
         if (subdomainPattern.test(origin)) {
-          return callback(null, true);
+          return callback(null, origin);
         }
 
         // 🌐 Check frontend hosting platform wildcard patterns
         if (frontendHostingPatterns.some(pattern => pattern.test(origin))) {
-          return callback(null, true);
+          return callback(null, origin);
         }
 
         // 🏢 Multi-tenant: Check custom domain origins dynamically
         isCustomDomainAllowed(origin).then(allowed => {
           if (allowed) {
-            return callback(null, true);
+            return callback(null, origin);
           }
           console.warn(`🚫 CORS blocked origin: ${origin}`);
           callback(new Error('Not allowed by CORS'));
