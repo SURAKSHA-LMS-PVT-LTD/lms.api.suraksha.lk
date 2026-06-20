@@ -33,9 +33,19 @@ export class OriginValidationGuard implements CanActivate {
 
     // Load allowed origins from environment
     const originsEnv = this.configService.get<string>('CORS_ORIGINS', '');
-    this.allowedOrigins = originsEnv
+    const baseOrigins = originsEnv
       ? originsEnv.split(',').map(o => o.trim())
       : ['https://lms.suraksha.lk', 'https://org.suraksha.lk', 'https://transport.suraksha.lk', 'https://admin.suraksha.lk'];
+
+    // Also honor verified tenant custom domains supplied via CUSTOM_DOMAIN_ORIGINS,
+    // so this guard stays in sync with the CORS layer (which already allows them).
+    // Without this, a custom domain passes CORS but is then 403'd here.
+    const customDomainsEnv = this.configService.get<string>('CUSTOM_DOMAIN_ORIGINS', '');
+    const customDomains = customDomainsEnv
+      ? customDomainsEnv.split(',').map(o => o.trim()).filter(Boolean)
+      : [];
+
+    this.allowedOrigins = [...baseOrigins, ...customDomains];
 
     // Load allowed IPs from environment (for server-to-server communication)
     const ipsEnv = this.configService.get<string>('ALLOWED_IPS', '');
