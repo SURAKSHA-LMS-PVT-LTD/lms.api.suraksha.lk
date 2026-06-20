@@ -105,9 +105,15 @@ import { AppService } from './app.service';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      useFactory: (config: ConfigService) => {
+        const dbHost = config.get('DB_HOST') || '';
+        // Cloud SQL via the connector uses a Unix socket (/cloudsql/PROJECT:REGION:INSTANCE).
+        // Over that socket the connection is already secured by the proxy, so app-level
+        // TLS must be OFF (enabling ssl on a socket throws a handshake error).
+        const isCloudSqlSocket = dbHost.startsWith('/cloudsql/');
+        return {
         type: 'mysql', // Uses MySQL2 driver automatically for MySQL 8.x compatibility
-        host: config.get('DB_HOST'),
+        host: isCloudSqlSocket ? undefined : dbHost,
         port: +config.get('DB_PORT'),
         username: config.get('DB_USERNAME'),
         password: config.get('DB_PASSWORD'),
@@ -145,14 +151,24 @@ import { AppService } from './app.service';
           bigNumberStrings: true,
           dateStrings: false,
           debug: false, // Always disabled in production
-          // MySQL 8.x SSL configuration
-          ssl: config.get('NODE_ENV') === 'production' ? {
-            rejectUnauthorized: config.get('DB_SSL_REJECT_UNAUTHORIZED', 'true') === 'true',
-            // Enable TLS 1.2+ for MySQL 8.x
-            minVersion: 'TLSv1.2'
-          } : false,
+          // Cloud SQL connector socket (when DB_HOST=/cloudsql/...)
+          ...(isCloudSqlSocket ? { socketPath: dbHost } : {}),
+          // MySQL 8.x SSL configuration.
+          // - Socket (Cloud SQL connector): no app-level TLS — the proxy secures it.
+          // - TCP in prod: TLS on. rejectUnauthorized can be turned off via
+          //   DB_SSL_REJECT_UNAUTHORIZED=false for servers (e.g. Cloud SQL public IP)
+          //   whose CA isn't in the container trust store.
+          ssl: isCloudSqlSocket
+            ? false
+            : config.get('NODE_ENV') === 'production'
+              ? {
+                  rejectUnauthorized: config.get('DB_SSL_REJECT_UNAUTHORIZED', 'true') === 'true',
+                  minVersion: 'TLSv1.2',
+                }
+              : false,
         },
-      }),
+        };
+      },
     }),
     AuthModule,
     TypeOrmModule.forFeature([UserEntity]),
