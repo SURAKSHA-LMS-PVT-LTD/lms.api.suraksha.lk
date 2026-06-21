@@ -61,7 +61,7 @@ export class ParentsController {
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Parent retrieved successfully', type: ParentResponseDto })
   @ApiResponse({ status: 404, description: 'Parent not found' })
-  async findOne(@Param('userId', ParseBigIntPipe) userId: string): Promise<ParentResponseDto> {
+  async findOne(@Param('userId', ParseBigIntPipe) userId: string): Promise<ParentResponseDto | null> {
     return await this.parentsService.findOne(userId);
   }
 

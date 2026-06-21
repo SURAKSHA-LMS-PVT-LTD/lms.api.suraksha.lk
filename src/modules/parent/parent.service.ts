@@ -379,7 +379,7 @@ export class ParentsService {
     return new PaginatedParentResponseDto(parentResponseDtos, pageNumber, limitNumber, total);
   }
 
-  async findOne(userId: string): Promise<ParentResponseDto> {
+  async findOne(userId: string): Promise<ParentResponseDto | null> {
     const parent = await this.parentRepository
       .createQueryBuilder('parent')
       .select([
@@ -418,7 +418,7 @@ export class ParentsService {
       .getOne();
 
     if (!parent) {
-      throw new NotFoundException(`Parent with user ID ${userId} not found`);
+      return null;
     }
 
     return this.mapToResponseDto(parent);
@@ -571,7 +571,7 @@ export class ParentsService {
       .getOne();
 
     if (!parent) {
-      throw new NotFoundException(`Parent with user ID ${userId} not found`);
+      return new ParentChildrenResponseDto({ parentId: userId, parentName: '', children: [] });
     }
 
     // Helper function to map children to simplified format with URL transformation
