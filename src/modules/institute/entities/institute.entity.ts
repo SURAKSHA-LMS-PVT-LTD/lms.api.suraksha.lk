@@ -183,6 +183,17 @@ export class InstituteEntity {
   })
   isStrictSessionLimit: boolean = false;
 
+  // Password-reset OTP channels (which delivery methods the institute allows for
+  // forgot-password). WhatsApp on by default; Email & SMS off until admin enables them.
+  @Column({ name: 'pwd_reset_whatsapp_enabled', type: 'boolean', default: true, comment: 'Allow WhatsApp OTP for institute password reset' })
+  pwdResetWhatsappEnabled: boolean = true;
+
+  @Column({ name: 'pwd_reset_sms_enabled', type: 'boolean', default: false, comment: 'Allow SMS OTP for institute password reset' })
+  pwdResetSmsEnabled: boolean = false;
+
+  @Column({ name: 'pwd_reset_email_enabled', type: 'boolean', default: false, comment: 'Allow Email OTP for institute password reset' })
+  pwdResetEmailEnabled: boolean = false;
+
   // Login Page Customization
   @Column({ name: 'custom_login_enabled', type: 'boolean', default: false, comment: 'Whether custom login page is active' })
   customLoginEnabled: boolean;

@@ -451,6 +451,9 @@ export class InstitutesService {
       receiptFooterUrl: institute.receiptFooterUrl ? this.cloudStorageService.getFullUrl(institute.receiptFooterUrl) : null,
       printerSettings: institute.printerSettings ?? null,
       allowUserPhotoUpload: institute.allowUserPhotoUpload,
+      pwdResetWhatsappEnabled: institute.pwdResetWhatsappEnabled,
+      pwdResetSmsEnabled: institute.pwdResetSmsEnabled,
+      pwdResetEmailEnabled: institute.pwdResetEmailEnabled,
     });
   }
 
@@ -667,6 +670,10 @@ export class InstitutesService {
     if (dto.allowUserPhotoUpload !== undefined) {
       updateData.allowUserPhotoUpload = dto.allowUserPhotoUpload;
     }
+
+    if (dto.pwdResetWhatsappEnabled !== undefined) updateData.pwdResetWhatsappEnabled = dto.pwdResetWhatsappEnabled;
+    if (dto.pwdResetSmsEnabled !== undefined) updateData.pwdResetSmsEnabled = dto.pwdResetSmsEnabled;
+    if (dto.pwdResetEmailEnabled !== undefined) updateData.pwdResetEmailEnabled = dto.pwdResetEmailEnabled;
 
     updateData.updatedAt = now();
 

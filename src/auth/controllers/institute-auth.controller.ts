@@ -24,6 +24,7 @@ import {
   GetAvailableContactsDto,
   SelfActivateRequestOtpDto,
   SelfActivateVerifyDto,
+  InstitutePwdResetOtpStatusDto,
 } from '../dto/institute-login.dto';
 import { LogoutDto } from '../dto/logout.dto';
 import { SetDeviceLimitDto, BulkSetDeviceLimitDto } from '../dto/device-limit.dto';
@@ -296,9 +297,18 @@ export class InstituteAuthController {
   @Post('available-contacts')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  @ApiOperation({ summary: 'Get masked contact list for OTP delivery' })
+  @ApiOperation({ summary: 'Get masked contact list + enabled OTP channels' })
   async getAvailableContacts(@Body() dto: GetAvailableContactsDto) {
     return this.instituteLoginService.getAvailableContacts(dto);
+  }
+
+  @Public()
+  @Post('password-reset/otp-status')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({ summary: 'Poll whether a WhatsApp password-reset OTP has been confirmed' })
+  async getResetOtpStatus(@Body() dto: InstitutePwdResetOtpStatusDto) {
+    return this.instituteLoginService.getResetOtpStatus(dto);
   }
 
   @UseGuards(JwtAuthGuard)

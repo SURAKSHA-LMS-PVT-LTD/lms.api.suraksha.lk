@@ -9,7 +9,7 @@ import { InstituteEntity } from '../../modules/institute/entities/institute.enti
 import { UserEntity } from '../../modules/user/entities/user.entity';
 import { StudentEntity } from '../../modules/student/entities/student.entity';
 import { ParentEntity } from '../../modules/parent/entities/parent.entity';
-import { UserOtpEntity, OtpType, OtpPurpose } from '../../modules/user/entities/user-otp.entity';
+import { UserOtpEntity, OtpType, OtpPurpose, OtpDeliveryMethod } from '../../modules/user/entities/user-otp.entity';
 import { InstituteUserStatus } from '../../modules/institute_mudules/institue_user/enums/institute-user-status.enum';
 import { InstituteUserType } from '../../modules/institute_mudules/institue_user/enums/institute-user-type.enum';
 import { AuthService } from '../auth.service';
@@ -28,6 +28,7 @@ import {
   GetAvailableContactsDto,
   SelfActivateRequestOtpDto,
   SelfActivateVerifyDto,
+  InstitutePwdResetOtpStatusDto,
 } from '../dto/institute-login.dto';
 import {
   InstituteSessionService,
@@ -328,6 +329,8 @@ export class InstituteLoginService {
     sentTo: string;
     channel: InstitutePasswordResetChannel;
     isParentContact: boolean;
+    /** For WHATSAPP: the wa.me deep link the user taps to send the OTP. */
+    waLink?: string;
   }> {
     // 1. Find the institute user
     const instituteUser = await this.instituteUserRepository.findOne({
@@ -408,6 +411,42 @@ export class InstituteLoginService {
       contactType = resolvedChannel === InstitutePasswordResetChannel.EMAIL ? OtpType.EMAIL : OtpType.PHONE;
     }
 
+    // ── Determine the effective delivery channel and gate on institute flags ──
+    // A phone contact may be delivered via SMS or WHATSAPP; an email contact via EMAIL.
+    const institute = await this.instituteRepository.findOne({
+      where: { id: dto.instituteId },
+      select: ['id', 'pwdResetWhatsappEnabled', 'pwdResetSmsEnabled', 'pwdResetEmailEnabled'],
+    });
+    const enabled = {
+      [InstitutePasswordResetChannel.WHATSAPP]: institute?.pwdResetWhatsappEnabled ?? true,
+      [InstitutePasswordResetChannel.SMS]: institute?.pwdResetSmsEnabled ?? false,
+      [InstitutePasswordResetChannel.EMAIL]: institute?.pwdResetEmailEnabled ?? false,
+    };
+
+    let deliveryChannel: InstitutePasswordResetChannel;
+    if (contactType === OtpType.EMAIL) {
+      deliveryChannel = InstitutePasswordResetChannel.EMAIL;
+    } else {
+      // phone contact — pick the requested phone channel, default to WhatsApp
+      const requested = dto.deliveryChannel;
+      if (requested === InstitutePasswordResetChannel.SMS || requested === InstitutePasswordResetChannel.PHONE) {
+        deliveryChannel = InstitutePasswordResetChannel.SMS;
+      } else if (requested === InstitutePasswordResetChannel.EMAIL) {
+        throw new BadRequestException('Email delivery requires an email contact.');
+      } else {
+        deliveryChannel = InstitutePasswordResetChannel.WHATSAPP;
+      }
+    }
+
+    if (!enabled[deliveryChannel]) {
+      throw new BadRequestException(
+        `${deliveryChannel} password reset is not enabled for this institute. Choose an enabled channel.`,
+      );
+    }
+    if (deliveryChannel === InstitutePasswordResetChannel.WHATSAPP && !process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
     // Rate limiting
     const todayStr = new Date().toISOString().split('T')[0];
     const todayCount = await this.otpRepository.count({
@@ -427,14 +466,25 @@ export class InstituteLoginService {
     const otpCode = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
+    // Map the chosen channel to the OTP delivery method stored on the row.
+    const deliveryMethod =
+      deliveryChannel === InstitutePasswordResetChannel.EMAIL ? OtpDeliveryMethod.EMAIL
+        : deliveryChannel === InstitutePasswordResetChannel.WHATSAPP ? OtpDeliveryMethod.WHATSAPP
+          : OtpDeliveryMethod.SMS;
+
+    const normalizedPhone =
+      contactType === OtpType.PHONE ? (normalizeSriLankanPhone(contactValue) || contactValue) : undefined;
+
     await this.otpRepository.save(
       this.otpRepository.create({
         userId: instituteUser.userId,
         email: contactType === OtpType.EMAIL ? contactValue : undefined,
-        phoneNumber: contactType === OtpType.PHONE ? contactValue : undefined,
+        // WhatsApp reverse-OTP binds the sender against phoneNumber — store the normalized phone.
+        phoneNumber: normalizedPhone,
         otpCode,
         otpType: contactType,
         otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+        deliveryMethod,
         expiresAt,
         createdAt: now(),
         createdDate: todayStr,
@@ -442,9 +492,11 @@ export class InstituteLoginService {
       }),
     );
 
-    // Send OTP
+    // Send / present the OTP per channel.
     let sentTo: string;
-    if (contactType === OtpType.EMAIL) {
+    let waLink: string | undefined;
+
+    if (deliveryChannel === InstitutePasswordResetChannel.EMAIL) {
       const user = await this.userRepository.findOne({
         where: { id: instituteUser.userId },
         select: ['firstName', 'lastName'],
@@ -459,23 +511,30 @@ export class InstituteLoginService {
       });
       const [local, domain] = contactValue.split('@');
       sentTo = `${local[0]}***@${domain}`;
+    } else if (deliveryChannel === InstitutePasswordResetChannel.WHATSAPP) {
+      // Reverse-OTP: no message is sent. The user taps the wa.me link and sends the
+      // code from their own WhatsApp; the webhook confirms it (code + sender phone).
+      waLink = this.buildWhatsAppOtpLink(otpCode);
+      sentTo = this.maskPhone(normalizedPhone!);
     } else {
-      const normalized = normalizeSriLankanPhone(contactValue) || contactValue;
       await this.smslenzProvider.sendSms({
         senderId: 'Suraksha',
-        contact: normalized,
+        contact: normalizedPhone!,
         message: `Your institute password reset code is: ${otpCode}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
       });
-      sentTo = this.maskPhone(normalized);
+      sentTo = this.maskPhone(normalizedPhone!);
     }
 
-    this.logger.log(`✅ Institute password reset OTP sent: user=${instituteUser.userId}, channel=${contactType}, isParent=${isParentContact}`);
+    this.logger.log(`✅ Institute password reset OTP issued: user=${instituteUser.userId}, channel=${deliveryChannel}, isParent=${isParentContact}`);
 
     return {
-      message: 'OTP sent successfully',
+      message: deliveryChannel === InstitutePasswordResetChannel.WHATSAPP
+        ? 'Tap the WhatsApp link and send the message to verify.'
+        : 'OTP sent successfully',
       sentTo,
-      channel: contactType === OtpType.EMAIL ? InstitutePasswordResetChannel.EMAIL : InstitutePasswordResetChannel.PHONE,
+      channel: deliveryChannel,
       isParentContact,
+      waLink,
     };
   }
 
@@ -496,42 +555,54 @@ export class InstituteLoginService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // 2. Find the OTP record
-    const otpRecord = await this.otpRepository.findOne({
-      where: {
-        userId: instituteUser.userId,
-        otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
-        isVerified: false,
-      },
-      order: { createdAt: 'DESC' },
-    });
+    const isWhatsApp = dto.deliveryChannel === InstitutePasswordResetChannel.WHATSAPP;
 
-    if (!otpRecord) {
-      throw new BadRequestException('No pending OTP found. Please request a new one.');
+    if (isWhatsApp) {
+      // WhatsApp: the webhook already confirmed the OTP (isVerified=true). We only
+      // need to confirm a recent verified WhatsApp OTP exists, then set the password.
+      const confirmed = await this.otpRepository.findOne({
+        where: {
+          userId: instituteUser.userId,
+          otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+          deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+          isVerified: true,
+        },
+        order: { createdAt: 'DESC' },
+      });
+      if (!confirmed) {
+        throw new BadRequestException('WhatsApp verification not completed. Send the code from your WhatsApp first.');
+      }
+      // Guard against reusing an old confirmed OTP: must have been verified within the window.
+      const verifiedAt = confirmed.verifiedAt?.getTime() ?? 0;
+      if (Date.now() - verifiedAt > OTP_EXPIRY_MINUTES * 60 * 1000) {
+        throw new BadRequestException('Verification expired. Please request a new WhatsApp OTP.');
+      }
+    } else {
+      // 2. Find the pending OTP record (EMAIL / SMS — typed code)
+      const otpRecord = await this.otpRepository.findOne({
+        where: {
+          userId: instituteUser.userId,
+          otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+          isVerified: false,
+        },
+        order: { createdAt: 'DESC' },
+      });
+
+      if (!otpRecord) {
+        throw new BadRequestException('No pending OTP found. Please request a new one.');
+      }
+      if (new Date() > otpRecord.expiresAt) {
+        throw new BadRequestException('OTP has expired. Please request a new one.');
+      }
+      if (otpRecord.attempts >= 5) {
+        throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+      }
+      if (!dto.otpCode || otpRecord.otpCode !== dto.otpCode) {
+        await this.otpRepository.update(otpRecord.id, { attempts: otpRecord.attempts + 1 });
+        throw new UnauthorizedException('Invalid OTP code');
+      }
+      await this.otpRepository.update(otpRecord.id, { isVerified: true, verifiedAt: now() });
     }
-
-    // 3. Check expiry
-    if (new Date() > otpRecord.expiresAt) {
-      throw new BadRequestException('OTP has expired. Please request a new one.');
-    }
-
-    // 4. Check attempts (max 5)
-    if (otpRecord.attempts >= 5) {
-      throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
-    }
-
-    // 5. Verify OTP code
-    if (otpRecord.otpCode !== dto.otpCode) {
-      // Increment attempts
-      await this.otpRepository.update(otpRecord.id, { attempts: otpRecord.attempts + 1 });
-      throw new UnauthorizedException('Invalid OTP code');
-    }
-
-    // 6. Mark OTP as verified
-    await this.otpRepository.update(otpRecord.id, {
-      isVerified: true,
-      verifiedAt: now(),
-    });
 
     // 7. Hash and set new password
     const hashedPassword = await this.authService.hashPassword(dto.newPassword);
@@ -562,15 +633,46 @@ export class InstituteLoginService {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private maskPhone(phone: string): string {
-    // Show only last 2 digits: e.g. "+94771234528" → "****28"
-    if (!phone || phone.length < 2) return '****';
-    return `****${phone.slice(-2)}`;
+    // Show only last 3 digits: e.g. "+94771234528" → "****528"
+    if (!phone || phone.length < 3) return '****';
+    return `****${phone.slice(-3)}`;
   }
 
   private maskEmail(email: string): string {
     const atIdx = email.indexOf('@');
     if (atIdx < 0) return '***@***.***';
     return `${email.charAt(0) || '*'}***@${email.slice(atIdx + 1)}`;
+  }
+
+  /** Build the wa.me deep link the user taps to send the reverse-OTP to the business number. */
+  private buildWhatsAppOtpLink(otpCode: string): string {
+    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
+    const text = encodeURIComponent(`My OTP code is ${otpCode}`);
+    return `https://wa.me/${businessNumber}?text=${text}`;
+  }
+
+  /**
+   * Poll whether the latest WhatsApp password-reset OTP for this institute user has been
+   * confirmed by the webhook. Never returns the code itself.
+   */
+  async getResetOtpStatus(dto: InstitutePwdResetOtpStatusDto): Promise<{ verified: boolean; expired: boolean }> {
+    const instituteUser = await this.instituteUserRepository.findOne({
+      where: { instituteId: dto.instituteId, userIdByInstitute: dto.userIdByInstitute, status: InstituteUserStatus.ACTIVE },
+    });
+    if (!instituteUser) throw new NotFoundException('Institute user not found.');
+
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId: instituteUser.userId,
+        otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!otp) return { verified: false, expired: false };
+
+    const expired = !otp.isVerified && otp.expiresAt.getTime() <= Date.now();
+    return { verified: otp.isVerified, expired };
   }
 
   /**
@@ -679,14 +781,32 @@ export class InstituteLoginService {
    */
   async getAvailableContacts(dto: GetAvailableContactsDto): Promise<{
     contacts: { id: string; label: string; masked: string; type: 'EMAIL' | 'PHONE' }[];
+    enabledChannels: { email: boolean; sms: boolean; whatsapp: boolean };
   }> {
     const instituteUser = await this.instituteUserRepository.findOne({
       where: { instituteId: dto.instituteId, userIdByInstitute: dto.userIdByInstitute, status: InstituteUserStatus.ACTIVE },
     });
     if (!instituteUser) throw new NotFoundException('Institute user not found.');
 
+    const institute = await this.instituteRepository.findOne({
+      where: { id: dto.instituteId },
+      select: ['id', 'pwdResetWhatsappEnabled', 'pwdResetSmsEnabled', 'pwdResetEmailEnabled'],
+    });
+    const enabledChannels = {
+      email: institute?.pwdResetEmailEnabled ?? false,
+      sms: institute?.pwdResetSmsEnabled ?? false,
+      whatsapp: institute?.pwdResetWhatsappEnabled ?? true,
+    };
+
     const contacts = await this.buildContactList(instituteUser.userId, instituteUser.instituteUserType);
-    return { contacts };
+    // User exists but has no phone/email on file → self-service OTP reset is impossible.
+    // Surface a specific, actionable message instead of the generic "not found".
+    if (contacts.length === 0) {
+      throw new BadRequestException(
+        'No phone number or email is registered for this account, so a reset code cannot be sent. Please ask your institute admin to reset your password.',
+      );
+    }
+    return { contacts, enabledChannels };
   }
 
   /**

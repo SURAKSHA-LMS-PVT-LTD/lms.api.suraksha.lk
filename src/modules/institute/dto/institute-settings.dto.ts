@@ -179,6 +179,18 @@ export class InstituteSettingsResponseDto {
   @Expose()
   allowUserPhotoUpload?: boolean;
 
+  @ApiPropertyOptional({ description: 'Allow WhatsApp OTP for forgot-password' })
+  @Expose()
+  pwdResetWhatsappEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Allow SMS OTP for forgot-password' })
+  @Expose()
+  pwdResetSmsEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Allow Email OTP for forgot-password' })
+  @Expose()
+  pwdResetEmailEnabled?: boolean;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
     Object.assign(this, partial);
   }

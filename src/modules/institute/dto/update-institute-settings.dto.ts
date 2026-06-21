@@ -302,4 +302,20 @@ export class UpdateInstituteSettingsDto {
   @IsOptional()
   @IsBoolean()
   allowUserPhotoUpload?: boolean;
+
+  // ── Password-reset OTP channels ────────────────────────────────────────────
+  @ApiPropertyOptional({ description: 'Allow WhatsApp OTP for forgot-password (reverse-OTP link).' })
+  @IsOptional()
+  @IsBoolean()
+  pwdResetWhatsappEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Allow SMS OTP for forgot-password.' })
+  @IsOptional()
+  @IsBoolean()
+  pwdResetSmsEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Allow Email OTP for forgot-password.' })
+  @IsOptional()
+  @IsBoolean()
+  pwdResetEmailEnabled?: boolean;
 }

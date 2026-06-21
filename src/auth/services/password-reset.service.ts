@@ -1,10 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as crypto from 'crypto';
 import { UserEntity } from '../../modules/user/entities/user.entity';
 import { PasswordResetTokenEntity } from '../entities/password-reset.entity';
+import { UserOtpEntity, OtpType, OtpPurpose, OtpDeliveryMethod } from '../../modules/user/entities/user-otp.entity';
+import { StudentEntity } from '../../modules/student/entities/student.entity';
+import { ParentEntity } from '../../modules/parent/entities/parent.entity';
 import { AsyncEmailService } from '../../common/services/async-email.service';
 import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
@@ -61,10 +64,144 @@ export class PasswordResetService {
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(PasswordResetTokenEntity)
     private readonly passwordResetTokenRepository: Repository<PasswordResetTokenEntity>,
+    @InjectRepository(UserOtpEntity)
+    private readonly otpRepository: Repository<UserOtpEntity>,
+    @InjectRepository(StudentEntity)
+    private readonly studentRepository: Repository<StudentEntity>,
+    @InjectRepository(ParentEntity)
+    private readonly parentRepository: Repository<ParentEntity>,
     private readonly asyncEmailService: AsyncEmailService,
     private readonly jwtService: JwtService,
     private readonly authService: AuthService,
   ) {}
+
+  // ── WhatsApp reverse-OTP reset (main login: own + parent numbers) ───────────
+
+  private maskPhone3(phone: string): string {
+    if (!phone || phone.length < 3) return '****';
+    return `****${phone.slice(-3)}`;
+  }
+
+  private async resolveUserByIdentifier(identifier: string): Promise<UserEntity | null> {
+    const { type, normalized } = this.detectIdentifierType(identifier);
+    const where: any = { isActive: true };
+    if (type === 'email') where.email = normalized;
+    else if (type === 'phone') where.phoneNumber = normalized;
+    else if (type === 'system_id') where.id = normalized;
+    else if (type === 'birth_certificate') where.birthCertificateNo = normalized;
+    else return null;
+    return this.userRepository.findOne({ where, select: ['id', 'email', 'phoneNumber', 'firstName', 'lastName', 'isActive'] });
+  }
+
+  /** Build own + parent phone contacts (masked last 3) for the resolved user. */
+  private async buildPhoneContacts(userId: string): Promise<{ id: string; label: string; masked: string; phone: string }[]> {
+    const user = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'phoneNumber'] });
+    const contacts: { id: string; label: string; masked: string; phone: string }[] = [];
+    if (user?.phoneNumber) {
+      contacts.push({ id: 'own_phone', label: 'Your registered phone', masked: this.maskPhone3(user.phoneNumber), phone: user.phoneNumber });
+    }
+    // Parent phones, if this user is a student.
+    const student = await this.studentRepository.findOne({ where: { userId } });
+    if (student) {
+      const entries = [
+        { id: 'father_phone', parentId: student.fatherId, label: "Father's phone" },
+        { id: 'mother_phone', parentId: student.motherId, label: "Mother's phone" },
+        { id: 'guardian_phone', parentId: student.guardianId, label: "Guardian's phone" },
+      ];
+      const parentIds = entries.map(e => e.parentId).filter(Boolean) as string[];
+      if (parentIds.length) {
+        const parents = await this.parentRepository.find({ where: { userId: In(parentIds) }, relations: ['user'] });
+        const byId = new Map(parents.map(p => [p.userId, p]));
+        for (const e of entries) {
+          if (!e.parentId) continue;
+          const phone = byId.get(e.parentId)?.user?.phoneNumber;
+          if (phone && !contacts.some(c => c.id === e.id)) {
+            contacts.push({ id: e.id, label: e.label, masked: this.maskPhone3(phone), phone });
+          }
+        }
+      }
+    }
+    return contacts;
+  }
+
+  /** Public: list selectable phone contacts (own + parents) for WhatsApp reset. */
+  async getWhatsAppResetContacts(identifier: string): Promise<{ contacts: { id: string; label: string; masked: string }[] }> {
+    const user = await this.resolveUserByIdentifier(identifier);
+    // Don't reveal existence — return empty list rather than 404 when not found.
+    if (!user) return { contacts: [] };
+    const contacts = await this.buildPhoneContacts(user.id);
+    return { contacts: contacts.map(({ id, label, masked }) => ({ id, label, masked })) };
+  }
+
+  /** Public: create a WhatsApp reverse-OTP for the chosen phone contact; returns the wa.me link. */
+  async initiateWhatsAppReset(identifier: string, selectedContactId: string, ipAddress?: string): Promise<{ message: string; sentTo: string; waLink: string }> {
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+    const user = await this.resolveUserByIdentifier(identifier);
+    if (!user) throw new BadRequestException('If the account exists, you can verify via WhatsApp.');
+
+    const contacts = await this.buildPhoneContacts(user.id);
+    const chosen = contacts.find(c => c.id === selectedContactId);
+    if (!chosen) throw new BadRequestException('Selected contact is not available.');
+
+    const normalized = normalizeSriLankanPhone(chosen.phone) || chosen.phone;
+
+    // Invalidate previous pending OTPs for this user+purpose.
+    await this.otpRepository.update(
+      { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: false },
+      { isVerified: true },
+    );
+
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(nowTimestamp() + 30 * 60 * 1000);
+    await this.otpRepository.save(this.otpRepository.create({
+      userId: user.id,
+      phoneNumber: normalized,
+      otpCode,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.PASSWORD_RESET,
+      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      expiresAt,
+      createdAt: now(),
+      createdDate: new Date().toISOString().split('T')[0],
+      ipAddress: ipAddress || null,
+    }));
+
+    return { message: 'Tap the WhatsApp link and send the message to verify.', sentTo: chosen.masked, waLink: this.buildWhatsAppOtpLink(otpCode) };
+  }
+
+  /** Public: poll whether the WhatsApp reset OTP was confirmed by the webhook. */
+  async getWhatsAppResetStatus(identifier: string): Promise<{ verified: boolean; expired: boolean }> {
+    const user = await this.resolveUserByIdentifier(identifier);
+    if (!user) return { verified: false, expired: false };
+    const otp = await this.otpRepository.findOne({
+      where: { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP },
+      order: { createdAt: 'DESC' },
+    });
+    if (!otp) return { verified: false, expired: false };
+    const expired = !otp.isVerified && otp.expiresAt.getTime() <= Date.now();
+    return { verified: otp.isVerified, expired };
+  }
+
+  /** Public: complete the reset after WhatsApp confirmation (no typed code). */
+  async resetPasswordViaWhatsApp(identifier: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.resolveUserByIdentifier(identifier);
+    if (!user) throw new BadRequestException('Invalid request.');
+    const confirmed = await this.otpRepository.findOne({
+      where: { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: true },
+      order: { createdAt: 'DESC' },
+    });
+    if (!confirmed) throw new BadRequestException('WhatsApp verification not completed. Send the code from your WhatsApp first.');
+    const verifiedAt = confirmed.verifiedAt?.getTime() ?? 0;
+    if (Date.now() - verifiedAt > 30 * 60 * 1000) {
+      throw new BadRequestException('Verification expired. Please request a new WhatsApp code.');
+    }
+    const hashed = await this.authService.hashPassword(newPassword);
+    await this.userRepository.update({ id: user.id }, { password: hashed, updatedAt: now() });
+    this.logger.log(`✅ Main password reset via WhatsApp: user=${user.id}`);
+    return { success: true, message: 'Password reset successfully' };
+  }
 
   /**
    * Detect identifier type - delegates to shared utility

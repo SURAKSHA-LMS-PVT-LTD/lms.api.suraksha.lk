@@ -97,6 +97,8 @@ export class InstituteChangePasswordDto {
 export enum InstitutePasswordResetChannel {
   EMAIL = 'EMAIL',
   PHONE = 'PHONE',
+  SMS = 'SMS',
+  WHATSAPP = 'WHATSAPP',
 }
 
 export class InstitutePasswordResetInitiateDto {
@@ -124,7 +126,17 @@ export class InstitutePasswordResetInitiateDto {
   @IsString()
   selectedContactId?: string;
 
-  /** @deprecated Use selectedContactId instead */
+  /**
+   * Delivery channel chosen by the user: EMAIL, SMS, or WHATSAPP.
+   * Must be enabled for the institute. WHATSAPP uses the reverse-OTP wa.me flow
+   * (returns a waLink; the user sends the code from their WhatsApp).
+   */
+  @ApiPropertyOptional({ enum: InstitutePasswordResetChannel, description: 'EMAIL | SMS | WHATSAPP' })
+  @IsOptional()
+  @IsEnum(InstitutePasswordResetChannel)
+  deliveryChannel?: InstitutePasswordResetChannel;
+
+  /** @deprecated Use deliveryChannel instead */
   @ApiPropertyOptional({ enum: InstitutePasswordResetChannel })
   @IsOptional()
   @IsEnum(InstitutePasswordResetChannel)
@@ -208,14 +220,19 @@ export class InstitutePasswordResetVerifyDto {
   @IsNotEmpty()
   userIdByInstitute: string;
 
-  @ApiProperty({
-    description: '6-digit OTP code',
+  @ApiPropertyOptional({
+    description: '6-digit OTP code (required for EMAIL/SMS; omitted for WHATSAPP, which is confirmed via webhook)',
     example: '123456'
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MinLength(6)
-  otpCode: string;
+  otpCode?: string;
+
+  @ApiPropertyOptional({ enum: InstitutePasswordResetChannel, description: 'Channel used; WHATSAPP completes without a typed code' })
+  @IsOptional()
+  @IsEnum(InstitutePasswordResetChannel)
+  deliveryChannel?: InstitutePasswordResetChannel;
 
   @ApiProperty({
     description: 'New password (min 8 characters)',
@@ -225,4 +242,17 @@ export class InstitutePasswordResetVerifyDto {
   @IsNotEmpty()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
   newPassword: string;
+}
+
+/** Poll whether a WhatsApp reverse-OTP for institute password reset has been confirmed. */
+export class InstitutePwdResetOtpStatusDto {
+  @ApiProperty({ description: 'Institute ID', example: '1' })
+  @IsString()
+  @IsNotEmpty()
+  instituteId: string;
+
+  @ApiProperty({ description: 'Institute-assigned user ID', example: 'STU2024001' })
+  @IsString()
+  @IsNotEmpty()
+  userIdByInstitute: string;
 }

@@ -341,6 +341,47 @@ export class AuthController {
     }
   }
 
+  // ── WhatsApp reverse-OTP reset (own + parent numbers) ──────────────────────
+
+  @Public()
+  @Post('forgot-password/whatsapp/contacts')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({ summary: 'List selectable phone contacts (own + parents) for WhatsApp reset' })
+  async forgotPasswordWaContacts(@Body() body: { identifier: string }) {
+    return this.passwordResetService.getWhatsAppResetContacts(body.identifier);
+  }
+
+  @Public()
+  @Post('forgot-password/whatsapp/initiate')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @ApiOperation({ summary: 'Create a WhatsApp reverse-OTP for the chosen contact (returns wa.me link)' })
+  async forgotPasswordWaInitiate(
+    @Body() body: { identifier: string; selectedContactId: string },
+    @Req() req: ExpressRequest,
+  ) {
+    return this.passwordResetService.initiateWhatsAppReset(body.identifier, body.selectedContactId, getClientIp(req));
+  }
+
+  @Public()
+  @Post('forgot-password/whatsapp/status')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({ summary: 'Poll whether the WhatsApp reset OTP was confirmed' })
+  async forgotPasswordWaStatus(@Body() body: { identifier: string }) {
+    return this.passwordResetService.getWhatsAppResetStatus(body.identifier);
+  }
+
+  @Public()
+  @Post('forgot-password/whatsapp/reset')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @ApiOperation({ summary: 'Complete the reset after WhatsApp confirmation (no typed code)' })
+  async forgotPasswordWaReset(@Body() body: { identifier: string; newPassword: string }) {
+    return this.passwordResetService.resetPasswordViaWhatsApp(body.identifier, body.newPassword);
+  }
+
   /**
    * Step 2: Verify OTP, encrypt new password, and save
    */
