@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsEnum, IsNumberString, MinLength, MaxLength, Matches, IsIn } from 'class-validator';
+import { IsOptional, IsString, IsNumberString, MinLength, MaxLength, Matches, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { UserType } from '../../../user/enums/user-type.enum';
@@ -299,6 +299,48 @@ export class SecureUserQueryDto {
     return String(value).trim();
   })
   houseId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by institute-assigned student/user ID (user_id_institue)',
+    example: 'STU-20240101-001',
+    maxLength: 50
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return value.toString().trim().replace(/['"`;\\]/g, '');
+  })
+  userIdByInstitute?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by institute card/barcode ID',
+    example: 'CARD-001',
+    maxLength: 100
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return value.toString().trim().replace(/['"`;\\]/g, '');
+  })
+  cardId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by instituteName stored in extra_data (e.g. WINS, Sihasma)',
+    example: 'WINS',
+    maxLength: 100
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    return value.toString().trim().replace(/['"`;\\]/g, '');
+  })
+  instituteName?: string;
 
   @ApiPropertyOptional({
     description: 'Filter by date of birth from (YYYY-MM-DD)',

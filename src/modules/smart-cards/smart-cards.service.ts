@@ -16,6 +16,7 @@ import {
   UpdateSmartCardDto,
   AssignCardsToInstituteDto,
   AssignCardsToClassDto,
+  BulkAssignToClassByRangeDto,
   AssignCardToUserDto,
   ListSmartCardsQueryDto,
 } from './dto/smart-card.dto';
@@ -48,12 +49,18 @@ export class SmartCardsService {
 
   async createCard(dto: CreateSmartCardDto): Promise<SmartCardEntity> {
     await this.ensureUniqueValue(dto.scope, dto.cardId);
+    let status = SmartCardStatus.AVAILABLE;
+    if (dto.instituteId && dto.scope === SmartCardScope.INSTITUTE) {
+      status = dto.classId ? SmartCardStatus.ASSIGNED_CLASS : SmartCardStatus.ASSIGNED_INSTITUTE;
+    }
     const card = this.cardRepo.create({
       cardName: dto.cardName,
       cardId: dto.cardId,
       cardType: dto.cardType,
       scope: dto.scope,
-      status: SmartCardStatus.AVAILABLE,
+      status,
+      instituteId: dto.instituteId || null,
+      classId: dto.classId || null,
     });
     return this.cardRepo.save(card);
   }
@@ -81,13 +88,19 @@ export class SmartCardsService {
 
     if (toInsert.length > 0) {
       const prefix = dto.namePrefix?.trim() || 'Card';
+      let autoStatus = SmartCardStatus.AVAILABLE;
+      if (dto.instituteId && dto.scope === SmartCardScope.INSTITUTE) {
+        autoStatus = dto.classId ? SmartCardStatus.ASSIGNED_CLASS : SmartCardStatus.ASSIGNED_INSTITUTE;
+      }
       const rows = toInsert.map((cardId) =>
         this.cardRepo.create({
           cardName: `${prefix} ${cardId}`,
           cardId,
           cardType: dto.cardType,
           scope: dto.scope,
-          status: SmartCardStatus.AVAILABLE,
+          status: autoStatus,
+          instituteId: dto.instituteId || null,
+          classId: dto.classId || null,
         }),
       );
       // chunked insert keeps the statement size sane for large ranges
@@ -227,7 +240,72 @@ export class SmartCardsService {
     return { moved: toSave.length, skipped };
   }
 
+  /**
+   * Admin shortcut: assign all of an institute's cards whose cardId falls within
+   * [cardIdMin, cardIdMax] (string ≤ comparison) to the given class.
+   */
+  async bulkAssignToClassByRange(
+    instituteId: string,
+    dto: BulkAssignToClassByRangeDto,
+  ): Promise<{ moved: number; skipped: number }> {
+    const cards = await this.cardRepo
+      .createQueryBuilder('c')
+      .where('c.instituteId = :iid', { iid: instituteId })
+      .andWhere('c.cardId >= :min', { min: dto.cardIdMin })
+      .andWhere('c.cardId <= :max', { max: dto.cardIdMax })
+      .andWhere('c.status IN (:...free)', { free: [SmartCardStatus.ASSIGNED_INSTITUTE, SmartCardStatus.ASSIGNED_CLASS] })
+      .getMany();
+
+    const toSave: SmartCardEntity[] = [];
+    for (const card of cards) {
+      if (!card.assignedUserId) {
+        card.classId = dto.classId;
+        card.status = SmartCardStatus.ASSIGNED_CLASS;
+        toSave.push(card);
+      }
+    }
+    await this.cardRepo.save(toSave);
+    return { moved: toSave.length, skipped: cards.length - toSave.length };
+  }
+
   // ───────────────────────── Counts (institute admin) ──────────────────────
+
+  /**
+   * Admin-level: per-institute card stats across all institutes.
+   * Returns an array of { instituteId, total, available, assignedToUser, byStatus }
+   */
+  async getAdminInstituteStats(): Promise<any[]> {
+    const rows = await this.cardRepo
+      .createQueryBuilder('c')
+      .select('c.instituteId', 'instituteId')
+      .addSelect('c.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('c.instituteId IS NOT NULL')
+      .groupBy('c.instituteId')
+      .addGroupBy('c.status')
+      .getRawMany();
+
+    const map = new Map<string, { instituteId: string; total: number; available: number; assignedToUser: number; onHand: number; byStatus: Record<string, number> }>();
+    for (const r of rows) {
+      if (!map.has(r.instituteId)) {
+        map.set(r.instituteId, { instituteId: r.instituteId, total: 0, available: 0, assignedToUser: 0, onHand: 0, byStatus: {} });
+      }
+      const bucket = map.get(r.instituteId)!;
+      const count = Number(r.count);
+      bucket.total += count;
+      bucket.byStatus[r.status] = (bucket.byStatus[r.status] || 0) + count;
+      if (r.status === 'ASSIGNED_INSTITUTE' || r.status === 'ASSIGNED_CLASS') {
+        bucket.onHand += count;
+      }
+      if (r.status === 'ASSIGNED_USER') {
+        bucket.assignedToUser += count;
+      }
+      if (r.status === 'AVAILABLE') {
+        bucket.available += count;
+      }
+    }
+    return Array.from(map.values());
+  }
 
   /** Institute admins only see counts — never the raw id list. */
   async getInstituteCounts(instituteId: string): Promise<Record<string, any>> {

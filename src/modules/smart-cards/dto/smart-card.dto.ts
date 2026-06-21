@@ -34,6 +34,16 @@ export class CreateSmartCardDto {
   @ApiProperty({ enum: SmartCardScope })
   @IsEnum(SmartCardScope)
   scope: SmartCardScope;
+
+  @ApiPropertyOptional({ description: 'Auto-assign to this institute on creation (INSTITUTE scope).' })
+  @IsOptional()
+  @IsString()
+  instituteId?: string;
+
+  @ApiPropertyOptional({ description: 'Auto-assign to this class on creation (requires instituteId).' })
+  @IsOptional()
+  @IsString()
+  classId?: string;
 }
 
 /**
@@ -88,6 +98,16 @@ export class BulkCreateSmartCardsDto {
   @IsInt()
   @Min(0)
   pad?: number;
+
+  @ApiPropertyOptional({ description: 'Auto-assign all created cards to this institute.' })
+  @IsOptional()
+  @IsString()
+  instituteId?: string;
+
+  @ApiPropertyOptional({ description: 'Auto-assign all created cards to this class (requires instituteId).' })
+  @IsOptional()
+  @IsString()
+  classId?: string;
 }
 
 /** Update mutable fields of a card (system admin). */
@@ -135,6 +155,30 @@ export class AssignCardsToClassDto {
   @ArrayNotEmpty()
   @IsString({ each: true })
   cardRowIds: string[];
+}
+
+/**
+ * Bulk assign institute cards to a class by card-value range (admin shortcut).
+ * Finds all cards in the institute whose cardId falls within [cardIdMin, cardIdMax] (string comparison)
+ * and assigns them to the given class in one shot.
+ */
+export class BulkAssignToClassByRangeDto {
+  @ApiProperty({ example: 'class-uuid' })
+  @IsString()
+  @IsNotEmpty()
+  classId: string;
+
+  @ApiProperty({ example: 'CARD-2000', description: 'Lower bound cardId (inclusive, string comparison).' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  cardIdMin: string;
+
+  @ApiProperty({ example: 'CARD-2200', description: 'Upper bound cardId (inclusive, string comparison).' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  cardIdMax: string;
 }
 
 /** Institute admin: assign one card to a user (manual = cardValue given, auto = scope only). */

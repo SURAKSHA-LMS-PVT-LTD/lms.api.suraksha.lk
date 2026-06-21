@@ -25,6 +25,7 @@ import {
   UpdateSmartCardDto,
   AssignCardsToInstituteDto,
   AssignCardsToClassDto,
+  BulkAssignToClassByRangeDto,
   AssignCardToUserDto,
   ListSmartCardsQueryDto,
 } from './dto/smart-card.dto';
@@ -43,6 +44,12 @@ function actorId(req: any): string {
 @Controller('admin/smart-cards')
 export class AdminSmartCardsController {
   constructor(private readonly service: SmartCardsService) {}
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Per-institute card stats (admin overview dashboard)' })
+  adminStats() {
+    return this.service.getAdminInstituteStats();
+  }
 
   @Get()
   @ApiOperation({ summary: 'List / filter the card pool' })
@@ -84,6 +91,12 @@ export class AdminSmartCardsController {
   @ApiOperation({ summary: "Allocate an institute's cards to a class" })
   assignToClass(@Param('instituteId') instituteId: string, @Body() dto: AssignCardsToClassDto) {
     return this.service.assignCardsToClass(instituteId, dto);
+  }
+
+  @Post('institutes/:instituteId/assign-to-class-by-range')
+  @ApiOperation({ summary: "Bulk-assign institute cards to a class by card-value range (cardIdMin–cardIdMax)" })
+  assignToClassByRange(@Param('instituteId') instituteId: string, @Body() dto: BulkAssignToClassByRangeDto) {
+    return this.service.bulkAssignToClassByRange(instituteId, dto);
   }
 }
 

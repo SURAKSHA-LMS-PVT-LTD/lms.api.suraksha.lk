@@ -399,6 +399,24 @@ export class InstitueUserService {
       countQueryBuilder.andWhere('iu.house_id = :houseId', { houseId: safeHouseId });
     }
 
+    if (query.userIdByInstitute) {
+      const safeUibi = SecurityUtils.sanitizeSearchInput(query.userIdByInstitute);
+      queryBuilder.andWhere('iu.user_id_institue LIKE :userIdByInstitute', { userIdByInstitute: `%${safeUibi}%` });
+      countQueryBuilder.andWhere('iu.user_id_institue LIKE :userIdByInstitute', { userIdByInstitute: `%${safeUibi}%` });
+    }
+
+    if (query.cardId) {
+      const safeCardId = SecurityUtils.sanitizeSearchInput(query.cardId);
+      queryBuilder.andWhere('iu.institute_card_id LIKE :cardId', { cardId: `%${safeCardId}%` });
+      countQueryBuilder.andWhere('iu.institute_card_id LIKE :cardId', { cardId: `%${safeCardId}%` });
+    }
+
+    if ((query as any).instituteName) {
+      const safeName = SecurityUtils.sanitizeSearchInput((query as any).instituteName);
+      queryBuilder.andWhere("JSON_UNQUOTE(JSON_EXTRACT(iu.extra_data, '$.instituteName')) LIKE :instituteName", { instituteName: `%${safeName}%` });
+      countQueryBuilder.andWhere("JSON_UNQUOTE(JSON_EXTRACT(iu.extra_data, '$.instituteName')) LIKE :instituteName", { instituteName: `%${safeName}%` });
+    }
+
     // Apply search filter if provided
     if (safeSearch) {
       const searchCondition = '(CONCAT(u.first_name, " ", COALESCE(u.last_name, "")) LIKE :search OR u.email LIKE :search)';
