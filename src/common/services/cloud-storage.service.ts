@@ -801,14 +801,23 @@ export class CloudStorageService implements OnModuleInit {
       
     } catch (error) {
       if (error instanceof BadRequestException) {
-        throw error; // Re-throw size validation errors
+        throw error;
       }
-      if (error.code === 'NotFound' || error.statusCode === 404) {
-        this.logger.error(`❌ File not found in S3: ${relativePath}`);
-        throw new BadRequestException(`File not found. Please upload the file first using the provided signed URL.`);
+      // AWS SDK v3 uses error.$metadata.httpStatusCode and error.name
+      const httpStatus = error.$metadata?.httpStatusCode ?? error.statusCode;
+      const errName   = error.name ?? error.code ?? '';
+      this.logger.error(`❌ Error checking S3 file existence: ${errName} (HTTP ${httpStatus}) bucket=${this.s3BucketName} key=${relativePath}`);
+      if (httpStatus === 404 || errName === 'NotFound') {
+        throw new BadRequestException(`File not found in storage. Please upload the file first using the provided signed URL.`);
       }
-      this.logger.error(`❌ Error checking S3 file existence: ${error.message}`, error.stack);
-      throw new InternalServerErrorException(`Failed to verify file: ${error.message}`);
+      if (httpStatus === 403 || errName === 'AccessDenied') {
+        throw new InternalServerErrorException(`Storage access denied. Check AWS IAM permissions for bucket: ${this.s3BucketName}`);
+      }
+      if (httpStatus === 301 || errName === 'PermanentRedirect' || errName === 'UnknownError') {
+        // Wrong region — bucket exists in a different region than AWS_REGION env var
+        throw new InternalServerErrorException(`S3 region mismatch: bucket "${this.s3BucketName}" is not in region "${process.env.AWS_REGION}". Update AWS_REGION env var.`);
+      }
+      throw new InternalServerErrorException(`Failed to verify file: ${errName || error.message}`);
     }
 
     // 2️⃣ Make file publicly accessible (set ACL to public-read)

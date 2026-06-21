@@ -12,6 +12,7 @@ import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../../../subject/entities/subject.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
+import { StudyMaterialFolderEntity } from './study_material_folder.entity';
 
 /**
  * Study materials at the institute → class → subject level.
@@ -44,12 +45,25 @@ export class StudyMaterialEntity {
   @JoinColumn([{ name: 'class_id' }])
   class?: InstituteClassEntity;
 
-  @Column({ name: 'subject_id', type: 'varchar', length: 36 })
-  subjectId: string;
+  @Column({ name: 'subject_id', type: 'varchar', length: 36, nullable: true })
+  subjectId?: string;
 
-  @ManyToOne(() => SubjectEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => SubjectEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn([{ name: 'subject_id' }])
-  subject: SubjectEntity;
+  subject?: SubjectEntity;
+
+  @Column({ name: 'folder_id', type: 'bigint', nullable: true })
+  folderId?: string;
+
+  @ManyToOne(() => StudyMaterialFolderEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn([{ name: 'folder_id' }])
+  folder?: StudyMaterialFolderEntity;
+
+  @Column({ name: 'access_level', type: 'enum', enum: ['ANYONE', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
+  accessLevel: 'ANYONE' | 'ENROLLED_ONLY' | 'PAID_ONLY';
+
+  @Column({ name: 'required_payment_id', type: 'bigint', nullable: true })
+  requiredPaymentId?: string;
 
   // ── Content ────────────────────────────────────────────────
 

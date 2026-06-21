@@ -80,6 +80,6 @@ export class ApiFrontendModule implements NestModule {
     // Apply request filter middleware only to api-frontend specific routes
     consumer
       .apply(RequestFilterMiddleware)
-      .forRoutes('/api-frontend/*'); // Apply only to api-frontend routes
+      .forRoutes('/api-frontend/*path');
   }
 }

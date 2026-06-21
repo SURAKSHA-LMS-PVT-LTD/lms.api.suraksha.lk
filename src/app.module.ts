@@ -136,7 +136,6 @@ import { AppService } from './app.service';
         // MySQL 8.x optimized connection pool configuration
         poolSize: 15, // Production-ready connection pool
         connectTimeout: 10000, // 10 seconds (faster timeout)
-        acquireTimeout: 10000,
         timeout: 10000,
         retryAttempts: 2,
         retryDelay: 1000,

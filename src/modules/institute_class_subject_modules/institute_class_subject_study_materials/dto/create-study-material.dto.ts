@@ -23,17 +23,34 @@ export class CreateStudyMaterialDto {
   @Transform(({ value }) => value?.toString().trim())
   instituteId: string;
 
-  @ApiPropertyOptional({ description: 'Class ID (optional)' })
+  @ApiPropertyOptional({ description: 'Class ID' })
   @IsOptional()
   @IsString()
   @Transform(({ value }) => value?.toString().trim())
   classId?: string;
 
-  @ApiProperty({ description: 'Subject ID' })
+  @ApiPropertyOptional({ description: 'Subject ID (optional, class-level if omitted)' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Transform(({ value }) => value?.toString().trim())
-  subjectId: string;
+  subjectId?: string;
+
+  @ApiPropertyOptional({ description: 'Folder ID to place material in' })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => value?.toString().trim())
+  folderId?: string;
+
+  @ApiPropertyOptional({ enum: ['ANYONE', 'ENROLLED_ONLY', 'PAID_ONLY'], default: 'ENROLLED_ONLY' })
+  @IsOptional()
+  @IsEnum(['ANYONE', 'ENROLLED_ONLY', 'PAID_ONLY'])
+  accessLevel?: 'ANYONE' | 'ENROLLED_ONLY' | 'PAID_ONLY';
+
+  @ApiPropertyOptional({ description: 'Class payment ID required (when accessLevel=PAID_ONLY)' })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => value?.toString().trim())
+  requiredPaymentId?: string;
 
   @ApiProperty({ description: 'Material title', minLength: 1, maxLength: 255 })
   @IsString()

@@ -21,6 +21,17 @@ export class QueryStudyMaterialDto {
   @Transform(({ value }) => value?.toString().trim())
   subjectId?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by folder ID (pass "root" for unfoldered materials)' })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => value?.toString().trim())
+  folderId?: string;
+
+  @ApiPropertyOptional({ description: 'Current user ID for payment gate check' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
