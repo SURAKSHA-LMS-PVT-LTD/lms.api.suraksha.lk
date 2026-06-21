@@ -1342,25 +1342,40 @@ export class UsersService {
 
   async findAll(query: QueryUserDto): Promise<PaginatedUserResponseDto> {
     try {
-      const { 
-        search, 
-        userType, 
-        city, 
-        district, 
-        province, 
+      const {
+        search,
+        userType,
+        city,
+        district,
+        province,
         gender,
         phone,
         nic,
         country,
         postalCode,
-        isActive, 
-        page, 
-        limit, 
-        sortBy, 
-        sortOrder 
+        isActive,
+        instituteId,
+        instituteUserType,
+        page,
+        limit,
+        sortBy,
+        sortOrder
       } = query;
-      
+
       const queryBuilder = this.userRepository.createQueryBuilder('user');
+
+      // When filtering by institute, JOIN institute_user so we can filter by role too
+      if (instituteId) {
+        queryBuilder.innerJoin(
+          'institute_user',
+          'iu',
+          'iu.user_id = user.id AND iu.institute_id = :instituteId AND iu.status IN (:...iuStatuses)',
+          { instituteId, iuStatuses: ['ACTIVE', 'PENDING'] },
+        );
+        if (instituteUserType) {
+          queryBuilder.andWhere('iu.institute_user_type = :instituteUserType', { instituteUserType });
+        }
+      }
 
       // Apply filters
       if (search) {
@@ -1434,8 +1449,42 @@ export class UsersService {
         return user;
       });
 
-      const userResponseDtos = transformedUsers.map(user => new UserResponseDto(user));
-      
+      // Fetch institute memberships for all returned users in a single query
+      const userIds = transformedUsers.map(u => u.id);
+      let institutesByUserId: Map<string, { id: string; name: string; role: string; status: string }[]> = new Map();
+      if (userIds.length > 0) {
+        const memberships = await this.instituteUserRepository
+          .createQueryBuilder('iu')
+          .innerJoin('institutes', 'i', 'i.id = iu.institute_id')
+          .select([
+            'iu.user_id AS userId',
+            'iu.institute_id AS instituteId',
+            'i.name AS instituteName',
+            'iu.institute_user_type AS role',
+            'iu.status AS status',
+          ])
+          .where('iu.user_id IN (:...userIds)', { userIds })
+          .andWhere('iu.status IN (:...statuses)', { statuses: ['ACTIVE', 'PENDING'] })
+          .getRawMany();
+
+        for (const m of memberships) {
+          const uid = String(m.userId);
+          if (!institutesByUserId.has(uid)) institutesByUserId.set(uid, []);
+          institutesByUserId.get(uid)!.push({
+            id: m.instituteId,
+            name: m.instituteName,
+            role: m.role,
+            status: m.status,
+          });
+        }
+      }
+
+      const userResponseDtos = transformedUsers.map(user => {
+        const dto = new UserResponseDto(user);
+        dto.institutes = institutesByUserId.get(String(user.id)) ?? [];
+        return dto;
+      });
+
       return new PaginatedUserResponseDto(userResponseDtos, pageNumber, limitNumber, total);
     } catch (error) {
       // Log the error for debugging

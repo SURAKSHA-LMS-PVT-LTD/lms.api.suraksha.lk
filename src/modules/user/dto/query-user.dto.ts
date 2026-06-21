@@ -5,6 +5,7 @@ import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { SortDto } from '../../../common/dto/sort.dto';
 import { UserType } from '../enums/user-type.enum';
 import { Gender } from '../enums/gender.enum';
+import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 
 export class QueryUserDto extends PaginationDto {
   @ApiPropertyOptional({
@@ -101,6 +102,23 @@ export class QueryUserDto extends PaginationDto {
   })
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Filter to only users enrolled in this institute (ID)',
+    example: 'abc123',
+  })
+  @IsOptional()
+  @IsString()
+  instituteId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by role within the institute (requires instituteId)',
+    enum: InstituteUserType,
+    example: InstituteUserType.STUDENT,
+  })
+  @IsOptional()
+  @IsEnum(InstituteUserType)
+  instituteUserType?: InstituteUserType;
 
   @ApiPropertyOptional({
     description: 'Field to sort by',

@@ -158,6 +158,14 @@ export class UserResponseDto {
   @Exclude()
   idUrl?: string;
 
+  @ApiPropertyOptional({
+    description: 'Institutes this user is enrolled in (populated by SUPERADMIN list endpoint)',
+    type: 'array',
+    items: { type: 'object' },
+  })
+  @Expose()
+  institutes?: { id: string; name: string; role: string; status: string }[];
+
   constructor(partial: Partial<UserResponseDto> | UserEntity) {
     Object.assign(this, partial);
     
