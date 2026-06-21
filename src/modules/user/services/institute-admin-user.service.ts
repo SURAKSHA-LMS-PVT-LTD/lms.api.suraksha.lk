@@ -392,7 +392,7 @@ export class InstituteAdminUserService {
 
       // ── 7. Send welcome notification ──────────────────────────────────────
       const notificationSent = dto.sendWelcomeNotifications !== false
-        ? await this.sendWelcome(savedUser, dto.instituteUserType, safeInstituteId)
+        ? await this.sendWelcome(savedUser, dto.instituteUserType, instituteId)
         : false;
 
       const requiresFirstLogin = savedUser.profileCompletionStatus === ProfileCompletionStatus.INCOMPLETE;
