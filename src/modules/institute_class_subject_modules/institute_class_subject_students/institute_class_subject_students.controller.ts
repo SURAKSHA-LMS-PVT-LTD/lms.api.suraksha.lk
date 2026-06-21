@@ -875,13 +875,17 @@ export class InstituteClassSubjectStudentsController {
     @Request() req: JwtRequest
   ): Promise<EnrollmentSettingsResponseDto> {
     const user = req.user;
-    
+    // Bitmask r=2 means Institute Admin; superadmins also bypass the teacher check.
+    const instAccess = user.i?.find(inst => inst.i === instituteId);
+    const isAdmin = user.userType === 'SUPER_ADMIN' || user.u === 0 || ((instAccess?.r ?? 0) & 2) !== 0;
+
     return await this.studentsService.updateEnrollmentSettings(
-      user.s, 
-      instituteId, 
-      classId, 
-      subjectId, 
-      updateDto
+      user.s,
+      instituteId,
+      classId,
+      subjectId,
+      updateDto,
+      isAdmin
     );
   }
 

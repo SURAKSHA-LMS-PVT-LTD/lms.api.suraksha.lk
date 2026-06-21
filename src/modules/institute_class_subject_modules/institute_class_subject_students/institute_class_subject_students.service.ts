@@ -1390,18 +1390,18 @@ export class InstituteClassSubjectStudentsService {
     instituteId: string,
     classId: string,
     subjectId: string,
-    updateDto: UpdateEnrollmentSettingsDto
+    updateDto: UpdateEnrollmentSettingsDto,
+    isAdmin = false
   ): Promise<EnrollmentSettingsResponseDto> {
     try {
-      // Verify teacher has access to this subject
+      // Institute admins and superadmins can update any subject; teachers only their assigned subject.
+      const whereClause: any = { instituteId, classId, subjectId, isActive: true };
+      if (!isAdmin) {
+        whereClause.teacherId = teacherId;
+      }
+
       const classSubject = await this.classSubjectRepository.findOne({
-        where: {
-          instituteId,
-          classId,
-          subjectId,
-          teacherId,
-          isActive: true,
-        },
+        where: whereClause,
         relations: ['subject', 'class'],
       });
 

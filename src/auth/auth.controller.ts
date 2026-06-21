@@ -341,6 +341,17 @@ export class AuthController {
     }
   }
 
+  // ── Unified contacts for password reset (phones + emails) ──────────────────
+
+  @Public()
+  @Post('forgot-password/contacts')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({ summary: 'List all contacts (phone + email, own + parents) for password reset' })
+  async forgotPasswordAllContacts(@Body() body: { identifier: string }) {
+    return this.passwordResetService.getAllResetContacts(body.identifier);
+  }
+
   // ── WhatsApp reverse-OTP reset (own + parent numbers) ──────────────────────
 
   @Public()

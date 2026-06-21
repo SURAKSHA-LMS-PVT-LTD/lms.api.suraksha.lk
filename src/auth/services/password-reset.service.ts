@@ -12,7 +12,7 @@ import { AsyncEmailService } from '../../common/services/async-email.service';
 import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
 import { detectIdentifierType } from '../../common/utils/identifier.util';
-import { maskPii } from '../../common/utils/pii-masking.util';
+import { maskPii, maskEmail } from '../../common/utils/pii-masking.util';
 import { normalizeSriLankanPhone } from '../../common/utils/phone-normalizer.util';
 
 export interface InitiatePasswordResetDto {
@@ -127,10 +127,64 @@ export class PasswordResetService {
   /** Public: list selectable phone contacts (own + parents) for WhatsApp reset. */
   async getWhatsAppResetContacts(identifier: string): Promise<{ contacts: { id: string; label: string; masked: string }[] }> {
     const user = await this.resolveUserByIdentifier(identifier);
-    // Don't reveal existence — return empty list rather than 404 when not found.
     if (!user) return { contacts: [] };
     const contacts = await this.buildPhoneContacts(user.id);
     return { contacts: contacts.map(({ id, label, masked }) => ({ id, label, masked })) };
+  }
+
+  /**
+   * Unified: all contacts available for password reset (phones + emails).
+   * Phone contacts → WhatsApp verification.
+   * Email contacts → OTP via email.
+   */
+  async getAllResetContacts(identifier: string): Promise<{
+    contacts: { id: string; label: string; masked: string; type: 'phone' | 'email' }[];
+  }> {
+    const user = await this.resolveUserByIdentifier(identifier);
+    if (!user) return { contacts: [] };
+
+    const result: { id: string; label: string; masked: string; type: 'phone' | 'email' }[] = [];
+
+    // ── Phone contacts (own + parents) ────────────────────────────────────────
+    const phoneContacts = await this.buildPhoneContacts(user.id);
+    for (const c of phoneContacts) {
+      result.push({ id: c.id, label: c.label, masked: c.masked, type: 'phone' });
+    }
+
+    // ── Email contacts (own email + parent emails for students) ───────────────
+    const fullUser = await this.userRepository.findOne({
+      where: { id: user.id },
+      select: ['id', 'email'],
+    });
+    if (fullUser?.email) {
+      result.push({ id: 'own_email', label: 'Your registered email', masked: maskEmail(fullUser.email), type: 'email' });
+    }
+
+    const student = await this.studentRepository.findOne({ where: { userId: user.id } });
+    if (student) {
+      const entries = [
+        { id: 'father_email', parentId: student.fatherId, label: "Father's email" },
+        { id: 'mother_email', parentId: student.motherId, label: "Mother's email" },
+        { id: 'guardian_email', parentId: student.guardianId, label: "Guardian's email" },
+      ];
+      const parentIds = entries.map(e => e.parentId).filter(Boolean) as string[];
+      if (parentIds.length) {
+        const parents = await this.parentRepository.find({
+          where: { userId: In(parentIds) },
+          relations: ['user'],
+        });
+        const byId = new Map(parents.map(p => [p.userId, p]));
+        for (const e of entries) {
+          if (!e.parentId) continue;
+          const email = byId.get(e.parentId)?.user?.email;
+          if (email && !result.some(c => c.id === e.id)) {
+            result.push({ id: e.id, label: e.label, masked: maskEmail(email), type: 'email' });
+          }
+        }
+      }
+    }
+
+    return { contacts: result };
   }
 
   /** Public: create a WhatsApp reverse-OTP for the chosen phone contact; returns the wa.me link. */
