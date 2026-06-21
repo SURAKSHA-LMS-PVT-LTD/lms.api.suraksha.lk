@@ -58,6 +58,8 @@ import {
 import { CardStatus } from '../../user-card-management/enums/card-status.enum';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { InstituteCreditsService } from '../../notification-credits/services/institute-credits.service';
+import { CreditTransactionType } from '../../notification-credits/entities/institute-credit-transaction.entity';
 import {
   CreateInstituteUserDto,
   CreateInstituteUserResponseDto,
@@ -97,6 +99,8 @@ export class InstituteAdminUserService {
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
     private readonly cloudStorageService: CloudStorageService,
+    @Optional()
+    private readonly instituteCreditsService?: InstituteCreditsService,
     @Optional()
     private readonly smartCardsService?: SmartCardsService,
   ) {}
@@ -388,7 +392,7 @@ export class InstituteAdminUserService {
 
       // ── 7. Send welcome notification ──────────────────────────────────────
       const notificationSent = dto.sendWelcomeNotifications !== false
-        ? await this.sendWelcome(savedUser, dto.instituteUserType)
+        ? await this.sendWelcome(savedUser, dto.instituteUserType, safeInstituteId)
         : false;
 
       const requiresFirstLogin = savedUser.profileCompletionStatus === ProfileCompletionStatus.INCOMPLETE;
@@ -767,30 +771,47 @@ export class InstituteAdminUserService {
    * Send a welcome notification to the newly created user.
    * ID card email is skipped — imageUrl is null until system admin approves.
    */
-  private async sendWelcome(user: UserEntity, role: InstituteUserType): Promise<boolean> {
+  private async sendWelcome(user: UserEntity, role: InstituteUserType, instituteId: string): Promise<boolean> {
     try {
-      if (!user.email && !user.phoneNumber) return false;
+      if (!user.email) return false;
+
+      // Deduct 2 credits for the welcome email. If insufficient, skip sending (best-effort).
+      if (this.instituteCreditsService) {
+        const hasCredits = await this.instituteCreditsService.hasSufficientCredits(instituteId, 2);
+        if (!hasCredits) {
+          this.logger.warn(`sendWelcome skipped for ${user.id}: insufficient credits in institute ${instituteId}`);
+          return false;
+        }
+        try {
+          await this.instituteCreditsService.deductCredits(instituteId, {
+            amount: 2,
+            type: CreditTransactionType.EMAIL_SEND,
+            description: `Welcome email to new user ${user.id}`,
+            referenceType: 'WELCOME_EMAIL',
+            referenceId: user.id,
+          });
+        } catch (creditErr) {
+          this.logger.warn(`sendWelcome credit deduction failed: ${creditErr.message}`);
+          return false;
+        }
+      }
 
       const firstLoginUrl = `${process.env.FRONTEND_URL ?? 'https://lms.suraksha.lk'}/first-login?userId=${user.id}`;
       const roleLabel = role.toLowerCase().replace('_', ' ');
 
-      if (user.email) {
-        this.asyncEmailService.sendTemplateEmailAsync({
-          templateType: 'welcome-incomplete-profile',
-          toEmails: [user.email],
-          templateData: {
-            name: user.firstName ?? user.nameWithInitials ?? 'User',
-            role: roleLabel,
-            firstLoginUrl,
-            email: user.email,
-            phoneNumber: user.phoneNumber,
-          },
-          customSubject: 'Welcome to Suraksha LMS - Complete Your Registration',
-        });
-        return true;
-      }
-
-      return false;
+      this.asyncEmailService.sendTemplateEmailAsync({
+        templateType: 'welcome-incomplete-profile',
+        toEmails: [user.email],
+        templateData: {
+          name: user.firstName ?? user.nameWithInitials ?? 'User',
+          role: roleLabel,
+          firstLoginUrl,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+        },
+        customSubject: 'Welcome to Suraksha LMS - Complete Your Registration',
+      });
+      return true;
     } catch (err) {
       this.logger.warn(`sendWelcome failed: ${err.message}`);
       return false;

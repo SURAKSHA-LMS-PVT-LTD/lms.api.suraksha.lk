@@ -37,6 +37,7 @@ import { InstituteAdminUserService } from './services/institute-admin-user.servi
 import { SmslenzProvider } from '../sms/providers/smslenz.provider';
 import { InstituteHouseEntity } from '../institute_mudules/institute_house/entities/institute_house.entity';
 import { InstituteHouseMemberEntity } from '../institute_mudules/institute_house/entities/institute_house_member.entity';
+import { NotificationCreditsModule } from '../notification-credits/notification-credits.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { InstituteHouseMemberEntity } from '../institute_mudules/institute_house
     forwardRef(() => AuthModule), // Use forwardRef to avoid circular dependency
     forwardRef(() => InstitueUserModule), // Add institute user module
     forwardRef(() => SmartCardsModule), // Smart-card assignment during user creation
+    NotificationCreditsModule, // Credit deduction for welcome email
   ],
   controllers: [UsersController, UserFcmTokenController, UserProfileImageController, SystemAdminUserController, InstituteAdminUserController],
   providers: [
