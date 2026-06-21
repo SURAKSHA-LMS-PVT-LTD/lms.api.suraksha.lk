@@ -22,11 +22,16 @@ export class FeaturesService {
       where: { instituteId: instituteKey },
     });
 
+    // Features that must be OFF until a system admin explicitly enables them.
+    // (Toggles otherwise default to enabled when no row exists.)
+    const DEFAULT_OFF_FEATURES = new Set(['smart-cards']);
+
     const features = allFeatures.map(feature => {
         const toggle = instituteToggles.find(t => t.featureKey === feature.key);
+        const defaultEnabled = !DEFAULT_OFF_FEATURES.has(feature.key);
         return {
             ...feature,
-            enabled: toggle ? toggle.enabled : true, // Default to enabled if no explicit toggle
+            enabled: toggle ? toggle.enabled : defaultEnabled,
         };
     });
 

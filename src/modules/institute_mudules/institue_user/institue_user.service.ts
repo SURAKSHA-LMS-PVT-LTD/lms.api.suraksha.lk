@@ -6,7 +6,8 @@ import {
   UnauthorizedException,
   ForbiddenException,
   InternalServerErrorException,
-  Logger
+  Logger,
+  Optional
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, In } from 'typeorm';
@@ -14,6 +15,8 @@ import { getCurrentSriLankaTime, getCurrentSriLankaISO } from '../../../common/u
 import { ConfigService } from '@nestjs/config';
 
 // DTOs
+import { SmartCardsService } from '../../smart-cards/smart-cards.service';
+import { SmartCardScope } from '../../smart-cards/enums/smart-card.enums';
 import { CreateInstitueUserDto } from './dto/create-institue_user.dto';
 import { UpdateInstitueUserDto } from './dto/update-institue_user.dto';
 import { AssignUserToInstituteDto } from './dto/assign-user-institute.dto';
@@ -128,6 +131,8 @@ export class InstitueUserService {
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService,
     private readonly userRoleValidationService: UserRoleValidationService,
+    @Optional()
+    private readonly smartCardsService?: SmartCardsService,
   ) {
     // Initialize caching flag based on environment variable
     this.isCachingEnabled = this.configService.get<string>('CACHE_ENABLED') === 'true';
@@ -4242,6 +4247,46 @@ export class InstitueUserService {
 
       const savedAssignment = await this.instituteUserRepository.save(instituteUser);
 
+      // Step 7b: Smart-card assignment (institute + suraksha/global), if requested.
+      // Feature-gated and best-effort surfaced: a card failure throws so the caller knows.
+      const cardResults: Array<{ scope: string; cardId: string; cardName: string }> = [];
+      const wantsCard =
+        assignDto.autoAssignInstituteCard ||
+        assignDto.autoAssignSurakshaCard ||
+        !!assignDto.surakshaCardId ||
+        !!assignDto.instituteCardId;
+      if (wantsCard && this.smartCardsService) {
+        await this.smartCardsService.assertFeatureEnabled(safeInstituteId);
+
+        // INSTITUTE card: manual value already saved on the row above; register it in inventory.
+        if (assignDto.instituteCardId || assignDto.autoAssignInstituteCard) {
+          const card = await this.smartCardsService.assignCardToUser(
+            safeInstituteId,
+            {
+              userId: user.id,
+              scope: SmartCardScope.INSTITUTE,
+              cardValue: assignDto.autoAssignInstituteCard ? undefined : assignDto.instituteCardId,
+            },
+            assigningUserId || undefined,
+          );
+          cardResults.push({ scope: 'INSTITUTE', cardId: card.cardId, cardName: card.cardName });
+        }
+
+        // SURAKSHA (global) card → user.rfid.
+        if (assignDto.surakshaCardId || assignDto.autoAssignSurakshaCard) {
+          const card = await this.smartCardsService.assignCardToUser(
+            safeInstituteId,
+            {
+              userId: user.id,
+              scope: SmartCardScope.GLOBAL,
+              cardValue: assignDto.autoAssignSurakshaCard ? undefined : assignDto.surakshaCardId,
+            },
+            assigningUserId || undefined,
+          );
+          cardResults.push({ scope: 'GLOBAL', cardId: card.cardId, cardName: card.cardName });
+        }
+      }
+
       // Step 8: Refresh caches if enabled
       if (this.isCachingEnabled) {
         try {
@@ -4277,6 +4322,7 @@ export class InstitueUserService {
           instituteUserType: savedAssignment.instituteUserType,
           status: savedAssignment.status
         },
+        smartCards: cardResults.length ? cardResults : undefined,
         imageInfo: imageUrl ? {
           imageUrl,
           isVerified: imageVerified === ImageVerificationStatus.VERIFIED,

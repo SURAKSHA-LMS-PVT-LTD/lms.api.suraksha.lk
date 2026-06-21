@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { CommonModule } from '../../../common/common.module';
 import { CacheModule } from '../../../common/modules/cache.module';
 import { UsersModule } from '../../user/user.module';
+import { SmartCardsModule } from '../../smart-cards/smart-cards.module';
 
 @Module({
   imports: [
@@ -29,7 +30,8 @@ import { UsersModule } from '../../user/user.module';
     ]),
     CommonModule,
     CacheModule,
-    forwardRef(() => UsersModule)
+    forwardRef(() => UsersModule),
+    SmartCardsModule,
   ],
   controllers: [InstitueUserController],
   providers: [

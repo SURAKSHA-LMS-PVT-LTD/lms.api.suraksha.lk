@@ -54,6 +54,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PrivateTransportationModule } from './modules/private-transportation/private-transportation.module';
 import { StructuredLecturesModule } from './modules/structured-lectures/structured-lectures.module';
 import { UserCardManagementModule } from './modules/user-card-management/user-card-management.module';
+import { SmartCardsModule } from './modules/smart-cards/smart-cards.module';
 import { PushNotificationModule } from './modules/push-notifications/push-notification.module';
 import { GoogleAuthModule } from './modules/google-auth/google-auth.module';
 import { UserDriveAccessModule } from './modules/user-drive-access/user-drive-access.module';
@@ -203,6 +204,7 @@ import { AppService } from './app.service';
     PrivateTransportationModule, // Add private transportation (bookhire) module
     StructuredLecturesModule, // Add structured lectures module for educational content
     UserCardManagementModule, // Add user card management for NFC/PVC/Temporary cards with RFID
+    SmartCardsModule, // Pre-printed smart-card inventory + assignment (system-admin governed)
     PushNotificationModule, // Add push notification module for FCM notifications
     AttendanceDeviceModule, // Add device management for attendance marking devices
     AccountDeletionModule, // Google Play compliant account deletion with 30-day grace period

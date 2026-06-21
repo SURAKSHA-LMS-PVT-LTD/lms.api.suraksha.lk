@@ -16,6 +16,7 @@ import { UserImageEntity } from './entities/user-image.entity';
 import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
 import { AuthModule } from '../../auth/auth.module';
 import { InstitueUserModule } from '../institute_mudules/institue_user/institue_user.module';
+import { SmartCardsModule } from '../smart-cards/smart-cards.module';
 import { InstituteEntity } from '../institute/entities/institute.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { StudentEntity } from '../student/entities/student.entity';
@@ -60,6 +61,7 @@ import { InstituteHouseMemberEntity } from '../institute_mudules/institute_house
     InstantSmsModule, // Add InstantSmsModule for InstantSmsService
     forwardRef(() => AuthModule), // Use forwardRef to avoid circular dependency
     forwardRef(() => InstitueUserModule), // Add institute user module
+    forwardRef(() => SmartCardsModule), // Smart-card assignment during user creation
   ],
   controllers: [UsersController, UserFcmTokenController, UserProfileImageController, SystemAdminUserController, InstituteAdminUserController],
   providers: [

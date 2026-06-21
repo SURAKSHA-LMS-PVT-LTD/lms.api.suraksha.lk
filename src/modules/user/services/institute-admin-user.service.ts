@@ -25,7 +25,10 @@ import {
   ForbiddenException,
   NotFoundException,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import { SmartCardsService } from '../../smart-cards/smart-cards.service';
+import { SmartCardScope } from '../../smart-cards/enums/smart-card.enums';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { now } from '../../../common/utils/timezone.util';
@@ -94,6 +97,8 @@ export class InstituteAdminUserService {
     private readonly dataSource: DataSource,
     private readonly asyncEmailService: AsyncEmailService,
     private readonly cloudStorageService: CloudStorageService,
+    @Optional()
+    private readonly smartCardsService?: SmartCardsService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -284,6 +289,42 @@ export class InstituteAdminUserService {
         );
       }
 
+      // ── 5b. Smart-card assignment (institute + suraksha), same transaction ──
+      const smartCardResults: Array<{ scope: string; cardId: string; cardName: string }> = [];
+      const wantsCard =
+        dto.autoAssignInstituteCard || dto.autoAssignSurakshaCard || !!dto.surakshaCardId || !!dto.instituteCardId;
+      if (wantsCard && this.smartCardsService) {
+        await this.smartCardsService.assertFeatureEnabled(instituteId);
+
+        if (dto.instituteCardId || dto.autoAssignInstituteCard) {
+          const card = await this.smartCardsService.assignCardToUser(
+            instituteId,
+            {
+              userId: savedUser.id,
+              scope: SmartCardScope.INSTITUTE,
+              cardValue: dto.autoAssignInstituteCard ? undefined : dto.instituteCardId,
+            },
+            adminUserId,
+            queryRunner.manager,
+          );
+          smartCardResults.push({ scope: 'INSTITUTE', cardId: card.cardId, cardName: card.cardName });
+        }
+
+        if (dto.surakshaCardId || dto.autoAssignSurakshaCard) {
+          const card = await this.smartCardsService.assignCardToUser(
+            instituteId,
+            {
+              userId: savedUser.id,
+              scope: SmartCardScope.GLOBAL,
+              cardValue: dto.autoAssignSurakshaCard ? undefined : dto.surakshaCardId,
+            },
+            adminUserId,
+            queryRunner.manager,
+          );
+          smartCardResults.push({ scope: 'GLOBAL', cardId: card.cardId, cardName: card.cardName });
+        }
+      }
+
       // ── 6. House enrollment (if houseId provided) ──────────────────────────
       let houseEnrolled = false;
       if (dto.houseId) {
@@ -355,6 +396,7 @@ export class InstituteAdminUserService {
       return {
         success: true,
         message: `${dto.instituteUserType} created and enrolled in ${institute.name}`,
+        smartCards: smartCardResults.length ? smartCardResults : undefined,
         userId: savedUser.id,
         firstName: savedUser.firstName ?? undefined,
         lastName: savedUser.lastName ?? undefined,

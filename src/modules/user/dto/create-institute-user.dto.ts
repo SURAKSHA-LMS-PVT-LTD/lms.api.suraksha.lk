@@ -298,6 +298,24 @@ export class CreateInstituteUserDto {
   @MaxLength(100)
   instituteCardId?: string;
 
+  // ─── Smart cards (requires 'smart-cards' feature) ─────────────────────────
+
+  @ApiPropertyOptional({ description: 'Auto-assign the next available INSTITUTE smart card to this user.' })
+  @IsOptional()
+  @IsBoolean()
+  autoAssignInstituteCard?: boolean;
+
+  @ApiPropertyOptional({ description: 'Auto-assign the next available SURAKSHA (global) smart card to this user (written to user.rfid).' })
+  @IsOptional()
+  @IsBoolean()
+  autoAssignSurakshaCard?: boolean;
+
+  @ApiPropertyOptional({ description: 'Manual SURAKSHA (global) smart card value, validated against the institute pool.', maxLength: 30 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  surakshaCardId?: string;
+
   // ─── Images ─────────────────────────────────────────────────────────────
 
   /**
@@ -494,4 +512,11 @@ export class CreateInstituteUserResponseDto {
 
   @ApiProperty({ description: 'Whether welcome notification was sent' })
   welcomeNotificationSent: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Smart cards assigned to the user during creation (if requested).',
+    type: 'array',
+    items: { type: 'object', properties: { scope: { type: 'string' }, cardId: { type: 'string' }, cardName: { type: 'string' } } },
+  })
+  smartCards?: Array<{ scope: string; cardId: string; cardName: string }>;
 }

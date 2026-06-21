@@ -7,7 +7,8 @@ import {
   IsEmail,
   Matches,
   ValidateIf,
-  IsBoolean
+  IsBoolean,
+  MaxLength
 } from 'class-validator';
 import { InstituteUserType } from '../enums/institute-user-type.enum';
 import { InstituteUserStatus } from '../enums/institute-user-status.enum';
@@ -116,6 +117,38 @@ export class EnhancedAssignUserToInstituteDto {
   })
   status?: InstituteUserStatus;
 
+  // =================== SMART CARD ASSIGNMENT (OPTIONAL) ===================
+  // Requires the 'smart-cards' feature to be enabled for the institute.
+
+  @ApiPropertyOptional({
+    description: 'Auto-assign the next available INSTITUTE smart card from the institute pool to this user.',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  autoAssignInstituteCard?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Auto-assign the next available SURAKSHA (global) smart card to this user (written to user.rfid).',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  autoAssignSurakshaCard?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Manual SURAKSHA (global) smart card value. Validated against the institute pool; written to user.rfid.',
+    example: 'SUR-000123',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  surakshaCardId?: string;
+
   // =================== IMAGE UPLOAD (OPTIONAL) ===================
 
   @ApiPropertyOptional({
@@ -182,6 +215,20 @@ export class EnhancedAssignmentResponseDto {
     instituteUserType: InstituteUserType;
     status: InstituteUserStatus;
   };
+
+  @ApiPropertyOptional({
+    description: 'Smart cards assigned to the user during this enrollment (if requested).',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string', example: 'INSTITUTE' },
+        cardId: { type: 'string', example: 'NFC-000123' },
+        cardName: { type: 'string', example: 'NFC Card 001' },
+      },
+    },
+  })
+  smartCards?: Array<{ scope: string; cardId: string; cardName: string }>;
 
   @ApiPropertyOptional({
     description: 'Image upload details (if image was uploaded)',
