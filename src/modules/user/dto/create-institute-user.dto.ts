@@ -519,4 +519,11 @@ export class CreateInstituteUserResponseDto {
     items: { type: 'object', properties: { scope: { type: 'string' }, cardId: { type: 'string' }, cardName: { type: 'string' } } },
   })
   smartCards?: Array<{ scope: string; cardId: string; cardName: string }>;
+
+  @ApiPropertyOptional({
+    description: 'Card scopes whose pool was empty and skipped during self-registration (flagged for admin follow-up).',
+    type: 'array',
+    items: { type: 'string' },
+  })
+  cardPendingScopes?: string[];
 }

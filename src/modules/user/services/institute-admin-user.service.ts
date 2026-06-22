@@ -69,6 +69,24 @@ import {
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
+/**
+ * Options for the public self-registration path (created via a /forms/:token link).
+ * When omitted, createInstituteUser behaves exactly as the admin path (unchanged).
+ */
+export interface SelfRegistrationOptions {
+  /** True when invoked from a public registration link (not an authenticated admin). */
+  selfRegistration: true;
+  /** Used as the "actor" id for audit columns; null when no admin is involved. */
+  actorUserId: string | null;
+  /**
+   * Enrollment verification state for self-registered class/subject rows.
+   * Self-registrations land 'pending' (awaiting admin); admin path stays verified.
+   */
+  enrollmentVerificationStatus: 'pending';
+  /** What to do if a requested card auto-assign finds an empty pool. */
+  cardEmptyPoolBehavior: 'skip' | 'error';
+}
+
 @Injectable()
 export class InstituteAdminUserService {
   private readonly logger = new Logger(InstituteAdminUserService.name);
@@ -120,7 +138,9 @@ export class InstituteAdminUserService {
     instituteId: string,
     adminUserId: string,
     dto: CreateInstituteUserDto,
+    options?: SelfRegistrationOptions,
   ): Promise<CreateInstituteUserResponseDto> {
+    const isSelfReg = options?.selfRegistration === true;
     // For students: allow no email/phone if at least one parent has contact info
     if (!dto.email && !dto.phoneNumber) {
       if (dto.instituteUserType === InstituteUserType.STUDENT) {
@@ -156,8 +176,12 @@ export class InstituteAdminUserService {
       throw new NotFoundException(`Institute not found: ${instituteId}`);
     }
 
-    // Validate caller is an active admin of this institute
-    await this.assertInstituteAdmin(adminUserId, instituteId);
+    // Validate caller is an active admin of this institute.
+    // Self-registration skips this — the public controller authorizes via the link token,
+    // and there is no admin actor. adminUserId is null in that path.
+    if (!isSelfReg) {
+      await this.assertInstituteAdmin(adminUserId, instituteId);
+    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -295,37 +319,53 @@ export class InstituteAdminUserService {
 
       // ── 5b. Smart-card assignment (institute + suraksha), same transaction ──
       const smartCardResults: Array<{ scope: string; cardId: string; cardName: string }> = [];
+      // When the requested card pool is empty: admin path always errors; self-registration
+      // honors the link's cardEmptyPoolBehavior ('skip' → continue & flag, 'error' → fail).
+      const cardPendingScopes: string[] = [];
       const wantsCard =
         dto.autoAssignInstituteCard || dto.autoAssignSurakshaCard || !!dto.surakshaCardId || !!dto.instituteCardId;
       if (wantsCard && this.smartCardsService) {
         await this.smartCardsService.assertFeatureEnabled(instituteId);
 
+        // Only auto-assign (cardValue undefined) can hit an empty pool; manual ids must always resolve.
+        const tryAssign = async (scope: SmartCardScope, cardValue: string | undefined, isAuto: boolean) => {
+          try {
+            const card = await this.smartCardsService!.assignCardToUser(
+              instituteId,
+              { userId: savedUser.id, scope, cardValue },
+              adminUserId,
+              queryRunner.manager,
+            );
+            smartCardResults.push({ scope, cardId: card.cardId, cardName: card.cardName });
+          } catch (err: any) {
+            const emptyPool = isAuto && /no available/i.test(err?.message ?? '');
+            if (emptyPool && isSelfReg && options!.cardEmptyPoolBehavior === 'skip') {
+              // Soft-skip: register without a card, flag for admin follow-up.
+              cardPendingScopes.push(scope);
+              this.logger.warn(
+                `Self-registration: ${scope} card pool empty for institute ${instituteId}; ` +
+                `registered user ${savedUser.id} without a card (flagged pending).`,
+              );
+              return;
+            }
+            throw err; // admin path, manual id, or 'error' behavior → propagate (rolls back tx)
+          }
+        };
+
         if (dto.instituteCardId || dto.autoAssignInstituteCard) {
-          const card = await this.smartCardsService.assignCardToUser(
-            instituteId,
-            {
-              userId: savedUser.id,
-              scope: SmartCardScope.INSTITUTE,
-              cardValue: dto.autoAssignInstituteCard ? undefined : dto.instituteCardId,
-            },
-            adminUserId,
-            queryRunner.manager,
+          await tryAssign(
+            SmartCardScope.INSTITUTE,
+            dto.autoAssignInstituteCard ? undefined : dto.instituteCardId,
+            !!dto.autoAssignInstituteCard,
           );
-          smartCardResults.push({ scope: 'INSTITUTE', cardId: card.cardId, cardName: card.cardName });
         }
 
         if (dto.surakshaCardId || dto.autoAssignSurakshaCard) {
-          const card = await this.smartCardsService.assignCardToUser(
-            instituteId,
-            {
-              userId: savedUser.id,
-              scope: SmartCardScope.GLOBAL,
-              cardValue: dto.autoAssignSurakshaCard ? undefined : dto.surakshaCardId,
-            },
-            adminUserId,
-            queryRunner.manager,
+          await tryAssign(
+            SmartCardScope.GLOBAL,
+            dto.autoAssignSurakshaCard ? undefined : dto.surakshaCardId,
+            !!dto.autoAssignSurakshaCard,
           );
-          smartCardResults.push({ scope: 'GLOBAL', cardId: card.cardId, cardName: card.cardName });
         }
       }
 
@@ -383,6 +423,7 @@ export class InstituteAdminUserService {
             ce.subjectEnrollments ?? [],
             adminUserId,
             dto.extraData ?? null,
+            isSelfReg ? 'pending' : 'verified',
           );
           classEnrollmentResults.push(result);
         }
@@ -421,7 +462,9 @@ export class InstituteAdminUserService {
         houseId: dto.houseId ?? undefined,
         houseEnrolled,
         welcomeNotificationSent: notificationSent,
-      };
+        // Scopes whose card pool was empty and skipped (self-registration 'skip' behavior).
+        cardPendingScopes: cardPendingScopes.length ? cardPendingScopes : undefined,
+      } as CreateInstituteUserResponseDto;
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error(`createInstituteUser failed: ${error.message}`, error.stack);
@@ -702,7 +745,13 @@ export class InstituteAdminUserService {
     subjectEnrollments: { subjectId: string }[],
     adminUserId: string,
     extraData: Record<string, any> | null = null,
+    enrollmentStatus: 'verified' | 'pending' = 'verified',
   ): Promise<any> {
+    // Self-registration enrollments land 'pending' (awaiting admin approval) and are
+    // marked self_enrolled — so no enrollment key is required and they don't go live
+    // until an admin approves them. Admin path stays verified/manual as before.
+    const isPending = enrollmentStatus === 'pending';
+
     const classEntity = await queryRunner.manager.findOne(InstituteClassEntity, {
       where: { id: classId, instituteId },
     });
@@ -723,12 +772,14 @@ export class InstituteAdminUserService {
           classId,
           studentUserId,
           isActive: true,
-          isVerified: true,
-          enrollmentMethod: 'manual',
-          verifiedBy: adminUserId,
-          verifiedAt: now(),
+          isVerified: !isPending,
+          enrollmentMethod: isPending ? 'self_enrollment' : 'manual',
+          verifiedBy: isPending ? undefined : adminUserId,
+          verifiedAt: isPending ? undefined : now(),
           createdAt: now(),
-          updatedAt: now(),          extraData,        }),
+          updatedAt: now(),
+          extraData,
+        }),
       );
     }
 
@@ -746,14 +797,15 @@ export class InstituteAdminUserService {
             subjectId: se.subjectId,
             studentId: studentUserId,
             isActive: true,
-            enrollmentMethod: 'teacher_assigned',
-            enrolledBy: adminUserId,
+            enrollmentMethod: isPending ? 'self_enrolled' : 'teacher_assigned',
+            verificationStatus: isPending ? 'pending' : 'verified',
+            enrolledBy: isPending ? undefined : adminUserId,
             createdAt: now(),
             updatedAt: now(),
             extraData,
           }),
         );
-        subjectResults.push({ subjectId: se.subjectId, enrolled: true });
+        subjectResults.push({ subjectId: se.subjectId, enrolled: true, status: isPending ? 'pending' : 'verified' });
       } else {
         subjectResults.push({ subjectId: se.subjectId, enrolled: false, note: 'already enrolled' });
       }

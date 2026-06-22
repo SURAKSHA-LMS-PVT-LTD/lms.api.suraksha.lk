@@ -1,5 +1,5 @@
 // src/modules/institute/institute.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InstitutesService } from './institute.service';
 import { InstitutesController } from './institute.controller';
@@ -20,6 +20,18 @@ import { CalendarDayCacheService } from './services/calendar-day-cache.service';
 import { CacheModule } from '../../common/modules/cache.module';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
 
+// ── Public self-registration (/forms/:token) ──────────────────────────────────
+import { InstituteRegistrationLinkEntity } from './entities/institute-registration-link.entity';
+import { InstituteClassSubjectEntity } from '../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
+import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
+import { UserEntity } from '../user/entities/user.entity';
+import { StudentEntity } from '../student/entities/student.entity';
+import { InstituteSelfRegistrationService } from './services/institute-self-registration.service';
+import { PublicRegistrationController } from './public-registration.controller';
+import { InstituteRegistrationLinksController } from './institute-registration-links.controller';
+import { UsersModule } from '../user/user.module';
+import { FeaturesModule } from '../features/features.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -29,8 +41,16 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
       InstituteCalendarDayEntity,
       InstituteCalendarEventEntity,
       InstituteClassCalendarEntity,
+      // Self-registration
+      InstituteRegistrationLinkEntity,
+      InstituteClassSubjectEntity,
+      InstituteUserEntity,
+      UserEntity,
+      StudentEntity,
     ]),
     CacheModule,
+    forwardRef(() => UsersModule), // InstituteAdminUserService + UserOtpService
+    FeaturesModule, // smart-cards feature gate for public form config
   ],
   controllers: [
     InstitutesController,
@@ -38,6 +58,8 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
     InstituteCalendarController,
     InstituteClassCalendarController,
     InstituteClassSubjectCalendarController,
+    PublicRegistrationController,
+    InstituteRegistrationLinksController,
   ],
   providers: [
     InstitutesService,
@@ -46,6 +68,7 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
     InstituteCalendarService,
     CalendarDayCacheService,
     CloudStorageService,
+    InstituteSelfRegistrationService,
   ],
   exports: [InstitutesService, InstituteCalendarService, CalendarDayCacheService], // Export calendar services for attendance module
 })

@@ -894,4 +894,201 @@ export class UserOtpService {
       newEmail: normalizedEmail,
     };
   }
+
+  // ============================================================
+  // 🌐 PUBLIC SELF-REGISTRATION OTP (new-user OR existing-account claim)
+  //
+  // Used by the /forms/:token public registration flow. Unlike the standard
+  // request methods these do NOT throw when the contact already belongs to a
+  // user — instead they report `existingUserId` so the form can switch into
+  // "claim existing account" mode. Ownership is still proven by the same OTP.
+  //
+  // Phone verification is reverse-WhatsApp ONLY (the user sends a code from
+  // their own WhatsApp; the webhook flips is_verified). No SMS is ever sent.
+  // ============================================================
+
+  /**
+   * Request a reverse-WhatsApp OTP for the public registration form.
+   * Returns a wa.me link; reports whether the phone already belongs to a user
+   * (so the caller can offer the existing-account claim flow). Never sends SMS.
+   */
+  async requestRegistrationPhoneOtpWhatsApp(
+    phoneNumber: string,
+    ipAddress?: string,
+  ): Promise<{ success: boolean; message: string; waLink: string; expiresAt: Date; existingUserId: string | null }> {
+    const normalizedPhone = normalizeSriLankanPhone(phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format');
+    }
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
+    // Detect (but do NOT block) an existing account on this phone.
+    const existingUser = await this.userRepository.findOne({
+      where: { phoneNumber: normalizedPhone },
+    });
+
+    const { allowed } = await this.checkDailyLimit(normalizedPhone, OtpType.PHONE);
+    if (!allowed) {
+      throw new BadRequestException(
+        `Daily verification limit reached. Maximum ${this.MAX_REQUESTS_PER_DAY} per day. Retry after ${this.getTomorrowDate()}.`,
+      );
+    }
+
+    // Invalidate previous pending registration OTPs for this phone.
+    await this.otpRepository.update(
+      {
+        phoneNumber: normalizedPhone,
+        otpPurpose: OtpPurpose.VERIFICATION,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+        isVerified: false,
+        expiresAt: MoreThan(now()),
+      },
+      { expiresAt: now() },
+    );
+
+    const otpCode = this.generateOtpCode();
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.otpRepository.save(
+      this.otpRepository.create({
+        phoneNumber: normalizedPhone,
+        otpCode,
+        otpType: OtpType.PHONE,
+        otpPurpose: OtpPurpose.VERIFICATION,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+        expiresAt,
+        createdAt: now(),
+        createdDate: this.getTodayDate(),
+        ipAddress,
+      }),
+    );
+
+    return {
+      success: true,
+      message: `Tap the WhatsApp link (or scan the QR) and send the message to verify. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s).`,
+      waLink: this.buildWhatsAppOtpLink(otpCode),
+      expiresAt,
+      existingUserId: existingUser ? String(existingUser.id) : null,
+    };
+  }
+
+  /**
+   * Request an emailed OTP for the public registration form.
+   * Reports whether the email already belongs to a user (existing-account claim),
+   * without throwing. Sends the code via email (email path only).
+   */
+  async requestRegistrationEmailOtp(
+    email: string,
+    ipAddress?: string,
+  ): Promise<{ success: boolean; message: string; expiresAt: Date; existingUserId: string | null }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    const existingUser = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+
+    const { allowed } = await this.checkDailyLimit(normalizedEmail, OtpType.EMAIL);
+    if (!allowed) {
+      throw new BadRequestException(
+        `Daily verification limit reached. Maximum ${this.MAX_REQUESTS_PER_DAY} per day. Retry after ${this.getTomorrowDate()}.`,
+      );
+    }
+
+    await this.otpRepository.update(
+      {
+        email: normalizedEmail,
+        otpPurpose: OtpPurpose.VERIFICATION,
+        otpType: OtpType.EMAIL,
+        isVerified: false,
+        expiresAt: MoreThan(now()),
+      },
+      { expiresAt: now() },
+    );
+
+    const otpCode = this.generateOtpCode();
+    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.otpRepository.save(
+      this.otpRepository.create({
+        email: normalizedEmail,
+        otpCode,
+        otpType: OtpType.EMAIL,
+        otpPurpose: OtpPurpose.VERIFICATION,
+        deliveryMethod: OtpDeliveryMethod.EMAIL,
+        expiresAt,
+        createdAt: now(),
+        createdDate: this.getTodayDate(),
+        ipAddress,
+      }),
+    );
+
+    try {
+      await this.enhancedEmailService.sendOTP({
+        email: normalizedEmail,
+        otp: otpCode,
+        userName: normalizedEmail.split('@')[0],
+        expiryMinutes: this.OTP_EXPIRY_MINUTES.toString(),
+        requestType: 'Registration Verification',
+        ipAddress,
+      });
+    } catch (emailError) {
+      this.logger.error(`❌ Failed to send registration OTP email to ${normalizedEmail}: ${emailError.message}`);
+    }
+
+    return {
+      success: true,
+      message: `Verification code sent to ${normalizedEmail}. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s).`,
+      expiresAt,
+      existingUserId: existingUser ? String(existingUser.id) : null,
+    };
+  }
+
+  /**
+   * One-shot status check for the reverse-WhatsApp registration OTP.
+   * The public form polls this after the user sends their WhatsApp message.
+   */
+  async getRegistrationPhoneOtpStatus(
+    phoneNumber: string,
+  ): Promise<{ verified: boolean; expired: boolean }> {
+    return this.getPhoneOtpStatus(phoneNumber, OtpPurpose.VERIFICATION);
+  }
+
+  /**
+   * Assert that a contact has a currently-verified registration OTP. Throws if not.
+   * Called at register/claim time so the server never trusts a client "verified" flag.
+   */
+  async assertRegistrationVerified(params: { phoneNumber?: string; email?: string }): Promise<void> {
+    if (params.phoneNumber) {
+      const normalizedPhone = normalizeSriLankanPhone(params.phoneNumber);
+      if (!normalizedPhone) throw new BadRequestException('Invalid phone number format');
+      const otp = await this.otpRepository.findOne({
+        where: {
+          phoneNumber: normalizedPhone,
+          otpPurpose: OtpPurpose.VERIFICATION,
+          deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+          isVerified: true,
+        },
+        order: { verifiedAt: 'DESC' },
+      });
+      if (!otp) throw new BadRequestException('Phone number has not been verified.');
+    }
+    if (params.email) {
+      const normalizedEmail = params.email.trim().toLowerCase();
+      const otp = await this.otpRepository.findOne({
+        where: {
+          email: normalizedEmail,
+          otpType: OtpType.EMAIL,
+          otpPurpose: OtpPurpose.VERIFICATION,
+          isVerified: true,
+        },
+        order: { verifiedAt: 'DESC' },
+      });
+      if (!otp) throw new BadRequestException('Email address has not been verified.');
+    }
+  }
 }
