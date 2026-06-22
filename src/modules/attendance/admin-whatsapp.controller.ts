@@ -15,6 +15,7 @@ import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../user/enums/user-type.enum';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
+import { WhatsAppWebhookService } from './services/whatsapp-webhook.service';
 import { DataSource } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 
@@ -40,6 +41,7 @@ export class AdminWhatsAppController {
 
   constructor(
     private readonly notifService: AttendanceNotificationService,
+    private readonly webhookService: WhatsAppWebhookService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -48,9 +50,11 @@ export class AdminWhatsAppController {
   @ApiOperation({ summary: 'Check WhatsApp session window for phone numbers' })
   async getSessionStatus(@Body() dto: SessionStatusDto) {
     const phones = (dto.phones || []).filter(Boolean);
+    // Single batch query against whatsapp_contact_sessions — no N+1.
+    const openSet = await this.webhookService.getOpenSessions(phones);
     const result = phones.map(phone => ({
       phone,
-      sessionOpen: this.notifService.isWhatsAppSessionOpen(phone),
+      sessionOpen: openSet.has(phone),
     }));
     return { results: result };
   }
@@ -81,6 +85,7 @@ export class AdminWhatsAppController {
          u.first_name   AS firstName,
          u.last_name    AS lastName,
          u.phone_number AS phone,
+         u.language     AS language,
          iu.user_id_institue AS instituteUserId
        FROM attendance_records ar
        JOIN users u ON u.id = ar.student_id
@@ -101,13 +106,17 @@ export class AdminWhatsAppController {
     );
 
     const total = Number(countRow[0]?.total || 0);
+    const openSet = await this.webhookService.getOpenSessions(
+      rows.map(r => r.phone).filter(Boolean),
+    );
     const users = rows.map(r => ({
       userId: r.userId,
       firstName: r.firstName,
       lastName: r.lastName,
       phone: r.phone,
+      language: r.language ?? null,
       instituteUserId: r.instituteUserId,
-      sessionOpen: r.phone ? this.notifService.isWhatsAppSessionOpen(r.phone) : null,
+      sessionOpen: r.phone ? openSet.has(r.phone) : null,
     }));
 
     return { users, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
@@ -143,6 +152,7 @@ export class AdminWhatsAppController {
          u.first_name   AS firstName,
          u.last_name    AS lastName,
          u.phone_number AS phone,
+         u.language     AS language,
          iu.user_id_institue AS instituteUserId,
          iu.institute_user_type AS userType
        FROM institute_user iu
@@ -164,14 +174,18 @@ export class AdminWhatsAppController {
     );
 
     const total = Number(countRow[0]?.total || 0);
+    const openSet = await this.webhookService.getOpenSessions(
+      rows.map(r => r.phone).filter(Boolean),
+    );
     const users = rows.map(r => ({
       userId: r.userId,
       firstName: r.firstName,
       lastName: r.lastName,
       phone: r.phone,
+      language: r.language ?? null,
       instituteUserId: r.instituteUserId,
       userType: r.userType,
-      sessionOpen: r.phone ? this.notifService.isWhatsAppSessionOpen(r.phone) : null,
+      sessionOpen: r.phone ? openSet.has(r.phone) : null,
     }));
 
     return { users, total, page: p, limit: l, totalPages: Math.ceil(total / l) };
@@ -249,23 +263,26 @@ export class AdminWhatsAppController {
       }
     }
 
-    // Send to those with phones
-    const sendQueue = rows.filter(r => {
-      if (sessionOpen) {
-        return this.notifService.isWhatsAppSessionOpen(r.phone);
-      }
-      return true;
-    });
+    // Resolve open-session windows for all candidate phones in ONE batch query
+    // (only needed when the caller asked to gate on the session window).
+    const openSet = sessionOpen
+      ? await this.webhookService.getOpenSessions(rows.map(r => r.phone).filter(Boolean))
+      : null;
+
+    // Send to those with phones (and an open session, if gating is on)
+    const sendQueue = openSet ? rows.filter(r => openSet.has(r.phone)) : rows;
 
     // Skipped due to closed session
-    for (const r of rows) {
-      if (sessionOpen && !this.notifService.isWhatsAppSessionOpen(r.phone)) {
-        results.push({
-          userId: r.userId,
-          name: `${r.firstName || ''} ${r.lastName || ''}`.trim(),
-          phone: r.phone,
-          status: 'skipped_closed_session',
-        });
+    if (openSet) {
+      for (const r of rows) {
+        if (!openSet.has(r.phone)) {
+          results.push({
+            userId: r.userId,
+            name: `${r.firstName || ''} ${r.lastName || ''}`.trim(),
+            phone: r.phone,
+            status: 'skipped_closed_session',
+          });
+        }
       }
     }
 
@@ -278,7 +295,8 @@ export class AdminWhatsAppController {
           try {
             const res = await this.sendOneMessage(r.phone, message);
             if (res.success) {
-              this.notifService.markWhatsAppInteraction(r.phone);
+              // No session write on outbound — sessions are created only when a
+              // user replies (see WhatsAppWebhookService.handleInbound).
               results.push({
                 userId: r.userId,
                 name: `${r.firstName || ''} ${r.lastName || ''}`.trim(),
@@ -319,6 +337,167 @@ export class AdminWhatsAppController {
     return {
       summary: { sent, failed, skipped, total: userIds.length },
       results,
+    };
+  }
+
+  /**
+   * Delivery analytics — per-institute, per-date-range, optionally per-ad.
+   *
+   * Returns aggregated counts proving ad delivery to advertisers:
+   *   sent        — API accepted the message (success=1)
+   *   delivered   — reached device (wa_delivered_at IS NOT NULL)
+   *   read        — recipient opened message (wa_read_at IS NOT NULL)
+   *   failed      — permanent send failure (wa_failed_at IS NOT NULL)
+   *   pending     — sent but not yet delivered (sent but wa_delivered_at IS NULL and wa_failed_at IS NULL)
+   *   deliveryRate — delivered / sent (%)
+   *   readRate    — read / delivered (%)
+   *
+   * Groups by institute_id so a SUPERADMIN can compare across all institutes.
+   * Optionally filter by adId to prove per-campaign delivery.
+   *
+   * Always bounded by a date window — defaults to the last 90 days and is
+   * capped at MAX_SPAN_DAYS — so a query can never trigger an unbounded
+   * full-table aggregate scan (especially under groupBy=day).
+   */
+  @Get('delivery-stats')
+  @ApiOperation({ summary: 'WhatsApp attendance delivery/read analytics for system admin' })
+  async getDeliveryStats(
+    @Query('instituteId') instituteId?: string,
+    @Query('dateFrom')    dateFrom?: string,
+    @Query('dateTo')      dateTo?: string,
+    @Query('adId')        adId?: string,
+    @Query('groupBy')     groupBy?: string, // 'institute' | 'day' | 'ad'
+  ) {
+    const MAX_SPAN_DAYS = 366;
+    const DEFAULT_SPAN_DAYS = 90;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    // Validate YYYY-MM-DD; reject anything else (defence-in-depth even though
+    // values are parameterized) and resolve a bounded [from, toExclusive) window.
+    const isValidDate = (s?: string): boolean =>
+      !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s).getTime());
+
+    const to = isValidDate(dateTo) ? new Date(dateTo!) : new Date();
+    let from = isValidDate(dateFrom)
+      ? new Date(dateFrom!)
+      : new Date(to.getTime() - DEFAULT_SPAN_DAYS * DAY_MS);
+
+    if (from > to) {
+      throw new HttpException('dateFrom must be on or before dateTo', HttpStatus.BAD_REQUEST);
+    }
+    // Cap the span so groupBy=day can never return an unbounded series.
+    if (to.getTime() - from.getTime() > MAX_SPAN_DAYS * DAY_MS) {
+      from = new Date(to.getTime() - MAX_SPAN_DAYS * DAY_MS);
+    }
+
+    const fromStr = from.toISOString().slice(0, 10);
+    const toExclusiveStr = new Date(to.getTime() + DAY_MS).toISOString().slice(0, 10);
+
+    const conditions: string[] = [
+      `channel = 'whatsapp'`,
+      `sent_at >= ?`,
+      `sent_at < ?`,
+    ];
+    const params: any[] = [fromStr, toExclusiveStr];
+
+    if (instituteId) {
+      conditions.push(`institute_id = ?`);
+      params.push(instituteId);
+    }
+    if (adId) {
+      conditions.push(`ad_id = ?`);
+      params.push(adId);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+
+    // Determine GROUP BY axis
+    const validGroupBy = ['institute', 'day', 'ad'];
+    const groupAxis = validGroupBy.includes(groupBy ?? '') ? groupBy : 'institute';
+
+    let selectGroup: string;
+    let groupClause: string;
+    switch (groupAxis) {
+      case 'day':
+        selectGroup = `DATE(sent_at) AS groupKey`;
+        groupClause = `GROUP BY DATE(sent_at)`;
+        break;
+      case 'ad':
+        selectGroup = `COALESCE(ad_id, '—') AS groupKey`;
+        groupClause = `GROUP BY ad_id`;
+        break;
+      default:
+        selectGroup = `institute_id AS groupKey`;
+        groupClause = `GROUP BY institute_id`;
+    }
+
+    const rows: any[] = await this.dataSource.query(
+      `SELECT
+         ${selectGroup},
+         COUNT(*)                                       AS sent,
+         SUM(wa_delivered_at IS NOT NULL)               AS delivered,
+         SUM(wa_read_at IS NOT NULL)                    AS \`read\`,
+         SUM(wa_failed_at IS NOT NULL)                  AS failed,
+         SUM(success = 1 AND wa_delivered_at IS NULL
+             AND wa_failed_at IS NULL)                  AS pending,
+         ROUND(
+           SUM(wa_delivered_at IS NOT NULL) * 100.0
+           / NULLIF(COUNT(*), 0), 1)                   AS deliveryRate,
+         ROUND(
+           SUM(wa_read_at IS NOT NULL) * 100.0
+           / NULLIF(SUM(wa_delivered_at IS NOT NULL), 0), 1) AS readRate
+       FROM attendance_notification_deliveries
+       ${where}
+       ${groupClause}
+       ORDER BY sent DESC`,
+      params,
+    );
+
+    // Enrich institute-grouped rows with names — one batch query, no N+1.
+    let labelMap = new Map<string, string>();
+    if (groupAxis === 'institute' && rows.length) {
+      const ids = rows.map(r => r.groupKey).filter(Boolean);
+      if (ids.length) {
+        const ph = ids.map(() => '?').join(',');
+        const nameRows: any[] = await this.dataSource.query(
+          `SELECT id, name FROM institutes WHERE id IN (${ph})`,
+          ids,
+        );
+        labelMap = new Map(nameRows.map(n => [String(n.id), n.name]));
+      }
+    }
+
+    // Totals row across all groups
+    const totals = rows.reduce(
+      (acc, r) => ({
+        sent:       acc.sent      + Number(r.sent),
+        delivered:  acc.delivered + Number(r.delivered),
+        read:       acc.read      + Number(r.read),
+        failed:     acc.failed    + Number(r.failed),
+        pending:    acc.pending   + Number(r.pending),
+      }),
+      { sent: 0, delivered: 0, read: 0, failed: 0, pending: 0 },
+    );
+
+    return {
+      groupBy: groupAxis,
+      window: { from: fromStr, to: to.toISOString().slice(0, 10) },
+      rows: rows.map(r => ({
+        groupKey:     r.groupKey,
+        label:        groupAxis === 'institute' ? (labelMap.get(String(r.groupKey)) ?? r.groupKey) : r.groupKey,
+        sent:         Number(r.sent),
+        delivered:    Number(r.delivered),
+        read:         Number(r.read),
+        failed:       Number(r.failed),
+        pending:      Number(r.pending),
+        deliveryRate: r.deliveryRate !== null ? Number(r.deliveryRate) : null,
+        readRate:     r.readRate     !== null ? Number(r.readRate)     : null,
+      })),
+      totals: {
+        ...totals,
+        deliveryRate: totals.sent   ? Math.round(totals.delivered * 100 / totals.sent) : null,
+        readRate:     totals.delivered ? Math.round(totals.read  * 100 / totals.delivered) : null,
+      },
     };
   }
 

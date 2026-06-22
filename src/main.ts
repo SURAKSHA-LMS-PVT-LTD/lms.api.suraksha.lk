@@ -44,6 +44,9 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule, {
       logger: isProduction ? ['error', 'warn'] : ['error', 'warn', 'log'],
       abortOnError: false,
+      // Preserve raw body buffer for WhatsApp webhook HMAC-SHA256 verification.
+      // Must be set at NestFactory.create level — cannot be added after the fact.
+      rawBody: true,
     });
 
     if (!isProduction) {

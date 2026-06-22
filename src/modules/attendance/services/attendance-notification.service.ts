@@ -1,10 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as https from 'https';
+import * as http from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { SmsProviderService } from '../../sms/services/sms-provider.service';
 import { FcmNotificationService } from '../../../common/services/fcm-notification.service';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { NOTIFICATION_PACKAGES_CONFIG } from '../../advertisement/services/notification-packages.config';
+import { AttendanceNotificationDeliveryEntity } from '../entities/attendance-notification-delivery.entity';
+import { WhatsAppAttendanceMessageBuilder } from '../factories/whatsapp-message.factory';
+import { Language } from '../../user/enums/language.enum';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const FormDataNode = require('form-data');
 
 // Retry configuration interface
 export interface RetryConfig {
@@ -21,6 +32,7 @@ export interface AttendanceNotificationData {
   parentEmail?: string;
   parentTelegramId?: string;
   parentUserId?: string;       // ✅ Parent user ID for push notifications
+  parentLanguage?: string;     // ✅ Parent preferred language (Language enum value: 'S'|'E'|'T'). Default: Sinhala
   instituteId?: string;        // ✅ Institute ID for push notification inbox
   attendanceId?: string;       // ✅ Encoded attendance record ID for deep-link
   attendanceStatus: 'PRESENT' | 'ABSENT' | 'LATE' | 'LEFT' | 'LEFT_EARLY' | 'LEFT_LATELY';
@@ -75,6 +87,8 @@ export class AttendanceNotificationService {
     private readonly fcmNotificationService: FcmNotificationService,
     private readonly enhancedEmailService: EnhancedEmailService,
     private readonly dataSource: DataSource,
+    @InjectRepository(AttendanceNotificationDeliveryEntity)
+    private readonly deliveryRepo: Repository<AttendanceNotificationDeliveryEntity>,
   ) {}
 
   /** True when Firebase Admin SDK is initialised and push can be sent */
@@ -227,10 +241,38 @@ export class AttendanceNotificationService {
       advertisementDelivered
     };
 
+    // Persist delivery records fire-and-forget — never block the caller
+    this.persistDeliveryRecords(data, results).catch(err =>
+      this.logger.warn(`[DeliveryTracking] Failed to persist delivery records: ${err.message}`),
+    );
+
     const duration = Date.now() - startTime;
 
     return summary;
-  } 
+  }
+
+  /** Persist per-channel delivery records (async, non-blocking). */
+  private async persistDeliveryRecords(
+    data: AttendanceNotificationData,
+    results: NotificationResult[],
+  ): Promise<void> {
+    if (!results.length) return;
+
+    const rows = results.map(r => ({
+      contextType:       'attendance',
+      contextId:         data.attendanceId ?? null,
+      recipientId:       data.parentUserId ?? data.studentId,
+      instituteId:       data.instituteId ?? '',
+      channel:           r.channel,
+      success:           r.success,
+      providerMessageId: r.deliveryId ?? null,
+      attempts:          r.attempts,
+      errorMessage:      r.errorMessage ?? null,
+      adId:              r.channel === 'whatsapp' ? (data.advertisementData?.id ?? null) : null,
+    }));
+
+    await this.deliveryRepo.insert(rows);
+  }
 
   /**
    * Validate notification data before sending
@@ -361,17 +403,23 @@ export class AttendanceNotificationService {
   }
 
   /**
-   * Send WhatsApp notification — SESSION MESSAGES ONLY (free, within the 24h customer
-   * service window). Template messages are NEVER used here because they cost money.
+   * Send WhatsApp attendance notification — SESSION MESSAGES ONLY (free within 24h window).
    *
-   * Flow:
-   *   1) If the 24h session window for this number is closed, skip WhatsApp silently.
-   *      Other channels (push/email/SMS per plan) still fire. We never fall back to a
-   *      paid template to force delivery.
-   *   2) Send the attendance message (ad media + caption) as a free session message.
-   *   3) Send a follow-up interactive "keep me updated" button + thank-you. When the
-   *      parent taps it (or replies), their inbound message re-opens the 24h window,
-   *      letting us keep sending free session messages indefinitely.
+   * Message structure (in order):
+   *   1) [Optional] Ad video — sent as a separate video bubble FIRST if ad mediaType is video.
+   *   2) Main interactive button message:
+   * Architecture by ad media type:
+   *
+   *   No ad / Image ad → single interactive button message (EN then SI)
+   *     • No ad:    text header + attendance body + warning + "🙏 Thanks!" button
+   *     • Image ad: image header + attendance + ad text + warning + "🙏 Thanks!" button
+   *
+   *   Video / PDF ad → two bubbles (EN then SI each)
+   *     1. video/document bubble with ad text as caption
+   *     2. plain text attendance message (no button)
+   *
+   * Institute name and student name always kept in English (as stored).
+   * Structural labels ("arrived at", "was absent from", warning text) translated to Sinhala.
    */
   private async sendWhatsAppNotification(
     data: AttendanceNotificationData
@@ -380,36 +428,222 @@ export class AttendanceNotificationService {
       return { success: false };
     }
 
-    // We only ever send FREE session messages (sendWhatsAppSessionMessage), never paid
-    // templates. So we simply attempt the send: if the parent's 24h window is closed,
-    // WhatsApp rejects it and we record a free failure — no charge, no state to track.
-    // Keeping the window open is the parent's responsibility (they reply / tap to re-open).
-    const message = this.buildAttendanceMessage(data, false, 'whatsapp');
+    const phone = this.normalizePhone(data.parentContact);
+    const isAdsEnabled = this.isAdsEnabled(data.subscriptionPlan);
+    const ad = isAdsEnabled ? data.advertisementData : undefined;
+    const adMediaType = ad?.mediaType?.toLowerCase() ?? '';
+
+    const isVideoAd = !!ad?.mediaUrl && (adMediaType === 'video' || adMediaType.startsWith('video/'));
+    const isPdfAd   = !!ad?.mediaUrl && (adMediaType === 'pdf' || adMediaType === 'document' || adMediaType.startsWith('application/'));
+    const isImageAd = !!ad?.mediaUrl && (adMediaType === 'image' || adMediaType.startsWith('image/'));
 
     try {
-      // Main session message: attendance text + ad media (free within the 24h window).
-      const sessionResult = await this.sendWhatsAppSessionMessage(
-        data.parentContact,
-        message,
-        data.advertisementData
-      );
-
-      if (!sessionResult.success) {
-        // Closed window or provider error — fails for free. Other channels still fire.
-        this.logger.debug(`[WhatsApp] Send not delivered for ${this.maskPhone(data.parentContact)} (likely closed 24h window)`);
-        return { success: false };
+      if (isVideoAd || isPdfAd) {
+        const mediaType = isVideoAd ? 'video' : 'document';
+        const adCaption = WhatsAppAttendanceMessageBuilder.adCaption(ad);
+        await this.sendWhatsAppMedia(phone, mediaType, ad!.mediaUrl, adCaption);
+        return this.sendWhatsAppPlainAttendance(phone, data);
+      } else {
+        return this.sendWhatsAppInteractiveAttendance(phone, data, isImageAd ? ad : undefined);
       }
-
-      // Follow-up: polite thank-you + interactive keep-alive button. A tap/reply re-opens
-      // the 24h window. Fire-and-forget — failure here must not fail the attendance message.
-      this.sendWhatsAppKeepAliveButton(data.parentContact, data).catch(err =>
-        this.logger.debug(`[WhatsApp] Keep-alive button send failed: ${err.message}`),
-      );
-
-      return sessionResult;
     } catch (error: any) {
       this.logger.error(`❌ WhatsApp notification failed: ${error.message}`);
       return { success: false };
+    }
+  }
+
+  /**
+   * Single interactive button message — used for no-ad and image-ad modes.
+   * Sends one message in the parent's preferred language (defaults to Sinhala).
+   * Image uploaded once and reused.
+   */
+  private async sendWhatsAppInteractiveAttendance(
+    phone: string,
+    data: AttendanceNotificationData,
+    ad?: AttendanceNotificationData['advertisementData'],
+  ): Promise<{ success: boolean; deliveryId?: string }> {
+    const instituteName = data.instituteName || 'Suraksha LMS';
+    const lang = WhatsAppAttendanceMessageBuilder.resolveLanguage(data.parentLanguage);
+
+    let imageMediaId: string | undefined;
+    if (ad?.mediaUrl) {
+      try {
+        imageMediaId = await this.uploadMediaFromUrl(ad.mediaUrl, 'ad_header.jpg', 'image/jpeg');
+      } catch (err: any) {
+        this.logger.warn(`[WhatsApp] Image upload failed, using text header: ${err.message}`);
+      }
+    }
+
+    const input = {
+      studentName:      data.studentName,
+      attendanceStatus: data.attendanceStatus,
+      attendanceType:   data.attendanceType ?? 'INSTITUTE',
+      date:             data.date,
+      time:             data.time,
+      instituteName:    data.instituteName,
+      className:        data.className,
+      subjectName:      data.subjectName,
+      vehicleNumber:    data.vehicleNumber,
+      bookhireName:     data.bookhireName,
+    };
+
+    const adInput = ad ? { title: ad.title, content: ad.content, sendingUrl: ad.sendingUrl } : undefined;
+    const payload = WhatsAppAttendanceMessageBuilder.build(input, lang, adInput);
+
+    const interactive: Record<string, any> = {
+      type: 'button',
+      body:   { text: payload.fullBody },
+      footer: { text: instituteName },
+      action: { buttons: [{ type: 'reply', reply: { id: 'attendance_thanks', title: '🙏 Thanks!' } }] },
+      header: imageMediaId
+        ? { type: 'image', image: { id: imageMediaId } }
+        : { type: 'text', text: instituteName },
+    };
+
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: phone, type: 'interactive', interactive }),
+      },
+    );
+    const result = await response.json() as any;
+    if (response.ok && result.messages?.[0]?.id) {
+      this.logger.debug(`[WhatsApp] Button sent (${lang}): ${result.messages[0].id}`);
+      return { success: true, deliveryId: result.messages[0].id };
+    }
+    this.logger.debug(`[WhatsApp] Button failed (${lang}): ${JSON.stringify(result.error)}`);
+    return { success: false };
+  }
+
+  private async sendWhatsAppPlainAttendance(
+    phone: string,
+    data: AttendanceNotificationData,
+  ): Promise<{ success: boolean; deliveryId?: string }> {
+    return this.sendWhatsAppInteractiveAttendance(phone, data, undefined);
+  }
+
+  /**
+   * Download a URL to OS temp dir. Follows one redirect level (301/302).
+   */
+  private downloadToTemp(url: string, filename: string): Promise<string> {
+    const tmpPath = path.join(os.tmpdir(), `wa_${Date.now()}_${filename}`);
+    const protocol = url.startsWith('https') ? https : http;
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(tmpPath);
+      protocol.get(url, res => {
+        if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+          file.close();
+          this.downloadToTemp(res.headers.location, filename).then(resolve).catch(reject);
+          return;
+        }
+        res.pipe(file);
+        file.on('finish', () => { file.close(); resolve(tmpPath); });
+      }).on('error', reject);
+    });
+  }
+
+  /**
+   * Upload a local file to Meta Media API. Returns the media_id.
+   * Uses https.request + form-data pipe — reliable with Node's native fetch.
+   */
+  private uploadToMetaMedia(filePath: string, mimeType: string): Promise<string> {
+    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID!;
+    const token   = process.env.WHATSAPP_ACCESS_TOKEN!;
+    const fd = new FormDataNode();
+    fd.append('messaging_product', 'whatsapp');
+    fd.append('type', mimeType);
+    fd.append('file', fs.createReadStream(filePath), {
+      filename: path.basename(filePath),
+      contentType: mimeType,
+      knownLength: fs.statSync(filePath).size,
+    });
+
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'graph.facebook.com',
+        path: `/v21.0/${phoneId}/media`,
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, ...fd.getHeaders() },
+      }, res => {
+        let body = '';
+        res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body) as any;
+            if (data.id) resolve(data.id as string);
+            else reject(new Error(`Meta media upload failed: ${body}`));
+          } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      fd.pipe(req);
+    });
+  }
+
+  /**
+   * Upload media from a URL to Meta and return the media_id.
+   * Downloads to temp, uploads to Meta, cleans up temp file.
+   */
+  private async uploadMediaFromUrl(
+    url: string,
+    filename: string,
+    mimeType: string,
+  ): Promise<string> {
+    const tmpPath = await this.downloadToTemp(url, filename);
+    try {
+      return await this.uploadToMetaMedia(tmpPath, mimeType);
+    } finally {
+      fs.unlink(tmpPath, () => {}); // clean up temp file
+    }
+  }
+
+  /**
+   * Send a standalone media message (video or document).
+   * Always uploads to Meta first — direct link: URLs are unreliable.
+   */
+  private async sendWhatsAppMedia(
+    phone: string,
+    type: 'video' | 'document',
+    mediaUrl: string,
+    caption?: string,
+  ): Promise<void> {
+    const mimeType = type === 'video' ? 'video/mp4' : 'application/pdf';
+    const filename = type === 'video' ? 'ad_video.mp4' : 'ad_document.pdf';
+
+    let mediaId: string;
+    try {
+      mediaId = await this.uploadMediaFromUrl(mediaUrl, filename, mimeType);
+    } catch (err: any) {
+      throw new Error(`Media upload failed for ${type}: ${err.message}`);
+    }
+
+    const mediaPayload: Record<string, any> = { id: mediaId };
+    if (caption) mediaPayload.caption = caption;
+    if (type === 'document') mediaPayload.filename = filename;
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      to: phone,
+      type,
+      [type]: mediaPayload,
+    };
+
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    const result = await response.json() as any;
+    if (!response.ok || !result.messages?.[0]?.id) {
+      throw new Error(result.error?.message ?? 'Media send failed');
     }
   }
 
@@ -437,61 +671,6 @@ export class AttendanceNotificationService {
 
   markWhatsAppInteraction(_phone: string): void {
     // no-op — session window is not tracked anymore
-  }
-
-  /**
-   * Send the polite thank-you + interactive reply button. Tapping the button sends an
-   * inbound message that re-opens the 24h session. Free session message (interactive type).
-   */
-  private async sendWhatsAppKeepAliveButton(
-    phoneNumber: string,
-    data: AttendanceNotificationData,
-  ): Promise<{ success: boolean; deliveryId?: string; error?: string }> {
-    try {
-      const instituteName = data.instituteName || 'Suraksha LMS';
-      const interactiveData = {
-        messaging_product: 'whatsapp',
-        to: phoneNumber.replace('+', ''),
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: {
-            text:
-              `Thank you for staying connected with ${instituteName}. 🙏\n\n` +
-              `To keep receiving these free attendance updates, please tap the button below. ` +
-              `If you don't, future updates may stop.`,
-          },
-          action: {
-            buttons: [
-              {
-                type: 'reply',
-                reply: { id: 'keep_updates_on', title: 'Keep me updated 👍' },
-              },
-            ],
-          },
-        },
-      };
-
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(interactiveData),
-        },
-      );
-
-      const result = await response.json();
-      if (response.ok && result.messages) {
-        return { success: true, deliveryId: result.messages[0]?.id };
-      }
-      return { success: false, error: result.error?.message || 'Keep-alive button failed' };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
   }
 
   /**

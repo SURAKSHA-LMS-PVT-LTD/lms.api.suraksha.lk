@@ -5,6 +5,10 @@ import { AttendanceAliasController } from './attendance-alias.controller';
 import { CalendarAttendanceController } from './calendar-attendance.controller';
 import { ClassAttendanceSessionController } from './class-attendance-session.controller';
 import { AdminWhatsAppController } from './admin-whatsapp.controller';
+import { WhatsAppWebhookController } from './whatsapp-webhook.controller';
+import { WhatsAppWebhookService } from './services/whatsapp-webhook.service';
+import { WhatsAppMenuService } from './services/whatsapp-menu.service';
+import { WhatsAppContactSessionEntity } from './entities/whatsapp-contact-session.entity';
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
@@ -32,6 +36,7 @@ import { EnhancedEmailService } from '../../common/services/enhanced-email.servi
 import { InstituteModule } from '../institute/institute.module';
 import { AttendanceDeviceModule } from '../attendance-device/attendance-device.module';
 import { AttendanceRecordEntity } from './entities/attendance-record.entity';
+import { AttendanceNotificationDeliveryEntity } from './entities/attendance-notification-delivery.entity';
 import { InstituteEntity } from '../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
 import { SubjectEntity } from '../subject/entities/subject.entity';
@@ -55,6 +60,8 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
       AdvertisementEntity,
       UserFcmTokenEntity,
       AttendanceRecordEntity,
+      AttendanceNotificationDeliveryEntity,
+      WhatsAppContactSessionEntity,
       InstituteEntity,
       InstituteClassEntity,
       SubjectEntity,
@@ -64,7 +71,7 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
       InstituteClassAttendanceSessionGroupEntity,
     ])
   ],
-  controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController, ClassAttendanceSessionController, AdminWhatsAppController],
+  controllers: [AttendanceController, AttendanceAliasController, CalendarAttendanceController, ClassAttendanceSessionController, AdminWhatsAppController, WhatsAppWebhookController],
   providers: [
     AttendanceService,
     DynamoDBAttendanceService,
@@ -74,6 +81,8 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
     AttendanceSyncConfigService,
     AttendanceSyncSchedulerService,
     ClassAttendanceSessionService,
+    WhatsAppWebhookService,
+    WhatsAppMenuService,
     CloudStorageService,
     FcmNotificationService,
     EnhancedEmailService,

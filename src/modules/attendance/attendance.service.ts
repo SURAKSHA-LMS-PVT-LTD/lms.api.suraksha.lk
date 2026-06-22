@@ -47,6 +47,7 @@ interface StudentParentData {
   parentEmail: string | null;
   parentTelegramId: string | null;
   parentUserId: string | null;
+  parentLanguage: string | null;  // Language enum value ('S'|'E'|'T'). null → default (Sinhala)
   subscriptionPlan: string;
 }
 
@@ -1856,6 +1857,7 @@ export class AttendanceService {
         parentEmail: data.parentEmail,
         parentTelegramId: data.parentTelegramId,
         parentUserId: data.parentUserId,
+        parentLanguage: data.parentLanguage ?? null,
         instituteId: markAttendanceDto.instituteId,
         attendanceId: attendanceResult?.id || undefined,
         attendanceStatus: (markAttendanceDto.status?.toUpperCase() as any) || 'ABSENT',
@@ -2370,15 +2372,15 @@ export class AttendanceService {
     },
     father: {
       userId: true,
-      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true },
+      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true, language: true },
     },
     mother: {
       userId: true,
-      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true },
+      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true, language: true },
     },
     guardian: {
       userId: true,
-      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true },
+      user: { id: true, firstName: true, lastName: true, nameWithInitials: true, email: true, phoneNumber: true, telegramId: true, firstLoginCompleted: true, language: true },
     },
   } as const;
 
@@ -2415,6 +2417,7 @@ export class AttendanceService {
       parentEmail,
       parentTelegramId,
       parentUserId: primaryParent?.id || null,
+      parentLanguage: (primaryParent as any)?.language ?? null,
       subscriptionPlan: student.user?.subscriptionPlan || 'FREE',
     };
   }
