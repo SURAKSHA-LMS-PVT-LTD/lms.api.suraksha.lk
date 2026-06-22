@@ -7,6 +7,9 @@ import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../../auth/guards/optional-jwt-auth.guard';
+import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
+import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
+import { UserType } from '../../user/enums/user-type.enum';
 import { Public } from '../../../common/decorators/public.decorator';
 import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 
@@ -124,12 +127,14 @@ export class SubjectRecordingTrackingController {
   // ─── Reports ─────────────────────────────────────────────────────────────
 
   @Get('reports/:recordingId/sessions')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Watch session + activity report for one recording' })
+  @ApiOperation({ summary: 'Watch session + activity report for one recording (staff only)' })
   @ApiParam({ name: 'recordingId' })
-  async getSessionReport(@Param('recordingId', ParseIdPipe) recordingId: string) {
-    return this.trackingService.getSessionReport(recordingId);
+  async getSessionReport(@Param('recordingId', ParseIdPipe) recordingId: string, @Req() req: any) {
+    // Service re-verifies staff access against the recording's own institute (IDOR guard).
+    return this.trackingService.getSessionReport(recordingId, req.user);
   }
 
   @Get('session/:sessionId/timeline')
@@ -155,12 +160,14 @@ export class SubjectRecordingTrackingController {
   }
 
   @Get('student/:studentId/activities')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all recording watch activities for a student' })
+  @ApiOperation({ summary: 'Get all recording watch activities for a student (staff only)' })
   @ApiParam({ name: 'studentId' })
   async getStudentActivities(
     @Param('studentId') studentId: string,
+    @Req() req: any,
     @Query('instituteId') instituteId: string,
     @Query('classId') classId: string,
     @Query('subjectId') subjectId?: string,
@@ -168,7 +175,9 @@ export class SubjectRecordingTrackingController {
     if (!instituteId || !classId) {
       throw new BadRequestException('instituteId and classId are required');
     }
-    return this.trackingService.getStudentActivities(studentId, instituteId, classId, subjectId);
+    // Service verifies the caller is admin/teacher of THIS institute (instituteId is a
+    // query param the guard can't bind to) — prevents reading other institutes' students.
+    return this.trackingService.getStudentActivities(studentId, instituteId, classId, subjectId, req.user);
   }
 
   @Get('student/me/activities')
@@ -183,7 +192,8 @@ export class SubjectRecordingTrackingController {
   ) {
     if (!req.user?.id) throw new BadRequestException('Authenticated user required');
     if (!instituteId || !classId) throw new BadRequestException('instituteId and classId are required');
-    return this.trackingService.getStudentActivities(req.user.id, instituteId, classId, subjectId);
+    // selfAccess = true: caller is pinned to their own id, no staff check needed.
+    return this.trackingService.getStudentActivities(req.user.id, instituteId, classId, subjectId, req.user, true);
   }
 
   // ─── Sync ─────────────────────────────────────────────────────────────────

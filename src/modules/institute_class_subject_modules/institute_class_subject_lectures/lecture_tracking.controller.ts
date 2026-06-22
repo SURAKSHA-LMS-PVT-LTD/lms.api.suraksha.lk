@@ -295,22 +295,27 @@ export class LectureTrackingController {
   }
 
   @Get('reports/:lectureId/recording')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Recording session + activity report for one lecture; optional ?studentId to filter to one student' })
+  @ApiOperation({ summary: 'Recording session + activity report for one lecture (staff only); optional ?studentId to filter to one student' })
   async getRecordingReport(
     @Param('lectureId') lectureId: string,
+    @Req() req: any,
     @Query('studentId') studentId?: string,
   ) {
-    return this.trackingService.getRecordingActivityReport(lectureId, studentId);
+    // Service re-verifies staff access against the lecture's own institute (IDOR guard).
+    return this.trackingService.getRecordingActivityReport(lectureId, studentId, req.user);
   }
 
   @Get('student/:studentId/activities')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all live and recording activities for a student across lectures' })
+  @ApiOperation({ summary: 'Get all live and recording activities for a student across lectures (staff only)' })
   async getStudentActivities(
     @Param('studentId') studentId: string,
+    @Req() req: any,
     @Query('instituteId') instituteId: string,
     @Query('classId') classId: string,
     @Query('subjectId') subjectId?: string,
@@ -318,7 +323,9 @@ export class LectureTrackingController {
     if (!instituteId || !classId) {
       throw new BadRequestException('instituteId and classId are required');
     }
-    return this.trackingService.getStudentLectureActivities(studentId, instituteId, classId, subjectId);
+    // instituteId is a query param the guard can't bind to — service confirms the caller
+    // is admin/teacher of THIS institute before returning another student's data.
+    return this.trackingService.getStudentLectureActivities(studentId, instituteId, classId, subjectId, req.user);
   }
 
   @Get('student/me/activities')
@@ -337,7 +344,8 @@ export class LectureTrackingController {
     if (!instituteId || !classId) {
       throw new BadRequestException('instituteId and classId are required');
     }
-    return this.trackingService.getStudentLectureActivities(req.user.id, instituteId, classId, subjectId);
+    // selfAccess = true: caller pinned to their own id, no staff check needed.
+    return this.trackingService.getStudentLectureActivities(req.user.id, instituteId, classId, subjectId, req.user, true);
   }
 
   // ─── Recording Timeline & Watch History ──────────────────────────────────

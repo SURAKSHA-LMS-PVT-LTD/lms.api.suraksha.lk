@@ -91,6 +91,7 @@ export class SubjectRecordingsService {
     if (query.status) (where as any).status = query.status;
     if (query.platform) (where as any).platform = query.platform;
     if (query.isActive !== undefined) (where as any).isActive = query.isActive;
+    if (query.recAttendanceEnabled !== undefined) (where as any).recAttendanceEnabled = query.recAttendanceEnabled;
     if (query.search) (where as any).title = ILike(`%${query.search}%`);
 
     const [data, total] = await this.repo.findAndCount({

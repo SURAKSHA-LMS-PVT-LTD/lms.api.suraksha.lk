@@ -11,6 +11,13 @@ import { InstituteClassStudentEntity } from '../../../institute_class_modules/in
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteClassSubjectPaymentSubmission } from '../../../payment/entities/institute-class-subject-payment-submission.entity';
 import { formatSriLankaDateTime, formatSriLankaTime } from '../../../../common/utils/timezone.util';
+import {
+  EnhancedJwtPayload,
+  EnhancedInstituteAccessEntry,
+  ROLE_BITMASKS,
+  COMPACT_TO_USER_TYPE,
+} from '../../../../auth/interfaces/enhanced-jwt-payload.interface';
+import { UserType } from '../../../user/enums/user-type.enum';
 
 @Injectable()
 export class SubjectRecordingTrackingService {
@@ -28,6 +35,43 @@ export class SubjectRecordingTrackingService {
     @InjectRepository(InstituteClassSubjectPaymentSubmission)
     private readonly paymentSubmissionRepo: Repository<InstituteClassSubjectPaymentSubmission>,
   ) {}
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Staff authorization
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Verify the requesting user is allowed to read OTHER students' tracking data for
+   * the given institute. Allowed: SUPERADMIN (global), or a user holding an Institute
+   * Admin / Teacher role bitmask in THAT specific institute.
+   *
+   * The FlexibleAccessGuard cannot bind to `instituteId` here because it is a query
+   * param (the guard only reads params/body), so this service-level check is the real
+   * security boundary against IDOR — without it any authenticated user could read any
+   * student's watch activity by passing an arbitrary studentId/instituteId.
+   */
+  private assertStaffAccess(user: EnhancedJwtPayload | undefined, instituteId: string): void {
+    if (!user) throw new ForbiddenException('Authentication required');
+
+    // Global SUPERADMIN always allowed
+    const userTypeValue = COMPACT_TO_USER_TYPE[user.u as keyof typeof COMPACT_TO_USER_TYPE] as string;
+    if (userTypeValue === UserType.SUPERADMIN) return;
+
+    const rawAccess = (user as any).i ?? (user as any).enhancedInstituteAccess;
+    const instituteAccess: EnhancedInstituteAccessEntry[] = Array.isArray(rawAccess) ? rawAccess : [];
+
+    const isStaffOfInstitute = instituteAccess.some(
+      (entry) =>
+        String(entry.i) === String(instituteId) &&
+        ((entry.r & ROLE_BITMASKS.IA) !== 0 || (entry.r & ROLE_BITMASKS.TE) !== 0),
+    );
+
+    if (!isStaffOfInstitute) {
+      throw new ForbiddenException(
+        'You do not have permission to view this student\'s recording activity for this institute.',
+      );
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Access helpers (same logic as LectureTrackingService)
@@ -445,7 +489,7 @@ export class SubjectRecordingTrackingService {
   // Reports
   // ─────────────────────────────────────────────────────────────────────────
 
-  async getSessionReport(recordingId: string) {
+  async getSessionReport(recordingId: string, requestUser?: EnhancedJwtPayload) {
     const [recording, sessions] = await Promise.all([
       this.recordingRepo.findOne({ where: { id: recordingId } }),
       this.sessionRepo.find({
@@ -456,6 +500,11 @@ export class SubjectRecordingTrackingService {
     ]);
 
     if (!recording) throw new NotFoundException('Recording not found');
+
+    // This report exposes every viewer's watch sessions — staff-only, scoped to the
+    // recording's own institute. Guards run before this, but instituteId isn't available
+    // to the guard from the route, so the authority check lives here.
+    this.assertStaffAccess(requestUser, recording.instituteId);
 
     const sessionIds = sessions.map(s => s.id);
     const allActivities = sessionIds.length
@@ -721,7 +770,16 @@ export class SubjectRecordingTrackingService {
     instituteId: string,
     classId: string,
     subjectId?: string,
+    requestUser?: EnhancedJwtPayload,
+    selfAccess = false,
   ) {
+    // When a staff member requests another student's data, verify they are admin/teacher
+    // of this institute. Self-access (student viewing own data) skips this check — the
+    // caller already pinned studentId to req.user.id.
+    if (!selfAccess) {
+      this.assertStaffAccess(requestUser, instituteId);
+    }
+
     const whereClause: any = { instituteId, classId };
     if (subjectId) whereClause.subjectId = subjectId;
 

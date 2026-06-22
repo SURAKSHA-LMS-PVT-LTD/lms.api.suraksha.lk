@@ -13,6 +13,13 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_student
 import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { formatSriLankaDateTime, formatSriLankaTime, now } from '../../../common/utils/timezone.util';
+import {
+  EnhancedJwtPayload,
+  EnhancedInstituteAccessEntry,
+  ROLE_BITMASKS,
+  COMPACT_TO_USER_TYPE,
+} from '../../../auth/interfaces/enhanced-jwt-payload.interface';
+import { UserType } from '../../user/enums/user-type.enum';
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN ?? 'lms.suraksha.lk';
 
@@ -50,6 +57,38 @@ export class LectureTrackingService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  // ─────────────────────────────────────────────────────────────
+  // Staff authorization
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Verify the requesting user may read OTHER students' tracking data for the given
+   * institute. Allowed: global SUPERADMIN, or Institute Admin / Teacher in THAT institute.
+   * This is the security boundary against IDOR — the route's instituteId arrives as a
+   * query param, which FlexibleAccessGuard cannot bind to, so the check lives here.
+   */
+  private assertStaffAccess(user: EnhancedJwtPayload | undefined, instituteId: string): void {
+    if (!user) throw new ForbiddenException('Authentication required');
+
+    const userTypeValue = COMPACT_TO_USER_TYPE[user.u as keyof typeof COMPACT_TO_USER_TYPE] as string;
+    if (userTypeValue === UserType.SUPERADMIN) return;
+
+    const rawAccess = (user as any).i ?? (user as any).enhancedInstituteAccess;
+    const instituteAccess: EnhancedInstituteAccessEntry[] = Array.isArray(rawAccess) ? rawAccess : [];
+
+    const isStaffOfInstitute = instituteAccess.some(
+      (entry) =>
+        String(entry.i) === String(instituteId) &&
+        ((entry.r & ROLE_BITMASKS.IA) !== 0 || (entry.r & ROLE_BITMASKS.TE) !== 0),
+    );
+
+    if (!isStaffOfInstitute) {
+      throw new ForbiddenException(
+        'You do not have permission to view this student\'s lecture activity for this institute.',
+      );
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────
   // Access validation helpers
@@ -1112,7 +1151,12 @@ export class LectureTrackingService {
     }));
   }
 
-  async getRecordingActivityReport(lectureId: string, studentId?: string) {
+  async getRecordingActivityReport(lectureId: string, studentId?: string, requestUser?: EnhancedJwtPayload) {
+    // Exposes viewers' recording sessions — staff-only, scoped to the lecture's institute.
+    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
+    if (!lecture) throw new NotFoundException('Lecture not found');
+    this.assertStaffAccess(requestUser, (lecture as any).instituteId);
+
     const where: any = { lectureId };
     if (studentId) where.userId = studentId;
     const sessions = await this.recSessionRepo.find({
@@ -1167,7 +1211,20 @@ export class LectureTrackingService {
     }));
   }
 
-  async getStudentLectureActivities(studentId: string, instituteId: string, classId: string, subjectId?: string) {
+  async getStudentLectureActivities(
+    studentId: string,
+    instituteId: string,
+    classId: string,
+    subjectId?: string,
+    requestUser?: EnhancedJwtPayload,
+    selfAccess = false,
+  ) {
+    // Staff viewing another student's data must be admin/teacher of this institute.
+    // Self-access (student viewing own data) skips this — caller is pinned to req.user.id.
+    if (!selfAccess) {
+      this.assertStaffAccess(requestUser, instituteId);
+    }
+
     const whereClause: any = { instituteId, classId };
     if (subjectId) {
       whereClause.subjectId = subjectId;

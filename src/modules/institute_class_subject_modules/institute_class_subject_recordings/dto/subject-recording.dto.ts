@@ -170,6 +170,9 @@ export class QuerySubjectRecordingDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  recAttendanceEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @IsNumber()
   @Transform(({ value }) => parseInt(value, 10) || 1)
