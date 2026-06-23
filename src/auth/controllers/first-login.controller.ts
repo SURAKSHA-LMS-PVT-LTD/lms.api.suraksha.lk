@@ -447,6 +447,39 @@ export class FirstLoginController {
     return await this.firstLoginService.verifyPhoneOtpInFlow(dto, authorization, ipAddress);
   }
 
+  @Post('first-login/phone/request-otp-whatsapp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 900000 } })
+  @ApiOperation({
+    summary: 'Request WhatsApp reverse-OTP for phone verification during first login',
+    description: 'Generates a wa.me link. User sends the pre-filled WhatsApp message to verify their phone. Requires JWT from initial verification.'
+  })
+  @ApiBody({ type: RequestPhoneOtpFirstLoginDto })
+  @ApiResponse({ status: 200, description: 'wa.me link returned' })
+  async requestPhoneOtpInFlowWhatsApp(
+    @Body() dto: RequestPhoneOtpFirstLoginDto,
+    @Headers('authorization') authorization: string,
+    @Req() req: Request
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    return await this.firstLoginService.requestPhoneOtpInFlowWhatsApp(dto, authorization, ipAddress);
+  }
+
+  @Get('first-login/phone/otp-status')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Check WhatsApp OTP verification status during first login',
+    description: 'Returns verified=true once the webhook has confirmed the WhatsApp message. Requires JWT.'
+  })
+  @ApiResponse({ status: 200, description: '{ verified: boolean; expired: boolean }' })
+  async getPhoneOtpStatusInFlow(
+    @Query('phoneNumber') phoneNumber: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    return await this.firstLoginService.getPhoneOtpStatusInFlow(phoneNumber, authorization);
+  }
+
   @Post('first-login/email/request-otp')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 3, ttl: 900000 } })

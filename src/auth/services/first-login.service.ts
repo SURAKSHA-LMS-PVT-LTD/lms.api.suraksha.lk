@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, DataSource } from 'typeorm';
+import { Repository, MoreThanOrEqual, MoreThan, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
@@ -43,6 +43,7 @@ import { UserType } from '../../modules/user/enums/user-type.enum';
 import { ProfileCompletionStatus, calculateProfileCompletion, determineProfileStatus } from '../../modules/user/enums/profile-completion-status.enum';
 import { ImageVerificationStatus } from '../../modules/institute_mudules/institue_user/enums/image-verification-status.enum';
 import { StudentEntity } from '../../modules/student/entities/student.entity';
+import { UserOtpEntity, OtpType, OtpPurpose, OtpDeliveryMethod } from '../../modules/user/entities/user-otp.entity';
 
 @Injectable()
 export class FirstLoginService {
@@ -55,6 +56,8 @@ export class FirstLoginService {
     private readonly passwordResetTokenRepository: Repository<PasswordResetTokenEntity>,
     @InjectRepository(UserFirstLoginLogEntity)
     private readonly firstLoginLogRepository: Repository<UserFirstLoginLogEntity>,
+    @InjectRepository(UserOtpEntity)
+    private readonly userOtpRepository: Repository<UserOtpEntity>,
     private readonly enhancedEmailService: EnhancedEmailService,
     private readonly jwtService: JwtService,
     private readonly authService: AuthService,
@@ -1616,6 +1619,99 @@ export class FirstLoginService {
       message: `OTP sent to ${maskPii(normalizedPhone)} via SMS. Valid for 15 minutes.`,
       expiresInMinutes: 15
     };
+  }
+
+  /**
+   * Request a WhatsApp reverse-OTP for phone verification during first login (requires JWT).
+   * Returns a wa.me link; the user sends the pre-filled message to verify.
+   */
+  async requestPhoneOtpInFlowWhatsApp(
+    dto: RequestPhoneOtpFirstLoginDto,
+    authorizationHeader: string,
+    ipAddress?: string
+  ): Promise<{ success: boolean; message: string; waLink: string; expiresAt: Date }> {
+    const userId = this.extractUserIdFromToken(authorizationHeader);
+    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format. Use Sri Lankan format: 077X, 94X, +94X');
+    }
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
+    const existingUser = await this.userRepository.findOne({ where: { phoneNumber: normalizedPhone }, select: ['id'] });
+    if (existingUser && existingUser.id !== userId) {
+      throw new BadRequestException('This phone number is already registered by another user.');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: userId, isActive: true } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (!user.phoneNumber) {
+      await this.userRepository.update(userId, { phoneNumber: normalizedPhone, updatedAt: now() });
+    }
+
+    // Expire previous in-flight WhatsApp OTPs for this number
+    await this.userOtpRepository.update(
+      { userId, phoneNumber: normalizedPhone, otpPurpose: OtpPurpose.VERIFICATION, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: false, expiresAt: MoreThan(now()) },
+      { expiresAt: now() },
+    );
+
+    const otpCode = this.generateOTP();
+    const expiresAt = new Date(nowTimestamp() + 15 * 60 * 1000);
+
+    const otp = this.userOtpRepository.create({
+      userId,
+      phoneNumber: normalizedPhone,
+      otpCode,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.VERIFICATION,
+      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      expiresAt,
+      createdAt: now(),
+      createdDate: new Date().toISOString().split('T')[0],
+      ipAddress,
+    });
+    await this.userOtpRepository.save(otp);
+
+    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
+    const waLink = `https://wa.me/${businessNumber}?text=${encodeURIComponent(`OTP ${otpCode}`)}`;
+
+    this.logger.log(`📱 WhatsApp first-login OTP link generated for user ${userId}: ${maskPii(normalizedPhone)}`);
+
+    return {
+      success: true,
+      message: 'Tap the WhatsApp link (or scan the QR) and send the pre-filled message to verify your phone.',
+      waLink,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Status check for WhatsApp phone OTP during first login.
+   * Returns verified=true once the webhook has confirmed the message.
+   */
+  async getPhoneOtpStatusInFlow(
+    phoneNumber: string,
+    authorizationHeader: string,
+  ): Promise<{ verified: boolean; expired: boolean }> {
+    this.extractUserIdFromToken(authorizationHeader); // just validates token
+    const normalizedPhone = normalizeSriLankanPhone(phoneNumber);
+    if (!normalizedPhone) throw new BadRequestException('Invalid phone number format');
+
+    const otp = await this.userOtpRepository.findOne({
+      where: {
+        phoneNumber: normalizedPhone,
+        otpPurpose: OtpPurpose.VERIFICATION,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) return { verified: false, expired: false };
+    if (otp.isVerified) return { verified: true, expired: false };
+    if (now() > otp.expiresAt) return { verified: false, expired: true };
+    return { verified: false, expired: false };
   }
 
   /**

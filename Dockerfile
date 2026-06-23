@@ -84,5 +84,8 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-8080}/health || exit 1
 
-# Start the application (check both possible locations)
-CMD if [ -f dist/src/main.js ]; then node dist/src/main.js; else node dist/main.js; fi
+# Run pending migrations then start the application.
+# Finds data-source.js wherever the build placed it.
+CMD DS=$(find dist -name 'data-source.js' | head -1) && \
+    node -e "const p=require('./${DS}');const ds=p.default||p;ds.initialize().then(()=>ds.runMigrations({transaction:'each'})).then(r=>{console.log('Migrations done:',r.length);return ds.destroy();}).catch(e=>{console.error('Migration failed:',e.message);process.exit(1)});" && \
+    if [ -f dist/src/main.js ]; then node dist/src/main.js; else node dist/main.js; fi
