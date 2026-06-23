@@ -13,6 +13,8 @@ import * as crypto from 'crypto';
 export class UserOtpService {
   private readonly logger = new Logger(UserOtpService.name);
   private readonly OTP_EXPIRY_MINUTES = 30; // 30 minutes TTL
+  // How long a verified contact stays valid for completing a registration (audit H-1).
+  private readonly REGISTRATION_VERIFY_WINDOW_MINUTES = 60;
   private readonly MAX_REQUESTS_PER_DAY = 5; // Total OTP requests per day
   private readonly MAX_REREQUESTS_PER_DAY = 3; // Re-request limit
 
@@ -1063,6 +1065,12 @@ export class UserOtpService {
    * Called at register/claim time so the server never trusts a client "verified" flag.
    */
   async assertRegistrationVerified(params: { phoneNumber?: string; email?: string }): Promise<void> {
+    // A verified OTP is only accepted for a limited window after verification (audit H-1).
+    // Without this, an OTP verified months ago would be valid forever and could be reused
+    // to submit registrations indefinitely. The window is generous enough to let a user
+    // finish a long form after verifying.
+    const recencyCutoff = new Date(Date.now() - this.REGISTRATION_VERIFY_WINDOW_MINUTES * 60 * 1000);
+
     if (params.phoneNumber) {
       const normalizedPhone = normalizeSriLankanPhone(params.phoneNumber);
       if (!normalizedPhone) throw new BadRequestException('Invalid phone number format');
@@ -1072,10 +1080,15 @@ export class UserOtpService {
           otpPurpose: OtpPurpose.VERIFICATION,
           deliveryMethod: OtpDeliveryMethod.WHATSAPP,
           isVerified: true,
+          verifiedAt: MoreThan(recencyCutoff),
         },
         order: { verifiedAt: 'DESC' },
       });
-      if (!otp) throw new BadRequestException('Phone number has not been verified.');
+      if (!otp) {
+        throw new BadRequestException(
+          'Phone number verification is missing or has expired. Please verify your phone number again.',
+        );
+      }
     }
     if (params.email) {
       const normalizedEmail = params.email.trim().toLowerCase();
@@ -1085,10 +1098,15 @@ export class UserOtpService {
           otpType: OtpType.EMAIL,
           otpPurpose: OtpPurpose.VERIFICATION,
           isVerified: true,
+          verifiedAt: MoreThan(recencyCutoff),
         },
         order: { verifiedAt: 'DESC' },
       });
-      if (!otp) throw new BadRequestException('Email address has not been verified.');
+      if (!otp) {
+        throw new BadRequestException(
+          'Email verification is missing or has expired. Please verify your email again.',
+        );
+      }
     }
   }
 }

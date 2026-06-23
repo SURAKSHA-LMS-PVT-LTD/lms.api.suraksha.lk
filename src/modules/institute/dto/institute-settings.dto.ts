@@ -191,6 +191,19 @@ export class InstituteSettingsResponseDto {
   @Expose()
   pwdResetEmailEnabled?: boolean;
 
+  // Institute user-ID auto-generation
+  @ApiPropertyOptional({ description: 'Whether institute user IDs are auto-generated on user creation' })
+  @Expose()
+  userIdAutoGenerate?: boolean;
+
+  @ApiPropertyOptional({ description: 'Prefix applied to auto-generated institute user IDs', example: 'RC' })
+  @Expose()
+  userIdPrefix?: string | null;
+
+  @ApiPropertyOptional({ description: 'Last value of the auto-generated institute user-ID counter' })
+  @Expose()
+  userIdLastCounter?: number | null;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
     Object.assign(this, partial);
   }

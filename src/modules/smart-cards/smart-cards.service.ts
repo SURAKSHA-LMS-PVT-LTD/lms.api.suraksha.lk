@@ -389,6 +389,13 @@ export class SmartCardsService {
         }
       } else {
         // AUTO: next available card in the institute (prefer the class pool when given).
+        //
+        // INTENTIONAL (audit H-2): the free pool is cards already ALLOCATED to this
+        // institute (status ASSIGNED_INSTITUTE / ASSIGNED_CLASS) and not yet held by a user
+        // (assignedUserId IS NULL). Status AVAILABLE is deliberately excluded — an AVAILABLE
+        // card belongs to no institute yet and must be allocated via allocateCardsToInstitute
+        // before it can be handed to a user. The pessimistic_write lock serializes concurrent
+        // auto-assigns so two registrations can never grab the same card.
         const qb = cardRepo
           .createQueryBuilder('c')
           .setLock('pessimistic_write')

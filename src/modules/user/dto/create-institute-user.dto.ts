@@ -423,6 +423,16 @@ export class CreateInstituteUserDto {
   instituteUserImageUrl?: string;
 
   /**
+   * Override the verification status for the institute image.
+   * Default: VERIFIED (auto-approved by the institute admin).
+   * Set to 'PENDING' to require system admin approval before the image is used on ID cards.
+   */
+  @ApiPropertyOptional({ description: "Override institute image verification status. Default: 'VERIFIED'.", enum: ['VERIFIED', 'PENDING'] })
+  @IsOptional()
+  @IsString()
+  instituteImageVerificationStatus?: 'VERIFIED' | 'PENDING';
+
+  /**
    * Global / system-level image URL (obtained from the signed-upload endpoint).
    *
    * This image is saved as **PENDING** and requires **system admin approval** before
@@ -575,6 +585,9 @@ export class CreateInstituteUserResponseDto {
 
   @ApiPropertyOptional({ description: 'First-login URL for incomplete profiles' })
   firstLoginUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Institute-assigned user ID (auto-generated or provided)' })
+  userIdByInstitute?: string;
 
   @ApiPropertyOptional({ description: 'Student ID (only for STUDENT role)' })
   studentId?: string;

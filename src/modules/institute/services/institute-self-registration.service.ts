@@ -27,7 +27,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { now } from '../../../common/utils/timezone.util';
 
@@ -192,6 +192,16 @@ export class InstituteSelfRegistrationService {
     if (!link.isActive) throw new GoneException('This registration link has been disabled.');
     if (link.expiresAt && link.expiresAt.getTime() <= Date.now()) {
       throw new GoneException('This registration link has expired.');
+    }
+    // The institute itself must be active — a deactivated/suspended institute must not
+    // accept new registrations even if a cached link is submitted (audit M-4).
+    const institute = await this.instituteRepo.findOne({
+      where: { id: link.instituteId },
+      select: ['id', 'isActive'],
+    });
+    if (!institute) throw new NotFoundException('Institute not found.');
+    if (!institute.isActive) {
+      throw new GoneException('This institute is not currently accepting registrations.');
     }
     return link;
   }
@@ -366,7 +376,8 @@ export class InstituteSelfRegistrationService {
     const user = await this.findUserByContact(params);
     if (!user) throw new NotFoundException('No existing account matches that verified contact.');
 
-    await this.assertCanClaim(link, user.id);
+    // Read-only eligibility check (no writes here) — use the default manager.
+    await this.assertCanClaim(link, user.id, this.dataSource.manager);
 
     const student = await this.studentRepo.findOne({ where: { userId: user.id } });
 
@@ -437,13 +448,20 @@ export class InstituteSelfRegistrationService {
     const userType = payload.instituteUserType as InstituteUserType;
 
     // 2. Verification gates (server re-checks; never trusts the client).
+    //    Track which contacts were actually proven via OTP — only a verified contact may
+    //    be used to claim an existing account (audit H-4: prevents hijacking a victim's
+    //    account by submitting their phone/email on a link that doesn't require verification).
+    let phoneVerified = false;
+    let emailVerified = false;
     if (link.requirePhoneVerification) {
       if (!payload.phoneNumber) throw new BadRequestException('Phone number is required.');
       await this.otpService.assertRegistrationVerified({ phoneNumber: payload.phoneNumber });
+      phoneVerified = true;
     }
     if (link.requireEmailVerification) {
       if (!payload.email) throw new BadRequestException('Email address is required.');
       await this.otpService.assertRegistrationVerified({ email: payload.email });
+      emailVerified = true;
     }
 
     // 2b. Institute custom columns: enforce 'required' ones and drop any keys the link
@@ -452,9 +470,11 @@ export class InstituteSelfRegistrationService {
     payload.extraData = sanitizedExtra;
 
     // 3. Existing-account detection → claim path.
+    //    Look up ONLY by verified contacts. An unverified contact must never resolve to an
+    //    existing account, or an attacker could claim someone else's account (H-4).
     const existing = await this.findUserByContact({
-      phoneNumber: payload.phoneNumber,
-      email: payload.email,
+      phoneNumber: phoneVerified ? payload.phoneNumber : undefined,
+      email: emailVerified ? payload.email : undefined,
     });
     if (existing) {
       return this.claimExisting(link, existing, userType, payload);
@@ -464,7 +484,7 @@ export class InstituteSelfRegistrationService {
     const dto = this.buildCreateDto(link, payload, userType);
     const result = await this.adminUserService.createInstituteUser(
       link.instituteId,
-      null as any,
+      null,
       dto,
       {
         selfRegistration: true,
@@ -493,6 +513,8 @@ export class InstituteSelfRegistrationService {
       motherPhone: (payload.mother as any)?.phoneNumber,
       displayName: result.nameWithInitials || result.firstName || payload.firstName,
       mode: 'created',
+      userIdByInstitute: (result as any).userIdByInstitute,
+      assignedCards: (result as any).smartCards,
     }).catch(err => this.logger.warn(`WhatsApp reg notification failed: ${err.message}`));
 
     return response;
@@ -509,12 +531,14 @@ export class InstituteSelfRegistrationService {
     userType: InstituteUserType,
     payload: PublicRegistrationPayload,
   ): Promise<any> {
-    await this.assertCanClaim(link, user.id);
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // Claim eligibility check runs INSIDE the transaction (H-3) so it can't race a
+      // concurrent claim that would create a duplicate membership.
+      await this.assertCanClaim(link, user.id, queryRunner.manager);
+
       // Fill ONLY missing core profile fields — never overwrite existing/verified data.
       const patch: Record<string, any> = {};
       const setIfEmpty = (field: keyof UserEntity, value: any) => {
@@ -547,18 +571,18 @@ export class InstituteSelfRegistrationService {
         } as any),
       );
 
+      // Class/subject enrollments (pending) — written in the SAME transaction (H-5) so a
+      // failure rolls back the membership too, never leaving a half-written claim.
+      if (userType === InstituteUserType.STUDENT && link.allowClassEnrollment && payload.classEnrollments?.length) {
+        await this.enrollExistingPending(link, String(user.id), payload, queryRunner.manager);
+      }
+
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
-    }
-
-    // Class/subject enrollments (pending) — reuse the admin service in self-reg mode.
-    // Membership already exists; createInstituteUser is not re-run for existing users.
-    if (userType === InstituteUserType.STUDENT && link.allowClassEnrollment && payload.classEnrollments?.length) {
-      await this.enrollExistingPending(link, String(user.id), payload);
     }
 
     await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
@@ -574,6 +598,7 @@ export class InstituteSelfRegistrationService {
       mode: 'claimed',
     }).catch(err => this.logger.warn(`WhatsApp reg notification failed: ${err.message}`));
 
+
     return {
       success: true,
       mode: 'claimed',
@@ -582,24 +607,31 @@ export class InstituteSelfRegistrationService {
     };
   }
 
-  /** Pending class/subject enrollment for an already-existing user (claim path). */
+  /**
+   * Pending class/subject enrollment for an already-existing user (claim path).
+   * Runs on the caller's transaction manager (audit H-5) so a failure here rolls back
+   * the membership row too — no half-written claim state.
+   */
   private async enrollExistingPending(
     link: InstituteRegistrationLinkEntity,
     userId: string,
     payload: PublicRegistrationPayload,
+    manager: EntityManager,
   ): Promise<void> {
     // We replicate the same pending rows createInstituteUser would write — directly here,
     // because the existing user already exists (we must not re-create the user record).
     for (const ce of payload.classEnrollments ?? []) {
-      const cls = await this.classRepo.findOne({ where: { id: ce.classId, instituteId: link.instituteId } });
+      const cls = await manager.findOne(InstituteClassEntity, {
+        where: { id: ce.classId, instituteId: link.instituteId } as any,
+      });
       if (!cls) continue;
 
-      const existingClass = await this.dataSource.manager.findOne(InstituteClassStudentEntity, {
+      const existingClass = await manager.findOne(InstituteClassStudentEntity, {
         where: { instituteId: link.instituteId, classId: ce.classId, studentUserId: userId },
       });
       if (!existingClass) {
-        await this.dataSource.manager.save(
-          this.dataSource.manager.create(InstituteClassStudentEntity, {
+        await manager.save(
+          manager.create(InstituteClassStudentEntity, {
             instituteId: link.instituteId,
             classId: ce.classId,
             studentUserId: userId,
@@ -614,12 +646,12 @@ export class InstituteSelfRegistrationService {
 
       if (link.allowSubjectEnrollment) {
         for (const se of ce.subjectEnrollments ?? []) {
-          const existingSub = await this.dataSource.manager.findOne(InstituteClassSubjectStudent, {
+          const existingSub = await manager.findOne(InstituteClassSubjectStudent, {
             where: { instituteId: link.instituteId, classId: ce.classId, subjectId: se.subjectId, studentId: userId },
           });
           if (!existingSub) {
-            await this.dataSource.manager.save(
-              this.dataSource.manager.create(InstituteClassSubjectStudent, {
+            await manager.save(
+              manager.create(InstituteClassSubjectStudent, {
                 instituteId: link.instituteId,
                 classId: ce.classId,
                 subjectId: se.subjectId,
@@ -654,6 +686,8 @@ export class InstituteSelfRegistrationService {
     motherPhone?: string;
     displayName?: string;
     mode: 'created' | 'claimed';
+    userIdByInstitute?: string;
+    assignedCards?: Array<{ cardName: string; cardId: string; scope: string }>;
   }): Promise<void> {
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -664,19 +698,27 @@ export class InstituteSelfRegistrationService {
     const name = params.displayName ?? 'Student';
     const userId = params.userId;
 
+    const idLine = params.userIdByInstitute
+      ? `සුරක්ෂා අංකය: *${userId}* | ආයතන අංකය: *${params.userIdByInstitute}*`
+      : `ලියාපදිංචි අංකය: *${userId}*`;
+
+    const cardLines = (params.assignedCards && params.assignedCards.length > 0)
+      ? `\n💳 *ස්මාර්ට් කාඩ්:* ${params.assignedCards.map(c => `${c.cardName} (${c.cardId})`).join(', ')}`
+      : '';
+
     const studentMsg =
       params.mode === 'claimed'
         ? `🎓 *සුරක්ෂා LMS - ලියාපදිංචිය* / *Registration Confirmed*\n\n` +
           `ආයුබෝවන් ${name}!\n` +
           `ඔබගේ ගිණුම *${instituteName}* ආයතනයට සම්බන්ධ කර ඇත.\n` +
-          `ලියාපදිංචි අංකය: *${userId}*\n` +
+          `${idLine}${cardLines}\n` +
           `තත්ත්වය: ⏳ *අනුමත කිරීම බලාපොරොත්තු වෙමින්* / Pending Verification\n\n` +
           `ශිෂ්‍ය අනුමතිය ලැබෙන විට ඔබට දැනුම් දෙනු ලැබේ.\n` +
           `_Powered by Suraksha LMS_`
         : `🎓 *සුරක්ෂා LMS - ලියාපදිංචිය* / *Registration Successful*\n\n` +
           `ආයුබෝවන් ${name}!\n` +
           `ඔබ *${instituteName}* ආයතනයට සාර්ථකව ලියාපදිංචි වී ඇත.\n` +
-          `ලියාපදිංචි අංකය: *${userId}*\n` +
+          `${idLine}${cardLines}\n` +
           `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු වෙමින්* / Pending Institute Approval\n\n` +
           `ඔබගේ ලියාපදිංචිය සමාලෝචනය කර ඉක්මනින් ක්‍රියාත්මක කරනු ලැබේ.\n` +
           `_Powered by Suraksha LMS_`;
@@ -685,13 +727,13 @@ export class InstituteSelfRegistrationService {
       `🎓 *සුරක්ෂා LMS - දරු ලියාපදිංචිය* / *Child Registration*\n\n` +
       `${relation} ට දැනුම් දීම:\n` +
       `ඔබේ දරු/දරිය *${name}* *${instituteName}* ආයතනයට ලියාපදිංචි කර ඇත.\n` +
-      `ලියාපදිංචි අංකය: *${userId}*\n` +
+      `${idLine}${cardLines}\n` +
       `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු* / Pending Approval\n\n` +
       `_Powered by Suraksha LMS_`;
 
     const sendOne = async (phone: string, message: string) => {
       try {
-        const normalized = phone.startsWith('+') ? phone.replace('+', '') : phone;
+        const normalized = phone.replace(/^\+/, '');
         await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -731,8 +773,14 @@ export class InstituteSelfRegistrationService {
    *  - block if already an active member of this institute (no duplicate enrollment),
    *  - block if they hold a DIFFERENT institute user type here (admin must resolve).
    */
-  private async assertCanClaim(link: InstituteRegistrationLinkEntity, userId: string | number): Promise<void> {
-    const memberships = await this.instituteUserRepo.find({
+  private async assertCanClaim(
+    link: InstituteRegistrationLinkEntity,
+    userId: string | number,
+    manager: EntityManager,
+  ): Promise<void> {
+    // Run inside the claim transaction (audit H-3) so the membership check and the
+    // subsequent membership insert cannot interleave with a concurrent claim.
+    const memberships = await manager.find(InstituteUserEntity, {
       where: { instituteId: link.instituteId, userId: String(userId) },
     });
     const active = memberships.find((m) => m.status === InstituteUserStatus.ACTIVE);

@@ -1,6 +1,6 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
+import { ClassSerializerInterceptor, ValidationPipe, Logger } from '@nestjs/common';
 import { validateAll } from './config/validate-environment';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -21,6 +21,8 @@ process.emitWarning = (warning, ...args) => {
   return originalEmitWarning.call(process, warning, ...args);
 };
 
+const bootstrapLogger = new Logger('Bootstrap');
+
 async function bootstrap() {
   try {
     const isProduction = process.env.NODE_ENV === 'production';
@@ -32,7 +34,7 @@ async function bootstrap() {
     const isValid = validateAll();
 
     if (!isValid) {
-      console.error('\n🛑 APPLICATION STARTUP ABORTED DUE TO SECURITY CONFIGURATION ERRORS!\n');
+      bootstrapLogger.error('Application startup aborted due to security configuration errors.');
       process.exit(1);
     }
 
@@ -219,10 +221,10 @@ async function bootstrap() {
           if (allowed) {
             return callback(null, origin);
           }
-          console.warn(`🚫 CORS blocked origin: ${origin}`);
+          bootstrapLogger.warn(`CORS blocked origin: ${origin}`);
           callback(new Error('Not allowed by CORS'));
         }).catch(() => {
-          console.warn(`🚫 CORS blocked origin (error): ${origin}`);
+          bootstrapLogger.warn(`CORS blocked origin (lookup error): ${origin}`);
           callback(new Error('Not allowed by CORS'));
         });
       },
@@ -323,11 +325,7 @@ async function bootstrap() {
 
     await app.listen(port, '0.0.0.0');
 
-    console.log('\n' + '★'.repeat(60));
-    console.log(`🚀 SERVER IS NOW LIVE ON PORT: ${port}`);
-    console.log(`🔗 LOCAL: http://localhost:${port}`);
-    console.log(`🛠️ ENV: ${process.env.NODE_ENV || 'dev'}`);
-    console.log('★'.repeat(60) + '\n');
+    bootstrapLogger.log(`Server live on port ${port} (env: ${process.env.NODE_ENV || 'dev'}) — http://localhost:${port}`);
 
     // Signal PM2 (cluster mode) that this worker is ready to receive traffic.
     // PM2 waits for this before routing requests, ensuring zero-downtime reloads.
@@ -336,15 +334,15 @@ async function bootstrap() {
     }
 
   } catch (error: any) {
-    console.error('\n❌ FATAL ERROR DURING STARTUP:');
-    console.error('Error:', error?.message);
-    console.error('\nStack trace:', error?.stack);
-    console.error('\n🛑 Application failed to start. Check the errors above.\n');
+    bootstrapLogger.error(
+      `Application failed to start: ${error?.message}`,
+      error?.stack,
+    );
     process.exit(1);
   }
 }
 
 bootstrap().catch((error) => {
-  console.error('❌ Unhandled bootstrap error:', error);
+  bootstrapLogger.error('Unhandled bootstrap error', error?.stack ?? String(error));
   process.exit(1);
 });

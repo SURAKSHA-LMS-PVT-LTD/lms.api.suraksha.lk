@@ -22,6 +22,7 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
   Logger,
@@ -30,7 +31,7 @@ import {
 import { SmartCardsService } from '../../smart-cards/smart-cards.service';
 import { SmartCardScope } from '../../smart-cards/enums/smart-card.enums';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryRunner } from 'typeorm';
+import { Repository, DataSource, QueryRunner, EntityManager } from 'typeorm';
 import { now } from '../../../common/utils/timezone.util';
 import { UserEntity } from '../entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
@@ -131,12 +132,13 @@ export class InstituteAdminUserService {
    * Create a new user and enroll them into the institute.
    *
    * @param instituteId  The institute the calling admin manages.
-   * @param adminUserId  The user ID of the calling institute admin.
+   * @param adminUserId  The user ID of the calling institute admin. `null` in the
+   *                     self-registration path (no admin actor — authorized via link token).
    * @param dto          Creation payload.
    */
   async createInstituteUser(
     instituteId: string,
-    adminUserId: string,
+    adminUserId: string | null,
     dto: CreateInstituteUserDto,
     options?: SelfRegistrationOptions,
   ): Promise<CreateInstituteUserResponseDto> {
@@ -185,18 +187,16 @@ export class InstituteAdminUserService {
     // Self-registration skips this — the public controller authorizes via the link token,
     // and there is no admin actor. adminUserId is null in that path.
     if (!isSelfReg) {
-      await this.assertInstituteAdmin(adminUserId, instituteId);
+      // Non-self-reg always has an admin actor; narrow the nullable param for the type checker.
+      await this.assertInstituteAdmin(adminUserId as string, instituteId);
     }
 
-    // ── Auto-generate userIdByInstitute when institute has it enabled ────────
-    // Uses an atomic counter on the institute row (no full-table scan, O(1)).
-    if (institute.userIdAutoGenerate) {
-      if (dto.userIdByInstitute) {
-        throw new BadRequestException(
-          'This institute auto-generates user IDs. You cannot provide a custom userIdByInstitute.',
-        );
-      }
-      dto.userIdByInstitute = await this.generateNextInstituteUserId(institute);
+    // ── Reject a client-supplied ID upfront when auto-generation is on ───────
+    // (The actual ID is generated atomically inside the transaction below — C-2.)
+    if (institute.userIdAutoGenerate && dto.userIdByInstitute) {
+      throw new BadRequestException(
+        'This institute auto-generates user IDs. You cannot provide a custom userIdByInstitute.',
+      );
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -204,6 +204,16 @@ export class InstituteAdminUserService {
     await queryRunner.startTransaction();
 
     try {
+      // ── Auto-generate userIdByInstitute INSIDE the transaction ───────────
+      // Must be inside the transaction so a rollback releases the ID, and uses a
+      // row lock so concurrent registrations never share a counter value (C-2).
+      if (institute.userIdAutoGenerate) {
+        dto.userIdByInstitute = await this.generateNextInstituteUserId(
+          institute,
+          queryRunner.manager,
+        );
+      }
+
       // ── 1. Resolve global user type from institute role ──────────────────
       const globalUserType = this.resolveGlobalUserType(dto.instituteUserType);
 
@@ -247,7 +257,11 @@ export class InstituteAdminUserService {
         globalImage?: InstituteUserCreationImageResultDto;
       } = {};
 
-      // 4a. Institute image → auto-verified
+      // 4a. Institute image — default auto-verified; admin can override to PENDING
+      const instImgStatus =
+        dto.instituteImageVerificationStatus === 'PENDING'
+          ? ImageVerificationStatus.PENDING
+          : ImageVerificationStatus.VERIFIED;
       if (dto.instituteUserImageUrl) {
         await queryRunner.manager.save(
           queryRunner.manager.create(UserImageEntity, {
@@ -255,8 +269,8 @@ export class InstituteAdminUserService {
             imageUrl: dto.instituteUserImageUrl,
             scope: ImageScope.INSTITUTE,
             instituteId,
-            status: ImageVerificationStatus.VERIFIED,
-            verifiedBy: adminUserId,
+            status: instImgStatus,
+            verifiedBy: instImgStatus === ImageVerificationStatus.VERIFIED ? adminUserId : null,
             verifiedAt: now(),
             createdAt: now(),
             updatedAt: now(),
@@ -264,9 +278,11 @@ export class InstituteAdminUserService {
         );
         imageResults.instituteImage = {
           scope: ImageScope.INSTITUTE,
-          status: ImageVerificationStatus.VERIFIED,
+          status: instImgStatus,
           imageUrl: this.safeFullUrl(dto.instituteUserImageUrl),
-          note: 'Auto-verified by institute admin',
+          note: instImgStatus === ImageVerificationStatus.VERIFIED
+            ? 'Auto-verified by institute admin'
+            : 'Pending approval',
         };
       }
 
@@ -312,9 +328,9 @@ export class InstituteAdminUserService {
             instituteCardId: dto.instituteCardId ?? null,
             instituteUserImageUrl: dto.instituteUserImageUrl ?? null,
             imageVerificationStatus: dto.instituteUserImageUrl
-              ? ImageVerificationStatus.VERIFIED
+              ? instImgStatus
               : ImageVerificationStatus.PENDING,
-            imageVerifiedBy: dto.instituteUserImageUrl ? adminUserId : null,
+            imageVerifiedBy: (dto.instituteUserImageUrl && instImgStatus === ImageVerificationStatus.VERIFIED) ? adminUserId : null,
             status: InstituteUserStatus.ACTIVE,
             verifiedBy: adminUserId,
             verifiedAt: now(),
@@ -471,6 +487,7 @@ export class InstituteAdminUserService {
         message: `${dto.instituteUserType} created and enrolled in ${institute.name}`,
         smartCards: smartCardResults.length ? smartCardResults : undefined,
         userId: savedUser.id,
+        userIdByInstitute: dto.userIdByInstitute ?? undefined,
         firstName: savedUser.firstName ?? undefined,
         lastName: savedUser.lastName ?? undefined,
         nameWithInitials: savedUser.nameWithInitials ?? undefined,
@@ -548,13 +565,15 @@ export class InstituteAdminUserService {
     globalUserType: UserType,
     adminUserId: string,
   ): Promise<{ savedUser: UserEntity; studentRecord?: StudentEntity }> {
-    // Check for duplicate
+    // Pre-flight duplicate check (friendly error). This is a best-effort guard — under
+    // concurrent registrations two transactions can both pass it, so the authoritative
+    // protection is the DB unique constraint, caught on save() below (audit C-3).
     if (dto.email) {
       const existing = await queryRunner.manager.findOne(UserEntity, {
         where: { email: dto.email.toLowerCase() },
       });
       if (existing) {
-        throw new BadRequestException(
+        throw new ConflictException(
           `User with email ${dto.email} already exists (ID: ${existing.id}). Use assign endpoint instead.`,
         );
       }
@@ -564,7 +583,7 @@ export class InstituteAdminUserService {
         where: { phoneNumber: dto.phoneNumber },
       });
       if (existing) {
-        throw new BadRequestException(
+        throw new ConflictException(
           `User with phone ${dto.phoneNumber} already exists (ID: ${existing.id}). Use assign endpoint instead.`,
         );
       }
@@ -647,7 +666,20 @@ export class InstituteAdminUserService {
       userEntity.cardExpiryDate = cardExpiry;
     }
 
-    const savedUser = await queryRunner.manager.save(userEntity);
+    let savedUser: UserEntity;
+    try {
+      savedUser = await queryRunner.manager.save(userEntity);
+    } catch (err: any) {
+      // Authoritative duplicate protection: the DB unique index (email is UNIQUE; phone/nic
+      // where constrained) rejects a concurrent insert that slipped past the pre-flight check.
+      const code = err?.code ?? err?.driverError?.code;
+      if (code === 'ER_DUP_ENTRY' || code === 'SQLITE_CONSTRAINT' || code === '23505') {
+        throw new ConflictException(
+          'An account with this email or phone number already exists. Please use the existing account.',
+        );
+      }
+      throw err;
+    }
 
     // Create student record if needed
     let studentRecord: StudentEntity | undefined;
@@ -922,15 +954,37 @@ export class InstituteAdminUserService {
 
   /**
    * Atomically increment institute.user_id_last_counter and return the formatted ID.
-   * Uses a row-level UPDATE … SET counter = counter + 1 — no full-table scan, O(1).
+   *
+   * Correctness requirements (see audit C-2):
+   *  - MUST run inside the caller's transaction (`manager` = queryRunner.manager) so that
+   *    a rollback of the surrounding user-creation transaction also rolls back the counter
+   *    increment — otherwise a failed registration permanently burns an ID number.
+   *  - The increment AND read-back happen in a single atomic statement under a
+   *    pessimistic row lock, so two concurrent registrations can never read the same value
+   *    (which would assign the same userIdByInstitute to two different students).
+   *
    * Format: <prefix><zero-padded counter>  e.g. prefix "RC" → "RC001", "RC002" …
    * Pad width is chosen so existing pool stays sortable (min 3 digits).
    */
-  private async generateNextInstituteUserId(institute: InstituteEntity): Promise<string> {
-    // Atomic increment on the institute row.
-    await this.instituteRepository.increment({ id: institute.id }, 'userIdLastCounter' as any, 1);
-    const updated = await this.instituteRepository.findOne({ where: { id: institute.id } });
-    const counter = (updated as any).userIdLastCounter ?? 1;
+  private async generateNextInstituteUserId(
+    institute: InstituteEntity,
+    manager: EntityManager,
+  ): Promise<string> {
+    // Lock the institute row, then increment and read the new value in one atomic step.
+    // SELECT … FOR UPDATE serializes concurrent callers; the increment+read cannot interleave.
+    const locked = await manager
+      .createQueryBuilder(InstituteEntity, 'i')
+      .setLock('pessimistic_write')
+      .where('i.id = :id', { id: institute.id })
+      .getOne();
+
+    const current = Number((locked as any)?.userIdLastCounter ?? 0);
+    const counter = current + 1;
+
+    await manager.update(InstituteEntity, { id: institute.id }, {
+      userIdLastCounter: counter as any,
+    });
+
     const prefix = institute.userIdPrefix?.trim() ?? '';
     // Pad to at least 3 digits; widen automatically once we exceed 999.
     const padWidth = Math.max(3, String(counter).length);
