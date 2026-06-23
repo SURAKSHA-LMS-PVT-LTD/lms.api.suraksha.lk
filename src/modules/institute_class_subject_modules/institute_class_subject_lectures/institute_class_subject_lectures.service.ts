@@ -6,6 +6,10 @@ import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassSubjectLectureDto } from './dto/create-institute_class_subject_lecture.dto';
 import { UpdateInstituteClassSubjectLectureDto } from './dto/update-institute-class-subject-lecture.dto';
 import { InstituteClassSubjectLecture } from './entities/institute_class_subject_lecture.entity';
+import { LectureLiveAttendance } from './entities/lecture_live_attendance.entity';
+import { LectureLiveAttendanceSession } from './entities/lecture_live_attendance_session.entity';
+import { LectureLiveAttendanceMark } from './entities/lecture_live_attendance_mark.entity';
+import { LectureRecordingSession } from './entities/lecture_recording_session.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { InstituteAccessValidator, ROLE_BITMASKS } from '../../../common/helpers/institute-access-validator.helper';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
@@ -31,6 +35,14 @@ export class InstituteClassSubjectLecturesService {
   constructor(
     @InjectRepository(InstituteClassSubjectLecture)
     private readonly lectureRepository: Repository<InstituteClassSubjectLecture>,
+    @InjectRepository(LectureLiveAttendance)
+    private readonly liveAttendanceRepository: Repository<LectureLiveAttendance>,
+    @InjectRepository(LectureLiveAttendanceSession)
+    private readonly liveSessionRepository: Repository<LectureLiveAttendanceSession>,
+    @InjectRepository(LectureLiveAttendanceMark)
+    private readonly liveMarkRepository: Repository<LectureLiveAttendanceMark>,
+    @InjectRepository(LectureRecordingSession)
+    private readonly recordingSessionRepository: Repository<LectureRecordingSession>,
     private readonly cloudStorageService: CloudStorageService,
   ) {}
 
@@ -374,6 +386,149 @@ export class InstituteClassSubjectLecturesService {
     } catch (error) {
       throw new BadRequestException(`Failed to update lecture: ${error.message}`);
     }
+  }
+
+  async closeLecture(id: string, user: any): Promise<InstituteClassSubjectLecture> {
+    const lecture = await this.lectureRepository.findOne({ where: { id } });
+    if (!lecture) throw new NotFoundException(`Lecture with ID ${id} not found`);
+
+    InstituteAccessValidator.validateResourceAccess(user, lecture, [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN]);
+
+    if (lecture.status === 'completed') {
+      throw new BadRequestException('Lecture is already closed.');
+    }
+
+    // ── 1. Attendance sessions (links) ─────────────────────────────────────
+    // Each session = one QR/link created by the teacher. Fetch all sessions for
+    // this lecture, then all marks across those sessions.
+    const sessions = await this.liveSessionRepository.find({ where: { lectureId: id } });
+    const totalSessions = sessions.length;
+    const sessionIds = sessions.map(s => s.id);
+
+    // All marks across every session for this lecture
+    const allMarks = sessionIds.length > 0
+      ? await this.liveMarkRepository
+          .createQueryBuilder('m')
+          .where('m.lectureId = :lectureId', { lectureId: id })
+          .orderBy('m.markedAt', 'ASC')
+          .getMany()
+      : [];
+
+    // Per-student aggregation across all sessions
+    // student attended N times = marked in N distinct sessions
+    const studentSessionMap = new Map<string, { sessions: Set<string>; firstAt: Date; lastAt: Date }>();
+    for (const mark of allMarks) {
+      const sid = String(mark.studentId);
+      if (!studentSessionMap.has(sid)) {
+        studentSessionMap.set(sid, { sessions: new Set(), firstAt: mark.markedAt, lastAt: mark.markedAt });
+      }
+      const entry = studentSessionMap.get(sid)!;
+      entry.sessions.add(String(mark.sessionId));
+      if (mark.markedAt < entry.firstAt) entry.firstAt = mark.markedAt;
+      if (mark.markedAt > entry.lastAt) entry.lastAt = mark.markedAt;
+    }
+
+    const totalStudentsMarked = studentSessionMap.size;
+    // How many students attended ALL sessions (full attendance)
+    const fullAttendanceCount = totalSessions > 0
+      ? [...studentSessionMap.values()].filter(e => e.sessions.size === totalSessions).length
+      : 0;
+    // Per-student compact list: [studentId, attendCount, firstAt, lastAt]
+    const studentAttendance = [...studentSessionMap.entries()].map(([studentId, e]) => ({
+      studentId,
+      attendCount: e.sessions.size,        // how many links they clicked / were marked in
+      attendPercent: totalSessions > 0 ? Math.round((e.sessions.size / totalSessions) * 100) : 0,
+      firstAt: e.firstAt.toISOString(),
+      lastAt: e.lastAt.toISOString(),
+    }));
+
+    // ── 2. Live join/leave records (direct join, not via link) ─────────────
+    const liveJoinRows = await this.liveAttendanceRepository.find({ where: { lectureId: id } });
+    const liveDirectJoins = liveJoinRows.length;
+    const liveDirectUniqueUsers = new Set(liveJoinRows.filter(r => r.userId).map(r => String(r.userId))).size;
+    const liveGuestJoins = liveJoinRows.filter(r => !r.userId).length;
+    let totalLiveDurationMs = 0;
+    let durationCount = 0;
+    for (const r of liveJoinRows) {
+      if (r.joinTime && r.leaveTime) {
+        totalLiveDurationMs += new Date(r.leaveTime).getTime() - new Date(r.joinTime).getTime();
+        durationCount++;
+      }
+    }
+    const liveAvgDurationMinutes = durationCount > 0
+      ? Math.round(totalLiveDurationMs / durationCount / 60000)
+      : 0;
+
+    // ── 3. Recording sessions ──────────────────────────────────────────────
+    const recRows = await this.recordingSessionRepository.find({ where: { lectureId: id } });
+    // Group by userId — take best (max totalWatchedSeconds) session per user
+    const recByUser = new Map<string, { watchedSec: number; timesViewed: number; lastPos: number }>();
+    let recGuestSessions = 0;
+    for (const r of recRows) {
+      if (!r.userId) { recGuestSessions++; continue; }
+      const key = String(r.userId);
+      const existing = recByUser.get(key);
+      if (!existing || r.totalWatchedSeconds > existing.watchedSec) {
+        recByUser.set(key, {
+          watchedSec: r.totalWatchedSeconds ?? 0,
+          timesViewed: r.timesViewed ?? 1,
+          lastPos: r.lastPositionSeconds ?? 0,
+        });
+      } else {
+        existing.timesViewed += r.timesViewed ?? 1;
+      }
+    }
+    const recUniqueRegisteredViewers = recByUser.size;
+    const recTotalWatchedSeconds = [...recByUser.values()].reduce((s, v) => s + v.watchedSec, 0);
+    const recTimesViewed = [...recByUser.values()].reduce((s, v) => s + v.timesViewed, 0) + recGuestSessions;
+    const recAvgWatchedSeconds = recUniqueRegisteredViewers > 0
+      ? Math.round(recTotalWatchedSeconds / recUniqueRegisteredViewers)
+      : 0;
+    // Completion percentage per user (needs recDurationSeconds on lecture)
+    const recDuration = lecture.recDurationSeconds ?? 0;
+    const recPerStudentWatch = [...recByUser.entries()].map(([userId, v]) => ({
+      userId,
+      watchedMinutes: Math.round(v.watchedSec / 60),
+      completionPercent: recDuration > 0 ? Math.min(100, Math.round((v.watchedSec / recDuration) * 100)) : null,
+      timesViewed: v.timesViewed,
+      lastPositionMinutes: Math.round(v.lastPos / 60),
+    }));
+
+    const closedBy = user?.firstName
+      ? `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`.trim()
+      : (user?.email ?? undefined);
+
+    const summary = {
+      // attendance via links
+      totalAttendanceSessions: totalSessions,       // number of links created
+      totalStudentsMarked,                           // unique students marked across all links
+      fullAttendanceCount,                           // students marked in every link
+      studentAttendance,                             // [{studentId, attendCount, attendPercent, firstAt, lastAt}]
+
+      // direct live join/leave tracking
+      liveDirectJoins,
+      liveDirectUniqueUsers,
+      liveGuestJoins,
+      liveAvgDurationMinutes,
+
+      // recording
+      recUniqueViewers: recUniqueRegisteredViewers + recGuestSessions,
+      recTimesViewed,
+      recTotalWatchedMinutes: Math.round(recTotalWatchedSeconds / 60),
+      recAvgWatchedMinutes: Math.round(recAvgWatchedSeconds / 60),
+      recPerStudentWatch,                            // [{userId, watchedMinutes, completionPercent, timesViewed, lastPositionMinutes}]
+
+      closedBy,
+    };
+
+    await this.lectureRepository.update(id, {
+      status: 'completed' as any,
+      closedAt: now(),
+      lectureSummary: summary as any,
+    });
+
+    const updated = await this.lectureRepository.findOne({ where: { id } });
+    return updated!;
   }
 
   async remove(id: string): Promise<void> {

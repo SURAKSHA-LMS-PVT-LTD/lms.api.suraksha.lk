@@ -188,6 +188,17 @@ export class InstituteAdminUserService {
       await this.assertInstituteAdmin(adminUserId, instituteId);
     }
 
+    // ── Auto-generate userIdByInstitute when institute has it enabled ────────
+    // Uses an atomic counter on the institute row (no full-table scan, O(1)).
+    if (institute.userIdAutoGenerate) {
+      if (dto.userIdByInstitute) {
+        throw new BadRequestException(
+          'This institute auto-generates user IDs. You cannot provide a custom userIdByInstitute.',
+        );
+      }
+      dto.userIdByInstitute = await this.generateNextInstituteUserId(institute);
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -327,6 +338,18 @@ export class InstituteAdminUserService {
       // When the requested card pool is empty: admin path always errors; self-registration
       // honors the link's cardEmptyPoolBehavior ('skip' → continue & flag, 'error' → fail).
       const cardPendingScopes: string[] = [];
+
+      // Skip auto-assignment when the user already has a card for that scope —
+      // e.g. existing student re-enrolling: rfid = SURAKSHA card, cardId = INSTITUTE card.
+      if (dto.autoAssignInstituteCard && savedUser.cardId) {
+        this.logger.log(`User ${savedUser.id} already has an institute card (${savedUser.cardId}); skipping auto-assign.`);
+        dto.autoAssignInstituteCard = false;
+      }
+      if (dto.autoAssignSurakshaCard && savedUser.rfid) {
+        this.logger.log(`User ${savedUser.id} already has a Suraksha RFID (${savedUser.rfid}); skipping auto-assign.`);
+        dto.autoAssignSurakshaCard = false;
+      }
+
       const wantsCard =
         dto.autoAssignInstituteCard || dto.autoAssignSurakshaCard || !!dto.surakshaCardId || !!dto.instituteCardId;
       if (wantsCard && this.smartCardsService) {
@@ -896,6 +919,23 @@ export class InstituteAdminUserService {
   }
 
   // ─── ID helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Atomically increment institute.user_id_last_counter and return the formatted ID.
+   * Uses a row-level UPDATE … SET counter = counter + 1 — no full-table scan, O(1).
+   * Format: <prefix><zero-padded counter>  e.g. prefix "RC" → "RC001", "RC002" …
+   * Pad width is chosen so existing pool stays sortable (min 3 digits).
+   */
+  private async generateNextInstituteUserId(institute: InstituteEntity): Promise<string> {
+    // Atomic increment on the institute row.
+    await this.instituteRepository.increment({ id: institute.id }, 'userIdLastCounter' as any, 1);
+    const updated = await this.instituteRepository.findOne({ where: { id: institute.id } });
+    const counter = (updated as any).userIdLastCounter ?? 1;
+    const prefix = institute.userIdPrefix?.trim() ?? '';
+    // Pad to at least 3 digits; widen automatically once we exceed 999.
+    const padWidth = Math.max(3, String(counter).length);
+    return `${prefix}${String(counter).padStart(padWidth, '0')}`;
+  }
 
   private generateNameWithInitials(firstName: string, lastName: string): string {
     const firstWords = firstName.split(/\s+/).filter(Boolean);

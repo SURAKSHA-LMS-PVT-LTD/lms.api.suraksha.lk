@@ -208,6 +208,42 @@ export class InstituteClassSubjectLecture {
   @Column({ name: 'welcome_message_voice_enabled', type: 'boolean', default: false })
   welcomeMessageVoiceEnabled: boolean;
 
+  @Column({ name: 'closed_at', type: 'timestamp', nullable: true })
+  closedAt?: Date;
+
+  @Column({ name: 'lecture_summary', type: 'json', nullable: true })
+  lectureSummary?: {
+    // attendance via links
+    totalAttendanceSessions: number;
+    totalStudentsMarked: number;
+    fullAttendanceCount: number;
+    studentAttendance: Array<{
+      studentId: string;
+      attendCount: number;
+      attendPercent: number;
+      firstAt: string;
+      lastAt: string;
+    }>;
+    // direct live
+    liveDirectJoins: number;
+    liveDirectUniqueUsers: number;
+    liveGuestJoins: number;
+    liveAvgDurationMinutes: number;
+    // recording
+    recUniqueViewers: number;
+    recTimesViewed: number;
+    recTotalWatchedMinutes: number;
+    recAvgWatchedMinutes: number;
+    recPerStudentWatch: Array<{
+      userId: string;
+      watchedMinutes: number;
+      completionPercent: number | null;
+      timesViewed: number;
+      lastPositionMinutes: number;
+    }>;
+    closedBy?: string;
+  } | null;
+
   @Column({ name: 'created_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
   createdAt?: Date;
 
@@ -220,6 +256,7 @@ export class InstituteClassSubjectLecture {
       ...this,
       startTime: this.startTime instanceof Date ? this.startTime.toISOString() : this.startTime,
       endTime: this.endTime instanceof Date ? this.endTime.toISOString() : this.endTime,
+      closedAt: this.closedAt instanceof Date ? this.closedAt.toISOString() : this.closedAt,
       createdAt: this.createdAt instanceof Date ? this.createdAt.toISOString() : this.createdAt,
       updatedAt: this.updatedAt instanceof Date ? this.updatedAt.toISOString() : this.updatedAt,
     };

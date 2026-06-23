@@ -140,6 +140,23 @@ export class InstituteClassSubjectLecturesController {
     return await this.lecturesService.update(id, updateDto, req.user);
   }
 
+  @Post(':id/close')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Close a live lecture and store attendance summary' })
+  @ApiParam({ name: 'id', description: 'Lecture ID' })
+  @ApiResponse({ status: 200, description: 'Lecture closed and summary saved', type: InstituteClassSubjectLecture })
+  async closeLecture(
+    @Param('id', ParseIdPipe) id: string,
+    @Request() req: any,
+  ): Promise<InstituteClassSubjectLecture> {
+    return await this.lecturesService.closeLecture(id, req.user);
+  }
+
   @Delete(':id')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({

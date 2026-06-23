@@ -454,6 +454,9 @@ export class InstitutesService {
       pwdResetWhatsappEnabled: institute.pwdResetWhatsappEnabled,
       pwdResetSmsEnabled: institute.pwdResetSmsEnabled,
       pwdResetEmailEnabled: institute.pwdResetEmailEnabled,
+      userIdAutoGenerate: institute.userIdAutoGenerate,
+      userIdPrefix: institute.userIdPrefix ?? null,
+      userIdLastCounter: (institute as any).userIdLastCounter ?? null,
     });
   }
 
@@ -674,6 +677,9 @@ export class InstitutesService {
     if (dto.pwdResetWhatsappEnabled !== undefined) updateData.pwdResetWhatsappEnabled = dto.pwdResetWhatsappEnabled;
     if (dto.pwdResetSmsEnabled !== undefined) updateData.pwdResetSmsEnabled = dto.pwdResetSmsEnabled;
     if (dto.pwdResetEmailEnabled !== undefined) updateData.pwdResetEmailEnabled = dto.pwdResetEmailEnabled;
+
+    if ((dto as any).userIdAutoGenerate !== undefined) (updateData as any).userIdAutoGenerate = (dto as any).userIdAutoGenerate;
+    if ((dto as any).userIdPrefix !== undefined) (updateData as any).userIdPrefix = (dto as any).userIdPrefix ?? null;
 
     updateData.updatedAt = now();
 

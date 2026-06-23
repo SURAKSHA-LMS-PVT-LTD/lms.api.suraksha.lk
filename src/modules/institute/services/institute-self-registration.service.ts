@@ -476,13 +476,26 @@ export class InstituteSelfRegistrationService {
 
     await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
 
-    return {
+    const response = {
       success: true,
       mode: 'created',
       message: 'Registration submitted. Your enrollment is pending institute approval.',
       userId: result.userId,
       cardPendingScopes: (result as any).cardPendingScopes,
     };
+
+    // Fire-and-forget WhatsApp notifications to student + parents.
+    this.sendRegistrationWhatsApp({
+      userId: String(result.userId),
+      instituteId: link.instituteId,
+      studentPhone: payload.phoneNumber,
+      fatherPhone: (payload.father as any)?.phoneNumber,
+      motherPhone: (payload.mother as any)?.phoneNumber,
+      displayName: result.nameWithInitials || result.firstName || payload.firstName,
+      mode: 'created',
+    }).catch(err => this.logger.warn(`WhatsApp reg notification failed: ${err.message}`));
+
+    return response;
   }
 
   /**
@@ -550,6 +563,17 @@ export class InstituteSelfRegistrationService {
 
     await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
 
+    // Fire-and-forget WhatsApp notifications.
+    this.sendRegistrationWhatsApp({
+      userId: String(user.id),
+      instituteId: link.instituteId,
+      studentPhone: payload.phoneNumber ?? user.phoneNumber ?? undefined,
+      fatherPhone: (payload.father as any)?.phoneNumber,
+      motherPhone: (payload.mother as any)?.phoneNumber,
+      displayName: user.nameWithInitials || user.firstName || payload.firstName,
+      mode: 'claimed',
+    }).catch(err => this.logger.warn(`WhatsApp reg notification failed: ${err.message}`));
+
     return {
       success: true,
       mode: 'claimed',
@@ -616,6 +640,79 @@ export class InstituteSelfRegistrationService {
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Send WhatsApp registration success messages (fire-and-forget).
+   * Sends to: student phone (if provided), father phone, mother phone — all independently.
+   * Never throws — any per-number failure is logged and swallowed.
+   */
+  private async sendRegistrationWhatsApp(params: {
+    userId: string;
+    instituteId: string;
+    studentPhone?: string;
+    fatherPhone?: string;
+    motherPhone?: string;
+    displayName?: string;
+    mode: 'created' | 'claimed';
+  }): Promise<void> {
+    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!phoneId || !token) return; // WhatsApp not configured
+
+    const institute = await this.instituteRepo.findOne({ where: { id: params.instituteId } });
+    const instituteName = institute?.name ?? 'the institute';
+    const name = params.displayName ?? 'Student';
+    const userId = params.userId;
+
+    const studentMsg =
+      params.mode === 'claimed'
+        ? `🎓 *සුරක්ෂා LMS - ලියාපදිංචිය* / *Registration Confirmed*\n\n` +
+          `ආයුබෝවන් ${name}!\n` +
+          `ඔබගේ ගිණුම *${instituteName}* ආයතනයට සම්බන්ධ කර ඇත.\n` +
+          `ලියාපදිංචි අංකය: *${userId}*\n` +
+          `තත්ත්වය: ⏳ *අනුමත කිරීම බලාපොරොත්තු වෙමින්* / Pending Verification\n\n` +
+          `ශිෂ්‍ය අනුමතිය ලැබෙන විට ඔබට දැනුම් දෙනු ලැබේ.\n` +
+          `_Powered by Suraksha LMS_`
+        : `🎓 *සුරක්ෂා LMS - ලියාපදිංචිය* / *Registration Successful*\n\n` +
+          `ආයුබෝවන් ${name}!\n` +
+          `ඔබ *${instituteName}* ආයතනයට සාර්ථකව ලියාපදිංචි වී ඇත.\n` +
+          `ලියාපදිංචි අංකය: *${userId}*\n` +
+          `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු වෙමින්* / Pending Institute Approval\n\n` +
+          `ඔබගේ ලියාපදිංචිය සමාලෝචනය කර ඉක්මනින් ක්‍රියාත්මක කරනු ලැබේ.\n` +
+          `_Powered by Suraksha LMS_`;
+
+    const parentMsg = (relation: 'පියා' | 'මව') =>
+      `🎓 *සුරක්ෂා LMS - දරු ලියාපදිංචිය* / *Child Registration*\n\n` +
+      `${relation} ට දැනුම් දීම:\n` +
+      `ඔබේ දරු/දරිය *${name}* *${instituteName}* ආයතනයට ලියාපදිංචි කර ඇත.\n` +
+      `ලියාපදිංචි අංකය: *${userId}*\n` +
+      `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු* / Pending Approval\n\n` +
+      `_Powered by Suraksha LMS_`;
+
+    const sendOne = async (phone: string, message: string) => {
+      try {
+        const normalized = phone.startsWith('+') ? phone.replace('+', '') : phone;
+        await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: normalized,
+            type: 'text',
+            text: { body: message },
+          }),
+        });
+      } catch (err: any) {
+        this.logger.warn(`WhatsApp send to ${phone} failed: ${err.message}`);
+      }
+    };
+
+    const sends: Promise<void>[] = [];
+    if (params.studentPhone) sends.push(sendOne(params.studentPhone, studentMsg));
+    if (params.fatherPhone) sends.push(sendOne(params.fatherPhone, parentMsg('පියා')));
+    if (params.motherPhone) sends.push(sendOne(params.motherPhone, parentMsg('මව')));
+    await Promise.allSettled(sends);
+  }
 
   private async findUserByContact(params: { phoneNumber?: string; email?: string }): Promise<UserEntity | null> {
     if (params.email) {

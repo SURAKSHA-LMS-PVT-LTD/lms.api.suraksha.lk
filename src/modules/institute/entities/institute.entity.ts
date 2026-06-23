@@ -251,6 +251,16 @@ export class InstituteEntity {
   @Column({ name: 'email_sender_name', type: 'varchar', length: 100, nullable: true })
   emailSenderName?: string;
 
+  // ── Institute user-ID auto-generation ─────────────────────────────────────
+  @Column({ name: 'user_id_auto_generate', type: 'boolean', default: false, comment: 'When true, userIdByInstitute is auto-generated; manual entry is blocked.' })
+  userIdAutoGenerate: boolean = false;
+
+  @Column({ name: 'user_id_prefix', type: 'varchar', length: 20, nullable: true, comment: 'Prefix for auto-generated user IDs (e.g. "RC" → RC001, RC002 …)' })
+  userIdPrefix?: string | null;
+
+  @Column({ name: 'user_id_last_counter', type: 'int', unsigned: true, nullable: true, default: null, comment: 'Last auto-incremented counter issued for userIdByInstitute. Starts at 0.' })
+  userIdLastCounter?: number | null;
+
   // Institute-defined custom column definitions for institute_user.extra_data.
   // Array of { key, label, type, applicableTo } objects — stored as JSON.
   @Column({
