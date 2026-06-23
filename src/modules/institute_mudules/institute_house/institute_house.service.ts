@@ -182,6 +182,13 @@ export class InstituteHouseService {
     await this.assertInstituteAdmin(adminUserId, instituteId);
     const house = await this.findHouse(instituteId, houseId);
 
+    // Delete old S3 image before saving the new one
+    if (house.imageUrl && house.imageUrl !== dto.imageUrl) {
+      this.cloudStorageService.deleteFile(house.imageUrl).catch(err =>
+        this.logger.warn(`Failed to delete old house image: ${err.message}`),
+      );
+    }
+
     house.imageUrl = dto.imageUrl;
     house.updatedAt = now();
     await this.houseRepository.save(house);

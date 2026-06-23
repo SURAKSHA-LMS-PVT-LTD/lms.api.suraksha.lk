@@ -114,6 +114,13 @@ export class InstAdminParentDto {
   @Transform(({ value }) => value?.trim() || null)
   lastName?: string;
 
+  @ApiPropertyOptional({ description: 'Name with initials', maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Transform(({ value }) => value?.trim() || null)
+  nameWithInitials?: string;
+
   @ApiPropertyOptional({ description: 'Email address' })
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email format' })
@@ -129,6 +136,34 @@ export class InstAdminParentDto {
   })
   phoneNumber?: string;
 
+  @ApiPropertyOptional({ description: 'Date of birth (YYYY-MM-DD)', example: '1980-01-01' })
+  @IsOptional()
+  @IsString()
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ description: 'Gender', enum: Gender })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @ApiPropertyOptional({ description: 'NIC number', maxLength: 12 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  nic?: string;
+
+  @ApiPropertyOptional({ description: 'Birth certificate number (optional for parents)', maxLength: 50 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  birthCertificateNo?: string;
+
+  @ApiPropertyOptional({ description: 'Education level', maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  educationLevel?: string;
+
   @ApiPropertyOptional({ description: 'Occupation', enum: Occupation })
   @IsOptional()
   @IsEnum(Occupation)
@@ -139,6 +174,34 @@ export class InstAdminParentDto {
   @IsString()
   @MaxLength(100)
   workplace?: string;
+
+  @ApiPropertyOptional({ description: 'Address line 1', maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  addressLine1?: string;
+
+  @ApiPropertyOptional({ description: 'City', maxLength: 50 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'District', enum: District })
+  @IsOptional()
+  @IsEnum(District)
+  district?: District;
+
+  @ApiPropertyOptional({ description: 'Province', enum: Province })
+  @IsOptional()
+  @IsEnum(Province)
+  province?: Province;
+
+  @ApiPropertyOptional({ description: 'Postal code', maxLength: 6 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(6)
+  postalCode?: string;
 
   @ApiPropertyOptional({ description: 'Password (optional - if omitted user must complete first-login)', minLength: 8 })
   @IsOptional()
@@ -169,19 +232,19 @@ export class InstAdminParentDto {
 export class CreateInstituteUserDto {
   // ─── Basic identity ─────────────────────────────────────────────────────
 
-  @ApiPropertyOptional({ description: 'First name', example: 'Kasun', maxLength: 50 })
-  @IsOptional()
+  @ApiProperty({ description: 'First name', example: 'Kasun', maxLength: 50 })
+  @IsNotEmpty()
   @IsString()
   @MaxLength(50)
   @Transform(({ value }) => value?.trim() || null)
-  firstName?: string;
+  firstName: string;
 
-  @ApiPropertyOptional({ description: 'Last name', example: 'Perera', maxLength: 50 })
-  @IsOptional()
+  @ApiProperty({ description: 'Last name', example: 'Perera', maxLength: 50 })
+  @IsNotEmpty()
   @IsString()
   @MaxLength(50)
   @Transform(({ value }) => value?.trim() || null)
-  lastName?: string;
+  lastName: string;
 
   @ApiPropertyOptional({ description: 'Name with initials (auto-generated if omitted)', example: 'K.B. Perera', maxLength: 100 })
   @IsOptional()
@@ -189,6 +252,27 @@ export class CreateInstituteUserDto {
   @MaxLength(100)
   @Transform(({ value }) => value?.trim() || null)
   nameWithInitials?: string;
+
+  @ApiPropertyOptional({ description: 'Full name (auto-derived from firstName + lastName if omitted)', example: 'Kasun Bandara Perera', maxLength: 150 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  @Transform(({ value }) => value?.trim() || null)
+  fullName?: string;
+
+  @ApiPropertyOptional({ description: 'Religion', example: 'Buddhism', maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Transform(({ value }) => value?.trim() || null)
+  religion?: string;
+
+  @ApiPropertyOptional({ description: 'Birth certificate number (required for students)', maxLength: 50 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  @Transform(({ value }) => value?.trim() || null)
+  birthCertificateNo?: string;
 
   @ApiPropertyOptional({ description: 'Email (required if phoneNumber not provided)', example: 'kasun@example.com' })
   @IsOptional()

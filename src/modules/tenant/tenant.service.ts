@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { CloudStorageService } from '../../common/services/cloud-storage.service';
 import { InstituteEntity } from '../institute/entities/institute.entity';
 import { LoginEventEntity } from './entities/login-event.entity';
 import { InstituteBillingConfigEntity } from './entities/institute-billing-config.entity';
@@ -57,6 +58,7 @@ export class TenantService {
     private readonly userRepository: Repository<UserEntity>,
     private readonly dataSource: DataSource,
     private readonly instituteCreditsService: InstituteCreditsService,
+    private readonly cloudStorageService: CloudStorageService,
   ) {}
 
   // ═══════════════════════════════════════════════════════════════════
@@ -359,11 +361,37 @@ export class TenantService {
       }
     }
 
+    // Track image fields that are being replaced so old S3 objects can be deleted
+    const IMAGE_FIELDS = [
+      'loginLogoUrl', 'loginBackgroundUrl', 'loginVideoPosterUrl',
+      'loginIllustrationUrl', 'faviconUrl',
+    ] as const;
+    const filesToDelete: string[] = [];
+    for (const field of IMAGE_FIELDS) {
+      const incoming = (dto as any)[field];
+      const existing = (institute as any)[field];
+      if (incoming !== undefined && existing && existing !== incoming) {
+        filesToDelete.push(existing);
+      }
+    }
+
     // Apply updates
     Object.assign(institute, dto);
     institute.updatedAt = now();
 
-    return this.instituteRepository.save(institute);
+    const saved = await this.instituteRepository.save(institute);
+
+    if (filesToDelete.length > 0) {
+      Promise.all(
+        filesToDelete.map(path =>
+          this.cloudStorageService.deleteFile(path).catch(err =>
+            this.logger.warn(`Failed to delete old login branding file: ${path} — ${err.message}`),
+          ),
+        ),
+      ).catch(() => {});
+    }
+
+    return saved;
   }
 
   // ═══════════════════════════════════════════════════════════════════

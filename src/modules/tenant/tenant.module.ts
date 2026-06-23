@@ -12,6 +12,7 @@ import { SenderMaskEntity } from '../sms/entities/sender-mask.entity';
 import { PackageDefinitionEntity } from '../payment/entities/package-definition.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { NotificationCreditsModule } from '../notification-credits/notification-credits.module';
+import { CloudStorageService } from '../../common/services/cloud-storage.service';
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { NotificationCreditsModule } from '../notification-credits/notification-
     ]),
   ],
   controllers: [TenantController],
-  providers: [TenantService],
+  providers: [TenantService, CloudStorageService],
   exports: [TenantService],
 })
 export class TenantModule {}

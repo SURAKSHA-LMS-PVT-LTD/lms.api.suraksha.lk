@@ -144,7 +144,7 @@ export class InstituteAdminUserService {
     // For students: allow no email/phone if at least one parent has contact info
     if (!dto.email && !dto.phoneNumber) {
       if (dto.instituteUserType === InstituteUserType.STUDENT) {
-        const parentHasContact = 
+        const parentHasContact =
           (dto.father && (dto.father.email || dto.father.phoneNumber)) ||
           (dto.mother && (dto.mother.email || dto.mother.phoneNumber)) ||
           (dto.guardian && (dto.guardian.email || dto.guardian.phoneNumber));
@@ -156,6 +156,11 @@ export class InstituteAdminUserService {
       } else {
         throw new BadRequestException('At least one of email or phoneNumber is required');
       }
+    }
+
+    // Students must have a birth certificate number
+    if (dto.instituteUserType === InstituteUserType.STUDENT && !dto.birthCertificateNo) {
+      throw new BadRequestException('Birth certificate number is required for students.');
     }
 
     // Validate: each provided parent must have at least email OR phone
@@ -548,6 +553,10 @@ export class InstituteAdminUserService {
         ? this.generateNameWithInitials(dto.firstName, dto.lastName)
         : null);
 
+    const fullName =
+      dto.fullName ||
+      (dto.firstName && dto.lastName ? `${dto.firstName} ${dto.lastName}` : null);
+
     let hashedPassword: string | undefined;
     if (dto.password) {
       hashedPassword = await bcrypt.hash(dto.password, 12);
@@ -566,6 +575,9 @@ export class InstituteAdminUserService {
       firstName: dto.firstName ?? null,
       lastName: dto.lastName ?? null,
       nameWithInitials,
+      fullName,
+      religion: dto.religion ?? null,
+      birthCertificateNo: dto.birthCertificateNo ?? null,
       email: dto.email?.toLowerCase() ?? null,
       phoneNumber: dto.phoneNumber ?? null,
       password: hashedPassword ?? null,
@@ -682,19 +694,32 @@ export class InstituteAdminUserService {
     // Create new USER_WITHOUT_STUDENT user
     const hashedPassword = data.password ? await bcrypt.hash(data.password, 12) : undefined;
     const nameWithInitials =
-      data.firstName && data.lastName
+      data.nameWithInitials ||
+      (data.firstName && data.lastName
         ? this.generateNameWithInitials(data.firstName, data.lastName)
-        : null;
+        : null);
+    const fullName =
+      data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : null;
 
     const userEntity = queryRunner.manager.create(UserEntity, {
       firstName: data.firstName ?? null,
       lastName: data.lastName ?? null,
       nameWithInitials,
+      fullName,
+      birthCertificateNo: data.birthCertificateNo ?? null,
       email: data.email?.toLowerCase() ?? null,
       phoneNumber: data.phoneNumber ?? null,
       password: hashedPassword ?? null,
       passwordSetAt: hashedPassword ? now() : null,
       userType: UserType.USER_WITHOUT_STUDENT,
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      gender: data.gender,
+      nic: data.nic ?? null,
+      addressLine1: data.addressLine1 ?? null,
+      city: data.city ?? null,
+      district: data.district,
+      province: data.province,
+      postalCode: data.postalCode ?? null,
       isActive: true,
       isPhoneVerified: false,
       isEmailVerified: false,

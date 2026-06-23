@@ -58,6 +58,12 @@ export class UserEntity {
   @Column({ name: 'name_with_initials', type: 'varchar', length: 100, nullable: true })
   nameWithInitials: string;
 
+  @Column({ name: 'full_name', type: 'varchar', length: 150, nullable: true })
+  fullName?: string;
+
+  @Column({ name: 'religion', type: 'varchar', length: 100, nullable: true })
+  religion?: string;
+
   @Column({ type: 'varchar', length: 60, nullable: true, unique: true, transformer: {
     to: (value: string) => value ? value.toLowerCase() : null,
     from: (value: string) => value ? value.toLowerCase() : null

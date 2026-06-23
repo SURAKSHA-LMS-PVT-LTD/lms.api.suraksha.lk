@@ -120,11 +120,19 @@ export class InstitueClassService {
     
     // ✅ Extract imageUrl from DTO if provided
     const { imageUrl: dtoImageUrl, ...updateData } = updateInstitueClassDto;
+
+    // Delete old S3 image when a new one is supplied and it differs
+    if (dtoImageUrl !== undefined && classEntity.imageUrl && classEntity.imageUrl !== dtoImageUrl) {
+      this.cloudStorageService.deleteFile(classEntity.imageUrl).catch(err =>
+        this.logger.warn(`Failed to delete old class image: ${err.message}`),
+      );
+    }
+
     const dataToUpdate = {
       ...updateData,
       ...(dtoImageUrl !== undefined && { imageUrl: dtoImageUrl })
     };
-    
+
     const updatedClass = await this.classRepository.update(id, dataToUpdate);
     
     // ✅ Transform imageUrl to full URL for response
