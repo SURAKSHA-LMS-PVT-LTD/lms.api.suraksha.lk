@@ -468,14 +468,21 @@ export class InstituteClassSubjectLecturesService {
       if (!r.userId) { recGuestSessions++; continue; }
       const key = String(r.userId);
       const existing = recByUser.get(key);
-      if (!existing || r.totalWatchedSeconds > existing.watchedSec) {
+      if (!existing) {
         recByUser.set(key, {
           watchedSec: r.totalWatchedSeconds ?? 0,
           timesViewed: r.timesViewed ?? 1,
           lastPos: r.lastPositionSeconds ?? 0,
         });
       } else {
+        // Sum watched seconds across all sessions (not max) — a student who watched
+        // the same recording 3 times genuinely accumulated all three watch durations.
+        existing.watchedSec += r.totalWatchedSeconds ?? 0;
         existing.timesViewed += r.timesViewed ?? 1;
+        // Keep the furthest position reached across all sessions
+        if ((r.lastPositionSeconds ?? 0) > existing.lastPos) {
+          existing.lastPos = r.lastPositionSeconds ?? 0;
+        }
       }
     }
     const recUniqueRegisteredViewers = recByUser.size;
