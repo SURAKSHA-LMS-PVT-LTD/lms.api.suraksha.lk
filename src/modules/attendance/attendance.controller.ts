@@ -2368,10 +2368,40 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // COMPLETED LECTURES LIST  –  lightweight picker for report dialog
+  // Returns completed lectures for a class within a date range (id, title, date, subject only)
+  // ─────────────────────────────────────────────────────────────────────────
+  @Get('institute/:instituteId/class-lectures')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+  })
+  @ApiOperation({ summary: 'List completed lectures for a class (for report lecture picker)' })
+  async getClassLectures(
+    @Param('instituteId') instituteId: string,
+    @Query('classId') classId: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    if (!classId) throw new HttpException({ success: false, message: 'classId is required' }, HttpStatus.BAD_REQUEST);
+    const now = new Date();
+    const dateEnd = end || now.toISOString().split('T')[0];
+    const dateStart = start || new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+    try {
+      return await this.attendanceService.getClassLecturesForPicker({ instituteId, classId, start: dateStart, end: dateEnd });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ success: false, message: error.message || 'Failed to load lectures' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // BATCH CLASS REPORT DATA  –  POST so student list can be in body
   // Access: InstituteAdmin → any class; Teacher → only their assigned class.
   // Body: { studentIds, classId, attendanceStart/End, paymentsStart/End,
-  //         liveStart/End, recordingStart/End, withActivities?, attendanceLimit? }
+  //         lectureIds (explicit list), withActivities?, attendanceLimit? }
   // ─────────────────────────────────────────────────────────────────────────
   @Post('institute/:instituteId/class-report')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
@@ -2390,10 +2420,7 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
       attendanceEnd?: string;
       paymentsStart?: string;
       paymentsEnd?: string;
-      liveStart?: string;
-      liveEnd?: string;
-      recordingStart?: string;
-      recordingEnd?: string;
+      lectureIds?: string[];       // explicit lecture IDs to include (replaces live/rec date ranges)
       withActivities?: boolean;
       attendanceLimit?: number;
     },
@@ -2422,10 +2449,7 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
         attendanceEnd: body.attendanceEnd || today,
         paymentsStart: body.paymentsStart || twelveMonthsAgo,
         paymentsEnd: body.paymentsEnd || today,
-        liveStart: body.liveStart || threeMonthsAgo,
-        liveEnd: body.liveEnd || today,
-        recordingStart: body.recordingStart || threeMonthsAgo,
-        recordingEnd: body.recordingEnd || today,
+        lectureIds: body.lectureIds,
         withActivities: body.withActivities ?? false,
         attendanceLimit: Math.min(body.attendanceLimit ?? 500, 2000),
       });

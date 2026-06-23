@@ -4497,6 +4497,37 @@ export class AttendanceService {
   // recording detail rows alongside the lecture summary.
   // Access: InstituteAdmin → any class; Teacher → only their assigned class.
   // ─────────────────────────────────────────────────────────────────────────
+  async getClassLecturesForPicker(params: {
+    instituteId: string; classId: string; start: string; end: string;
+  }): Promise<any> {
+    const { instituteId, classId, start, end } = params;
+    const rows = await this.dataSource.query(
+      `SELECT l.id, l.title, l.status, l.start_time startTime,
+              l.live_attendance_enabled liveEnabled,
+              l.rec_attendance_enabled recEnabled,
+              sub.name subjectName
+       FROM institute_class_subject_lectures l
+       LEFT JOIN subjects sub ON sub.id = l.subject_id
+       WHERE l.class_id = ? AND l.institute_id = ? AND l.is_active = 1
+         AND l.status = 'completed'
+         AND (l.live_attendance_enabled = 1 OR l.rec_attendance_enabled = 1)
+         AND DATE(l.start_time) >= ? AND DATE(l.start_time) <= ?
+       ORDER BY l.start_time DESC LIMIT 200`,
+      [classId, instituteId, start, end],
+    ).catch(() => []);
+    return {
+      success: true,
+      lectures: rows.map((l: any) => ({
+        id: String(l.id),
+        title: l.title,
+        startTime: l.startTime,
+        subjectName: l.subjectName ?? null,
+        liveEnabled: !!l.liveEnabled,
+        recEnabled: !!l.recEnabled,
+      })),
+    };
+  }
+
   async getStudentClassReportData(params: {
     instituteId: string;
     classId: string;
@@ -4505,10 +4536,7 @@ export class AttendanceService {
     attendanceEnd: string;
     paymentsStart: string;          // YYYY-MM-DD
     paymentsEnd: string;
-    liveStart: string;              // YYYY-MM-DD  (filter lecture start_time)
-    liveEnd: string;
-    recordingStart: string;         // YYYY-MM-DD
-    recordingEnd: string;
+    lectureIds?: string[];          // explicit lecture IDs to include
     withActivities?: boolean;       // include per-session recording rows
     attendanceLimit?: number;       // default 500
   }): Promise<any> {
@@ -4516,8 +4544,7 @@ export class AttendanceService {
       instituteId, classId, studentIds,
       attendanceStart, attendanceEnd,
       paymentsStart, paymentsEnd,
-      liveStart, liveEnd,
-      recordingStart, recordingEnd,
+      lectureIds,
       withActivities = false,
       attendanceLimit = 500,
     } = params;
@@ -4622,24 +4649,23 @@ export class AttendanceService {
         [instituteId, classId, ...studentIds],
       ).catch(() => []),
 
-      // Lectures with live/rec attendance enabled – filtered by liveStart..liveEnd or recordingStart..recordingEnd
-      this.dataSource.query(
-        `SELECT l.id, l.title, l.status, l.start_time startTime, l.end_time endTime,
-                l.live_attendance_enabled liveEnabled, l.rec_attendance_enabled recEnabled,
-                l.recording_url recordingUrl, l.rec_duration_seconds recDuration,
-                sub.id subjectId, sub.name subjectName
-         FROM institute_class_subject_lectures l
-         LEFT JOIN subjects sub ON sub.id = l.subject_id
-         WHERE l.class_id = ? AND l.institute_id = ? AND l.is_active = 1
-           AND (l.live_attendance_enabled = 1 OR l.rec_attendance_enabled = 1)
-           AND (
-             (l.live_attendance_enabled = 1 AND DATE(l.start_time) >= ? AND DATE(l.start_time) <= ?)
-             OR
-             (l.rec_attendance_enabled = 1 AND DATE(l.start_time) >= ? AND DATE(l.start_time) <= ?)
-           )
-         ORDER BY l.start_time DESC LIMIT 300`,
-        [classId, instituteId, liveStart, liveEnd, recordingStart, recordingEnd],
-      ).catch(() => []),
+      // Lectures – filtered by explicit lectureIds when provided, otherwise all for this class
+      lectureIds && lectureIds.length
+        ? this.dataSource.query(
+            `SELECT l.id, l.title, l.status, l.start_time startTime, l.end_time endTime,
+                    l.live_attendance_enabled liveEnabled, l.rec_attendance_enabled recEnabled,
+                    l.live_attendance_enabled liveAttendanceEnabled,
+                    l.recording_url recordingUrl, l.rec_duration_seconds recDuration,
+                    l.lecture_summary lectureSummary,
+                    sub.id subjectId, sub.name subjectName
+             FROM institute_class_subject_lectures l
+             LEFT JOIN subjects sub ON sub.id = l.subject_id
+             WHERE l.id IN (${lectureIds.map(() => '?').join(',')})
+               AND l.class_id = ? AND l.institute_id = ? AND l.is_active = 1
+             ORDER BY l.start_time DESC`,
+            [...lectureIds, classId, instituteId],
+          ).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     // ── 5. Per-student live + recording sessions ────────────────────────────
@@ -4752,7 +4778,9 @@ export class AttendanceService {
           startTime: l.startTime, endTime: l.endTime,
           subjectId: l.subjectId, subjectName: l.subjectName,
           liveEnabled: !!l.liveEnabled, recEnabled: !!l.recEnabled,
+          liveAttendanceEnabled: !!l.liveAttendanceEnabled,
           recordingUrl: l.recordingUrl, recDurationSeconds: l.recDuration,
+          lectureSummary: typeof l.lectureSummary === 'string' ? JSON.parse(l.lectureSummary) : (l.lectureSummary ?? null),
           liveAttendance: {
             present: lRows.length > 0,
             totalSessions: lRows.length,
