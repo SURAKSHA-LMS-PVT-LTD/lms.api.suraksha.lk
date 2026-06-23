@@ -24,7 +24,14 @@ export class FeaturesService {
 
     // Features that must be OFF until a system admin explicitly enables them.
     // (Toggles otherwise default to enabled when no row exists.)
-    const DEFAULT_OFF_FEATURES = new Set(['smart-cards']);
+    // All PAID/TIER features belong here so new institutes never see them without a toggle row.
+    const DEFAULT_OFF_FEATURES = new Set([
+      'smart-cards',
+      'suraksha-finance',
+      'sms',
+      'sms-history',
+      'teacher-finance',
+    ]);
 
     const features = allFeatures.map(feature => {
         const toggle = instituteToggles.find(t => t.featureKey === feature.key);
