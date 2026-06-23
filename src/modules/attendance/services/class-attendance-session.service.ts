@@ -105,6 +105,11 @@ function mapSession(s: InstituteClassAttendanceSessionEntity): SessionResponse {
     linkedPaymentId: s.linkedPaymentId,
     paymentMode: s.paymentMode,
     createdAt: s.createdAt,
+    // Frozen summary — only present once the session is closed; null while open.
+    summaryPresentCount: s.summaryPresentCount ?? null,
+    summaryAbsentCount: s.summaryAbsentCount ?? null,
+    summaryLateCount: s.summaryLateCount ?? null,
+    summaryAttendancePercent: s.summaryAttendancePercent != null ? Number(s.summaryAttendancePercent) : null,
   };
 }
 
@@ -350,16 +355,9 @@ export class ClassAttendanceSessionService {
         ? [sessionId, session.linkedPaymentId, instituteId, session.classId]
         : [sessionId, instituteId, session.classId]);
 
-    let presentCount = 0, absentCount = 0, lateCount = 0, notMarkedCount = 0;
-
     const studentRows: SessionStudentRecord[] = rows.map(r => {
       const statusCode: number | null = r.statusCode !== null && r.statusCode !== undefined ? Number(r.statusCode) : null;
       const label = statusCode !== null ? (STATUS_LABEL[statusCode] ?? 'Unknown') : 'NotMarked';
-
-      if (statusCode === 1) presentCount++;
-      else if (statusCode === 0) absentCount++;
-      else if (statusCode === 2) lateCount++;
-      else notMarkedCount++;
 
       return {
         studentId: r.studentId,
@@ -376,7 +374,18 @@ export class ClassAttendanceSessionService {
       };
     });
 
-    return { ...mapSession(session), students: studentRows, presentCount, absentCount, lateCount, notMarkedCount };
+    // Summary counts are NOT live-computed. They exist only on a closed session
+    // (frozen at close time). While open, counts are null — the UI shows the student
+    // grid but no summary until the session is closed.
+    const mapped = mapSession(session);
+    return {
+      ...mapped,
+      students: studentRows,
+      presentCount: mapped.summaryPresentCount ?? null,
+      absentCount: mapped.summaryAbsentCount ?? null,
+      lateCount: mapped.summaryLateCount ?? null,
+      attendancePercent: mapped.summaryAttendancePercent ?? null,
+    };
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -412,9 +421,8 @@ export class ClassAttendanceSessionService {
         ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(rawDate as Date)
         : String(rawDate).substring(0, 10);
 
-    if (sessionDate < today) {
-      throw new BadRequestException('Cannot mark attendance for past sessions');
-    }
+    // Past sessions ARE markable (admins record attendance that happened earlier, with the
+    // real check-in time via dto.checkInTime). Future sessions remain blocked.
     if (sessionDate > today) {
       throw new BadRequestException('Cannot mark attendance for future sessions');
     }
@@ -424,6 +432,15 @@ export class ClassAttendanceSessionService {
     const autoStatus = dto.status ?? resolveAutoStatus(session);
     const timestamp = now();
 
+    // Check-in time (the "marked at" time shown to users) — defaults to the real insert
+    // time, but an admin can supply a custom time (e.g. when back-filling a past session).
+    // The row's createdAt/syncedAt always stay the real server time for auditing.
+    let checkInEpochMs = Date.now();
+    if (dto.checkInTime) {
+      const parsed = new Date(dto.checkInTime).getTime();
+      if (!Number.isNaN(parsed)) checkInEpochMs = parsed;
+    }
+
     const existing = await this.recordRepo.findOne({
       where: { classSessionId: sessionId, studentId: dto.studentId },
     });
@@ -431,6 +448,8 @@ export class ClassAttendanceSessionService {
     if (existing) {
       existing.status = autoStatus;
       existing.remarks = dto.remarks ?? existing.remarks;
+      // check-in time (timestamp) reflects the entered/real time; createdAt stays real insert time
+      existing.timestamp = BigInt(checkInEpochMs).toString();
       existing.createdAt = timestamp;
       await this.recordRepo.save(existing);
       return { success: true, record: existing };
@@ -448,7 +467,7 @@ export class ClassAttendanceSessionService {
       studentId: dto.studentId,
       date: session.date,
       status: autoStatus,
-      timestamp: BigInt(Date.now()).toString(),
+      timestamp: BigInt(checkInEpochMs).toString(),
       remarks: dto.remarks ?? null,
       markingMethod: 'MANUAL',
       userType: 'STUDENT',
@@ -657,9 +676,44 @@ export class ClassAttendanceSessionService {
       }
     }
 
+    // Freeze the attendance summary at close time — one grouped query instead of
+    // re-counting on every view. Total students = active+verified class roster snapshot.
+    const [statusRows, totalStudents] = await Promise.all([
+      this.recordRepo
+        .createQueryBuilder('r')
+        .select('r.status', 'status')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('r.class_session_id = :sessionId', { sessionId })
+        .groupBy('r.status')
+        .getRawMany<{ status: number; cnt: string }>(),
+      this.classStudentRepo.count({
+        where: { instituteId, classId: session.classId, isActive: true, isVerified: true },
+      }),
+    ]);
+
+    let present = 0, absent = 0, late = 0;
+    for (const row of statusRows) {
+      const code = Number(row.status);
+      const cnt = Number(row.cnt) || 0;
+      if (code === 1) present += cnt;
+      else if (code === 0) absent += cnt;
+      else if (code === 2) late += cnt;
+    }
+    // On close, unmarked students are converted to absent (MARK_ABSENT) so there is no
+    // separate "not marked" bucket. Attendance rate counts present + late as attended.
+    const denom = totalStudents > 0 ? totalStudents : (present + absent + late);
+    const attendancePercent = denom > 0
+      ? Math.round(((present + late) / denom) * 10000) / 100
+      : 0;
+
     session.isClosed = true;
     session.closedAt = now();
     session.closeUnmarkAction = dto.closeUnmarkAction;
+    session.totalStudents = totalStudents;
+    session.summaryPresentCount = present;
+    session.summaryAbsentCount = absent;
+    session.summaryLateCount = late;
+    session.summaryAttendancePercent = attendancePercent;
     session.updatedAt = now();
     const saved = await this.sessionRepo.save(session);
     return mapSession(saved);

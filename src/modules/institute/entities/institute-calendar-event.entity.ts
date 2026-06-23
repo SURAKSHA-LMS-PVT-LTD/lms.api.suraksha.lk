@@ -86,6 +86,21 @@ export class InstituteCalendarEventEntity {
   })
   isAttendanceTracked: boolean;
 
+  // ── Time-based status rules ───────────────────────────────────────────────
+  // Used to AUTO-resolve a mark's status from the current time vs the event
+  // start/end. Attendance markers never pick a status — it is computed:
+  //   Present   = marked at/before start + lateAfterMinutes
+  //   Late      = marked after start + lateAfterMinutes (but before the left window)
+  //   LeftEarly = marked after start + lateAfterMinutes AND within
+  //               leftEarlyBeforeMinutes of end_time
+  @Column({ name: 'late_after_minutes', type: 'int', nullable: true,
+    comment: 'Minutes after start_time after which a mark is automatically LATE' })
+  lateAfterMinutes: number | null;
+
+  @Column({ name: 'left_early_before_minutes', type: 'int', nullable: true,
+    comment: 'Minutes before end_time within which a mark is automatically LEFT_EARLY' })
+  leftEarlyBeforeMinutes: number | null;
+
   @Column({
     name: 'is_default',
     type: 'boolean',
@@ -190,4 +205,54 @@ export class InstituteCalendarEventEntity {
 
   @Column({ name: 'created_by', type: 'bigint', nullable: true })
   createdBy: string | null;
+
+  // ── Attendance close + frozen summary ─────────────────────────────────────
+  // Mirrors class attendance sessions: when an event's attendance is "closed",
+  // the counts are computed ONCE and stored here, so viewing a closed event needs
+  // no live COUNT queries over attendance_records. All summary_* stay NULL while open.
+  @Column({
+    name: 'is_attendance_closed',
+    type: 'boolean',
+    default: false,
+    comment: 'TRUE once attendance for this event has been closed & summarized',
+  })
+  isAttendanceClosed: boolean;
+
+  @Column({ name: 'attendance_closed_at', type: 'timestamp', nullable: true })
+  attendanceClosedAt: Date | null;
+
+  @Column({
+    name: 'attendance_close_unmark_action',
+    type: 'enum',
+    enum: ['KEEP_NOT_MARKED', 'MARK_ABSENT'],
+    nullable: true,
+    comment: 'What was done with unmarked target users at close time',
+  })
+  attendanceCloseUnmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT' | null;
+
+  @Column({ name: 'summary_present_count', type: 'int', nullable: true })
+  summaryPresentCount: number | null;
+
+  @Column({ name: 'summary_absent_count', type: 'int', nullable: true })
+  summaryAbsentCount: number | null;
+
+  @Column({ name: 'summary_late_count', type: 'int', nullable: true })
+  summaryLateCount: number | null;
+
+  @Column({ name: 'summary_left_count', type: 'int', nullable: true })
+  summaryLeftCount: number | null;
+
+  @Column({ name: 'summary_total_count', type: 'int', nullable: true,
+    comment: 'Total target/marked users used as the percentage denominator' })
+  summaryTotalCount: number | null;
+
+  @Column({
+    name: 'summary_attendance_percent',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    comment: 'Attendance rate at close = (present + late) / total × 100',
+  })
+  summaryAttendancePercent: number | null;
 }

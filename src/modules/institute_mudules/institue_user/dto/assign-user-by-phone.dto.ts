@@ -282,6 +282,51 @@ export class AssignParentByPhoneDto {
 }
 
 /**
+ * DTO for assigning a parent to a student by system user ID
+ *
+ * Same rules as AssignParentByPhoneDto, but the parent is resolved by their
+ * numeric system user ID instead of phone number.
+ */
+export class AssignParentByIdDto {
+  @ApiProperty({
+    description: 'System user ID of the parent to assign (must be USER or USER_WITHOUT_STUDENT type)',
+    example: '123'
+  })
+  @IsNotEmpty({ message: 'Parent user ID is required' })
+  @IsBigIntId()
+  userId: string;
+
+  @ApiProperty({
+    description: '**REQUIRED** - Parent relationship type: father, mother, or guardian. Each student can have only ONE of each type.',
+    example: 'father',
+    enum: ['father', 'mother', 'guardian'],
+    required: true
+  })
+  @IsNotEmpty({ message: 'Parent role is required. Must be one of: father, mother, guardian' })
+  @IsString()
+  @IsIn(['father', 'mother', 'guardian'], { message: 'Parent role must be one of: father, mother, guardian' })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value.trim().toLowerCase();
+    }
+    return value;
+  })
+  parentRole: 'father' | 'mother' | 'guardian';
+
+  @ApiProperty({
+    description: 'Institute-specific parent ID/number. Can contain letters and numbers.',
+    example: 'PAR2024001',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9\-_\/\.]{1,50}$/, {
+    message: 'Institute parent ID must be alphanumeric with allowed special characters (-, _, /, .) and max 50 characters'
+  })
+  userIdByInstitute?: string;
+}
+
+/**
  * DTO for assigning a user to an institute by RFID card
  * 
  * Requirements:

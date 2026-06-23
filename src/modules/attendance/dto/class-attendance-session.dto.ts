@@ -189,6 +189,16 @@ export class MarkSessionAttendanceDto {
   @IsString()
   @IsOptional()
   remarks?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom check-in time (ISO 8601). When provided, this becomes the displayed/marked '
+      + 'check-in time of the record. The DB row creation timestamp always stays the real server '
+      + 'insert time for auditing. Used for marking past sessions with the actual attendance time.',
+    example: '2026-06-20T08:15:00.000Z',
+  })
+  @IsOptional()
+  @IsDateString()
+  checkInTime?: string;
 }
 
 export class BulkMarkSessionAttendanceDto {
@@ -281,6 +291,11 @@ export interface SessionResponse {
   linkedPaymentId?: string;
   paymentMode?: 'OPTIONAL' | 'REQUIRED';
   createdAt: Date;
+  // Frozen attendance summary — populated only when the session is closed; null while open.
+  summaryPresentCount?: number | null;
+  summaryAbsentCount?: number | null;
+  summaryLateCount?: number | null;
+  summaryAttendancePercent?: number | null;
 }
 
 export interface SessionStudentRecord {
@@ -299,10 +314,11 @@ export interface SessionStudentRecord {
 
 export interface SessionDetailResponse extends SessionResponse {
   students: SessionStudentRecord[];
-  presentCount: number;
-  absentCount: number;
-  lateCount: number;
-  notMarkedCount: number;
+  // Summary is frozen at close time — null while the session is still open.
+  presentCount: number | null;
+  absentCount: number | null;
+  lateCount: number | null;
+  attendancePercent: number | null;
 }
 
 export interface GridStudentRow {

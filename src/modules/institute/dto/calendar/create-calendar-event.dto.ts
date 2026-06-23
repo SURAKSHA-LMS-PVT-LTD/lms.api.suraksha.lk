@@ -4,6 +4,8 @@ import {
   IsOptional,
   IsBoolean,
   IsDateString,
+  IsInt,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -60,6 +62,25 @@ export class CreateCalendarEventDto {
   @IsOptional()
   @IsBoolean()
   isAttendanceTracked?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Minutes after start_time after which a mark auto-resolves to LATE. '
+      + 'Used to auto-assign status when an attendance marker marks against this event.',
+    example: 15,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  lateAfterMinutes?: number;
+
+  @ApiPropertyOptional({
+    description: 'Minutes before end_time within which a mark auto-resolves to LEFT_EARLY.',
+    example: 30,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  leftEarlyBeforeMinutes?: number;
 
   @ApiPropertyOptional({ description: 'Is this the default event for the day?' })
   @IsOptional()

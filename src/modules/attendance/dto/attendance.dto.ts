@@ -110,10 +110,15 @@ export class MarkAttendanceDto {
   // ⚠️ DEPRECATED: latitude and longitude are now stored inside address field
   // For backward compatibility, these are extracted from address on response
 
-  @ApiProperty({ enum: AttendanceStatus, description: 'Attendance status' })
+  @ApiPropertyOptional({
+    enum: AttendanceStatus,
+    description: 'Attendance status. Optional when marking against a time-ruled event — '
+      + 'the backend auto-resolves Present/Late/LeftEarly from the event time rules and '
+      + 'ignores any value sent. Defaults to PRESENT when no event rule applies.',
+  })
   @IsEnum(AttendanceStatus)
-  @IsNotEmpty()
-  status: AttendanceStatus;
+  @IsOptional()
+  status?: AttendanceStatus;
 
   @ApiPropertyOptional({ description: 'Remarks' })
   @IsString()

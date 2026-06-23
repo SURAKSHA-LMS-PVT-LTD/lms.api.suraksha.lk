@@ -559,6 +559,82 @@ export class InstituteCalendarController {
   }
 
   /**
+   * View who marked attendance for an event (+ frozen summary if closed).
+   */
+  @Get('events/:eventId/attendance')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
+  @ApiOperation({
+    summary: 'View event attendance',
+    description: 'Returns who marked attendance for the event plus the frozen summary (present/absent/late/left + %). Summary is null until the event is closed.',
+  })
+  @ApiParam({ name: 'eventId', description: 'Calendar event ID' })
+  @ApiResponse({ status: 200, description: 'Event attendance + summary' })
+  async getEventAttendance(
+    @Param('instituteId') instituteId: string,
+    @Param('eventId') eventId: string,
+  ) {
+    try {
+      return await this.calendarService.getEventAttendanceView(instituteId, eventId);
+    } catch (error) {
+      this.handleError(error, 'Failed to load event attendance');
+    }
+  }
+
+  /**
+   * SUPERADMIN: bulk-summarize all past, attendance-tracked, not-yet-summarized
+   * events for this institute. Drives the system-admin dashboard "Summarize
+   * institute-wide events attendance" button. Already-closed events are skipped.
+   */
+  @Post('events/summarize-past')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
+  @ApiOperation({
+    summary: 'Bulk summarize past institute events (superadmin)',
+    description: 'Freezes attendance summaries for all past, attendance-tracked events that are not yet closed. Processed in capped batches for performance.',
+  })
+  @ApiResponse({ status: 200, description: 'Bulk summarization result' })
+  async summarizePastEvents(
+    @Param('instituteId') instituteId: string,
+  ) {
+    try {
+      const res = await this.calendarService.bulkSummarizePastEvents(instituteId);
+      this.cacheService.invalidate(instituteId);
+      return res;
+    } catch (error) {
+      this.handleError(error, 'Failed to summarize past events');
+    }
+  }
+
+  /**
+   * Close an event's attendance and freeze its summary.
+   */
+  @Post('events/:eventId/close-attendance')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Close event attendance',
+    description: 'Freezes the attendance summary so future views need no counting. unmarkAction MARK_ABSENT auto-marks unmarked target students absent before summarizing.',
+  })
+  @ApiParam({ name: 'eventId', description: 'Calendar event ID' })
+  @ApiResponse({ status: 200, description: 'Event attendance closed and summarized' })
+  async closeEventAttendance(
+    @Param('instituteId') instituteId: string,
+    @Param('eventId') eventId: string,
+    @Body() body: { unmarkAction?: 'KEEP_NOT_MARKED' | 'MARK_ABSENT' },
+  ) {
+    try {
+      const res = await this.calendarService.closeEventAttendance(
+        instituteId, eventId, body?.unmarkAction ?? 'KEEP_NOT_MARKED',
+      );
+      this.cacheService.invalidate(instituteId);
+      return res;
+    } catch (error) {
+      this.handleError(error, 'Failed to close event attendance');
+    }
+  }
+
+  /**
    * ✅ FEAT-001: Delete Calendar Event
    */
   @Delete('events/:eventId')

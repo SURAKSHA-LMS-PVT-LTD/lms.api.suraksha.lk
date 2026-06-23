@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In } from 'typeorm';
+import { Repository, Between, In, DataSource } from 'typeorm';
 import { InstituteCalendarDayEntity } from '../entities/institute-calendar-day.entity';
 import { InstituteOperatingConfigEntity } from '../entities/institute-operating-config.entity';
 import { InstituteCalendarEventEntity } from '../entities/institute-calendar-event.entity';
@@ -28,7 +28,266 @@ export class InstituteCalendarService {
     private readonly calendarEventRepo: Repository<InstituteCalendarEventEntity>,
     @InjectRepository(InstituteClassCalendarEntity)
     private readonly classCalendarRepo: Repository<InstituteClassCalendarEntity>,
+    private readonly dataSource: DataSource,
   ) {}
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EVENT ATTENDANCE — VIEW / CLOSE / SUMMARIZE
+  //
+  // Mirrors the class-attendance-session pattern: counts are NOT computed live on
+  // every view. They are frozen onto the event row when its attendance is closed,
+  // so viewing a closed event costs one row read instead of a COUNT over
+  // attendance_records. Statuses summarized: present / absent / late / left.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * View who marked attendance for an event. Returns the marked records plus the
+   * summary. When the event is closed the summary comes from the frozen columns
+   * (no counting); when open, no summary is computed (counts are null) — the UI
+   * shows the marked rows but prompts the admin to close to get the summary.
+   */
+  async getEventAttendanceView(instituteId: string, eventId: string): Promise<any> {
+    const event = await this.calendarEventRepo.findOne({
+      where: { id: eventId, instituteId },
+    });
+    if (!event) throw new NotFoundException('Calendar event not found');
+
+    // The marked rows themselves are a cheap indexed read (IDX_event). This is a
+    // list, NOT a COUNT — the heavy part (counting) is avoided entirely.
+    const rows: any[] = await this.dataSource.query(
+      `SELECT ar.student_id AS studentId, ar.status AS statusCode, ar.\`timestamp\` AS markedAt,
+              ar.user_type AS userType,
+              COALESCE(NULLIF(u.name_with_initials,''),
+                       NULLIF(CONCAT_WS(' ', u.first_name, u.last_name),''),
+                       'Unknown') AS studentName,
+              COALESCE(iu.institute_user_image_url, u.image_url) AS imageUrl,
+              iu.user_id_institue AS userIdInstitute
+       FROM attendance_records ar
+       JOIN users u ON u.id = ar.student_id
+       LEFT JOIN institute_user iu ON iu.user_id = ar.student_id AND iu.institute_id = ar.institute_id
+       WHERE ar.institute_id = ? AND ar.event_id = ?
+       ORDER BY u.name_with_initials ASC`,
+      [instituteId, eventId],
+    );
+
+    const STATUS_LABEL: Record<number, string> = {
+      0: 'Absent', 1: 'Present', 2: 'Late', 3: 'Left', 4: 'LeftEarly', 5: 'LeftLately',
+    };
+    const students = rows.map(r => {
+      const code = r.statusCode !== null && r.statusCode !== undefined ? Number(r.statusCode) : null;
+      return {
+        studentId: r.studentId,
+        studentName: r.studentName ?? 'Unknown',
+        imageUrl: r.imageUrl ?? null,
+        userIdInstitute: r.userIdInstitute ?? null,
+        userType: r.userType ?? null,
+        statusCode: code,
+        statusLabel: code !== null ? (STATUS_LABEL[code] ?? 'Unknown') : 'NotMarked',
+        markedAt: r.markedAt != null ? new Date(Number(r.markedAt)).toISOString() : null,
+      };
+    });
+
+    return {
+      success: true,
+      event: this.mapEventSummary(event),
+      students,
+      // Frozen summary only present when closed; null while open.
+      summary: event.isAttendanceClosed ? {
+        present: event.summaryPresentCount ?? 0,
+        absent: event.summaryAbsentCount ?? 0,
+        late: event.summaryLateCount ?? 0,
+        left: event.summaryLeftCount ?? 0,
+        total: event.summaryTotalCount ?? 0,
+        attendancePercent: event.summaryAttendancePercent != null ? Number(event.summaryAttendancePercent) : 0,
+      } : null,
+    };
+  }
+
+  /**
+   * Close an event's attendance and freeze its summary.
+   * unmarkAction MARK_ABSENT auto-marks target students with no record as absent
+   * (mirrors class sessions); KEEP_NOT_MARKED leaves them out.
+   */
+  async closeEventAttendance(
+    instituteId: string,
+    eventId: string,
+    unmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT' = 'KEEP_NOT_MARKED',
+    userId?: string,
+  ): Promise<any> {
+    const event = await this.calendarEventRepo.findOne({
+      where: { id: eventId, instituteId },
+    });
+    if (!event) throw new NotFoundException('Calendar event not found');
+    if (event.isAttendanceClosed) {
+      throw new BadRequestException('Event attendance is already closed');
+    }
+    await this.summarizeOneEvent(event, unmarkAction, userId);
+    return {
+      success: true,
+      message: 'Event attendance closed and summarized',
+      event: this.mapEventSummary(event),
+    };
+  }
+
+  /**
+   * SUPERADMIN bulk: summarize all past, attendance-tracked, not-yet-summarized
+   * events for an institute (or across all institutes when instituteId omitted).
+   * Uses the idx_inst_close_date index. Keeps already-closed events untouched.
+   */
+  async bulkSummarizePastEvents(instituteId?: string): Promise<any> {
+    const today = getCurrentSriLankaDate();
+    const qb = this.calendarEventRepo.createQueryBuilder('e')
+      .where('e.isAttendanceClosed = :closed', { closed: false })
+      .andWhere('e.isAttendanceTracked = :tracked', { tracked: true })
+      .andWhere('e.eventDate < :today', { today });
+    if (instituteId) qb.andWhere('e.instituteId = :instituteId', { instituteId });
+    // Cap each run so a huge backlog can't hold one transaction open forever.
+    qb.orderBy('e.eventDate', 'ASC').take(500);
+
+    const events = await qb.getMany();
+    let summarized = 0;
+    const errors: string[] = [];
+    for (const ev of events) {
+      try {
+        // Bulk close keeps unmarked as-is; admins can re-close individually to auto-absent.
+        await this.summarizeOneEvent(ev, 'KEEP_NOT_MARKED');
+        summarized++;
+      } catch (e: any) {
+        errors.push(`${ev.id}: ${e.message}`);
+      }
+    }
+    return {
+      success: true,
+      message: `Summarized ${summarized} event(s)`,
+      summarized,
+      remaining: Math.max(0, events.length - summarized),
+      errors,
+    };
+  }
+
+  /**
+   * Shared summarizer: one grouped COUNT query (not per-status), optional
+   * auto-absent for unmarked targets, then freeze counts + percent on the row.
+   */
+  private async summarizeOneEvent(
+    event: InstituteCalendarEventEntity,
+    unmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT',
+    userId?: string,
+  ): Promise<void> {
+    const instituteId = event.instituteId;
+    const eventId = event.id;
+
+    // Resolve target students for this event (used as percentage denominator and,
+    // when MARK_ABSENT, the set to auto-absent). Scope:
+    //  - CLASS scope with target_class_ids → those classes' verified students
+    //  - otherwise (INSTITUTE) → all verified institute students
+    let targetStudentIds: string[] = [];
+    const classIds: string[] = Array.isArray(event.targetClassIds) ? event.targetClassIds.map(String) : [];
+    if (event.targetScope === CalendarEventScope.CLASS && classIds.length > 0) {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT DISTINCT student_user_id AS id FROM institute_class_students
+         WHERE institute_id = ? AND is_active = 1 AND is_verified = 1
+           AND institute_class_id IN (${classIds.map(() => '?').join(',')})`,
+        [instituteId, ...classIds],
+      );
+      targetStudentIds = rows.map(r => String(r.id));
+    } else {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT user_id AS id FROM institute_user
+         WHERE institute_id = ? AND institute_user_type = 'STUDENT' AND is_active = 1`,
+        [instituteId],
+      );
+      targetStudentIds = rows.map(r => String(r.id));
+    }
+
+    // Auto-absent unmarked targets BEFORE counting, if requested.
+    if (unmarkAction === 'MARK_ABSENT' && targetStudentIds.length > 0) {
+      const markedRows: any[] = await this.dataSource.query(
+        `SELECT DISTINCT student_id AS id FROM attendance_records
+         WHERE institute_id = ? AND event_id = ?`,
+        [instituteId, eventId],
+      );
+      const marked = new Set(markedRows.map(r => String(r.id)));
+      const unmarked = targetStudentIds.filter(id => !marked.has(id));
+      if (unmarked.length > 0) {
+        const nowMs = Date.now();
+        const dateStr = typeof event.eventDate === 'string'
+          ? (event.eventDate as string).substring(0, 10)
+          : new Date(event.eventDate).toISOString().substring(0, 10);
+        const values: any[] = [];
+        const placeholders = unmarked.map((sid, i) => {
+          const sk = `ATTENDANCE#${dateStr}#TS#${nowMs + i}#S#${sid}#EVENT#${eventId}`;
+          values.push(`I#${instituteId}`, sk, instituteId, sid, dateStr, 0,
+            String(nowMs), eventId, 'STUDENT', 'SYSTEM', 'SYNCED');
+          return `(?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())`;
+        }).join(',');
+        // Insert absent rows; ignore dup key collisions on the dynamo pk/sk unique.
+        await this.dataSource.query(
+          `INSERT IGNORE INTO attendance_records
+             (dynamo_pk, dynamo_sk, institute_id, student_id, \`date\`, status,
+              \`timestamp\`, event_id, user_type, marking_method, sync_status, synced_at, created_at)
+           VALUES ${placeholders}`,
+          values,
+        );
+      }
+    }
+
+    // Single grouped count over the event's records.
+    const statusRows: any[] = await this.dataSource.query(
+      `SELECT status, COUNT(*) AS cnt FROM attendance_records
+       WHERE institute_id = ? AND event_id = ? GROUP BY status`,
+      [instituteId, eventId],
+    );
+    let present = 0, absent = 0, late = 0, left = 0;
+    for (const r of statusRows) {
+      const cnt = Number(r.cnt) || 0;
+      switch (Number(r.status)) {
+        case 1: present += cnt; break;
+        case 0: absent += cnt; break;
+        case 2: late += cnt; break;
+        case 3: case 4: case 5: left += cnt; break;
+      }
+    }
+    const total = targetStudentIds.length > 0
+      ? targetStudentIds.length
+      : (present + absent + late + left);
+    const attendancePercent = total > 0
+      ? Math.round(((present + late) / total) * 10000) / 100
+      : 0;
+
+    event.isAttendanceClosed = true;
+    event.attendanceClosedAt = new Date();
+    event.attendanceCloseUnmarkAction = unmarkAction;
+    event.summaryPresentCount = present;
+    event.summaryAbsentCount = absent;
+    event.summaryLateCount = late;
+    event.summaryLeftCount = left;
+    event.summaryTotalCount = total;
+    event.summaryAttendancePercent = attendancePercent;
+    if (userId) event.createdBy = event.createdBy; // no-op; reserved for future "closedBy"
+    await this.calendarEventRepo.save(event);
+  }
+
+  private mapEventSummary(e: InstituteCalendarEventEntity) {
+    return {
+      id: e.id,
+      title: e.title,
+      eventDate: e.eventDate,
+      startTime: e.startTime,
+      endTime: e.endTime,
+      eventType: e.eventType,
+      isAttendanceTracked: e.isAttendanceTracked,
+      isAttendanceClosed: e.isAttendanceClosed,
+      attendanceClosedAt: e.attendanceClosedAt,
+      attendanceCloseUnmarkAction: e.attendanceCloseUnmarkAction,
+      summaryPresentCount: e.summaryPresentCount,
+      summaryAbsentCount: e.summaryAbsentCount,
+      summaryLateCount: e.summaryLateCount,
+      summaryLeftCount: e.summaryLeftCount,
+      summaryTotalCount: e.summaryTotalCount,
+      summaryAttendancePercent: e.summaryAttendancePercent != null ? Number(e.summaryAttendancePercent) : null,
+    };
+  }
 
   /**
    * Set operating config for institute (weekly template)
@@ -474,6 +733,8 @@ export class InstituteCalendarService {
       startTime: dto.startTime,
       endTime: dto.endTime,
       isAttendanceTracked: dto.isAttendanceTracked ?? true,
+      lateAfterMinutes: dto.lateAfterMinutes ?? null,
+      leftEarlyBeforeMinutes: dto.leftEarlyBeforeMinutes ?? null,
       isDefault: dto.isDefault ?? false,
       status: dto.status,
       targetScope: dto.targetScope || dto.eventScope,

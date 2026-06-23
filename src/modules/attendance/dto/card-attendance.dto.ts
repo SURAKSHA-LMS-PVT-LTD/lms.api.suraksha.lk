@@ -48,9 +48,20 @@ export class MarkAttendanceByCardDto {
   @IsEnum(MarkingMethod)
   markingMethod: MarkingMethod;
 
-  @ApiProperty({ description: 'Attendance status', enum: AttendanceStatus, example: AttendanceStatus.PRESENT })
+  @ApiPropertyOptional({
+    description: 'Attendance status. Optional — when an eventId with time rules is provided, '
+      + 'the backend auto-resolves Present/Late/LeftEarly and ignores any value sent.',
+    enum: AttendanceStatus,
+    example: AttendanceStatus.PRESENT,
+  })
   @IsEnum(AttendanceStatus)
-  status: AttendanceStatus;
+  @IsOptional()
+  status?: AttendanceStatus;
+
+  @ApiPropertyOptional({ description: 'Calendar event ID — mark this scan against a specific event (status auto-resolves from the event time rules)' })
+  @IsOptional()
+  @IsString()
+  eventId?: string;
 
   @ApiPropertyOptional({ description: 'Class session ID — links this attendance record to a specific session' })
   @IsOptional()

@@ -258,6 +258,52 @@ export class AttendanceService {
     });
   }
 
+  /**
+   * Resolve the auto-status for a mark against a calendar event, from the event's
+   * time rules (lateAfterMinutes / leftEarlyBeforeMinutes) vs the current Sri Lanka
+   * time. Returns undefined when the event has no time rules (status left as sent).
+   *   Present   — at/before start + lateAfterMinutes
+   *   Late      — after that cutoff, but not yet in the left-early window
+   *   LeftEarly — after the late cutoff AND within leftEarlyBeforeMinutes of end_time
+   */
+  private async resolveEventAutoStatus(eventId: string): Promise<AttendanceStatus | undefined> {
+    try {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT start_time AS startTime, end_time AS endTime,
+                late_after_minutes AS lateAfter, left_early_before_minutes AS leftEarly
+         FROM institute_calendar_events WHERE id = ? LIMIT 1`,
+        [eventId],
+      );
+      const ev = rows[0];
+      if (!ev || ev.startTime == null) return undefined;
+      // No late rule → nothing to auto-resolve (keep whatever was sent / default).
+      if (ev.lateAfter == null) return undefined;
+
+      const toMin = (t: string) => {
+        const [h, m] = String(t).split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      // Current Sri Lanka minutes-of-day (UTC + 5:30).
+      const slNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
+      const nowMin = slNow.getUTCHours() * 60 + slNow.getUTCMinutes();
+      const startMin = toMin(ev.startTime);
+
+      if (nowMin > startMin + Number(ev.lateAfter)) {
+        if (ev.endTime && ev.leftEarly != null) {
+          const endMin = toMin(ev.endTime);
+          if (nowMin >= endMin - Number(ev.leftEarly)) {
+            return AttendanceStatus.LEFT_EARLY;
+          }
+        }
+        return AttendanceStatus.LATE;
+      }
+      return AttendanceStatus.PRESENT;
+    } catch (e: any) {
+      this.logger.warn(`resolveEventAutoStatus failed for event ${eventId}: ${e.message}`);
+      return undefined;
+    }
+  }
+
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
@@ -406,6 +452,25 @@ export class AttendanceService {
             `[${requestId}] âŒ CRITICAL: Could not resolve calendar day for institute ${markAttendanceDto.instituteId} on ${markAttendanceDto.date}. ` +
             `Attendance will still be saved but will NOT appear in calendar views.`
           );
+        }
+      }
+
+      // STEP 3.55: Auto-resolve status from the event's time rules.
+      // When attendance is marked against a calendar event that defines time rules
+      // (lateAfterMinutes / leftEarlyBeforeMinutes), the status is computed from the
+      // current time vs the event window — the marker never chooses it. This produces
+      // Present / Late / LeftEarly automatically.
+      {
+        const resolvedEventId = (markAttendanceDto as any).eventId;
+        if (resolvedEventId) {
+          const autoStatus = await this.resolveEventAutoStatus(resolvedEventId);
+          if (autoStatus) {
+            markAttendanceDto.status = autoStatus;
+          }
+        }
+        // Status is optional on the wire; default to PRESENT when nothing resolved it.
+        if (!markAttendanceDto.status) {
+          markAttendanceDto.status = AttendanceStatus.PRESENT;
         }
       }
 
@@ -1071,6 +1136,7 @@ export class AttendanceService {
       date: getCurrentSriLankaDate(),
       location: markAttendanceByCardDto.address,
       status: markAttendanceByCardDto.status,
+      eventId: markAttendanceByCardDto.eventId,
       markingMethod: markAttendanceByCardDto.markingMethod
     };
 
@@ -4394,14 +4460,19 @@ export class AttendanceService {
          WHERE (iu.user_id = ? OR iu.user_id_institue = ?) AND iu.institute_id = ? LIMIT 1`,
         [studentId, studentId, instituteId]),
       this.dataSource.query(
+        // Institute-user-profile "Institute Attendance" shows ONLY institute-level
+        // attendance — calendar-event-linked records (class_id IS NULL). Class
+        // attendance-session records belong to the class profile, not here.
+        // The displayed event start/end comes from the linked calendar event.
         `SELECT ar.date, ar.\`timestamp\` markedAt, ar.status, ar.marking_method markingMethod,
                 ar.location, ar.event_id eventId,
                 ev.title eventTitle, ev.event_type eventType,
                 ev.start_time eventStart, ev.end_time eventEnd,
                 ev.venue eventVenue, ev.is_mandatory isMandatory
          FROM attendance_records ar
-         LEFT JOIN institute_calendar_events ev ON ev.id = ar.event_id
+         INNER JOIN institute_calendar_events ev ON ev.id = ar.event_id
          WHERE ar.institute_id = ? AND ar.student_id = ? AND ar.class_id IS NULL
+           AND ar.event_id IS NOT NULL
            AND ar.date >= ? AND ar.date <= ?
          ORDER BY ar.date DESC LIMIT ?`,
         [instituteId, studentId, startDate, endDate, limit]),

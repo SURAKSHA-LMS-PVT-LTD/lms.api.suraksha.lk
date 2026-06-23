@@ -18,7 +18,8 @@ import { SecureUserResponseDto, PaginatedSecureUserResponseDto } from './dto/sec
 import { BulkVerificationDto, VerifyUserDto } from './dto/bulk-verification.dto';
 import { 
   AssignUserByPhoneDto, 
-  AssignParentByPhoneDto, 
+  AssignParentByPhoneDto,
+  AssignParentByIdDto,
   AssignStudentByRfidDto, 
   BulkAssignUsersDto,
   AssignmentResponseDto,
@@ -925,6 +926,26 @@ This creates the missing parent or student record with whatever (possibly empty)
   ): Promise<AssignmentResponseDto> {
     const currentUserId = (request?.user as any)?.id;
     return this.institueUserService.assignParentByPhone(studentId, assignDto, currentUserId);
+  }
+
+  @Post('student/:studentId/assign-parent-by-id')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: '✅ Assign parent to student by system user ID',
+    description: 'Assigns a parent to a student with explicit role specification, resolving the parent by their numeric system user ID. parentRole is REQUIRED - no auto-assignment.'
+  })
+  @ApiConsumes('application/json')
+  @ApiResponse({ status: 201, description: 'Parent successfully assigned to student', type: AssignmentResponseDto })
+  @ApiResponse({ status: 400, description: 'Parent not found, type mismatch, or invalid request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Valid JWT required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
+  @ApiResponse({ status: 409, description: 'Conflict - Parent role already assigned' })
+  async assignParentById(
+    @Param('studentId', ParseIdPipe) studentId: string,
+    @Body() assignDto: AssignParentByIdDto,
+  ): Promise<AssignmentResponseDto> {
+    return this.institueUserService.assignParentById(studentId, assignDto);
   }
 
   @Post('institute/:instituteId/assign-student-by-rfid')

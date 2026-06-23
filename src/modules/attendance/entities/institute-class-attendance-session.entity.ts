@@ -61,6 +61,22 @@ export class InstituteClassAttendanceSessionEntity {
     comment: 'Snapshot of student count when session was created' })
   totalStudents: number;
 
+  // ── Attendance summary — computed & frozen at close time ──────────────────
+  // These stay NULL while the session is open (no live COUNT queries). They are
+  // populated once in closeSession() so viewing a closed session needs no counting.
+  @Column({ name: 'summary_present_count', type: 'int', nullable: true })
+  summaryPresentCount?: number | null;
+
+  @Column({ name: 'summary_absent_count', type: 'int', nullable: true })
+  summaryAbsentCount?: number | null;
+
+  @Column({ name: 'summary_late_count', type: 'int', nullable: true })
+  summaryLateCount?: number | null;
+
+  @Column({ name: 'summary_attendance_percent', type: 'decimal', precision: 5, scale: 2, nullable: true,
+    comment: 'Attendance rate at close = (present + late) / total students × 100' })
+  summaryAttendancePercent?: number | null;
+
   @Column({ name: 'send_notifications', type: 'boolean', default: true,
     comment: 'Whether to send parent notifications when marking attendance in this session' })
   sendNotifications: boolean;

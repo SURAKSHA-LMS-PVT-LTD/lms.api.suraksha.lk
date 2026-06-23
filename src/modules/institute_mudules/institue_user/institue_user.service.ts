@@ -26,6 +26,7 @@ import { BulkVerificationDto, VerifyUserDto, VerificationResponseDto } from './d
 import {
   AssignUserByPhoneDto,
   AssignParentByPhoneDto,
+  AssignParentByIdDto,
   AssignStudentByRfidDto,
   BulkAssignUsersDto,
   AssignmentResponseDto,
@@ -2867,6 +2868,75 @@ export class InstitueUserService {
         select: ['id', 'firstName', 'lastName'] // Minimal fields for response only
       });
 
+      return await this.linkParentToStudent(
+        safeStudentId,
+        studentId,
+        parentUser,
+        assignDto.parentRole,
+        assignDto.userIdByInstitute,
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ConflictException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to assign parent: ${error.message}`);
+    }
+  }
+
+  /**
+   * ✅ Assign a parent to a student by system user ID.
+   * Mirrors assignParentByPhone but resolves the parent via numeric user ID.
+   */
+  async assignParentById(
+    studentId: string,
+    assignDto: AssignParentByIdDto,
+  ): Promise<AssignmentResponseDto> {
+    const safeStudentId = SecurityUtils.validateBigIntId(studentId, 'studentId');
+    const safeParentId = SecurityUtils.validateBigIntId(assignDto.userId, 'userId');
+
+    try {
+      const parentUser = await this.userRepository.findOne({
+        where: {
+          id: safeParentId,
+          userType: UserType.USER_WITHOUT_STUDENT,
+          isActive: true
+        },
+        select: ['id', 'firstName', 'lastName']
+      });
+
+      if (!parentUser) {
+        throw new BadRequestException(
+          `Parent with ID ${assignDto.userId} not found or user is not a parent`
+        );
+      }
+
+      return await this.linkParentToStudent(
+        safeStudentId,
+        studentId,
+        parentUser,
+        assignDto.parentRole,
+        assignDto.userIdByInstitute,
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ConflictException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to assign parent: ${error.message}`);
+    }
+  }
+
+  /**
+   * Shared core for assigning a resolved parent user to a student in a given role.
+   * Validates the parent record exists, checks the role slot is free, and updates
+   * the student row.
+   */
+  private async linkParentToStudent(
+    safeStudentId: any,
+    studentId: string,
+    parentUser: { id: any; firstName?: string; lastName?: string } | null,
+    parentRole: 'father' | 'mother' | 'guardian',
+    userIdByInstitute?: string,
+  ): Promise<AssignmentResponseDto> {
       // 🚀 STEP 3: Check if parent record exists (simple exists check)
       const parentExists = await this.parentRepository.exists({
         where: { userId: parentUser.id }
@@ -2893,19 +2963,19 @@ export class InstitueUserService {
       let fieldName: string;
 
       // Check if the requested role is available
-      if (assignDto.parentRole === 'father') {
+      if (parentRole === 'father') {
         if (currentStudent.fatherId) {
           throw new ConflictException(`Student already has a father assigned (ID: ${currentStudent.fatherId}). Cannot assign another parent as father.`);
         }
         updateField = 'fatherId';
         fieldName = 'father';
-      } else if (assignDto.parentRole === 'mother') {
+      } else if (parentRole === 'mother') {
         if (currentStudent.motherId) {
           throw new ConflictException(`Student already has a mother assigned (ID: ${currentStudent.motherId}). Cannot assign another parent as mother.`);
         }
         updateField = 'motherId';
         fieldName = 'mother';
-      } else if (assignDto.parentRole === 'guardian') {
+      } else if (parentRole === 'guardian') {
         if (currentStudent.guardianId) {
           throw new ConflictException(`Student already has a guardian assigned (ID: ${currentStudent.guardianId}). Cannot assign another parent as guardian.`);
         }
@@ -2929,18 +2999,11 @@ export class InstitueUserService {
 
       return {
         success: true,
-        message: `Parent ${parentUser.firstName || 'Unknown'} ${parentUser.lastName || ''} successfully assigned as ${fieldName} to student${assignDto.userIdByInstitute ? ` with ID: ${assignDto.userIdByInstitute}` : ''}`,
+        message: `Parent ${parentUser.firstName || 'Unknown'} ${parentUser.lastName || ''} successfully assigned as ${fieldName} to student${userIdByInstitute ? ` with ID: ${userIdByInstitute}` : ''}`,
         userId: parentUser.id.toString(),
         instituteId: studentId,
-        userIdByInstitute: assignDto.userIdByInstitute
+        userIdByInstitute: userIdByInstitute
       };
-
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException(`Failed to assign parent: ${error.message}`);
-    }
   }
 
   /**
