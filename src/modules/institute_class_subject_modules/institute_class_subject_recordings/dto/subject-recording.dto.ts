@@ -1,7 +1,7 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEnum,
-  IsBoolean, IsNumber, IsArray, ValidateNested,
-  IsUrl, ValidateIf, Min,
+  IsBoolean, IsNumber, IsInt, IsArray, ValidateNested,
+  IsUrl, ValidateIf, Min, Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
@@ -118,6 +118,16 @@ export class CreateSubjectRecordingDto {
   @ApiPropertyOptional({ type: [String] })
   @IsOptional() @IsArray()
   recPaymentStatuses?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Days to track full watch activity. 0 = attendance-only; 1-30 = activity tracking for N days; null = no limit.',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  recTrackingDays?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional() @IsString()

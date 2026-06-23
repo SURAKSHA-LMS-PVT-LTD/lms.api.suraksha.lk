@@ -1,7 +1,7 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateInstituteClassSubjectLectureDto, LectureStatus, LectureMaterialDto } from './create-institute_class_subject_lecture.dto';
-import { IsEnum, IsOptional, IsString, IsBoolean, IsUrl, IsNumber, IsDateString, IsArray, ValidateNested } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsBoolean, IsUrl, IsNumber, IsInt, IsDateString, IsArray, ValidateNested, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { InstituteClassSubjectLectureResponseDto } from './Institute-class-subject-lecture-response.dto';
@@ -143,6 +143,22 @@ export class UpdateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsArray()
   recPaymentStatuses?: string[];
+
+  @ApiProperty({
+    description: 'Days to track full watch activity. 0 = attendance-only; 1-30 = activity tracking for N days; null = no limit.',
+    required: false, nullable: true,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  recTrackingDays?: number | null;
+
+  @ApiProperty({ description: 'Recording duration in seconds', required: false, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  recDurationSeconds?: number | null;
 
   @ApiProperty({ description: 'Enable welcome message', default: false })
   @IsOptional()

@@ -1,5 +1,5 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bigint-id.validator';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber, IsUrl, ValidateNested, IsArray, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber, IsInt, IsUrl, ValidateNested, IsArray, ValidateIf, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 
@@ -215,6 +215,22 @@ export class CreateInstituteClassSubjectLectureDto {
   @IsOptional()
   @IsArray()
   recPaymentStatuses?: string[];
+
+  @ApiProperty({
+    description: 'Days to track full watch activity. 0 = attendance-only; 1-30 = activity tracking for N days; null = no limit.',
+    required: false, nullable: true,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  recTrackingDays?: number | null;
+
+  @ApiProperty({ description: 'Recording duration in seconds', required: false, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  recDurationSeconds?: number | null;
 
   @ApiProperty({ description: 'Enable welcome message', default: false })
   @IsOptional()

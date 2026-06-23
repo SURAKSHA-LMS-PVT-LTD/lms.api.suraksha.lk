@@ -141,6 +141,15 @@ export class SubjectRecording {
   @Column({ name: 'rec_url_expires_at', type: 'datetime', nullable: true })
   recUrlExpiresAt?: Date;
 
+  /**
+   * How many days after publishing to track full watch activity.
+   * 0 = only record view attendance (no heartbeat/seek events).
+   * 1–30 = track activity for that many days.
+   * null = no time limit (always track).
+   */
+  @Column({ name: 'rec_tracking_days', type: 'int', nullable: true })
+  recTrackingDays?: number | null;
+
   // ─── Welcome message ──────────────────────────────────────────────────────
 
   @Column({ name: 'welcome_message_enabled', type: 'boolean', default: false })

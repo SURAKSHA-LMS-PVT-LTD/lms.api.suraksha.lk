@@ -88,6 +88,8 @@ export class InstituteClassSubjectLecturesService {
         recAccessLevel: createDto.recAccessLevel ?? 'ENROLLED_ONLY',
         recPaymentId: createDto.recPaymentId,
         recPaymentStatuses: createDto.recPaymentStatuses,
+        recTrackingDays: createDto.recTrackingDays ?? null,
+        recDurationSeconds: createDto.recDurationSeconds ?? null,
 
         welcomeMessageEnabled: createDto.welcomeMessageEnabled ?? false,
         welcomeMessageText: createDto.welcomeMessageText?.trim() || null,
@@ -345,6 +347,8 @@ export class InstituteClassSubjectLecturesService {
       if (updateDto.recAccessLevel !== undefined) updateData.recAccessLevel = updateDto.recAccessLevel;
       if (updateDto.recPaymentId !== undefined) updateData.recPaymentId = updateDto.recPaymentId;
       if (updateDto.recPaymentStatuses !== undefined) updateData.recPaymentStatuses = updateDto.recPaymentStatuses;
+      if (updateDto.recTrackingDays !== undefined) updateData.recTrackingDays = updateDto.recTrackingDays;
+      if (updateDto.recDurationSeconds !== undefined) updateData.recDurationSeconds = updateDto.recDurationSeconds;
 
       if (updateDto.welcomeMessageEnabled !== undefined) updateData.welcomeMessageEnabled = updateDto.welcomeMessageEnabled;
       if (updateDto.welcomeMessageText !== undefined) {
@@ -511,6 +515,8 @@ export class InstituteClassSubjectLecturesService {
           recAccessLevel: dto.recAccessLevel ?? 'ENROLLED_ONLY',
           recPaymentId: dto.recPaymentId,
           recPaymentStatuses: dto.recPaymentStatuses,
+          recTrackingDays: dto.recTrackingDays ?? null,
+          recDurationSeconds: dto.recDurationSeconds ?? null,
 
           createdAt: timestamp,
           updatedAt: timestamp,

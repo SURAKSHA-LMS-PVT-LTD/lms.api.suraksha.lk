@@ -190,6 +190,15 @@ export class InstituteClassSubjectLecture {
   @Column({ name: 'rec_duration_seconds', type: 'int', nullable: true })
   recDurationSeconds?: number;
 
+  /**
+   * How many days after publishing to track full watch activity.
+   * 0 = only record view attendance (no heartbeat/seek events).
+   * 1–30 = track activity for that many days.
+   * null = no time limit (always track).
+   */
+  @Column({ name: 'rec_tracking_days', type: 'int', nullable: true })
+  recTrackingDays?: number | null;
+
   @Column({ name: 'welcome_message_enabled', type: 'boolean', default: false })
   welcomeMessageEnabled: boolean;
 

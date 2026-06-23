@@ -57,6 +57,7 @@ export class SubjectRecordingsService {
       recAccessLevel: dto.recAccessLevel ?? 'ENROLLED_ONLY' as any,
       recPaymentId: dto.recPaymentId,
       recPaymentStatuses: dto.recPaymentStatuses,
+      recTrackingDays: dto.recTrackingDays ?? null,
       recEntryBgUrl: dto.recEntryBgUrl,
       recCardImageUrl: dto.recCardImageUrl,
       recCardImageTtl: dto.recCardImageTtl ? new Date(dto.recCardImageTtl) : undefined,
@@ -157,6 +158,7 @@ export class SubjectRecordingsService {
     if (dto.recAccessLevel !== undefined) updates.recAccessLevel = dto.recAccessLevel as any;
     if (dto.recPaymentId !== undefined) updates.recPaymentId = dto.recPaymentId;
     if (dto.recPaymentStatuses !== undefined) updates.recPaymentStatuses = dto.recPaymentStatuses;
+    if (dto.recTrackingDays !== undefined) updates.recTrackingDays = dto.recTrackingDays;
     if (dto.recEntryBgUrl !== undefined) updates.recEntryBgUrl = dto.recEntryBgUrl;
     if (dto.recCardImageUrl !== undefined) updates.recCardImageUrl = dto.recCardImageUrl;
     if (dto.recCardImageTtl !== undefined) updates.recCardImageTtl = new Date(dto.recCardImageTtl);
