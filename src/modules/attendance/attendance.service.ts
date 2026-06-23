@@ -4245,7 +4245,9 @@ export class AttendanceService {
         this.dataSource.query(
           `SELECT l.id, l.title, l.status, l.start_time startTime, l.end_time endTime,
                 l.live_attendance_enabled liveEnabled, l.rec_attendance_enabled recEnabled,
+                l.live_attendance_enabled liveAttendanceEnabled,
                 l.recording_url recordingUrl, l.rec_duration_seconds recDuration,
+                l.lecture_summary lectureSummary,
                 sub.id subjectId, sub.name subjectName
          FROM institute_class_subject_lectures l
          LEFT JOIN subjects sub ON sub.id = l.subject_id
@@ -4352,7 +4354,9 @@ export class AttendanceService {
         id: l.id, title: l.title, status: l.status, startTime: l.startTime, endTime: l.endTime,
         subjectId: l.subjectId, subjectName: l.subjectName,
         liveEnabled: !!l.liveEnabled, recEnabled: !!l.recEnabled,
+        liveAttendanceEnabled: !!l.liveAttendanceEnabled,
         recordingUrl: l.recordingUrl, recDurationSeconds: l.recDuration,
+        lectureSummary: typeof l.lectureSummary === 'string' ? JSON.parse(l.lectureSummary) : (l.lectureSummary ?? null),
         liveAttendance: {
           present: lRows.length > 0, totalSessions: lRows.length, totalSeconds: liveSecs,
           sessions: lRows.map((r: any) => ({ joinTime: r.joinTime, leaveTime: r.leaveTime })),

@@ -873,6 +873,16 @@ export class LectureTrackingService {
       throw new ForbiddenException('Not your session');
     }
 
+    // Enforce recTrackingDays: silently drop heartbeats if the tracking window has closed
+    if (session.lectureId) {
+      const lecture = await this.lectureRepo.findOne({ where: { id: session.lectureId as any }, select: ['recTrackingDays', 'createdAt'] });
+      if (lecture?.recTrackingDays != null && lecture.createdAt) {
+        const cutoff = new Date(lecture.createdAt);
+        cutoff.setDate(cutoff.getDate() + lecture.recTrackingDays);
+        if (new Date() > cutoff) return { success: true };
+      }
+    }
+
     // Only persist storable types; unknown types are silently skipped
     const storableTypes = new Set([
       'PLAY', 'PAUSE', 'SEEK', 'HEARTBEAT',
