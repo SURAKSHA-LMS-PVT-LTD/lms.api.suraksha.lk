@@ -60,7 +60,9 @@ export interface PublicRegistrationPayload {
   religion?: string;
   birthCertificateNo?: string;
   email?: string;
+  emailOtpId?: string;
   phoneNumber?: string;
+  phoneOtpId?: string;
   dateOfBirth?: string;
   gender?: string;
   nic?: string;
@@ -499,12 +501,18 @@ export class InstituteSelfRegistrationService {
     let emailVerified = false;
     if (link.requirePhoneVerification) {
       if (!payload.phoneNumber) throw new BadRequestException('Phone number is required.');
-      await this.otpService.assertRegistrationVerified({ phoneNumber: payload.phoneNumber });
+      await this.otpService.assertRegistrationVerified({
+        phoneNumber: payload.phoneNumber,
+        phoneOtpId: payload.phoneOtpId,
+      });
       phoneVerified = true;
     }
     if (link.requireEmailVerification) {
       if (!payload.email) throw new BadRequestException('Email address is required.');
-      await this.otpService.assertRegistrationVerified({ email: payload.email });
+      await this.otpService.assertRegistrationVerified({
+        email: payload.email,
+        emailOtpId: payload.emailOtpId,
+      });
       emailVerified = true;
     }
 
