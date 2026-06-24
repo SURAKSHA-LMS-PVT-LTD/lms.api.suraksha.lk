@@ -1104,17 +1104,52 @@ export class UsersController {
     userType: UserType;
   }> {
     const user = await this.usersService.getUserBasicInfoById(userId);
-    
+
     if (!user) {
       throw new NotFoundException('User not found or inactive');
     }
-    
+
     return user;
   }
 
   /**
+   * 🔗 Get link profile for "Link Existing Account" mode.
+   *
+   * Returns a column-existence map (booleans) for the user + student + parent records
+   * so the institute-admin link form can hide already-filled fields and only collect
+   * the missing ones. Sensitive column VALUES are never returned — only existence flags
+   * plus the safe display fields (id, fullName, nameWithInitials, imageUrl, userType).
+   *
+   * @param userId  System user ID to inspect
+   * @param userType  Institute role being assigned (STUDENT pulls in student/parent context)
+   */
+  @Get(':userId/link-profile')
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '🔗 Get field-existence profile for linking an existing user to an institute',
+    description:
+      'Returns boolean existence flags for user/student/parent columns (no sensitive values) ' +
+      'so the link form can hide already-filled fields. Also reports whether the user already ' +
+      'has a Suraksha RFID / card so the card-link UI can be suppressed.',
+  })
+  @ApiParam({ name: 'userId', type: String, description: 'System user ID', example: '40' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Link profile retrieved successfully' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'User not found or inactive' })
+  async getUserLinkProfile(
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Query('userType') userType?: string,
+  ) {
+    const profile = await this.usersService.getLinkProfile(userId, userType);
+    if (!profile) {
+      throw new NotFoundException('User not found or inactive');
+    }
+    return profile;
+  }
+
+  /**
    * Get Current User Profile
-   * 
+   *
    * Retrieves the authenticated user's own profile information.
    * Users can only access their own profile data for privacy.
    * 

@@ -149,5 +149,41 @@ their password and complete their profile.
     const adminUserId: string = req.user.s ?? req.user.userId ?? req.user.sub;
     return this.instituteAdminUserService.createInstituteUser(instituteId, adminUserId, dto);
   }
+
+  /**
+   * 🔗 Link an EXISTING user to the institute (and complete missing data).
+   *
+   * Same payload shape as create ({@link CreateInstituteUserDto}). The user is resolved
+   * by `:userId`; we never create a new user. Only columns that are currently EMPTY on
+   * the user / student / parent records are written — existing data is never overwritten.
+   * For STUDENT role, a student record is created if missing and empty parent slots are
+   * linked. Use `GET /users/:userId/link-profile` first to know which fields to collect.
+   */
+  @Post(':userId/link')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireAnyOfRoles({ instituteAdmin: true })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID', example: '42' })
+  @ApiParam({ name: 'userId', description: 'Existing system user ID to link', example: '123' })
+  @ApiOperation({
+    summary: 'Link an existing user to the institute, completing only the missing data',
+    description:
+      'Assigns an already-registered user to the institute and fills only the empty ' +
+      'user/student/parent columns from the payload. Existing values are never overwritten. ' +
+      'Creates a student record if the role is STUDENT and none exists; links empty parent slots only.',
+  })
+  @ApiBody({ type: CreateInstituteUserDto })
+  @ApiResponse({ status: HttpStatus.CREATED, description: 'User linked successfully', type: CreateInstituteUserResponseDto })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Role conflict or invalid request' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'User already assigned to this institute for this role' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Institute or user not found' })
+  async linkInstituteUser(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseBigIntPipe) userId: string,
+    @Body() dto: CreateInstituteUserDto,
+    @Request() req: any,
+  ): Promise<CreateInstituteUserResponseDto> {
+    const adminUserId: string = req.user.s ?? req.user.userId ?? req.user.sub;
+    return this.instituteAdminUserService.linkInstituteUser(instituteId, adminUserId, userId, dto);
+  }
 }
 

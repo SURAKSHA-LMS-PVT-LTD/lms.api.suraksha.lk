@@ -210,6 +210,8 @@ export class SubjectRecordingTrackingService {
       welcomeMessageVoiceEnabled: rec.welcomeMessageVoiceEnabled,
       // Only expose the actual URL once access is confirmed
       recordingUrl: hasAccess ? rec.recordingUrl : undefined,
+      // 0 = view-only (no activity events collected), null/undefined = unlimited
+      recTrackingDays: rec.recTrackingDays ?? null,
     };
   }
 

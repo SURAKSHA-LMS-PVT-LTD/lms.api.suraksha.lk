@@ -520,8 +520,418 @@ export class InstituteAdminUserService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // PUBLIC: Link an EXISTING user to an institute (and complete missing data)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Link an already-registered user to the institute, completing any missing
+   * profile / student / parent data along the way.
+   *
+   * Reuses the same {@link CreateInstituteUserDto} shape as create, so the frontend
+   * submits an identical payload. The difference from create:
+   *  - The user already exists (resolved by `userId`); we do NOT create a new user.
+   *  - Only EMPTY columns are written — existing data is never overwritten.
+   *  - For STUDENT role: a student record is created if absent; parent slots are
+   *    only filled when currently empty (existing father/mother/guardian untouched).
+   *  - Images, smart cards, house, and class/subject enrollment reuse the create helpers.
+   *
+   * @param instituteId  Institute the admin manages.
+   * @param adminUserId  Calling institute admin (audit actor).
+   * @param userId       Existing system user to link.
+   * @param dto          Same payload shape as create; only missing fields are applied.
+   */
+  async linkInstituteUser(
+    instituteId: string,
+    adminUserId: string,
+    userId: string,
+    dto: CreateInstituteUserDto,
+  ): Promise<CreateInstituteUserResponseDto> {
+    // Validate institute + admin authorization (same rules as create).
+    const institute = await this.instituteRepository.findOne({ where: { id: instituteId } });
+    if (!institute) {
+      throw new NotFoundException(`Institute not found: ${instituteId}`);
+    }
+    await this.assertInstituteAdmin(adminUserId, instituteId);
+
+    // Reject a client-supplied institute user-id when the institute auto-generates them.
+    if (institute.userIdAutoGenerate && dto.userIdByInstitute) {
+      throw new BadRequestException(
+        'This institute auto-generates user IDs. You cannot provide a custom userIdByInstitute.',
+      );
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // ── 1. Load the existing user ────────────────────────────────────────
+      const existingUser = await queryRunner.manager.findOne(UserEntity, {
+        where: { id: userId },
+      });
+      if (!existingUser || existingUser.isActive === false) {
+        throw new NotFoundException(`User ${userId} not found or inactive`);
+      }
+
+      // ── 2. Role-assignment validation ────────────────────────────────────
+      // STUDENT role requires the user to be eligible to play the student role.
+      // USER_WITHOUT_STUDENT users cannot be students.
+      if (
+        dto.instituteUserType === InstituteUserType.STUDENT &&
+        existingUser.userType === UserType.USER_WITHOUT_STUDENT
+      ) {
+        throw new BadRequestException(
+          'This user is a parent-only account (USER_WITHOUT_STUDENT) and cannot be assigned as a STUDENT.',
+        );
+      }
+
+      // ── 2b. Reject duplicate assignment for the same role ────────────────
+      const alreadyAssigned = await queryRunner.manager.findOne(InstituteUserEntity, {
+        where: { instituteId, userId, instituteUserType: dto.instituteUserType },
+      });
+      if (alreadyAssigned) {
+        throw new ConflictException(
+          `User is already assigned to this institute as ${dto.instituteUserType}.`,
+        );
+      }
+
+      // ── 3. Auto-generate institute user-id inside the tx (rollback-safe) ─
+      if (institute.userIdAutoGenerate) {
+        dto.userIdByInstitute = await this.generateNextInstituteUserId(
+          institute,
+          queryRunner.manager,
+        );
+      }
+
+      // ── 4. Fill ONLY the empty columns on the user record ────────────────
+      await this.fillMissingUserFields(queryRunner, existingUser, dto);
+
+      // ── 5. STUDENT: ensure student record + fill missing + link empty parents
+      let studentRecord: StudentEntity | undefined;
+      if (dto.instituteUserType === InstituteUserType.STUDENT) {
+        studentRecord = await this.ensureStudentRecord(queryRunner, existingUser.id, dto);
+
+        const slots: Array<'father' | 'mother' | 'guardian'> = ['father', 'mother', 'guardian'];
+        const updates: Partial<StudentEntity> = {};
+        for (const role of slots) {
+          const parentDto = dto[role];
+          const slotKey = `${role}Id` as 'fatherId' | 'motherId' | 'guardianId';
+          // Only link when the slot is currently EMPTY and parent contact is provided.
+          const slotEmpty = !studentRecord![slotKey];
+          if (slotEmpty && parentDto && (parentDto.email || parentDto.phoneNumber)) {
+            updates[slotKey] = await this.createOrFindParent(queryRunner, parentDto, adminUserId) as any;
+          }
+        }
+        if (Object.keys(updates).length) {
+          await queryRunner.manager.update(StudentEntity, { userId: existingUser.id }, {
+            ...updates,
+            updatedAt: now(),
+          });
+        }
+      }
+
+      // ── 6. Images (same semantics as create) ─────────────────────────────
+      const imageResults: {
+        instituteImage?: InstituteUserCreationImageResultDto;
+        globalImage?: InstituteUserCreationImageResultDto;
+      } = {};
+      const instImgStatus =
+        dto.instituteImageVerificationStatus === 'PENDING'
+          ? ImageVerificationStatus.PENDING
+          : ImageVerificationStatus.VERIFIED;
+
+      if (dto.instituteUserImageUrl) {
+        await queryRunner.manager.save(
+          queryRunner.manager.create(UserImageEntity, {
+            userId: existingUser.id,
+            imageUrl: dto.instituteUserImageUrl,
+            scope: ImageScope.INSTITUTE,
+            instituteId,
+            status: instImgStatus,
+            verifiedBy: instImgStatus === ImageVerificationStatus.VERIFIED ? adminUserId : null,
+            verifiedAt: now(),
+            createdAt: now(),
+            updatedAt: now(),
+          }),
+        );
+        imageResults.instituteImage = {
+          scope: ImageScope.INSTITUTE,
+          status: instImgStatus,
+          imageUrl: this.safeFullUrl(dto.instituteUserImageUrl),
+          note: instImgStatus === ImageVerificationStatus.VERIFIED
+            ? 'Auto-verified by institute admin'
+            : 'Pending approval',
+        };
+      }
+
+      // Global image only when the user has no verified profile image yet.
+      if (dto.globalImageUrl && !existingUser.imageUrl) {
+        await queryRunner.manager.save(
+          queryRunner.manager.create(UserImageEntity, {
+            userId: existingUser.id,
+            imageUrl: dto.globalImageUrl,
+            scope: ImageScope.GLOBAL,
+            status: ImageVerificationStatus.PENDING,
+            createdAt: now(),
+            updatedAt: now(),
+          }),
+        );
+        await queryRunner.manager.update(UserEntity, { id: existingUser.id }, {
+          imageVerificationStatus: ImageVerificationStatus.PENDING,
+          updatedAt: now(),
+        });
+        imageResults.globalImage = {
+          scope: ImageScope.GLOBAL,
+          status: ImageVerificationStatus.PENDING,
+          imageUrl: this.safeFullUrl(dto.globalImageUrl),
+          note: 'Requires system admin approval. ID card will be sent after approval.',
+        };
+      }
+
+      // ── 7. Institute assignment ──────────────────────────────────────────
+      await queryRunner.manager.save(
+        queryRunner.manager.create(InstituteUserEntity, {
+          instituteId,
+          userId: existingUser.id,
+          instituteUserType: dto.instituteUserType,
+          userIdByInstitute: dto.userIdByInstitute ?? null,
+          instituteCardId: dto.instituteCardId ?? null,
+          instituteUserImageUrl: dto.instituteUserImageUrl ?? null,
+          imageVerificationStatus: dto.instituteUserImageUrl
+            ? instImgStatus
+            : ImageVerificationStatus.PENDING,
+          imageVerifiedBy: (dto.instituteUserImageUrl && instImgStatus === ImageVerificationStatus.VERIFIED) ? adminUserId : null,
+          status: InstituteUserStatus.ACTIVE,
+          verifiedBy: adminUserId,
+          verifiedAt: now(),
+          createdAt: now(),
+          updatedAt: now(),
+          houseId: dto.houseId ?? null,
+          extraData: dto.extraData ?? null,
+        }),
+      );
+
+      // ── 8. Smart cards — skip scopes the user already has ────────────────
+      const smartCardResults: Array<{ scope: string; cardId: string; cardName: string }> = [];
+      if (dto.autoAssignInstituteCard && existingUser.cardId) dto.autoAssignInstituteCard = false;
+      if (dto.autoAssignSurakshaCard && existingUser.rfid) dto.autoAssignSurakshaCard = false;
+
+      const wantsCard =
+        dto.autoAssignInstituteCard || dto.autoAssignSurakshaCard || !!dto.surakshaCardId || !!dto.instituteCardId;
+      if (wantsCard && this.smartCardsService) {
+        await this.smartCardsService.assertFeatureEnabled(instituteId);
+        const tryAssign = async (scope: SmartCardScope, cardValue: string | undefined) => {
+          const card = await this.smartCardsService!.assignCardToUser(
+            instituteId,
+            { userId: existingUser.id, scope, cardValue },
+            adminUserId,
+            queryRunner.manager,
+          );
+          smartCardResults.push({ scope, cardId: card.cardId, cardName: card.cardName });
+        };
+        if (dto.instituteCardId || dto.autoAssignInstituteCard) {
+          await tryAssign(SmartCardScope.INSTITUTE, dto.autoAssignInstituteCard ? undefined : dto.instituteCardId);
+        }
+        if (dto.surakshaCardId || dto.autoAssignSurakshaCard) {
+          await tryAssign(SmartCardScope.GLOBAL, dto.autoAssignSurakshaCard ? undefined : dto.surakshaCardId);
+        }
+      }
+
+      // ── 9. House enrollment ──────────────────────────────────────────────
+      let houseEnrolled = false;
+      if (dto.houseId) {
+        const house = await queryRunner.manager.findOne(InstituteHouseEntity, {
+          where: { id: dto.houseId, instituteId, isActive: true },
+        });
+        if (!house) {
+          throw new BadRequestException(`House ${dto.houseId} not found in institute ${instituteId}.`);
+        }
+        const existingMember = await queryRunner.manager.findOne(InstituteHouseMemberEntity, {
+          where: { houseId: dto.houseId, userId: existingUser.id, instituteId },
+        });
+        if (!existingMember) {
+          await queryRunner.manager.save(
+            queryRunner.manager.create(InstituteHouseMemberEntity, {
+              houseId: dto.houseId,
+              instituteId,
+              userId: existingUser.id,
+              enrolledBy: adminUserId,
+              enrollmentMethod: HouseEnrollmentMethod.AUTO,
+              isActive: true,
+              createdAt: now(),
+              updatedAt: now(),
+            }),
+          );
+        } else if (!existingMember.isActive) {
+          await queryRunner.manager.update(InstituteHouseMemberEntity, { id: existingMember.id }, {
+            isActive: true, updatedAt: now(),
+          });
+        }
+        houseEnrolled = true;
+      }
+
+      // ── 10. Class & subject enrollments (STUDENT only) ───────────────────
+      const classEnrollmentResults: any[] = [];
+      if (dto.instituteUserType === InstituteUserType.STUDENT && dto.classEnrollments?.length) {
+        for (const ce of dto.classEnrollments) {
+          classEnrollmentResults.push(
+            await this.enrollStudentToClass(
+              queryRunner,
+              existingUser.id,
+              instituteId,
+              ce.classId,
+              ce.subjectEnrollments ?? [],
+              adminUserId,
+              dto.extraData ?? null,
+              'verified',
+            ),
+          );
+        }
+      }
+
+      await queryRunner.commitTransaction();
+
+      // Reload for an accurate response snapshot.
+      const finalUser = await this.userRepository.findOne({ where: { id: existingUser.id } }) ?? existingUser;
+
+      const notificationSent = dto.sendWelcomeNotifications !== false
+        ? await this.sendWelcome(finalUser, dto.instituteUserType, instituteId)
+        : false;
+
+      const requiresFirstLogin = finalUser.profileCompletionStatus === ProfileCompletionStatus.INCOMPLETE;
+
+      return {
+        success: true,
+        message: `Existing user linked to ${institute.name} as ${dto.instituteUserType}`,
+        smartCards: smartCardResults.length ? smartCardResults : undefined,
+        userId: finalUser.id,
+        userIdByInstitute: dto.userIdByInstitute ?? undefined,
+        firstName: finalUser.firstName ?? undefined,
+        lastName: finalUser.lastName ?? undefined,
+        nameWithInitials: finalUser.nameWithInitials ?? undefined,
+        email: finalUser.email ?? undefined,
+        phoneNumber: finalUser.phoneNumber ?? undefined,
+        instituteUserType: dto.instituteUserType,
+        profileCompletionStatus: finalUser.profileCompletionStatus,
+        profileCompletionPercentage: finalUser.profileCompletionPercentage ?? 0,
+        requiresFirstLogin,
+        firstLoginUrl: requiresFirstLogin
+          ? `${process.env.FRONTEND_URL ?? 'https://lms.suraksha.lk'}/first-login?userId=${finalUser.id}`
+          : undefined,
+        studentId: studentRecord?.studentId,
+        instituteImage: imageResults.instituteImage,
+        globalImage: imageResults.globalImage,
+        classEnrollments: classEnrollmentResults.length ? classEnrollmentResults : undefined,
+        houseId: dto.houseId ?? undefined,
+        houseEnrolled,
+        welcomeNotificationSent: notificationSent,
+      } as CreateInstituteUserResponseDto;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`linkInstituteUser failed: ${error.message}`, error.stack);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // PRIVATE HELPERS
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Write ONLY the empty columns of an existing user from the link DTO.
+   * Existing (non-empty) values are never overwritten — the form already hid those
+   * fields, but we double-guard here so a stale client cannot clobber real data.
+   */
+  private async fillMissingUserFields(
+    queryRunner: QueryRunner,
+    user: UserEntity,
+    dto: CreateInstituteUserDto,
+  ): Promise<void> {
+    const isEmpty = (v: unknown): boolean =>
+      v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+
+    const updates: Partial<UserEntity> = {};
+    const setIfMissing = (col: keyof UserEntity, current: unknown, incoming: unknown) => {
+      if (isEmpty(current) && !isEmpty(incoming)) {
+        (updates as any)[col] = incoming;
+      }
+    };
+
+    setIfMissing('firstName', user.firstName, dto.firstName);
+    setIfMissing('lastName', user.lastName, dto.lastName);
+    setIfMissing('nameWithInitials', user.nameWithInitials, dto.nameWithInitials);
+    setIfMissing('fullName', user.fullName, dto.fullName);
+    setIfMissing('religion', user.religion, dto.religion);
+    setIfMissing('birthCertificateNo', user.birthCertificateNo, dto.birthCertificateNo);
+    setIfMissing('email', user.email, dto.email ? dto.email.toLowerCase() : undefined);
+    setIfMissing('phoneNumber', user.phoneNumber, dto.phoneNumber);
+    setIfMissing('gender', user.gender, dto.gender);
+    setIfMissing('dateOfBirth', user.dateOfBirth, dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined);
+    setIfMissing('nic', user.nic, dto.nic);
+    setIfMissing('addressLine1', user.addressLine1, dto.addressLine1);
+    setIfMissing('addressLine2', user.addressLine2, dto.addressLine2);
+    setIfMissing('city', user.city, dto.city);
+    setIfMissing('district', user.district, dto.district);
+    setIfMissing('province', user.province, dto.province);
+    setIfMissing('postalCode', user.postalCode, dto.postalCode);
+
+    if (Object.keys(updates).length) {
+      updates.updatedAt = now();
+      await queryRunner.manager.update(UserEntity, { id: user.id }, updates);
+      Object.assign(user, updates); // keep the in-memory copy fresh for the response
+    }
+  }
+
+  /**
+   * Ensure a `students` row exists for the user, creating it if missing and
+   * filling only the empty student columns from the link DTO.
+   * Returns the (existing or newly created) student record.
+   */
+  private async ensureStudentRecord(
+    queryRunner: QueryRunner,
+    userId: string,
+    dto: CreateInstituteUserDto,
+  ): Promise<StudentEntity> {
+    let student = await queryRunner.manager.findOne(StudentEntity, { where: { userId } });
+
+    if (!student) {
+      const studentId = dto.studentData?.studentId || await this.generateUniqueStudentId(queryRunner);
+      student = await queryRunner.manager.save(
+        queryRunner.manager.create(StudentEntity, {
+          userId,
+          studentId,
+          emergencyContact: dto.studentData?.emergencyContact ?? null,
+          bloodGroup: (dto.studentData?.bloodGroup as any) ?? null,
+          medicalConditions: dto.studentData?.medicalConditions ?? null,
+          allergies: dto.studentData?.allergies ?? null,
+          cardDeliveryRecipient: dto.studentData?.cardDeliveryRecipient ?? null,
+          isActive: true,
+          createdAt: now(),
+          updatedAt: now(),
+        }),
+      );
+      return student;
+    }
+
+    // Student exists — fill only empty columns.
+    const isEmpty = (v: unknown): boolean =>
+      v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+    const updates: Partial<StudentEntity> = {};
+    if (isEmpty(student.emergencyContact) && dto.studentData?.emergencyContact) updates.emergencyContact = dto.studentData.emergencyContact;
+    if (isEmpty(student.bloodGroup) && dto.studentData?.bloodGroup) updates.bloodGroup = dto.studentData.bloodGroup as any;
+    if (isEmpty(student.medicalConditions) && dto.studentData?.medicalConditions) updates.medicalConditions = dto.studentData.medicalConditions;
+    if (isEmpty(student.allergies) && dto.studentData?.allergies) updates.allergies = dto.studentData.allergies;
+    if (isEmpty(student.cardDeliveryRecipient) && dto.studentData?.cardDeliveryRecipient) updates.cardDeliveryRecipient = dto.studentData.cardDeliveryRecipient;
+
+    if (Object.keys(updates).length) {
+      updates.updatedAt = now();
+      await queryRunner.manager.update(StudentEntity, { userId }, updates);
+      Object.assign(student, updates);
+    }
+    return student;
+  }
 
   /**
    * Verify the calling user is an active INSTITUTE_ADMIN of the given institute.

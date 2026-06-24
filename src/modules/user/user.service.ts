@@ -3529,7 +3529,7 @@ export class UsersService {
         .createQueryBuilder('user')
         .select([
           'user.id',
-          'user.imageUrl', 
+          'user.imageUrl',
           'user.firstName',
           'user.lastName',
           'user.nameWithInitials',
@@ -3561,6 +3561,137 @@ export class UsersService {
   }
 
   /**
+   * 🔗 LINK PROFILE: existence map for "Link Existing Account" mode.
+   *
+   * Returns, for an existing user, which DB columns are already populated so the
+   * institute-admin "link" form can HIDE filled fields and only collect the missing ones.
+   *
+   * SECURITY: sensitive columns are returned as booleans only (e.g. `nic: true`),
+   * NEVER their actual values. The only real values returned are safe display fields
+   * (id, fullName, nameWithInitials, imageUrl, userType) — same as the basic-info endpoint.
+   *
+   * Which related tables are inspected depends on the institute role being assigned:
+   *  - STUDENT  → user + student + parent-link existence
+   *  - other    → user only (+ parent table existence, since any USER can later be a parent)
+   */
+  async getLinkProfile(
+    userId: string,
+    instituteUserType?: string,
+  ): Promise<{
+    id: string;
+    fullName: string;
+    nameWithInitials?: string;
+    imageUrl: string | null;
+    userType: UserType;
+    /** true when the user already has a profile image set */
+    hasImage: boolean;
+    /** existence flags for `users` columns */
+    user: Record<string, boolean>;
+    /** student record + its column existence flags; null when the user has no student row */
+    student: { exists: boolean; fields: Record<string, boolean> } | null;
+    /** which parent slots are already linked on the student row */
+    parents: { hasFather: boolean; hasMother: boolean; hasGuardian: boolean };
+    /** smart-card existence — used to hide the Suraksha/institute card link boxes */
+    hasRfid: boolean;
+    hasCardId: boolean;
+  } | null> {
+    // userId is already validated by ParseBigIntPipe at the controller boundary
+    const safeUserId = userId;
+    try {
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .where('user.id = :userId', { userId: safeUserId })
+        .andWhere('user.isActive = :isActive', { isActive: true })
+        .getOne();
+
+      if (!user) return null;
+
+      const has = (v: unknown): boolean =>
+        v !== null && v !== undefined && !(typeof v === 'string' && v.trim() === '');
+
+      const fullName =
+        user.fullName?.trim() ||
+        `${user.firstName ?? ''}${user.lastName ? ' ' + user.lastName : ''}`.trim();
+
+      // ── users-table column existence ──
+      const userFlags: Record<string, boolean> = {
+        firstName: has(user.firstName),
+        lastName: has(user.lastName),
+        nameWithInitials: has(user.nameWithInitials),
+        fullName: has(user.fullName),
+        religion: has(user.religion),
+        email: has(user.email),
+        phoneNumber: has(user.phoneNumber),
+        gender: has(user.gender),
+        dateOfBirth: has(user.dateOfBirth),
+        nic: has(user.nic),
+        birthCertificateNo: has(user.birthCertificateNo),
+        addressLine1: has(user.addressLine1),
+        addressLine2: has(user.addressLine2),
+        city: has(user.city),
+        district: has(user.district),
+        province: has(user.province),
+        postalCode: has(user.postalCode),
+      };
+
+      const hasRfid = has(user.rfid);
+      const hasCardId = has(user.cardId);
+
+      // ── student + parent existence (only relevant for STUDENT role, but cheap to always fetch) ──
+      let student: { exists: boolean; fields: Record<string, boolean> } | null = null;
+      let parents = { hasFather: false, hasMother: false, hasGuardian: false };
+
+      const wantsStudentContext =
+        !instituteUserType || String(instituteUserType).toUpperCase() === 'STUDENT';
+
+      if (wantsStudentContext) {
+        const studentRow = await this.studentRepository
+          .createQueryBuilder('s')
+          .where('s.userId = :userId', { userId: safeUserId })
+          .getOne();
+
+        if (studentRow) {
+          student = {
+            exists: true,
+            fields: {
+              studentId: has(studentRow.studentId),
+              emergencyContact: has(studentRow.emergencyContact),
+              bloodGroup: has(studentRow.bloodGroup),
+              medicalConditions: has(studentRow.medicalConditions),
+              allergies: has(studentRow.allergies),
+              cardDeliveryRecipient: has(studentRow.cardDeliveryRecipient),
+            },
+          };
+          parents = {
+            hasFather: has(studentRow.fatherId),
+            hasMother: has(studentRow.motherId),
+            hasGuardian: has(studentRow.guardianId),
+          };
+        } else {
+          student = null; // user has no student record yet — one will be created on link
+        }
+      }
+
+      return {
+        id: user.id,
+        fullName,
+        nameWithInitials: user.nameWithInitials || undefined,
+        imageUrl: user.imageUrl ? this.cloudStorageService.getFullUrl(user.imageUrl) : null,
+        userType: user.userType,
+        hasImage: has(user.imageUrl),
+        user: userFlags,
+        student,
+        parents,
+        hasRfid,
+        hasCardId,
+      };
+    } catch (error) {
+      this.logger.error(`💥 Failed to build link profile for user ${userId}: ${error.message}`, error.stack);
+      throw new DatabaseException('Failed to retrieve user link profile', undefined, error);
+    }
+  }
+
+  /**
    * 🚀 OPTIMIZED: Get minimal user info by phone number for maximum performance
    * Only selects required fields: imageUrl, firstName, lastName, userType
    * Uses existing phoneNumber index for fastest possible lookup
@@ -3581,7 +3712,7 @@ export class UsersService {
         .createQueryBuilder('user')
         .select([
           'user.id',
-          'user.imageUrl', 
+          'user.imageUrl',
           'user.firstName',
           'user.lastName',
           'user.nameWithInitials',
@@ -3633,7 +3764,7 @@ export class UsersService {
         .createQueryBuilder('user')
         .select([
           'user.id',
-          'user.imageUrl', 
+          'user.imageUrl',
           'user.firstName',
           'user.lastName',
           'user.nameWithInitials',
@@ -3685,7 +3816,7 @@ export class UsersService {
         .createQueryBuilder('user')
         .select([
           'user.id',
-          'user.imageUrl', 
+          'user.imageUrl',
           'user.firstName',
           'user.lastName',
           'user.nameWithInitials',

@@ -376,40 +376,24 @@ export class LectureTrackingService {
 
     const level = lecture.recAccessLevel;
 
-    if (level === 'ANYONE') {
-      hasAccess = true;
-    } else if (level === 'SURAKSHA_USERS') {
-      hasAccess = !!user;
-    } else if (level === 'ENROLLED_ONLY') {
-      hasAccess = user
-        ? await this.checkEnrollment(
-            user.id,
-            lecture.instituteId,
-            lecture.classId,
-            lecture.subjectId,
-          )
-        : false;
-    } else if (level === 'PAID_ONLY') {
-      if (!user) {
-        hasAccess = false;
-        requirePayment = true;
-      } else if (lecture.recPaymentId) {
-        const paid = await this.checkPaymentAccess(
-          user.id,
-          lecture.instituteId,
-          lecture.classId,
-          lecture.subjectId,
-          lecture.recPaymentId,
-          lecture.recPaymentStatuses ?? ['VERIFIED'],
-        );
-        if (paid) {
-          hasAccess = true;
-        } else {
-          hasAccess = false;
-          requirePayment = true;
-          notPaidPaymentId = lecture.recPaymentId;
-        }
-      } else {
+    // Institute admin or teacher of this institute always has access regardless of access level
+    if (user) {
+      const rawAccess = (user as any).i ?? (user as any).enhancedInstituteAccess;
+      const instituteAccess: EnhancedInstituteAccessEntry[] = Array.isArray(rawAccess) ? rawAccess : [];
+      const isStaff = instituteAccess.some(
+        (entry) =>
+          String(entry.i) === String(lecture.instituteId) &&
+          ((entry.r & ROLE_BITMASKS.IA) !== 0 || (entry.r & ROLE_BITMASKS.TE) !== 0),
+      );
+      if (isStaff) hasAccess = true;
+    }
+
+    if (!hasAccess) {
+      if (level === 'ANYONE') {
+        hasAccess = true;
+      } else if (level === 'SURAKSHA_USERS') {
+        hasAccess = !!user;
+      } else if (level === 'ENROLLED_ONLY') {
         hasAccess = user
           ? await this.checkEnrollment(
               user.id,
@@ -418,6 +402,36 @@ export class LectureTrackingService {
               lecture.subjectId,
             )
           : false;
+      } else if (level === 'PAID_ONLY') {
+        if (!user) {
+          hasAccess = false;
+          requirePayment = true;
+        } else if (lecture.recPaymentId) {
+          const paid = await this.checkPaymentAccess(
+            user.id,
+            lecture.instituteId,
+            lecture.classId,
+            lecture.subjectId,
+            lecture.recPaymentId,
+            lecture.recPaymentStatuses ?? ['VERIFIED'],
+          );
+          if (paid) {
+            hasAccess = true;
+          } else {
+            hasAccess = false;
+            requirePayment = true;
+            notPaidPaymentId = lecture.recPaymentId;
+          }
+        } else {
+          hasAccess = user
+            ? await this.checkEnrollment(
+                user.id,
+                lecture.instituteId,
+                lecture.classId,
+                lecture.subjectId,
+              )
+            : false;
+        }
       }
     }
 
@@ -448,6 +462,8 @@ export class LectureTrackingService {
       welcomeMessageVoiceEnabled: lecture.welcomeMessageVoiceEnabled,
       // Only expose recording URL when access granted
       recordingUrl: hasAccess ? lecture.recordingUrl : undefined,
+      // 0 = view-only (no activity events collected), null/undefined = unlimited
+      recTrackingDays: lecture.recTrackingDays ?? null,
     };
   }
 
