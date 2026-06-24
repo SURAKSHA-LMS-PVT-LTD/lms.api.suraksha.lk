@@ -160,8 +160,9 @@ export class InstituteAdminUserService {
       }
     }
 
-    // Students must have a birth certificate number
-    if (dto.instituteUserType === InstituteUserType.STUDENT && !dto.birthCertificateNo) {
+    // Birth certificate number is required only for self-registration (public form).
+    // Institute admins may create students without it.
+    if (isSelfReg && dto.instituteUserType === InstituteUserType.STUDENT && !dto.birthCertificateNo) {
       throw new BadRequestException('Birth certificate number is required for students.');
     }
 
