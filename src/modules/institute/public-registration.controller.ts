@@ -91,6 +91,19 @@ export class PublicRegistrationController {
     return this.otpService.verifyEmailOtp(body.email.trim().toLowerCase(), body.code);
   }
 
+  // ── Existing-account lookup by Suraksha User ID (before OTP) ───────────────
+
+  @Post(':token/existing/lookup-by-id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({ summary: 'Look up masked contacts for a Suraksha User ID so the user can choose where to receive their OTP' })
+  async lookupContactsByUserId(
+    @Param('token') token: string,
+    @Body() body: { userId: string },
+  ) {
+    if (!body?.userId?.trim()) throw new BadRequestException('userId is required');
+    return this.selfRegService.lookupContactsByUserId(token, body.userId.trim());
+  }
+
   // ── Existing-account lookup (after both verifications) ────────────────────────
 
   @Post(':token/existing/lookup')

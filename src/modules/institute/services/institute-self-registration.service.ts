@@ -56,6 +56,9 @@ export interface PublicRegistrationPayload {
   firstName?: string;
   lastName?: string;
   nameWithInitials?: string;
+  fullName?: string;
+  religion?: string;
+  birthCertificateNo?: string;
   email?: string;
   phoneNumber?: string;
   dateOfBirth?: string;
@@ -355,6 +358,44 @@ export class InstituteSelfRegistrationService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // PUBLIC: lookup contacts by Suraksha User ID (before OTP)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Given a Suraksha LMS User ID, return the masked contacts (phone / email)
+   * so the user can choose which one to receive the verification OTP on.
+   * No sensitive data is exposed — contacts are masked (e.g. +94 77*** 1234).
+   */
+  async lookupContactsByUserId(token: string, userId: string): Promise<{
+    found: boolean;
+    maskedPhone?: string | null;
+    maskedEmail?: string | null;
+  }> {
+    await this.resolveActiveLink(token);
+    const user = await this.userRepo.findOne({ where: { id: userId as any } });
+    if (!user) return { found: false };
+
+    const maskPhone = (p: string) => {
+      // Keep first 3 and last 4 digits; mask the middle: +94 77***1234
+      const d = p.replace(/\D/g, '');
+      if (d.length < 7) return p.slice(0, 2) + '***' + p.slice(-2);
+      return p.slice(0, 5) + '***' + p.slice(-4);
+    };
+    const maskEmail = (e: string) => {
+      const [local, domain] = e.split('@');
+      if (!domain) return e.slice(0, 2) + '***';
+      const visible = local.length > 3 ? local.slice(0, 3) : local.slice(0, 1);
+      return visible + '***@' + domain;
+    };
+
+    return {
+      found: true,
+      maskedPhone: user.phoneNumber ? maskPhone(user.phoneNumber) : null,
+      maskedEmail: user.email ? maskEmail(user.email) : null,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // PUBLIC: existing-account lookup (after OTP claim)
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -386,6 +427,9 @@ export class InstituteSelfRegistrationService {
       firstName: user.firstName ?? null,
       lastName: user.lastName ?? null,
       nameWithInitials: user.nameWithInitials ?? null,
+      fullName: (user as any).fullName ?? null,
+      religion: (user as any).religion ?? null,
+      birthCertificateNo: (user as any).birthCertificateNo ?? null,
       email: user.email ?? null,
       phoneNumber: user.phoneNumber ?? null,
       dateOfBirth: (user as any).dateOfBirth ?? null,
@@ -549,6 +593,9 @@ export class InstituteSelfRegistrationService {
       setIfEmpty('firstName', payload.firstName);
       setIfEmpty('lastName', payload.lastName);
       setIfEmpty('nameWithInitials', payload.nameWithInitials);
+      setIfEmpty('fullName' as any, payload.fullName);
+      setIfEmpty('religion' as any, payload.religion);
+      setIfEmpty('birthCertificateNo' as any, payload.birthCertificateNo);
       setIfEmpty('dateOfBirth' as any, payload.dateOfBirth);
       setIfEmpty('gender' as any, payload.gender);
       setIfEmpty('nic' as any, payload.nic);
@@ -808,6 +855,9 @@ export class InstituteSelfRegistrationService {
       firstName: payload.firstName,
       lastName: payload.lastName,
       nameWithInitials: payload.nameWithInitials,
+      fullName: payload.fullName,
+      religion: payload.religion,
+      birthCertificateNo: payload.birthCertificateNo,
       email: payload.email,
       phoneNumber: payload.phoneNumber,
       dateOfBirth: payload.dateOfBirth,

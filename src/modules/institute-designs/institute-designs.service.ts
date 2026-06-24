@@ -320,21 +320,26 @@ export class InstituteDesignsService {
 
     if (failCount > 0) {
       refundAmount = Number(record.unitCost) * failCount;
-      try {
-        await this.creditsService.grantCredits(
-          instituteId,
-          {
-            amount: refundAmount,
-            type: CreditTransactionType.REFUND,
-            referenceType: 'DESIGN_GENERATION_RECORD',
-            referenceId: recordId,
-            description: `Refund for ${failCount} failed renders — record ${recordId}`,
-          },
-          user.id ?? user.sub,
-        );
-      } catch (err: any) {
-        this.logger.error(`Failed to process refund for record ${recordId}: ${err.message}`);
-        throw err;
+      // Only issue a refund transaction when there is a positive amount to grant.
+      // Free templates (unitCost === 0) have nothing to refund, and grantCredits
+      // rejects non-positive amounts ("Grant amount must be positive").
+      if (refundAmount > 0) {
+        try {
+          await this.creditsService.grantCredits(
+            instituteId,
+            {
+              amount: refundAmount,
+              type: CreditTransactionType.REFUND,
+              referenceType: 'DESIGN_GENERATION_RECORD',
+              referenceId: recordId,
+              description: `Refund for ${failCount} failed renders — record ${recordId}`,
+            },
+            user.id ?? user.sub,
+          );
+        } catch (err: any) {
+          this.logger.error(`Failed to process refund for record ${recordId}: ${err.message}`);
+          throw err;
+        }
       }
     }
 
