@@ -64,6 +64,14 @@ export class CreateCalendarEventDto {
   isAttendanceTracked?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Allow a user to be marked more than once (arrival + departure). '
+      + 'When false, markers cannot mark the same user twice.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowMultipleMarks?: boolean;
+
+  @ApiPropertyOptional({
     description: 'Minutes after start_time after which a mark auto-resolves to LATE. '
       + 'Used to auto-assign status when an attendance marker marks against this event.',
     example: 15,

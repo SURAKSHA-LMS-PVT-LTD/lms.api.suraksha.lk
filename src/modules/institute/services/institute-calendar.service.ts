@@ -52,8 +52,11 @@ export class InstituteCalendarService {
     });
     if (!event) throw new NotFoundException('Calendar event not found');
 
-    // The marked rows themselves are a cheap indexed read (IDX_event). This is a
-    // list, NOT a COUNT — the heavy part (counting) is avoided entirely.
+    // Cheap indexed read (IDX_event) of every mark for the event. A student may have
+    // MULTIPLE marks (arrival + departure). We group them into ONE row per student:
+    //   arrival   = first non-departure mark (Present / Late)
+    //   departure = any departure mark (Left / LeftEarly / LeftLately), if present
+    // We never fabricate departure rows — no mark = empty departure (saves storage).
     const rows: any[] = await this.dataSource.query(
       `SELECT ar.student_id AS studentId, ar.status AS statusCode, ar.\`timestamp\` AS markedAt,
               ar.user_type AS userType,
@@ -66,26 +69,56 @@ export class InstituteCalendarService {
        JOIN users u ON u.id = ar.student_id
        LEFT JOIN institute_user iu ON iu.user_id = ar.student_id AND iu.institute_id = ar.institute_id
        WHERE ar.institute_id = ? AND ar.event_id = ?
-       ORDER BY u.name_with_initials ASC`,
+       ORDER BY u.name_with_initials ASC, ar.\`timestamp\` ASC`,
       [instituteId, eventId],
     );
 
     const STATUS_LABEL: Record<number, string> = {
       0: 'Absent', 1: 'Present', 2: 'Late', 3: 'Left', 4: 'LeftEarly', 5: 'LeftLately',
     };
-    const students = rows.map(r => {
+    const isDeparture = (code: number) => code === 3 || code === 4 || code === 5;
+    const toIso = (ts: any) => (ts != null ? new Date(Number(ts)).toISOString() : null);
+
+    // Group by student, preserving first-seen order (query is name-sorted).
+    const byStudent = new Map<string, any>();
+    for (const r of rows) {
       const code = r.statusCode !== null && r.statusCode !== undefined ? Number(r.statusCode) : null;
-      return {
-        studentId: r.studentId,
-        studentName: r.studentName ?? 'Unknown',
-        imageUrl: r.imageUrl ?? null,
-        userIdInstitute: r.userIdInstitute ?? null,
-        userType: r.userType ?? null,
-        statusCode: code,
-        statusLabel: code !== null ? (STATUS_LABEL[code] ?? 'Unknown') : 'NotMarked',
-        markedAt: r.markedAt != null ? new Date(Number(r.markedAt)).toISOString() : null,
-      };
-    });
+      let row = byStudent.get(r.studentId);
+      if (!row) {
+        row = {
+          studentId: r.studentId,
+          studentName: r.studentName ?? 'Unknown',
+          imageUrl: r.imageUrl ?? null,
+          userIdInstitute: r.userIdInstitute ?? null,
+          userType: r.userType ?? null,
+          // arrival
+          statusCode: null as number | null,
+          statusLabel: 'NotMarked',
+          markedAt: null as string | null,
+          // departure (empty unless a left mark exists)
+          departureStatusCode: null as number | null,
+          departureStatusLabel: null as string | null,
+          departureAt: null as string | null,
+          markCount: 0,
+        };
+        byStudent.set(r.studentId, row);
+      }
+      row.markCount += 1;
+      if (code !== null && isDeparture(code)) {
+        // Keep the latest departure mark.
+        row.departureStatusCode = code;
+        row.departureStatusLabel = STATUS_LABEL[code] ?? 'Left';
+        row.departureAt = toIso(r.markedAt);
+      } else if (code !== null) {
+        // Arrival — keep the earliest (rows are timestamp-asc, so only set once).
+        if (row.statusCode === null) {
+          row.statusCode = code;
+          row.statusLabel = STATUS_LABEL[code] ?? 'Unknown';
+          row.markedAt = toIso(r.markedAt);
+        }
+      }
+    }
+    const students = Array.from(byStudent.values());
 
     return {
       success: true,
@@ -232,20 +265,42 @@ export class InstituteCalendarService {
       }
     }
 
-    // Single grouped count over the event's records.
-    const statusRows: any[] = await this.dataSource.query(
-      `SELECT status, COUNT(*) AS cnt FROM attendance_records
-       WHERE institute_id = ? AND event_id = ? GROUP BY status`,
-      [instituteId, eventId],
-    );
     let present = 0, absent = 0, late = 0, left = 0;
-    for (const r of statusRows) {
-      const cnt = Number(r.cnt) || 0;
-      switch (Number(r.status)) {
-        case 1: present += cnt; break;
-        case 0: absent += cnt; break;
-        case 2: late += cnt; break;
-        case 3: case 4: case 5: left += cnt; break;
+    if (event.allowMultipleMarks) {
+      // Multiple marks allowed → count PER STUDENT so a user with many marks counts
+      // ONCE (10 users never inflate to 200 lates). Arrival precedence Present>Late>Absent;
+      // `left` = students with any departure mark.
+      const perStudent: any[] = await this.dataSource.query(
+        `SELECT MAX(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS hasPresent,
+                MAX(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS hasLate,
+                MAX(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS hasAbsent,
+                MAX(CASE WHEN status IN (3,4,5) THEN 1 ELSE 0 END) AS hasLeft
+         FROM attendance_records
+         WHERE institute_id = ? AND event_id = ?
+         GROUP BY student_id`,
+        [instituteId, eventId],
+      );
+      for (const r of perStudent) {
+        if (Number(r.hasPresent) === 1) present += 1;
+        else if (Number(r.hasLate) === 1) late += 1;
+        else if (Number(r.hasAbsent) === 1) absent += 1;
+        if (Number(r.hasLeft) === 1) left += 1;
+      }
+    } else {
+      // Single mark per user (default) → simple, cheap grouped count over records.
+      const statusRows: any[] = await this.dataSource.query(
+        `SELECT status, COUNT(*) AS cnt FROM attendance_records
+         WHERE institute_id = ? AND event_id = ? GROUP BY status`,
+        [instituteId, eventId],
+      );
+      for (const r of statusRows) {
+        const cnt = Number(r.cnt) || 0;
+        switch (Number(r.status)) {
+          case 1: present += cnt; break;
+          case 0: absent += cnt; break;
+          case 2: late += cnt; break;
+          case 3: case 4: case 5: left += cnt; break;
+        }
       }
     }
     const total = targetStudentIds.length > 0
@@ -277,6 +332,9 @@ export class InstituteCalendarService {
       endTime: e.endTime,
       eventType: e.eventType,
       isAttendanceTracked: e.isAttendanceTracked,
+      allowMultipleMarks: e.allowMultipleMarks,
+      lateAfterMinutes: e.lateAfterMinutes,
+      leftEarlyBeforeMinutes: e.leftEarlyBeforeMinutes,
       isAttendanceClosed: e.isAttendanceClosed,
       attendanceClosedAt: e.attendanceClosedAt,
       attendanceCloseUnmarkAction: e.attendanceCloseUnmarkAction,
@@ -733,6 +791,7 @@ export class InstituteCalendarService {
       startTime: dto.startTime,
       endTime: dto.endTime,
       isAttendanceTracked: dto.isAttendanceTracked ?? true,
+      allowMultipleMarks: dto.allowMultipleMarks ?? false,
       lateAfterMinutes: dto.lateAfterMinutes ?? null,
       leftEarlyBeforeMinutes: dto.leftEarlyBeforeMinutes ?? null,
       isDefault: dto.isDefault ?? false,

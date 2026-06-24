@@ -32,6 +32,7 @@ import {
 @Index('IDX_student_institute_date', ['studentId', 'instituteId', 'date'])
 @Index('IDX_calendar_day', ['calendarDayId'])
 @Index('IDX_event', ['eventId'])
+@Index('idx_inst_event_student', ['instituteId', 'eventId', 'studentId'])
 @Index('IDX_sync_status', ['syncStatus'])
 export class AttendanceRecordEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })

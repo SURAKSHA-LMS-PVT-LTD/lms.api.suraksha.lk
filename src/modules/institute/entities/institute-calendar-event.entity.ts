@@ -93,6 +93,15 @@ export class InstituteCalendarEventEntity {
   //   Late      = marked after start + lateAfterMinutes (but before the left window)
   //   LeftEarly = marked after start + lateAfterMinutes AND within
   //               leftEarlyBeforeMinutes of end_time
+  @Column({
+    name: 'allow_multiple_marks',
+    type: 'boolean',
+    default: false,
+    comment: 'TRUE = a user may be marked more than once (e.g. arrival then departure). '
+      + 'When FALSE the marker UI prevents a second mark for the same user.',
+  })
+  allowMultipleMarks: boolean;
+
   @Column({ name: 'late_after_minutes', type: 'int', nullable: true,
     comment: 'Minutes after start_time after which a mark is automatically LATE' })
   lateAfterMinutes: number | null;
