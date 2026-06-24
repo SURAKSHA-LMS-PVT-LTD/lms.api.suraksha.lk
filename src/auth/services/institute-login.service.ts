@@ -558,24 +558,27 @@ export class InstituteLoginService {
     const isWhatsApp = dto.deliveryChannel === InstitutePasswordResetChannel.WHATSAPP;
 
     if (isWhatsApp) {
-      // WhatsApp: the webhook already confirmed the OTP (isVerified=true). We only
-      // need to confirm a recent verified WhatsApp OTP exists, then set the password.
-      const confirmed = await this.otpRepository.findOne({
-        where: {
-          userId: instituteUser.userId,
-          otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
-          deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-          isVerified: true,
-        },
-        order: { createdAt: 'DESC' },
-      });
+      // WhatsApp: the webhook already confirmed the OTP (isVerified=true).
+      // If the client passed the otpId captured at status-check time, look up by id directly
+      // so a user who spent a long time filling the form isn't rejected by a time window.
+      let confirmed: any;
+      if (dto.otpId) {
+        confirmed = await this.otpRepository.findOne({
+          where: { id: dto.otpId, isVerified: true },
+        });
+      } else {
+        confirmed = await this.otpRepository.findOne({
+          where: {
+            userId: instituteUser.userId,
+            otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+            deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+            isVerified: true,
+          },
+          order: { createdAt: 'DESC' },
+        });
+      }
       if (!confirmed) {
         throw new BadRequestException('WhatsApp verification not completed. Send the code from your WhatsApp first.');
-      }
-      // Guard against reusing an old confirmed OTP: must have been verified within the window.
-      const verifiedAt = confirmed.verifiedAt?.getTime() ?? 0;
-      if (Date.now() - verifiedAt > OTP_EXPIRY_MINUTES * 60 * 1000) {
-        throw new BadRequestException('Verification expired. Please request a new WhatsApp OTP.');
       }
     } else {
       // 2. Find the pending OTP record (EMAIL / SMS — typed code)
@@ -655,7 +658,7 @@ export class InstituteLoginService {
    * Poll whether the latest WhatsApp password-reset OTP for this institute user has been
    * confirmed by the webhook. Never returns the code itself.
    */
-  async getResetOtpStatus(dto: InstitutePwdResetOtpStatusDto): Promise<{ verified: boolean; expired: boolean }> {
+  async getResetOtpStatus(dto: InstitutePwdResetOtpStatusDto): Promise<{ verified: boolean; expired: boolean; otpId?: string }> {
     const instituteUser = await this.instituteUserRepository.findOne({
       where: { instituteId: dto.instituteId, userIdByInstitute: dto.userIdByInstitute, status: InstituteUserStatus.ACTIVE },
     });
@@ -672,7 +675,7 @@ export class InstituteLoginService {
     if (!otp) return { verified: false, expired: false };
 
     const expired = !otp.isVerified && otp.expiresAt.getTime() <= Date.now();
-    return { verified: otp.isVerified, expired };
+    return { verified: otp.isVerified, expired, otpId: otp.isVerified ? String(otp.id) : undefined };
   }
 
   /**

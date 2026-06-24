@@ -389,8 +389,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 900000 } })
   @ApiOperation({ summary: 'Complete the reset after WhatsApp confirmation (no typed code)' })
-  async forgotPasswordWaReset(@Body() body: { identifier: string; newPassword: string }) {
-    return this.passwordResetService.resetPasswordViaWhatsApp(body.identifier, body.newPassword);
+  async forgotPasswordWaReset(@Body() body: { identifier: string; newPassword: string; otpId?: string }) {
+    return this.passwordResetService.resetPasswordViaWhatsApp(body.identifier, body.newPassword, body.otpId);
   }
 
   /**

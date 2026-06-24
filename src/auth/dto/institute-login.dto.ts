@@ -234,6 +234,11 @@ export class InstitutePasswordResetVerifyDto {
   @IsEnum(InstitutePasswordResetChannel)
   deliveryChannel?: InstitutePasswordResetChannel;
 
+  @ApiPropertyOptional({ description: 'OTP record id returned by the status endpoint; used to skip time-window check' })
+  @IsOptional()
+  @IsString()
+  otpId?: string;
+
   @ApiProperty({
     description: 'New password (min 8 characters)',
     minLength: 8

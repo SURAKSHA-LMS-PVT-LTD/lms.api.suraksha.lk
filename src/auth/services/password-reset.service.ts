@@ -226,7 +226,7 @@ export class PasswordResetService {
   }
 
   /** Public: poll whether the WhatsApp reset OTP was confirmed by the webhook. */
-  async getWhatsAppResetStatus(identifier: string): Promise<{ verified: boolean; expired: boolean }> {
+  async getWhatsAppResetStatus(identifier: string): Promise<{ verified: boolean; expired: boolean; otpId?: string }> {
     const user = await this.resolveUserByIdentifier(identifier);
     if (!user) return { verified: false, expired: false };
     const otp = await this.otpRepository.findOne({
@@ -235,22 +235,25 @@ export class PasswordResetService {
     });
     if (!otp) return { verified: false, expired: false };
     const expired = !otp.isVerified && otp.expiresAt.getTime() <= Date.now();
-    return { verified: otp.isVerified, expired };
+    return { verified: otp.isVerified, expired, otpId: otp.isVerified ? String(otp.id) : undefined };
   }
 
   /** Public: complete the reset after WhatsApp confirmation (no typed code). */
-  async resetPasswordViaWhatsApp(identifier: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  async resetPasswordViaWhatsApp(identifier: string, newPassword: string, otpId?: string): Promise<{ success: boolean; message: string }> {
     const user = await this.resolveUserByIdentifier(identifier);
     if (!user) throw new BadRequestException('Invalid request.');
-    const confirmed = await this.otpRepository.findOne({
-      where: { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: true },
-      order: { createdAt: 'DESC' },
-    });
-    if (!confirmed) throw new BadRequestException('WhatsApp verification not completed. Send the code from your WhatsApp first.');
-    const verifiedAt = confirmed.verifiedAt?.getTime() ?? 0;
-    if (Date.now() - verifiedAt > 30 * 60 * 1000) {
-      throw new BadRequestException('Verification expired. Please request a new WhatsApp code.');
+    let confirmed: any;
+    if (otpId) {
+      confirmed = await this.otpRepository.findOne({
+        where: { id: otpId, isVerified: true },
+      });
+    } else {
+      confirmed = await this.otpRepository.findOne({
+        where: { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: true },
+        order: { createdAt: 'DESC' },
+      });
     }
+    if (!confirmed) throw new BadRequestException('WhatsApp verification not completed. Send the code from your WhatsApp first.');
     const hashed = await this.authService.hashPassword(newPassword);
     await this.userRepository.update({ id: user.id }, { password: hashed, updatedAt: now() });
     this.logger.log(`✅ Main password reset via WhatsApp: user=${user.id}`);
