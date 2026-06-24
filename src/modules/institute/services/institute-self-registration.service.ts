@@ -618,6 +618,22 @@ export class InstituteSelfRegistrationService {
         } as any),
       );
 
+      // Ensure a students row exists when claiming as a STUDENT — without it the
+      // assign-parent flow and the profile page parent fetch both silently fail.
+      if (userType === InstituteUserType.STUDENT) {
+        const existing = await queryRunner.manager.findOne(StudentEntity, { where: { userId: String(user.id) } });
+        if (!existing) {
+          await queryRunner.manager.save(
+            queryRunner.manager.create(StudentEntity, {
+              userId: String(user.id),
+              isActive: true,
+              createdAt: now(),
+              updatedAt: now(),
+            }),
+          );
+        }
+      }
+
       // Class/subject enrollments (pending) — written in the SAME transaction (H-5) so a
       // failure rolls back the membership too, never leaving a half-written claim.
       if (userType === InstituteUserType.STUDENT && link.allowClassEnrollment && payload.classEnrollments?.length) {

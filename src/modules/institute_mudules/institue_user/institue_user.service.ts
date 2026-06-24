@@ -723,8 +723,9 @@ export class InstitueUserService {
       .leftJoin(ParentEntity, 'p', 'p.userId = u.id')
       .select([
         'u.id as user_id',
+        'u.first_name',
+        'u.last_name',
         'u.name_with_initials as name_with_initials',
-        'u.name_with_initials as name', // Alias as name for easier frontend consumption if needed
         'u.email as email',
         'u.phone_number',
         'u.image_url as user_image_url',

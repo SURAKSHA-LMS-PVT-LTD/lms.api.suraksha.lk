@@ -4327,17 +4327,22 @@ export class AttendanceService {
     let parentRows: any[] = [];
     if (parentIds.length > 0) {
       parentRows = await this.dataSource.query(
-        `SELECT u.id, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
+        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
          FROM users u LEFT JOIN parents p ON p.user_id = u.id
          WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch(() => []);
     }
     const parentMap: Record<string, any> = {};
-    for (const p of parentRows) parentMap[p.id] = p;
+    for (const p of parentRows) parentMap[String(p.id)] = p;
     const getParent = (id?: string | null) => {
-      if (!id || !parentMap[id]) return undefined;
-      const p = parentMap[id];
+      if (!id) return undefined;
+      const p = parentMap[String(id)];
+      if (!p) return undefined;
+      const fullName = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || null;
       return {
-        name: p.name_with_initials, email: p.email, phoneNumber: p.phone_number,
+        id: String(p.id),
+        name: p.name_with_initials ?? fullName,
+        nameWithInitials: p.name_with_initials ?? null,
+        email: p.email, phoneNumber: p.phone_number,
         occupation: p.occupation, workPlace: p.workPlace,
         imageUrl: p.image_url ? this.CloudStorageService.getFullUrl(p.image_url) : null
       };
@@ -4500,17 +4505,22 @@ export class AttendanceService {
     let parentRows: any[] = [];
     if (parentIds.length > 0) {
       parentRows = await this.dataSource.query(
-        `SELECT u.id, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
+        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
          FROM users u LEFT JOIN parents p ON p.user_id = u.id
          WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch(() => []);
     }
     const parentMap: Record<string, any> = {};
-    for (const p of parentRows) parentMap[p.id] = p;
+    for (const p of parentRows) parentMap[String(p.id)] = p;
     const getParent = (id?: string | null) => {
-      if (!id || !parentMap[id]) return undefined;
-      const p = parentMap[id];
+      if (!id) return undefined;
+      const p = parentMap[String(id)];
+      if (!p) return undefined;
+      const fullName = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || null;
       return {
-        name: p.name_with_initials, email: p.email, phoneNumber: p.phone_number,
+        id: String(p.id),
+        name: p.name_with_initials ?? fullName,
+        nameWithInitials: p.name_with_initials ?? null,
+        email: p.email, phoneNumber: p.phone_number,
         occupation: p.occupation, workPlace: p.workPlace,
         imageUrl: p.image_url ? this.CloudStorageService.getFullUrl(p.image_url) : null
       };
@@ -4656,20 +4666,25 @@ export class AttendanceService {
     let parentRows: any[] = [];
     if (allParentIds.length) {
       parentRows = await this.dataSource.query(
-        `SELECT u.id, u.name_with_initials, u.email, u.phone_number, u.image_url,
+        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url,
                 p.occupation, p.work_place workPlace
          FROM users u LEFT JOIN parents p ON p.user_id = u.id
          WHERE u.id IN (${ph(allParentIds.length)})`, allParentIds,
       ).catch(() => []);
     }
     const parentMap: Record<string, any> = {};
-    for (const p of parentRows) parentMap[p.id] = p;
+    for (const p of parentRows) parentMap[String(p.id)] = p;
     const imgUrl = (v?: string | null) => v ? this.CloudStorageService.getFullUrl(v) : null;
     const getParent = (id?: string | null) => {
-      if (!id || !parentMap[id]) return undefined;
-      const p = parentMap[id];
+      if (!id) return undefined;
+      const p = parentMap[String(id)];
+      if (!p) return undefined;
+      const fullName = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || null;
       return {
-        name: p.name_with_initials, email: p.email, phoneNumber: p.phone_number,
+        id: String(p.id),
+        name: p.name_with_initials ?? fullName,
+        nameWithInitials: p.name_with_initials ?? null,
+        email: p.email, phoneNumber: p.phone_number,
         occupation: p.occupation, workPlace: p.workPlace, imageUrl: imgUrl(p.image_url),
       };
     };
