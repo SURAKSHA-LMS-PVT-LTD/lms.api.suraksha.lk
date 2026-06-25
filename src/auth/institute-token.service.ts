@@ -114,12 +114,13 @@ export class InstituteTokenService {
    */
   private async getUserClassIds(userId: string, instituteId: string, userType: InstituteUserType): Promise<string[]> {
     if (userType === InstituteUserType.STUDENT) {
-      // Get classes where student is enrolled
+      // Only include verified enrollments — pending students must not receive class access
       const enrollments = await this.classStudentRepository.find({
-        where: { 
-          studentUserId: userId, 
+        where: {
+          studentUserId: userId,
           instituteId,
-          isActive: true 
+          isActive: true,
+          isVerified: true,
         }
       });
       return enrollments.map(e => e.classId);

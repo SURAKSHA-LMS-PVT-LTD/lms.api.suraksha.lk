@@ -171,7 +171,7 @@ export class InstituteClassSubjectLecturesService {
       .createQueryBuilder('lecture');
       // Remove joins to avoid loading heavy nested objects
 
-    this.applyFilters(queryBuilder, filters);
+    this.applyFilters(queryBuilder, filters, user);
 
     const [lectures, total] = await queryBuilder
       .skip(skip)
@@ -538,9 +538,17 @@ export class InstituteClassSubjectLecturesService {
     return updated!;
   }
 
+  async toggleHidden(id: string, user: any): Promise<InstituteClassSubjectLecture> {
+    const lecture = await this.lectureRepository.findOne({ where: { id } });
+    if (!lecture) throw new NotFoundException(`Lecture with ID ${id} not found`);
+    InstituteAccessValidator.validateResourceAccess(user, lecture, [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN]);
+    await this.lectureRepository.update(id, { isHidden: !lecture.isHidden });
+    return this.lectureRepository.findOne({ where: { id } }) as Promise<InstituteClassSubjectLecture>;
+  }
+
   async remove(id: string): Promise<void> {
     const lecture = await this.lectureRepository.findOne({ where: { id } });
-    
+
     if (!lecture) {
       throw new NotFoundException(`Lecture with ID ${id} not found`);
     }
@@ -773,7 +781,7 @@ export class InstituteClassSubjectLecturesService {
     };
   }
 
-  private applyFilters(queryBuilder: SelectQueryBuilder<InstituteClassSubjectLecture>, filters: any): void {
+  private applyFilters(queryBuilder: SelectQueryBuilder<InstituteClassSubjectLecture>, filters: any, user?: any): void {
     if (filters.instituteId) {
       queryBuilder.andWhere('lecture.instituteId = :instituteId', { instituteId: filters.instituteId });
     }
@@ -806,8 +814,29 @@ export class InstituteClassSubjectLecturesService {
       queryBuilder.andWhere('lecture.startTime <= :dateTo', { dateTo: filters.dateTo });
     }
 
+    // Visibility rules based on caller role:
+    // - Deleted = isActive=false AND isHidden=false → hidden from EVERYONE
+    // - Hidden  = isHidden=true (isActive remains true) → hidden from students only
+    // - Normal  = isActive=true AND isHidden=false → visible to all
     if (filters.isActive !== undefined) {
+      // Explicit filter requested (e.g. admin listing all) — honour it but still exclude deleted
       queryBuilder.andWhere('lecture.isActive = :isActive', { isActive: filters.isActive });
+      // Exclude records where both flags indicate deletion
+      queryBuilder.andWhere('NOT (lecture.isActive = false AND lecture.isHidden = false)');
+    } else {
+      // Determine if caller is admin/teacher (IA=8 or TE=4 bitmask) or superadmin
+      const isAdminOrTeacher = user && (
+        user.u === 0 ||
+        (Array.isArray(user.i) && user.i.some((e: any) => ((e.r ?? 0) & 12) !== 0)) // IA=8|TE=4
+      );
+      if (isAdminOrTeacher) {
+        // Admins/teachers see active AND hidden lectures, but NOT deleted (isActive=false+isHidden=false)
+        queryBuilder.andWhere('NOT (lecture.isActive = false AND lecture.isHidden = false)');
+      } else {
+        // Students/guests: only fully visible lectures
+        queryBuilder.andWhere('lecture.isActive = true');
+        queryBuilder.andWhere('lecture.isHidden = false');
+      }
     }
 
     if (filters.search) {

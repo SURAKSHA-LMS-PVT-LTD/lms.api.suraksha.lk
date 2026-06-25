@@ -102,6 +102,11 @@ export class SubjectRecording {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  // When true: hidden from students but still visible to admins/teachers.
+  // When isActive=false AND isHidden=false: treat as deleted — hidden from everyone.
+  @Column({ name: 'is_hidden', type: 'boolean', default: false })
+  isHidden: boolean;
+
   // ─── Recording access & watch-session tracking ───────────────────────────
 
   /** When true, watch-sessions and activity events are recorded for this recording */

@@ -66,11 +66,20 @@ export class SubjectRecordingsController {
     return this.service.update(id, dto, req.user);
   }
 
+  @Patch(':id/toggle-hidden')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiOperation({ summary: 'Toggle hidden state for a recording (hidden from students, visible to admin/teacher)' })
+  @ApiParam({ name: 'id', description: 'Recording ID' })
+  async toggleHidden(@Param('id', ParseIdPipe) id: string) {
+    return this.service.toggleHidden(id);
+  }
+
   @Delete(':id')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete (deactivate) a recording' })
+  @ApiOperation({ summary: 'Soft-delete (deactivate) a recording — hidden from everyone' })
   @ApiParam({ name: 'id', description: 'Recording ID' })
   async remove(@Param('id', ParseIdPipe) id: string) {
     await this.service.remove(id);

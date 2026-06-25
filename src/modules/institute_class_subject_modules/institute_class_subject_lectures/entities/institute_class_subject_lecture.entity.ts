@@ -110,6 +110,11 @@ export class InstituteClassSubjectLecture {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  // When true: hidden from students but still visible to admins/teachers.
+  // When isActive=false AND isHidden=false: treat as deleted — hidden from everyone.
+  @Column({ name: 'is_hidden', type: 'boolean', default: false })
+  isHidden: boolean;
+
   @Column({ name: 'thumbnail_url', type: 'varchar', length: 500, nullable: true })
   thumbnailUrl?: string;
 

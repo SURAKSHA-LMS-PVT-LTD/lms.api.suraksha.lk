@@ -213,6 +213,22 @@ export class InstituteClassLecturesController {
     return await this.lecturesService.reschedule(id, rescheduleDto, req.user);
   }
 
+  @Patch(':id/toggle-hidden')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true
+  })
+  @ApiOperation({ summary: 'Toggle hidden state for a class lecture (hidden from students, visible to admin/teacher)' })
+  @ApiParam({ name: 'id', description: 'Lecture ID' })
+  async toggleHidden(
+    @Param('id', ParseIdPipe) id: string,
+    @Request() req: any,
+  ): Promise<InstituteClassLectureEntity> {
+    return this.lecturesService.toggleHidden(id, req.user);
+  }
+
   @Delete(':id')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({

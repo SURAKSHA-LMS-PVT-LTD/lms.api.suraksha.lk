@@ -164,7 +164,7 @@ export class EnhancedJwtService {
       // 2. Teacher access (TE role) - check BOTH class teacher AND subject teacher
       this.getTeacherAccess(String(user.id)),
 
-      // 3. Student classes (ST role + enrolled classes)
+      // 3. Student classes (ST role + enrolled classes) — only verified enrollments get token access
       this.instituteClassStudentRepository
         .createQueryBuilder('ics')
         .select([
@@ -173,6 +173,7 @@ export class EnhancedJwtService {
         ])
         .where('ics.studentUserId = :userId', { userId: String(user.id) })
         .andWhere('ics.isActive = :isActive', { isActive: true })
+        .andWhere('ics.isVerified = :isVerified', { isVerified: true })
         .getRawMany<{ instituteId: string; classId: string }>()
     ]);
 

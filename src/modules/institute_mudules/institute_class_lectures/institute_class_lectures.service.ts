@@ -100,7 +100,7 @@ export class InstituteClassLecturesService {
     }
 
     const queryBuilder = this.lectureRepository.createQueryBuilder('lecture');
-    this.applyFilters(queryBuilder, filters);
+    this.applyFilters(queryBuilder, filters, user);
 
     const [lectures, total] = await queryBuilder
       .skip(skip)
@@ -253,7 +253,20 @@ export class InstituteClassLecturesService {
     if (!lecture) {
       throw new NotFoundException(`Class lecture with ID ${id} not found`);
     }
-    await this.lectureRepository.delete(id);
+    // Soft-delete: isActive=false + isHidden=false → hidden from everyone
+    await this.lectureRepository.update(id, { isActive: false, isHidden: false } as any);
+  }
+
+  async toggleHidden(id: string, user?: any): Promise<InstituteClassLectureEntity> {
+    const lecture = await this.lectureRepository.findOne({ where: { id } });
+    if (!lecture) {
+      throw new NotFoundException(`Class lecture with ID ${id} not found`);
+    }
+    if (user) {
+      InstituteAccessValidator.validateResourceAccess(user, lecture, [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN]);
+    }
+    await this.lectureRepository.update(id, { isHidden: !lecture.isHidden } as any);
+    return this.lectureRepository.findOne({ where: { id } }) as Promise<InstituteClassLectureEntity>;
   }
 
   async removePermanent(id: string, user?: any): Promise<any> {
@@ -423,7 +436,7 @@ export class InstituteClassLecturesService {
     return await this.lectureRepository.save(lectures);
   }
 
-  private applyFilters(queryBuilder: SelectQueryBuilder<InstituteClassLectureEntity>, filters: any): void {
+  private applyFilters(queryBuilder: SelectQueryBuilder<InstituteClassLectureEntity>, filters: any, user?: any): void {
     if (filters.instituteId) {
       queryBuilder.andWhere('lecture.instituteId = :instituteId', { instituteId: filters.instituteId });
     }
@@ -447,6 +460,18 @@ export class InstituteClassLecturesService {
     }
     if (filters.isActive !== undefined) {
       queryBuilder.andWhere('lecture.isActive = :isActive', { isActive: filters.isActive });
+      queryBuilder.andWhere('NOT (lecture.isActive = false AND lecture.isHidden = false)');
+    } else {
+      const isAdminOrTeacher = user && (
+        user.u === 0 ||
+        (Array.isArray(user.i) && user.i.some((e: any) => ((e.r ?? 0) & 12) !== 0))
+      );
+      if (isAdminOrTeacher) {
+        queryBuilder.andWhere('NOT (lecture.isActive = false AND lecture.isHidden = false)');
+      } else {
+        queryBuilder.andWhere('lecture.isActive = true');
+        queryBuilder.andWhere('lecture.isHidden = false');
+      }
     }
     if (filters.search) {
       queryBuilder.andWhere('(lecture.title LIKE :search OR lecture.description LIKE :search)', { search: `%${filters.search}%` });

@@ -231,7 +231,7 @@ export class CacheValidationService {
         if (assignment.instituteUserType === InstituteUserType.STUDENT) {
           // For students, get enrolled classes and subjects
           const studentEnrollments = await this.instituteClassStudentRepository.find({
-            where: { studentUserId: userId, instituteId, isActive: true }
+            where: { studentUserId: userId, instituteId, isActive: true, isVerified: true }
           });
 
           for (const enrollment of studentEnrollments) {

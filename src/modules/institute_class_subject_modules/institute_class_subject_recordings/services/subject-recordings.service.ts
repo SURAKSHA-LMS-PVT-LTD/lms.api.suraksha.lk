@@ -84,24 +84,38 @@ export class SubjectRecordingsService {
     const limit = Math.min(query.limit ?? 20, 100);
     const skip = (page - 1) * limit;
 
-    const where: FindManyOptions<SubjectRecording>['where'] = {};
-    if (query.instituteId) (where as any).instituteId = query.instituteId;
-    if (query.classId) (where as any).classId = query.classId;
-    if (query.subjectId) (where as any).subjectId = query.subjectId;
-    if (query.uploadedById) (where as any).uploadedById = query.uploadedById;
-    if (query.status) (where as any).status = query.status;
-    if (query.platform) (where as any).platform = query.platform;
-    if (query.isActive !== undefined) (where as any).isActive = query.isActive;
-    if (query.recAttendanceEnabled !== undefined) (where as any).recAttendanceEnabled = query.recAttendanceEnabled;
-    if (query.search) (where as any).title = ILike(`%${query.search}%`);
+    const qb = this.repo.createQueryBuilder('rec')
+      .leftJoinAndSelect('rec.uploadedBy', 'uploadedBy')
+      .orderBy('rec.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
 
-    const [data, total] = await this.repo.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      skip,
-      take: limit,
-      relations: ['uploadedBy'],
-    });
+    if (query.instituteId) qb.andWhere('rec.instituteId = :instituteId', { instituteId: query.instituteId });
+    if (query.classId) qb.andWhere('rec.classId = :classId', { classId: query.classId });
+    if (query.subjectId) qb.andWhere('rec.subjectId = :subjectId', { subjectId: query.subjectId });
+    if (query.uploadedById) qb.andWhere('rec.uploadedById = :uploadedById', { uploadedById: query.uploadedById });
+    if (query.status) qb.andWhere('rec.status = :status', { status: query.status });
+    if (query.platform) qb.andWhere('rec.platform = :platform', { platform: query.platform });
+    if (query.recAttendanceEnabled !== undefined) qb.andWhere('rec.recAttendanceEnabled = :rae', { rae: query.recAttendanceEnabled });
+    if (query.search) qb.andWhere('rec.title ILIKE :search', { search: `%${query.search}%` });
+
+    if (query.isActive !== undefined) {
+      qb.andWhere('rec.isActive = :isActive', { isActive: query.isActive });
+      qb.andWhere('NOT (rec.isActive = false AND rec.isHidden = false)');
+    } else {
+      const isAdminOrTeacher = requestUser && (
+        requestUser.u === 0 ||
+        (Array.isArray(requestUser.i) && requestUser.i.some((e: any) => ((e.r ?? 0) & 12) !== 0))
+      );
+      if (isAdminOrTeacher) {
+        qb.andWhere('NOT (rec.isActive = false AND rec.isHidden = false)');
+      } else {
+        qb.andWhere('rec.isActive = true');
+        qb.andWhere('rec.isHidden = false');
+      }
+    }
+
+    const [data, total] = await qb.getManyAndCount();
 
     data.forEach(r => this.transformUrls(r));
 
@@ -176,7 +190,15 @@ export class SubjectRecordingsService {
   async remove(id: string): Promise<void> {
     const rec = await this.repo.findOne({ where: { id } });
     if (!rec) throw new NotFoundException(`Recording ${id} not found`);
-    await this.repo.update(id, { isActive: false });
+    // Delete = isActive=false + isHidden=false → hidden from everyone
+    await this.repo.update(id, { isActive: false, isHidden: false });
+  }
+
+  async toggleHidden(id: string): Promise<SubjectRecording> {
+    const rec = await this.repo.findOne({ where: { id } });
+    if (!rec) throw new NotFoundException(`Recording ${id} not found`);
+    await this.repo.update(id, { isHidden: !rec.isHidden });
+    return this.findOne(id, null);
   }
 
   async removePermanent(id: string, requestUser: any): Promise<any> {
