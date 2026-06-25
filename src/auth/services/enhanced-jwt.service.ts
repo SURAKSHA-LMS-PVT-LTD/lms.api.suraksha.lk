@@ -22,7 +22,7 @@ import {
 
 interface InstituteAccessPattern {
   role: string;
-  classes: Map<string, Set<number>>;
+  classes: Map<string, Set<string>>;
 }
 
 interface InstituteAccessAccumulator {
@@ -136,16 +136,16 @@ export class EnhancedJwtService {
       if (!acc.patterns.has(role)) {
         acc.patterns.set(role, {
           role: role,
-          classes: new Map<string, Set<number>>()
+          classes: new Map<string, Set<string>>()
         });
       }
       return acc.patterns.get(role)!;
     };
 
-    const ensureClassEntry = (pattern: InstituteAccessPattern, classId: string): Set<number> => {
+    const ensureClassEntry = (pattern: InstituteAccessPattern, classId: string): Set<string> => {
       const key = String(classId);
       if (!pattern.classes.has(key)) {
-        pattern.classes.set(key, new Set<number>());
+        pattern.classes.set(key, new Set<string>());
       }
       return pattern.classes.get(key)!;
     };
@@ -193,25 +193,25 @@ export class EnhancedJwtService {
 
     // Process teacher access (TE role with specific class/subject mapping)
     if (teacherAccess.length > 0) {
-      const teacherAccessByInstitute = new Map<string, Map<string, Set<number>>>();
-      
+      const teacherAccessByInstitute = new Map<string, Map<string, Set<string>>>();
+
       for (const record of teacherAccess) {
         if (!teacherAccessByInstitute.has(record.instituteId)) {
           teacherAccessByInstitute.set(record.instituteId, new Map());
         }
         const classMap = teacherAccessByInstitute.get(record.instituteId)!;
-        
+
         if (!classMap.has(record.classId)) {
           classMap.set(record.classId, new Set());
         }
         const subjectSet = classMap.get(record.classId)!;
-        
+
         if (record.isClassTeacher) {
           // Class teacher gets access to ALL subjects in the class
           // We'll populate this later when we have all class subjects
         } else if (record.subjectId) {
-          // Subject teacher gets access to specific subject
-          subjectSet.add(Number(record.subjectId));
+          // Subject teacher gets access to specific subject (store UUID string as-is)
+          subjectSet.add(String(record.subjectId));
         }
       }
 
@@ -219,7 +219,7 @@ export class EnhancedJwtService {
       const classTeacherClasses = teacherAccess
         .filter(ta => ta.isClassTeacher)
         .map(ta => ta.classId);
-      
+
       if (classTeacherClasses.length > 0) {
         const classTeacherSubjects = await this.instituteClassSubjectRepository
           .createQueryBuilder('ics')
@@ -238,7 +238,7 @@ export class EnhancedJwtService {
           if (classMap && classMap.has(record.classId)) {
             const subjectSet = classMap.get(record.classId)!;
             if (record.subjectId) {
-              subjectSet.add(Number(record.subjectId));
+              subjectSet.add(String(record.subjectId));
             }
           }
         }
@@ -248,7 +248,7 @@ export class EnhancedJwtService {
       for (const [instituteId, classMap] of teacherAccessByInstitute.entries()) {
         const entry = ensureInstituteEntry(instituteId);
         const pattern = ensureRolePattern(entry, 'TE');
-        
+
         for (const [classId, subjectSet] of classMap.entries()) {
           pattern.classes.set(classId, subjectSet);
         }
@@ -296,7 +296,7 @@ export class EnhancedJwtService {
           
           for (const subjectRecord of classSubjectRecords) {
             if (subjectRecord.subjectId) {
-              classSubjects.add(Number(subjectRecord.subjectId));
+              classSubjects.add(String(subjectRecord.subjectId));
             }
           }
         }
@@ -315,18 +315,8 @@ export class EnhancedJwtService {
             // No subjects, just class access
             compactClasses.push([classId]);
           } else {
-            // Convert subjects to bitmask for ultra-compact representation
-            const maxSubject = Math.max(...Array.from(subjectIds));
-            if (maxSubject <= 30) { // Reasonable bitmask limit
-              let subjectBitmask = 0;
-              for (const subjectId of subjectIds) {
-                subjectBitmask |= (1 << (subjectId - 1)); // 1-based to 0-based
-              }
-              compactClasses.push([classId, subjectBitmask]);
-            } else {
-              // Fallback for large subject IDs - just class access
-              compactClasses.push([classId]);
-            }
+            // Store subject UUIDs as a string array — bitmasks don't work with UUIDs
+            compactClasses.push([classId, Array.from(subjectIds)]);
           }
         }
 

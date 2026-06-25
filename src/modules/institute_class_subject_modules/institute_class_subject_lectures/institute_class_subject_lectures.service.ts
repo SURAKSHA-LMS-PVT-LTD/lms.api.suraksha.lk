@@ -11,7 +11,7 @@ import { LectureLiveAttendanceSession } from './entities/lecture_live_attendance
 import { LectureLiveAttendanceMark } from './entities/lecture_live_attendance_mark.entity';
 import { LectureRecordingSession } from './entities/lecture_recording_session.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
-import { InstituteAccessValidator, ROLE_BITMASKS } from '../../../common/helpers/institute-access-validator.helper';
+import { InstituteAccessValidator, ROLE_BITMASKS, hasSubjectAccess } from '../../../common/helpers/institute-access-validator.helper';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 export interface QueryLectureDto {
@@ -140,25 +140,20 @@ export class InstituteClassSubjectLecturesService {
         // Validate class access if classId is provided
         if (filters.classId) {
           const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-          const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === filters.instituteId);
-          
+          const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(filters.instituteId));
+
           if (instituteEntry && Array.isArray(instituteEntry.c)) {
             const classSubjectEntry = instituteEntry.c.find(
-              ([classId]: [string, number]) => classId === filters.classId
+              ([classId]: [string, ...unknown[]]) => String(classId) === String(filters.classId)
             );
             
             if (!classSubjectEntry) {
               throw new ForbiddenException(`You do not have access to class ${filters.classId} in institute ${filters.instituteId}`);
             }
             
-            // If subjectId is also provided, validate subject access using bitmask
+            // If subjectId is also provided, validate subject access
             if (filters.subjectId) {
-              const [classId, subjectBitmask] = classSubjectEntry;
-              const subjectIdNum = parseInt(filters.subjectId, 10);
-              // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-              const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-              
-              if (!hasSubjectAccess) {
+              if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], filters.subjectId)) {
                 throw new ForbiddenException(`You do not have access to subject ${filters.subjectId} in class ${filters.classId}`);
               }
             }
@@ -208,25 +203,20 @@ export class InstituteClassSubjectLecturesService {
       
       // Validate class and subject access
       const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-      const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === lecture.instituteId);
-      
+      const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(lecture.instituteId));
+
       if (instituteEntry && Array.isArray(instituteEntry.c)) {
         // Validate class access
         const classSubjectEntry = instituteEntry.c.find(
-          ([classId]: [string, number]) => classId === lecture.classId
+          ([classId]: [string, ...unknown[]]) => String(classId) === String(lecture.classId)
         );
         
         if (!classSubjectEntry) {
           throw new ForbiddenException(`You do not have access to class ${lecture.classId} in institute ${lecture.instituteId}`);
         }
         
-        // Validate subject access using bitmask
-        const [classId, subjectBitmask] = classSubjectEntry;
-        const subjectIdNum = parseInt(lecture.subjectId, 10);
-        // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-        const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-        
-        if (!hasSubjectAccess) {
+        // Validate subject access
+        if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], lecture.subjectId)) {
           throw new ForbiddenException(`You do not have access to subject ${lecture.subjectId} in class ${lecture.classId}`);
         }
       }
@@ -597,25 +587,20 @@ export class InstituteClassSubjectLecturesService {
         // Validate class access if classId is provided
         if (query.classId) {
           const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-          const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === query.instituteId);
-          
+          const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(query.instituteId));
+
           if (instituteEntry && Array.isArray(instituteEntry.c)) {
             const classSubjectEntry = instituteEntry.c.find(
-              ([classId]: [string, number]) => classId === query.classId
+              ([classId]: [string, ...unknown[]]) => String(classId) === String(query.classId)
             );
-            
+
             if (!classSubjectEntry) {
               throw new ForbiddenException(`You do not have access to class ${query.classId} in institute ${query.instituteId}`);
             }
             
-            // If subjectId is also provided, validate subject access using bitmask
+            // If subjectId is also provided, validate subject access
             if (query.subjectId) {
-              const [classId, subjectBitmask] = classSubjectEntry;
-              const subjectIdNum = parseInt(query.subjectId, 10);
-              // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-              const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-              
-              if (!hasSubjectAccess) {
+              if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], query.subjectId)) {
                 throw new ForbiddenException(`You do not have access to subject ${query.subjectId} in class ${query.classId}`);
               }
             }

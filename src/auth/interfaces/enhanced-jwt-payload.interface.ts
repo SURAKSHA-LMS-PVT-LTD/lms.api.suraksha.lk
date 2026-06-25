@@ -1,13 +1,15 @@
 import { UserType } from '../../modules/user/enums/user-type.enum';
 
 /**
- * Ultra-compact class access - [classId, subjectBitMask?, hierarchy?]
+ * Ultra-compact class access - [classId, subjects?, hierarchy?]
+ * `subjects` is a string[] of UUID subject IDs.
+ * Legacy numeric bitmask form ([string, number]) is kept for backward compat with old tokens.
  * Examples:
  * - ["1"] = class 1, all subjects
- * - ["1", 7] = class 1, subjects 1,2,3 (bitmask 111 = 7)
- * - ["1", 7, 2] = class 1, subjects 1,2,3, hierarchy level 2
+ * - ["1", ["uuid-a", "uuid-b"]] = class 1, specific subjects by UUID
+ * - ["1", 7] = class 1, subjects 1,2,3 (legacy numeric bitmask — deprecated)
  */
-export type CompactClassAccess = [string] | [string, number] | [string, number, number];
+export type CompactClassAccess = [string] | [string, string[]] | [string, number] | [string, number, number];
 
 /**
  * Ultra-compact institute access - [instituteId, roleBitMask, classes?]

@@ -1496,24 +1496,26 @@ export class InstituteClassSubjectStudentsService {
   }
 
   /**
-   * Get enrollment settings for a subject
+   * Get enrollment settings for a subject.
+   * @param callerId - the requesting user's ID (used as teacherId for non-admin callers)
+   * @param isAdmin - when true, skip the teacherId filter so institute admins can access any subject
    */
   async getEnrollmentSettings(
-    teacherId: string,
+    callerId: string,
     instituteId: string,
     classId: string,
-    subjectId: string
+    subjectId: string,
+    isAdmin = false
   ): Promise<EnrollmentSettingsResponseDto> {
     try {
-      // Verify teacher has access to this subject
+      // Admins can view settings for any subject; teachers can only view their own.
+      const whereClause: Record<string, unknown> = { instituteId, classId, subjectId, isActive: true };
+      if (!isAdmin) {
+        whereClause.teacherId = callerId;
+      }
+
       const classSubject = await this.classSubjectRepository.findOne({
-        where: {
-          instituteId,
-          classId,
-          subjectId,
-          teacherId,
-          isActive: true,
-        },
+        where: whereClause as any,
         relations: ['subject', 'class'],
       });
 

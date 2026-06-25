@@ -101,11 +101,11 @@ export class InstituteClassLecturesService {
 
       if (filters.classId) {
         const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-        const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === filters.instituteId);
+        const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(filters.instituteId));
 
         if (instituteEntry && Array.isArray(instituteEntry.c)) {
           const classEntry = instituteEntry.c.find(
-            ([classId]: [string, number]) => classId === filters.classId
+            ([classId]: [string, ...unknown[]]) => String(classId) === String(filters.classId)
           );
           if (!classEntry) {
             throw new ForbiddenException(`You do not have access to class ${filters.classId} in institute ${filters.instituteId}`);

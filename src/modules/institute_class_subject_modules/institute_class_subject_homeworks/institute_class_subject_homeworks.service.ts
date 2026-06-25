@@ -8,7 +8,7 @@ import { UpdateInstituteClassSubjectHomeworkDto } from './dto/update-institute_c
 import { QueryInstituteClassSubjectHomeworkDto } from './dto/query-institute-class-subject-homework.dto';
 import { InstituteClassSubjectHomeworkResponseDto, PaginatedInstituteClassSubjectHomeworkResponseDto } from './dto/institute-class-subject-homework-response.dto';
 import { InstituteClassSubjectHomework } from './entities/institute_class_subject_homework.entity';
-import { InstituteAccessValidator, ROLE_BITMASKS } from '../../../common/helpers/institute-access-validator.helper';
+import { InstituteAccessValidator, ROLE_BITMASKS, hasSubjectAccess } from '../../../common/helpers/institute-access-validator.helper';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
 /**
@@ -87,26 +87,20 @@ export class InstituteClassSubjectHomeworksService {
           // Validate class access if classId is provided
           if (query.classId) {
             const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-            const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === query.instituteId);
-            
+            const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(query.instituteId));
+
             if (instituteEntry && Array.isArray(instituteEntry.c)) {
               const classSubjectEntry = instituteEntry.c.find(
-                ([classId]: [string, number]) => classId === query.classId
+                ([classId]: [string, ...unknown[]]) => String(classId) === String(query.classId)
               );
               
               if (!classSubjectEntry) {
                 throw new ForbiddenException(`You do not have access to class ${query.classId} in institute ${query.instituteId}`);
               }
               
-              // If subjectId is also provided, validate subject access using bitmask
+              // If subjectId is also provided, validate subject access
               if (query.subjectId) {
-                const [classId, subjectBitmask] = classSubjectEntry;
-                const subjectIdNum = parseInt(query.subjectId, 10);
-                
-                // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-                const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-                
-                if (!hasSubjectAccess) {
+                if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], query.subjectId)) {
                   throw new ForbiddenException(`You do not have access to subject ${query.subjectId} in class ${query.classId}`);
                 }
               }
@@ -440,12 +434,12 @@ export class InstituteClassSubjectHomeworksService {
         
         // Validate class and subject access
         const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-        const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === homework.instituteId);
-        
+        const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(homework.instituteId));
+
         if (instituteEntry && Array.isArray(instituteEntry.c)) {
           // Validate class access
           const classSubjectEntry = instituteEntry.c.find(
-            ([classId]: [string, number]) => classId === homework.classId
+            ([classId]: [string, ...unknown[]]) => String(classId) === String(homework.classId)
           );
           
           if (!classSubjectEntry) {
@@ -453,12 +447,7 @@ export class InstituteClassSubjectHomeworksService {
           }
           
           // Validate subject access using bitmask
-          const [classId, subjectBitmask] = classSubjectEntry;
-          const subjectIdNum = parseInt(homework.subjectId, 10);
-          // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-          const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-          
-          if (!hasSubjectAccess) {
+          if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], homework.subjectId)) {
             throw new ForbiddenException(`You do not have access to subject ${homework.subjectId} in class ${homework.classId}`);
           }
         }
@@ -655,12 +644,7 @@ export class InstituteClassSubjectHomeworksService {
             throw new ForbiddenException(`You do not have access to class ${classId} in institute ${instituteId}`);
           }
           
-          const [, subjectBitmask] = classSubjectEntry;
-          const subjectIdNum = parseInt(subjectId, 10);
-          // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-          const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-          
-          if (!hasSubjectAccess) {
+          if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], subjectId)) {
             throw new ForbiddenException(`You do not have access to subject ${subjectId} in class ${classId}`);
           }
         }

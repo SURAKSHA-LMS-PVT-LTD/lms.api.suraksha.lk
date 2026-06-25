@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, Logger, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserType } from '../../modules/user/enums/user-type.enum';
+import { hasSubjectAccess } from '../helpers/institute-access-validator.helper';
 import { 
   VALIDATE_ENHANCED_ACCESS_KEY,
   VALIDATE_INSTITUTE_ADMIN_KEY, 
@@ -328,15 +329,7 @@ export class EnhancedValidationGuard implements CanActivate {
         });
         
         if (classAccess) {
-          // If no subject bitmask specified, access to all subjects in class
-          if (classAccess.length === 1) {
-            return true;
-          }
-          // Check specific subject access using bitmask
-          if (classAccess.length >= 2) {
-            const subjectBitmask = classAccess[1];
-            return this.subjectInBitmask(Number(subjectId), subjectBitmask);
-          }
+          return hasSubjectAccess(classAccess as [string, ...unknown[]], subjectId);
         }
       }
     }

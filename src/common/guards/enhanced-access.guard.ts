@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { EnhancedInstituteAccessEntry, GLOBAL_INSTITUTE_ACCESS_FLAG } from '../../auth/interfaces/enhanced-jwt-payload.interface';
 import { EnhancedAccessRule, ENHANCED_ACCESS_RULES_KEY, AllowedAccessRole } from './enhanced-access.types';
 import { UserType } from '../../modules/user/enums/user-type.enum';
+import { hasSubjectAccess } from '../helpers/institute-access-validator.helper';
 
 @Injectable()
 export class EnhancedAccessGuard implements CanActivate {
@@ -227,21 +228,7 @@ export class EnhancedAccessGuard implements CanActivate {
       return true;
     }
 
-    // Check subject access using bitmask
-    if (targetClass.length === 1) {
-      // No subject bitmask, has access to all subjects in class
-      return true;
-    }
-    
-    if (targetClass.length >= 2) {
-      const subjectBitmask = targetClass[1];
-      const subjectNum = Number(subjectId);
-      if (subjectNum > 0 && subjectNum <= 30) {
-        return (subjectBitmask & (1 << (subjectNum - 1))) !== 0;
-      }
-    }
-    
-    return false;
+    return hasSubjectAccess(targetClass as [string, ...unknown[]], subjectId);
   }
 
   private hasChild(user: any, studentUserId: string): boolean {

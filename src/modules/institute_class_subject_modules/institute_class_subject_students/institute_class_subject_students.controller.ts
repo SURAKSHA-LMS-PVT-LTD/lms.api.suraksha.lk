@@ -925,12 +925,15 @@ export class InstituteClassSubjectStudentsController {
     @Request() req: JwtRequest
   ): Promise<EnrollmentSettingsResponseDto> {
     const user = req.user;
-    
+    const instAccess = user.i?.find((inst: any) => inst.i === instituteId);
+    const isAdmin = user.userType === 'SUPER_ADMIN' || user.u === 0 || ((instAccess?.r ?? 0) & 8) !== 0;
+
     return await this.studentsService.getEnrollmentSettings(
-      user.s, 
-      instituteId, 
-      classId, 
-      subjectId
+      user.s,
+      instituteId,
+      classId,
+      subjectId,
+      isAdmin
     );
   }
 

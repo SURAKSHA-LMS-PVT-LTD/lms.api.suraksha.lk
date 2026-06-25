@@ -26,6 +26,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger }
 import { Reflector } from '@nestjs/core';
 import { EnhancedJwtPayload, EnhancedInstituteAccessEntry, ROLE_BITMASKS, COMPACT_TO_USER_TYPE } from '../interfaces/enhanced-jwt-payload.interface';
 import { UserType } from '../../modules/user/enums/user-type.enum';
+import { hasSubjectAccess } from '../../common/helpers/institute-access-validator.helper';
 
 /**
  * Configuration for flexible access control
@@ -251,13 +252,9 @@ export class FlexibleAccessGuard implements CanActivate {
           if (subjectId) {
             hasTeacherAccess = teacherEntries.some(
               (entry) =>
-                entry.c?.some(([cId, subjectBitmask]) => {
-                  const subjectNum = parseInt(subjectId, 10);
-                  if (isNaN(subjectNum) || subjectNum < 1 || subjectNum > 30) {
-                    return false; // Reject invalid/non-numeric subject IDs
-                  }
-                  return (subjectBitmask & (1 << (subjectNum - 1))) !== 0;
-                }),
+                entry.c?.some((classEntry) =>
+                  hasSubjectAccess(classEntry as [string, ...unknown[]], subjectId)
+                ),
             );
           }
         }

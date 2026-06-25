@@ -20,6 +20,7 @@
 
 import { Request } from 'express';
 import { UserType } from '../../modules/user/enums/user-type.enum';
+import { hasSubjectAccess as checkSubjectAccess } from '../helpers/institute-access-validator.helper';
 
 /**
  * Institute access information in JWT v2 format
@@ -131,7 +132,7 @@ export class JwtRequestHelper {
   }
 
   /**
-   * Check if student has access to specific subject
+   * Check if user has access to specific subject by UUID string.
    * @param user JWT payload
    * @param instituteId Institute ID
    * @param classId Class ID
@@ -151,8 +152,7 @@ export class JwtRequestHelper {
     const classAccess = institute.c?.find(([cId]) => cId === classId);
     if (!classAccess) return false;
 
-    const [, subjectBitmask] = classAccess;
-    return (subjectBitmask & (1 << (subjectId - 1))) !== 0;
+    return checkSubjectAccess(classAccess as [string, ...unknown[]], String(subjectId));
   }
 
   /**

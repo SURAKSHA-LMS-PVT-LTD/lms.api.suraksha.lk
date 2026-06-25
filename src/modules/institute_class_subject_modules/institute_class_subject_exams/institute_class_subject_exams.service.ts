@@ -11,7 +11,7 @@ import { PaginatedInstituteClassSubjectExamResponseDto } from './dto/paginated-i
 import { InstituteClassSubjectExam } from './entities/institute_class_subject_exam.entity';
 import { ExamRepository } from './repositories/exam.repository';
 import { UserEntity } from '../../user/entities/user.entity';
-import { InstituteAccessValidator, ROLE_BITMASKS } from '../../../common/helpers/institute-access-validator.helper';
+import { InstituteAccessValidator, ROLE_BITMASKS, hasSubjectAccess } from '../../../common/helpers/institute-access-validator.helper';
 
 /**
  * Institute Class Subject Exams Service
@@ -149,25 +149,20 @@ export class InstituteClassSubjectExamsService {
           // Validate class access if classId is provided
           if (query.classId) {
             const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-            const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === query.instituteId);
-            
+            const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(query.instituteId));
+
             if (instituteEntry && Array.isArray(instituteEntry.c)) {
               const classSubjectEntry = instituteEntry.c.find(
-                ([classId]: [string, number]) => classId === query.classId
+                ([classId]: [string, ...unknown[]]) => String(classId) === String(query.classId)
               );
               
               if (!classSubjectEntry) {
                 throw new ForbiddenException(`You do not have access to class ${query.classId} in institute ${query.instituteId}`);
               }
               
-              // If subjectId is also provided, validate subject access using bitmask
+              // If subjectId is also provided, validate subject access
               if (query.subjectId) {
-                const [classId, subjectBitmask] = classSubjectEntry;
-                const subjectIdNum = parseInt(query.subjectId, 10);
-                // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-                const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-                
-                if (!hasSubjectAccess) {
+                if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], query.subjectId)) {
                   throw new ForbiddenException(`You do not have access to subject ${query.subjectId} in class ${query.classId}`);
                 }
               }
@@ -400,25 +395,20 @@ export class InstituteClassSubjectExamsService {
         
         // Validate class and subject access
         const userInstituteAccess = Array.isArray(user.i) ? user.i : [];
-        const instituteEntry = userInstituteAccess.find((entry: any) => entry.i === exam.instituteId);
-        
+        const instituteEntry = userInstituteAccess.find((entry: any) => String(entry.i) === String(exam.instituteId));
+
         if (instituteEntry && Array.isArray(instituteEntry.c)) {
           // Validate class access
           const classSubjectEntry = instituteEntry.c.find(
-            ([classId]: [string, number]) => classId === exam.classId
+            ([classId]: [string, ...unknown[]]) => String(classId) === String(exam.classId)
           );
           
           if (!classSubjectEntry) {
             throw new ForbiddenException(`You do not have access to class ${exam.classId} in institute ${exam.instituteId}`);
           }
           
-          // Validate subject access using bitmask
-          const [classId, subjectBitmask] = classSubjectEntry;
-          const subjectIdNum = parseInt(exam.subjectId, 10);
-          // Proper bitmask check: subject ID 1 = bit 0, subject ID 2 = bit 1, etc.
-          const hasSubjectAccess = (subjectBitmask & (1 << (subjectIdNum - 1))) !== 0;
-          
-          if (!hasSubjectAccess) {
+          // Validate subject access
+          if (!hasSubjectAccess(classSubjectEntry as [string, ...unknown[]], exam.subjectId)) {
             throw new ForbiddenException(`You do not have access to subject ${exam.subjectId} in class ${exam.classId}`);
           }
         }

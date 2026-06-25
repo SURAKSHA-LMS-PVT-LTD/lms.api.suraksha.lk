@@ -127,3 +127,32 @@ export const ROLE_BITMASKS = {
   TEACHER: 4,
   INSTITUTE_ADMIN: 8
 } as const;
+
+/**
+ * Check whether a subject UUID appears in a JWT compact class entry's subject list.
+ * Handles both the current string-array format and the legacy numeric bitmask format.
+ *
+ * JWT `c` entry shapes:
+ *  [classId]                        — class access, no subject restriction
+ *  [classId, string[]]              — new format: UUID subject list
+ *  [classId, number]                — legacy format: bitmask (sequential IDs only)
+ */
+export function hasSubjectAccess(classEntry: [string, ...unknown[]], subjectId: string): boolean {
+  if (classEntry.length < 2) return true; // class-only entry = access to all subjects
+
+  const subjects = classEntry[1];
+
+  // New format: string array of UUID subject IDs
+  if (Array.isArray(subjects)) {
+    return subjects.includes(subjectId);
+  }
+
+  // Legacy format: numeric bitmask (only meaningful for sequential numeric IDs)
+  if (typeof subjects === 'number') {
+    const subjectIdNum = parseInt(subjectId, 10);
+    if (isNaN(subjectIdNum) || subjectIdNum < 1 || subjectIdNum > 30) return false;
+    return (subjects & (1 << (subjectIdNum - 1))) !== 0;
+  }
+
+  return false;
+}
