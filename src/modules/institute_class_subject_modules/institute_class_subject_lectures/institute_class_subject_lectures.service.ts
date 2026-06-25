@@ -401,14 +401,24 @@ export class InstituteClassSubjectLecturesService {
     }
 
     // ── 1. Attendance sessions (links) ─────────────────────────────────────
-    // Each session = one QR/link created by the teacher. Fetch all sessions for
-    // this lecture, then all marks across those sessions.
-    const sessions = await this.liveSessionRepository.find({ where: { lectureId: id } });
-    const totalSessions = sessions.length;
-    const sessionIds = sessions.map(s => s.id);
+    // There are two sources of "present" marks:
+    //   A. The lecture's own main URL (liveUrlId) — students join via lecture_live_attendance rows.
+    //      This counts as 1 implicit session ("main").
+    //   B. Custom QR/time-limited sessions created by the teacher (lecture_live_attendance_sessions)
+    //      — marks stored in lecture_live_attendance_marks rows.
+    // totalSessions = custom sessions + 1 if main URL is enabled.
 
-    // All marks across every session for this lecture
-    const allMarks = sessionIds.length > 0
+    const [sessions, liveJoinRows] = await Promise.all([
+      this.liveSessionRepository.find({ where: { lectureId: id } }),
+      this.liveAttendanceRepository.find({ where: { lectureId: id } }),
+    ]);
+
+    const hasMainSession = !!(lecture as any).liveAttendanceEnabled && !!(lecture as any).liveUrlId;
+    const MAIN_SESSION_ID = '__main__';
+
+    // Custom-session marks
+    const customSessionIds = sessions.map(s => s.id);
+    const customMarks = customSessionIds.length > 0
       ? await this.liveMarkRepository
           .createQueryBuilder('m')
           .where('m.lectureId = :lectureId', { lectureId: id })
@@ -416,36 +426,46 @@ export class InstituteClassSubjectLecturesService {
           .getMany()
       : [];
 
-    // Per-student aggregation across all sessions
-    // student attended N times = marked in N distinct sessions
+    const totalSessions = sessions.length + (hasMainSession ? 1 : 0);
+
+    // Per-student aggregation across ALL session types
     const studentSessionMap = new Map<string, { sessions: Set<string>; firstAt: Date; lastAt: Date }>();
-    for (const mark of allMarks) {
-      const sid = String(mark.studentId);
-      if (!studentSessionMap.has(sid)) {
-        studentSessionMap.set(sid, { sessions: new Set(), firstAt: mark.markedAt, lastAt: mark.markedAt });
+
+    const trackStudent = (userId: string, sessionKey: string, at: Date) => {
+      if (!studentSessionMap.has(userId)) {
+        studentSessionMap.set(userId, { sessions: new Set(), firstAt: at, lastAt: at });
       }
-      const entry = studentSessionMap.get(sid)!;
-      entry.sessions.add(String(mark.sessionId));
-      if (mark.markedAt < entry.firstAt) entry.firstAt = mark.markedAt;
-      if (mark.markedAt > entry.lastAt) entry.lastAt = mark.markedAt;
+      const entry = studentSessionMap.get(userId)!;
+      entry.sessions.add(sessionKey);
+      if (at < entry.firstAt) entry.firstAt = at;
+      if (at > entry.lastAt) entry.lastAt = at;
+    };
+
+    // Custom-session marks
+    for (const mark of customMarks) {
+      trackStudent(String(mark.studentId), String(mark.sessionId), mark.markedAt);
+    }
+
+    // Main-session joins (registered users only — guests can't be cross-referenced for attendance %)
+    for (const row of liveJoinRows) {
+      if (row.userId) {
+        trackStudent(String(row.userId), MAIN_SESSION_ID, row.joinTime);
+      }
     }
 
     const totalStudentsMarked = studentSessionMap.size;
-    // How many students attended ALL sessions (full attendance)
     const fullAttendanceCount = totalSessions > 0
       ? [...studentSessionMap.values()].filter(e => e.sessions.size === totalSessions).length
       : 0;
-    // Per-student compact list: [studentId, attendCount, firstAt, lastAt]
     const studentAttendance = [...studentSessionMap.entries()].map(([studentId, e]) => ({
       studentId,
-      attendCount: e.sessions.size,        // how many links they clicked / were marked in
+      attendCount: e.sessions.size,
       attendPercent: totalSessions > 0 ? Math.round((e.sessions.size / totalSessions) * 100) : 0,
       firstAt: e.firstAt.toISOString(),
       lastAt: e.lastAt.toISOString(),
     }));
 
-    // ── 2. Live join/leave records (direct join, not via link) ─────────────
-    const liveJoinRows = await this.liveAttendanceRepository.find({ where: { lectureId: id } });
+    // ── 2. Live join/leave records (raw counts for main-session stats) ─────
     const liveDirectJoins = liveJoinRows.length;
     const liveDirectUniqueUsers = new Set(liveJoinRows.filter(r => r.userId).map(r => String(r.userId))).size;
     const liveGuestJoins = liveJoinRows.filter(r => !r.userId).length;
@@ -508,10 +528,12 @@ export class InstituteClassSubjectLecturesService {
       : (user?.email ?? undefined);
 
     const summary = {
-      // attendance via links
-      totalAttendanceSessions: totalSessions,       // number of links created
-      totalStudentsMarked,                           // unique students marked across all links
-      fullAttendanceCount,                           // students marked in every link
+      // attendance via links (custom QR sessions + main URL)
+      totalAttendanceSessions: totalSessions,        // custom sessions + 1 if main URL active
+      customAttendanceSessions: sessions.length,     // teacher-created QR/time-limited links
+      hasMainSession,                                // whether main lecture URL counts as a session
+      totalStudentsMarked,                           // unique students present in at least one session
+      fullAttendanceCount,                           // students present in every session
       studentAttendance,                             // [{studentId, attendCount, attendPercent, firstAt, lastAt}]
 
       // direct live join/leave tracking
