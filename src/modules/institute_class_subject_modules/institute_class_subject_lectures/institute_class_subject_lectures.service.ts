@@ -13,6 +13,7 @@ import { LectureRecordingSession } from './entities/lecture_recording_session.en
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { InstituteAccessValidator, ROLE_BITMASKS, hasSubjectAccess } from '../../../common/helpers/institute-access-validator.helper';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { InstituteClassLectureEntity } from '../../institute_mudules/institute_class_lectures/entities/institute_class_lecture.entity';
 
 export interface QueryLectureDto {
   page?: number;
@@ -43,8 +44,18 @@ export class InstituteClassSubjectLecturesService {
     private readonly liveMarkRepository: Repository<LectureLiveAttendanceMark>,
     @InjectRepository(LectureRecordingSession)
     private readonly recordingSessionRepository: Repository<LectureRecordingSession>,
+    @InjectRepository(InstituteClassLectureEntity)
+    private readonly classLectureRepository: Repository<InstituteClassLectureEntity>,
     private readonly cloudStorageService: CloudStorageService,
   ) {}
+
+  private async resolveAnyLecture(id: string): Promise<InstituteClassSubjectLecture | InstituteClassLectureEntity> {
+    const subj = await this.lectureRepository.findOne({ where: { id } });
+    if (subj) return subj;
+    const cls = await this.classLectureRepository.findOne({ where: { id } });
+    if (cls) return cls;
+    throw new NotFoundException(`Lecture with ID ${id} not found`);
+  }
 
   private transformMaterialUrls(lecture: InstituteClassSubjectLecture): void {
     if (Array.isArray(lecture.materials)) {
@@ -379,8 +390,9 @@ export class InstituteClassSubjectLecturesService {
   }
 
   async closeLecture(id: string, user: any): Promise<InstituteClassSubjectLecture> {
-    const lecture = await this.lectureRepository.findOne({ where: { id } });
-    if (!lecture) throw new NotFoundException(`Lecture with ID ${id} not found`);
+    const lecture = await this.resolveAnyLecture(id);
+    const isClassLecture = lecture instanceof InstituteClassLectureEntity;
+    const repo: Repository<any> = isClassLecture ? this.classLectureRepository : this.lectureRepository;
 
     InstituteAccessValidator.validateResourceAccess(user, lecture, [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN]);
 
@@ -482,7 +494,7 @@ export class InstituteClassSubjectLecturesService {
       ? Math.round(recTotalWatchedSeconds / recUniqueRegisteredViewers)
       : 0;
     // Completion percentage per user (needs recDurationSeconds on lecture)
-    const recDuration = lecture.recDurationSeconds ?? 0;
+    const recDuration = (lecture as any).recDurationSeconds ?? 0;
     const recPerStudentWatch = [...recByUser.entries()].map(([userId, v]) => ({
       userId,
       watchedMinutes: Math.round(v.watchedSec / 60),
@@ -518,22 +530,22 @@ export class InstituteClassSubjectLecturesService {
       closedBy,
     };
 
-    await this.lectureRepository.update(id, {
+    await repo.update(id, {
       status: 'completed' as any,
       closedAt: now(),
       lectureSummary: summary as any,
     });
 
-    const updated = await this.lectureRepository.findOne({ where: { id } });
+    const updated = await repo.findOne({ where: { id } });
     return updated!;
   }
 
   async toggleHidden(id: string, user: any): Promise<InstituteClassSubjectLecture> {
-    const lecture = await this.lectureRepository.findOne({ where: { id } });
-    if (!lecture) throw new NotFoundException(`Lecture with ID ${id} not found`);
+    const lecture = await this.resolveAnyLecture(id);
+    const repo: Repository<any> = lecture instanceof InstituteClassLectureEntity ? this.classLectureRepository : this.lectureRepository;
     InstituteAccessValidator.validateResourceAccess(user, lecture, [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN]);
-    await this.lectureRepository.update(id, { isHidden: !lecture.isHidden });
-    return this.lectureRepository.findOne({ where: { id } }) as Promise<InstituteClassSubjectLecture>;
+    await repo.update(id, { isHidden: !lecture.isHidden });
+    return repo.findOne({ where: { id } }) as Promise<InstituteClassSubjectLecture>;
   }
 
   async remove(id: string): Promise<void> {
