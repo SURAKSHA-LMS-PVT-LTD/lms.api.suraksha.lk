@@ -35,14 +35,10 @@ export function detectIdentifierType(identifier: string): DetectedIdentifier {
     return { type: 'phone', normalized };
   }
 
-  // 6-digit system ID
-  if (/^\d{6}$/.test(trimmed)) {
-    return { type: 'system_id', normalized: trimmed };
-  }
-
-  // Numeric-only birth certificate
+  // Numeric-only: treat as system ID (matches against users.id)
+  // Covers 6-digit short IDs and longer IDs like 990000101
   if (/^\d+$/.test(trimmed)) {
-    return { type: 'birth_certificate', normalized: trimmed };
+    return { type: 'system_id', normalized: trimmed };
   }
 
   // Default: treat as email

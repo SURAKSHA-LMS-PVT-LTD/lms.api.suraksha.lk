@@ -227,7 +227,7 @@ export class LectureTrackingService {
           user.id,
           lecture.instituteId,
           lecture.classId,
-          lecture.subjectId,
+          lec.subjectId,
         );
       }
     } else if (level === 'PAID_ONLY') {
@@ -239,9 +239,9 @@ export class LectureTrackingService {
           user.id,
           lecture.instituteId,
           lecture.classId,
-          lecture.subjectId,
+          lec.subjectId,
           lecture.livePaymentId,
-          lecture.livePaymentStatuses ?? ['VERIFIED'],
+          lec.livePaymentStatuses ?? ['VERIFIED'],
         );
         if (paid) {
           hasAccess = true;
@@ -256,7 +256,7 @@ export class LectureTrackingService {
           user.id,
           lecture.instituteId,
           lecture.classId,
-          lecture.subjectId,
+          lec.subjectId,
         );
       }
     }
@@ -327,20 +327,18 @@ export class LectureTrackingService {
   // ─────────────────────────────────────────────────────────────
 
   async validateLiveAccess(urlId: string, user: any) {
-    const lecture = await this.lectureRepo.findOne({
-      where: { liveUrlId: urlId, liveAttendanceEnabled: true },
-      relations: ['institute'],
-    });
-    if (!lecture) throw new NotFoundException('Lecture not found or attendance tracking is disabled');
+    let lecture: InstituteClassSubjectLecture | InstituteClassLectureEntity | null =
+      await this.lectureRepo.findOne({ where: { liveUrlId: urlId }, relations: ['institute'] });
+    if (!lecture)
+      lecture = await this.classLectureRepo.findOne({ where: { liveUrlId: urlId }, relations: ['institute'] });
+    if (!lecture || !lecture.liveAttendanceEnabled)
+      throw new NotFoundException('Lecture not found or attendance tracking is disabled');
 
-    // Check TTL
-    if (lecture.liveUrlExpiresAt && new Date() > new Date(lecture.liveUrlExpiresAt)) {
-      throw new ForbiddenException('This lecture link has expired');
-    }
+    const lec = lecture as any;
 
     const { hasAccess, requirePayment, notPaidPaymentId } = await this.resolveLiveAccess(lecture, user);
 
-    const inst = lecture.institute as any;
+    const inst = lec.institute;
     const liveJoinUrl = buildPublicUrl(
       `live-lecture/${urlId}`,
       inst?.subdomain,
@@ -360,14 +358,14 @@ export class LectureTrackingService {
       subdomain: inst?.subdomain,
       customDomain: inst?.customDomain,
       accessLevel: lecture.liveAccessLevel,
-      bgUrl: lecture.liveEntryBgUrl,
-      cardImageUrl: lecture.liveCardImageUrl,
+      bgUrl: lec.liveEntryBgUrl,
+      cardImageUrl: lec.liveCardImageUrl,
       liveJoinUrl,
       hasAccess,
       requirePayment,
       notPaidPaymentId,
       paymentId: lecture.livePaymentId,
-      paymentStatuses: lecture.livePaymentStatuses,
+      paymentStatuses: lec.livePaymentStatuses,
       welcomeMessageEnabled: lecture.welcomeMessageEnabled,
       welcomeMessageText: lecture.welcomeMessageText,
       welcomeMessageVoiceEnabled: lecture.welcomeMessageVoiceEnabled,
@@ -381,29 +379,32 @@ export class LectureTrackingService {
   // ─────────────────────────────────────────────────────────────
 
   async validateRecordingAccess(urlId: string, user: any) {
-    const lecture = await this.lectureRepo.findOne({
-      where: { recUrlId: urlId, recAttendanceEnabled: true },
-      relations: ['institute'],
-    });
-    if (!lecture) throw new NotFoundException('Recording not found or tracking is disabled');
+    let lectureRaw: InstituteClassSubjectLecture | InstituteClassLectureEntity | null =
+      await this.lectureRepo.findOne({ where: { recUrlId: urlId }, relations: ['institute'] });
+    if (!lectureRaw)
+      lectureRaw = await this.classLectureRepo.findOne({ where: { recUrlId: urlId }, relations: ['institute'] });
+    if (!lectureRaw || !lectureRaw.recAttendanceEnabled)
+      throw new NotFoundException('Recording not found or tracking is disabled');
 
-    if (lecture.recUrlExpiresAt && new Date() > new Date(lecture.recUrlExpiresAt)) {
-      throw new ForbiddenException('This recording link has expired');
-    }
+    const lec = lectureRaw as any;
+
+    const isEnrolled = user
+      ? await this.checkEnrollment(user.id, lec.instituteId, lec.classId, lec.subjectId)
+      : false;
 
     let hasAccess = false;
     let requirePayment = false;
     let notPaidPaymentId: string | undefined;
 
-    const level = lecture.recAccessLevel;
+    const level = lec.recAccessLevel;
 
-    // Institute admin or teacher of this institute always has access regardless of access level
+    // Institute admin or teacher always has access
     if (user) {
       const rawAccess = (user as any).i ?? (user as any).enhancedInstituteAccess;
       const instituteAccess: EnhancedInstituteAccessEntry[] = Array.isArray(rawAccess) ? rawAccess : [];
       const isStaff = instituteAccess.some(
         (entry) =>
-          String(entry.i) === String(lecture.instituteId) &&
+          String(entry.i) === String(lec.instituteId) &&
           ((entry.r & ROLE_BITMASKS.IA) !== 0 || (entry.r & ROLE_BITMASKS.TE) !== 0),
       );
       if (isStaff) hasAccess = true;
@@ -415,76 +416,69 @@ export class LectureTrackingService {
       } else if (level === 'SURAKSHA_USERS') {
         hasAccess = !!user;
       } else if (level === 'ENROLLED_ONLY') {
-        hasAccess = user
-          ? await this.checkEnrollment(
-              user.id,
-              lecture.instituteId,
-              lecture.classId,
-              lecture.subjectId,
-            )
-          : false;
+        hasAccess = isEnrolled;
       } else if (level === 'PAID_ONLY') {
         if (!user) {
           hasAccess = false;
           requirePayment = true;
-        } else if (lecture.recPaymentId) {
+        } else if (lec.recPaymentId) {
           const paid = await this.checkPaymentAccess(
-            user.id,
-            lecture.instituteId,
-            lecture.classId,
-            lecture.subjectId,
-            lecture.recPaymentId,
-            lecture.recPaymentStatuses ?? ['VERIFIED'],
+            user.id, lec.instituteId, lec.classId, lec.subjectId,
+            lec.recPaymentId, lec.recPaymentStatuses ?? ['VERIFIED'],
           );
           if (paid) {
             hasAccess = true;
           } else {
             hasAccess = false;
             requirePayment = true;
-            notPaidPaymentId = lecture.recPaymentId;
+            notPaidPaymentId = lec.recPaymentId;
           }
         } else {
-          hasAccess = user
-            ? await this.checkEnrollment(
-                user.id,
-                lecture.instituteId,
-                lecture.classId,
-                lecture.subjectId,
-              )
-            : false;
+          hasAccess = isEnrolled;
         }
       }
     }
 
-    const inst = lecture.institute as any;
+    const inst = lec.institute;
 
     return {
-      lectureId: lecture.id,
-      title: lecture.title,
-      description: lecture.description,
-      instituteId: lecture.instituteId,
+      lectureId: lec.id,
+      title: lec.title,
+      description: lec.description,
+      instituteId: lec.instituteId,
       instituteName: inst?.name,
       instituteLogoUrl: inst?.logoUrl,
       subdomain: inst?.subdomain,
       customDomain: inst?.customDomain,
       accessLevel: level,
-      platform: lecture.recPlatform,
-      durationSeconds: lecture.recDurationSeconds,
-      bgUrl: lecture.recEntryBgUrl,
-      cardImageUrl: lecture.recCardImageUrl,
+      platform: lec.recPlatform,
+      durationSeconds: lec.recDurationSeconds,
+      bgUrl: lec.recEntryBgUrl,
+      cardImageUrl: lec.recCardImageUrl,
       hasAccess,
       requirePayment,
       notPaidPaymentId,
-      paymentId: lecture.recPaymentId,
-      paymentStatuses: lecture.recPaymentStatuses,
-      materials: lecture.materials,
-      welcomeMessageEnabled: lecture.welcomeMessageEnabled,
-      welcomeMessageText: lecture.welcomeMessageText,
-      welcomeMessageVoiceEnabled: lecture.welcomeMessageVoiceEnabled,
-      // Only expose recording URL when access granted
-      recordingUrl: hasAccess ? lecture.recordingUrl : undefined,
-      // 0 = view-only (no activity events collected), null/undefined = unlimited
-      recTrackingDays: lecture.recTrackingDays ?? null,
+      paymentId: lec.recPaymentId,
+      paymentStatuses: lec.recPaymentStatuses,
+      materials: lec.materials,
+      welcomeMessageEnabled: lec.welcomeMessageEnabled,
+      welcomeMessageText: lec.welcomeMessageText,
+      welcomeMessageVoiceEnabled: lec.welcomeMessageVoiceEnabled,
+      recordingUrl: hasAccess ? lec.recordingUrl : undefined,
+      // If recTrackingDays is set, check whether the window is still open.
+      // Return 0 when the window has closed so the frontend enters view-only
+      // mode immediately (no Sync button, no silent data loss).
+      recTrackingDays: (() => {
+        if (!isEnrolled) return 0;          // 0 = view-only, don't capture activities for non-enrolled users
+        const days = lec.recTrackingDays ?? 30; // null = 30 days max
+        if (days === 0) return 0;           // 0 = view-only, set intentionally
+        const clampedDays = Math.min(days, 30); // Enforce 30 days max
+        if (!lec.createdAt) return clampedDays; // no createdAt — can't compute, trust clamped value
+        const cutoff = new Date(lec.createdAt);
+        cutoff.setDate(cutoff.getDate() + clampedDays);
+        // Window has expired → return 0 so frontend treats this as view-only
+        return new Date() > cutoff ? 0 : clampedDays;
+      })(),
     };
   }
 
@@ -731,14 +725,11 @@ export class LectureTrackingService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    const session = await this.liveSessionRepo.findOne({
-      where: { urlId },
-      relations: ['lecture'],
-    });
+    const session = await this.liveSessionRepo.findOne({ where: { urlId } });
     if (!session) throw new NotFoundException('Attendance link not found');
 
-    const lecture = session.lecture;
-    if (!lecture || !lecture.liveAttendanceEnabled) {
+    const lecture = await this.resolveLecture(session.lectureId, true);
+    if (!lecture.liveAttendanceEnabled) {
       throw new NotFoundException('Lecture not found or attendance tracking is disabled');
     }
 
@@ -773,9 +764,20 @@ export class LectureTrackingService {
       ipAddress,
       userAgent,
     });
-    const saved = await this.liveMarkRepo.save(record);
 
-    return { status: 'MARKED', markedAt: saved.markedAt };
+    try {
+      const saved = await this.liveMarkRepo.save(record);
+      return { status: 'MARKED', markedAt: saved.markedAt };
+    } catch (err: any) {
+      // Race condition: two simultaneous requests both passed the existing check
+      if (err?.code === 'ER_DUP_ENTRY' || err?.message?.includes('Duplicate entry')) {
+        const dup = await this.liveMarkRepo.findOne({
+          where: { sessionId: session.id, studentId: user.id },
+        });
+        return { status: 'ALREADY_MARKED', markedAt: dup?.markedAt };
+      }
+      throw err;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -920,11 +922,19 @@ export class LectureTrackingService {
 
     // Enforce recTrackingDays: silently drop heartbeats if the tracking window has closed
     if (session.lectureId) {
-      const lecture = await this.lectureRepo.findOne({ where: { id: session.lectureId as any }, select: ['recTrackingDays', 'createdAt'] });
-      if (lecture?.recTrackingDays != null && lecture.createdAt) {
-        const cutoff = new Date(lecture.createdAt);
-        cutoff.setDate(cutoff.getDate() + lecture.recTrackingDays);
-        if (new Date() > cutoff) return { success: true };
+      const lec =
+        await this.lectureRepo.findOne({ where: { id: session.lectureId as any }, select: ['recTrackingDays', 'createdAt'] }) ??
+        await this.classLectureRepo.findOne({ where: { id: session.lectureId as any }, select: ['recTrackingDays', 'createdAt'] });
+      if (lec?.createdAt) {
+        const days = lec.recTrackingDays ?? 30;
+        const clampedDays = Math.min(days, 30);
+        const cutoff = new Date(lec.createdAt);
+        cutoff.setDate(cutoff.getDate() + clampedDays);
+        if (new Date() > cutoff) {
+          // Tracking window closed — return 403 so the frontend knows to surface
+          // "Tracking ended" instead of silently discarding heartbeats with 200 OK.
+          throw new ForbiddenException('Recording tracking period has ended for this lecture');
+        }
       }
     }
 
@@ -977,7 +987,6 @@ export class LectureTrackingService {
     lectureIds: string[],
     classId: string,
     instituteId: string,
-    includeSubjectLectures = true,
   ) {
     try {
       if (!lectureIds.length) return { lectures: [], students: [], grid: {} };
@@ -986,17 +995,19 @@ export class LectureTrackingService {
       const validIds = lectureIds.map(id => String(id).trim()).filter(id => id && id !== 'undefined' && id !== 'null');
       if (!validIds.length) return { lectures: [], students: [], grid: {} };
 
-      // 1. Load lectures (validates ownership)
-      let lectures = [];
+      // 1. Load lectures from both subject and class repos (validates ownership)
+      let lectures: any[] = [];
       try {
-        lectures = await this.lectureRepo.find({
-          where: { id: In(validIds), classId, instituteId },
-        });
+        const [subjLectures, classLectures] = await Promise.all([
+          this.lectureRepo.find({ where: { id: In(validIds), classId, instituteId } }),
+          this.classLectureRepo.find({ where: { id: In(validIds), classId, instituteId } }),
+        ]);
+        lectures = [...subjLectures, ...classLectures];
       } catch (dbError) {
         console.error('❌ Error loading lectures:', dbError);
         return { lectures: [], students: [], grid: {} };
       }
-      
+
       if (!lectures.length) return { lectures: [], students: [], grid: {} };
 
       // 2. Load enrolled students for the correct scope
@@ -1208,7 +1219,8 @@ export class LectureTrackingService {
 
   async getRecordingActivityReport(lectureId: string, studentId?: string, requestUser?: EnhancedJwtPayload) {
     // Exposes viewers' recording sessions — staff-only, scoped to the lecture's institute.
-    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
+    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } })
+      ?? await this.classLectureRepo.findOne({ where: { id: lectureId } });
     if (!lecture) throw new NotFoundException('Lecture not found');
     this.assertStaffAccess(requestUser, (lecture as any).instituteId);
 
@@ -1249,6 +1261,8 @@ export class LectureTrackingService {
       totalWatchedSeconds: s.totalWatchedSeconds,
       lastPositionSeconds: s.lastPositionSeconds,
       timesViewed: s.timesViewed ?? 1,
+      backupStatus: s.backupStatus,
+      lastSyncTime: s.lastSyncTime ?? null,
       activities: (actBySession.get(s.id) ?? []).map(a => ({
         type: a.activityType,
         videoTimestamp: a.videoTimestamp,
@@ -1285,10 +1299,13 @@ export class LectureTrackingService {
       whereClause.subjectId = subjectId;
     }
 
-    const lectures = await this.lectureRepo.find({
-      where: whereClause,
-      order: { startTime: 'DESC' }
-    });
+    const [subjLectures, classLectures] = await Promise.all([
+      this.lectureRepo.find({ where: whereClause, order: { startTime: 'DESC' } }),
+      // Class-level lectures have no subjectId — only fetch them when not filtering by subject
+      subjectId ? Promise.resolve([]) : this.classLectureRepo.find({ where: { instituteId, classId }, order: { startTime: 'DESC' } }),
+    ]);
+    const lectures: any[] = [...subjLectures, ...classLectures]
+      .sort((a, b) => new Date(b.startTime ?? 0).getTime() - new Date(a.startTime ?? 0).getTime());
 
     if (!lectures.length) return [];
 
@@ -1409,7 +1426,8 @@ export class LectureTrackingService {
     lectureId: string,
     userTypeFilter?: 'enrolled' | 'suraksha_user' | 'guest' | 'all',
   ) {
-    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
+    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } })
+      ?? await this.classLectureRepo.findOne({ where: { id: lectureId } });
     if (!lecture) throw new NotFoundException('Lecture not found');
 
     let query = this.recSessionRepo.createQueryBuilder('session')
@@ -1494,6 +1512,130 @@ export class LectureTrackingService {
       backupStatus: 'completed',
       syncedAt: formatSriLankaDateTime(new Date()),
       message: 'Activities synchronized successfully',
+    };
+  }
+
+  /**
+   * Current activities for a class/institute:
+   * - Recording sessions with no end_time (student is watching right now)
+   * - Live attendance rows with no leave_time (student is in live lecture right now)
+   * Also returns recently completed sessions from the last hour for context.
+   */
+  async getCurrentActivities(instituteId: string, classId?: string, subjectId?: string) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+    // Fetch open recording sessions (currently watching)
+    const openRecQb = this.recSessionRepo.createQueryBuilder('s')
+      .leftJoinAndSelect('s.user', 'u')
+      .where('s.endTime IS NULL')
+      .andWhere('s.startTime > :cutoff', { cutoff: new Date(Date.now() - 24 * 60 * 60 * 1000) });
+    // We need to filter by institute/class — recording sessions don't have instituteId/classId columns
+    // so we join through the lecture. We'll do it in-memory after fetching lectures for the scope.
+    const openRec = await openRecQb.getMany();
+
+    // Fetch recently completed recording sessions (last hour, endTime not null)
+    const recentRecQb = this.recSessionRepo.createQueryBuilder('s')
+      .leftJoinAndSelect('s.user', 'u')
+      .where('s.endTime IS NOT NULL')
+      .andWhere('s.endTime >= :cutoff', { cutoff: oneHourAgo });
+    const recentRec = await recentRecQb.getMany();
+
+    // Get lecture IDs for scope filtering
+    const whereClause: any = { instituteId };
+    if (classId) whereClause.classId = classId;
+    if (subjectId) whereClause.subjectId = subjectId;
+
+    const [scopeSubjLectures, scopeClassLectures] = await Promise.all([
+      this.lectureRepo.find({ where: whereClause, select: ['id', 'title'] }),
+      classId
+        ? this.classLectureRepo.find({ where: { instituteId, classId }, select: ['id', 'title'] })
+        : Promise.resolve([]),
+    ]);
+    const scopeLectureMap = new Map<string, string>(
+      [...scopeSubjLectures, ...scopeClassLectures].map(l => [l.id, l.title]),
+    );
+
+    const filterAndMap = (sessions: LectureRecordingSession[]) =>
+      sessions
+        .filter(s => scopeLectureMap.has(s.lectureId))
+        .map(s => ({
+          type: 'recording' as const,
+          sessionId: s.id,
+          lectureId: s.lectureId,
+          lectureTitle: scopeLectureMap.get(s.lectureId) ?? '',
+          userId: s.userId ?? null,
+          userName: s.userId
+            ? ((s.user as any)?.name ?? (`${(s.user as any)?.firstName ?? ''} ${(s.user as any)?.lastName ?? ''}`.trim() || 'Unknown'))
+            : (s.guestName ?? 'Guest'),
+          userType: s.userType,
+          startTime: formatSriLankaDateTime(s.startTime),
+          endTime: s.endTime ? formatSriLankaDateTime(s.endTime) : null,
+          isActive: !s.endTime,
+          totalWatchedSeconds: s.totalWatchedSeconds,
+          lastPositionSeconds: s.lastPositionSeconds,
+          backupStatus: s.backupStatus,
+          lastSyncTime: s.lastSyncTime ? formatSriLankaDateTime(s.lastSyncTime) : null,
+        }));
+
+    const activeSessions = filterAndMap(openRec);
+    const recentSessions = filterAndMap(recentRec);
+
+    // Fetch currently active live attendances (no leave_time)
+    const liveWhere: any = { leaveTime: null as any };
+    if (instituteId) liveWhere.instituteId = instituteId;
+    if (classId) liveWhere.classId = classId;
+    if (subjectId) liveWhere.subjectId = subjectId;
+
+    const activeLive = await this.liveAttRepo
+      .createQueryBuilder('l')
+      .leftJoinAndSelect('l.user', 'u')
+      .where('l.leaveTime IS NULL')
+      .andWhere('l.joinTime > :cutoff', { cutoff: new Date(Date.now() - 24 * 60 * 60 * 1000) })
+      .andWhere(instituteId ? 'l.instituteId = :instituteId' : '1=1', { instituteId })
+      .andWhere(classId ? 'l.classId = :classId' : '1=1', { classId })
+      .andWhere(subjectId ? 'l.subjectId = :subjectId' : '1=1', { subjectId })
+      .getMany();
+
+    const recentLive = await this.liveAttRepo
+      .createQueryBuilder('l')
+      .leftJoinAndSelect('l.user', 'u')
+      .where('l.leaveTime IS NOT NULL')
+      .andWhere('l.leaveTime >= :cutoff', { cutoff: oneHourAgo })
+      .andWhere(instituteId ? 'l.instituteId = :instituteId' : '1=1', { instituteId })
+      .andWhere(classId ? 'l.classId = :classId' : '1=1', { classId })
+      .andWhere(subjectId ? 'l.subjectId = :subjectId' : '1=1', { subjectId })
+      .getMany();
+
+    const mapLive = (rows: LectureLiveAttendance[]) =>
+      rows.map(l => ({
+        type: 'live' as const,
+        attendanceId: l.id,
+        lectureId: l.lectureId,
+        lectureTitle: scopeLectureMap.get(l.lectureId) ?? '',
+        userId: l.userId ?? null,
+        userName: l.userId
+          ? ((l.user as any)?.name ?? (`${(l.user as any)?.firstName ?? ''} ${(l.user as any)?.lastName ?? ''}`.trim() || 'Unknown'))
+          : (l.guestName ?? 'Guest'),
+        joinTime: formatSriLankaDateTime(l.joinTime),
+        leaveTime: l.leaveTime ? formatSriLankaDateTime(l.leaveTime) : null,
+        isActive: !l.leaveTime,
+        durationMinutes: l.leaveTime
+          ? Math.round((l.leaveTime.getTime() - l.joinTime.getTime()) / 60000)
+          : Math.round((Date.now() - l.joinTime.getTime()) / 60000),
+      }));
+
+    return {
+      snapshot: new Date().toISOString(),
+      activeSessions: activeSessions.length,
+      activeLive: activeLive.length,
+      recording: {
+        active: activeSessions,
+        recentlyEnded: recentSessions,
+      },
+      live: {
+        active: mapLive(activeLive),
+        recentlyLeft: mapLive(recentLive),
+      },
     };
   }
 

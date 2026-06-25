@@ -150,37 +150,47 @@ export class SubjectRecordingTrackingService {
     });
     if (!rec) throw new NotFoundException('Recording not found or tracking is disabled');
 
-    if (rec.recUrlExpiresAt && new Date() > new Date(rec.recUrlExpiresAt)) {
-      throw new ForbiddenException('This recording link has expired');
-    }
+    const isEnrolled = user
+      ? await this.checkEnrollment(user.id, rec.instituteId, rec.classId, rec.subjectId)
+      : false;
 
     let hasAccess = false;
     let requirePayment = false;
     let notPaidPaymentId: string | undefined;
     const level = rec.recAccessLevel;
 
-    if (level === 'ANYONE') {
-      hasAccess = true;
-    } else if (level === 'SURAKSHA_USERS') {
-      hasAccess = !!user;
-    } else if (level === 'ENROLLED_ONLY') {
-      hasAccess = user
-        ? await this.checkEnrollment(user.id, rec.instituteId, rec.classId, rec.subjectId)
-        : false;
-    } else if (level === 'PAID_ONLY') {
-      if (!user) {
-        hasAccess = false; requirePayment = true;
-      } else if (rec.recPaymentId) {
-        const paid = await this.checkPaymentAccess(
-          user.id, rec.instituteId, rec.classId, rec.subjectId,
-          rec.recPaymentId, rec.recPaymentStatuses ?? ['VERIFIED'],
-        );
-        if (paid) { hasAccess = true; }
-        else { hasAccess = false; requirePayment = true; notPaidPaymentId = rec.recPaymentId; }
-      } else {
-        hasAccess = user
-          ? await this.checkEnrollment(user.id, rec.instituteId, rec.classId, rec.subjectId)
-          : false;
+    // Institute admin or teacher always has access
+    if (user) {
+      const rawAccess = (user as any).i ?? (user as any).enhancedInstituteAccess;
+      const instituteAccess: EnhancedInstituteAccessEntry[] = Array.isArray(rawAccess) ? rawAccess : [];
+      const isStaff = instituteAccess.some(
+        (entry) =>
+          String(entry.i) === String(rec.instituteId) &&
+          ((entry.r & ROLE_BITMASKS.IA) !== 0 || (entry.r & ROLE_BITMASKS.TE) !== 0),
+      );
+      if (isStaff) hasAccess = true;
+    }
+
+    if (!hasAccess) {
+      if (level === 'ANYONE') {
+        hasAccess = true;
+      } else if (level === 'SURAKSHA_USERS') {
+        hasAccess = !!user;
+      } else if (level === 'ENROLLED_ONLY') {
+        hasAccess = isEnrolled;
+      } else if (level === 'PAID_ONLY') {
+        if (!user) {
+          hasAccess = false; requirePayment = true;
+        } else if (rec.recPaymentId) {
+          const paid = await this.checkPaymentAccess(
+            user.id, rec.instituteId, rec.classId, rec.subjectId,
+            rec.recPaymentId, rec.recPaymentStatuses ?? ['VERIFIED'],
+          );
+          if (paid) { hasAccess = true; }
+          else { hasAccess = false; requirePayment = true; notPaidPaymentId = rec.recPaymentId; }
+        } else {
+          hasAccess = isEnrolled;
+        }
       }
     }
 
@@ -210,8 +220,20 @@ export class SubjectRecordingTrackingService {
       welcomeMessageVoiceEnabled: rec.welcomeMessageVoiceEnabled,
       // Only expose the actual URL once access is confirmed
       recordingUrl: hasAccess ? rec.recordingUrl : undefined,
-      // 0 = view-only (no activity events collected), null/undefined = unlimited
-      recTrackingDays: rec.recTrackingDays ?? null,
+      // If recTrackingDays is set, check whether the window is still open.
+      // Return 0 when the window has closed so the frontend enters view-only
+      // mode immediately (no Sync button, no silent data loss).
+      recTrackingDays: (() => {
+        if (!isEnrolled) return 0;          // 0 = view-only, don't capture activities for non-enrolled users
+        const days = rec.recTrackingDays ?? 30; // null = 30 days max
+        if (days === 0) return 0;           // 0 = view-only, set intentionally
+        const clampedDays = Math.min(days, 30); // Enforce 30 days max
+        if (!rec.createdAt) return clampedDays; // no createdAt — can't compute, trust clamped value
+        const cutoff = new Date(rec.createdAt);
+        cutoff.setDate(cutoff.getDate() + clampedDays);
+        // Window has expired → return 0 so frontend treats this as view-only
+        return new Date() > cutoff ? 0 : clampedDays;
+      })(),
     };
   }
 
@@ -342,6 +364,24 @@ export class SubjectRecordingTrackingService {
     if (!session) throw new NotFoundException('Session not found');
     if (userId && session.userId && session.userId !== userId) {
       throw new ForbiddenException('Not your session');
+    }
+
+    // Enforce recTrackingDays: throw 403 if the tracking window has closed so the
+    // frontend surfaces "Tracking ended" instead of silently discarding heartbeats.
+    if (session.recordingId) {
+      const rec = await this.recordingRepo.findOne({
+        where: { id: session.recordingId },
+        select: ['recTrackingDays', 'createdAt'],
+      });
+      if (rec?.createdAt) {
+        const days = rec.recTrackingDays ?? 30;
+        const clampedDays = Math.min(days, 30);
+        const cutoff = new Date(rec.createdAt);
+        cutoff.setDate(cutoff.getDate() + clampedDays);
+        if (new Date() > cutoff) {
+          throw new ForbiddenException('Recording tracking period has ended for this recording');
+        }
+      }
     }
 
     const now = new Date();

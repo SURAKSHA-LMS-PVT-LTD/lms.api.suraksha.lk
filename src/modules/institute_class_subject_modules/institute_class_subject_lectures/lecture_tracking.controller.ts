@@ -237,19 +237,15 @@ export class LectureTrackingController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary:
-      'Attendance grid: students (rows) × selected lectures (columns). ' +
-      'Default filters to class-level lectures; set includeSubjectLectures=true to add subject lectures.',
+    summary: 'Attendance grid: students (rows) × selected lectures (columns). Supports both subject and class lectures.',
   })
   @ApiQuery({ name: 'lectureIds', type: String, description: 'Comma-separated lecture IDs' })
   @ApiQuery({ name: 'classId', type: String })
   @ApiQuery({ name: 'instituteId', type: String })
-  @ApiQuery({ name: 'includeSubjectLectures', type: Boolean, required: false })
   async getAttendanceGrid(
     @Query('lectureIds') lectureIdsStr: string,
     @Query('classId') classId: string,
     @Query('instituteId') instituteId: string,
-    @Query('includeSubjectLectures') includeSubjectLectures?: string,
   ) {
     // Validate required parameters
     if (!lectureIdsStr || !classId || !instituteId) {
@@ -267,7 +263,6 @@ export class LectureTrackingController {
         ids,
         classId,
         instituteId,
-        includeSubjectLectures === 'true',
       );
       return result;
     } catch (error) {
@@ -275,7 +270,7 @@ export class LectureTrackingController {
       // Return empty grid instead of 500 error if service returns data successfully
       // This ensures the endpoint always returns valid data
       try {
-        const fallback = await this.trackingService.getAttendanceGrid(ids, classId, instituteId, false);
+        const fallback = await this.trackingService.getAttendanceGrid(ids, classId, instituteId);
         return fallback;
       } catch {
         // If fallback also fails, return empty grid
@@ -396,5 +391,24 @@ export class LectureTrackingController {
   })
   async autoSyncPendingActivities() {
     return this.trackingService.autoSyncPendingActivities();
+  }
+
+  // ─── Current Activities ─────────────────────────────────────────────────
+
+  @Get('current-activities')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Live snapshot: who is watching recordings or in live lectures right now' })
+  @ApiQuery({ name: 'instituteId', type: String })
+  @ApiQuery({ name: 'classId', type: String, required: false })
+  @ApiQuery({ name: 'subjectId', type: String, required: false })
+  async getCurrentActivities(
+    @Query('instituteId') instituteId: string,
+    @Query('classId') classId?: string,
+    @Query('subjectId') subjectId?: string,
+  ) {
+    if (!instituteId) throw new BadRequestException('instituteId is required');
+    return this.trackingService.getCurrentActivities(instituteId, classId, subjectId);
   }
 }
