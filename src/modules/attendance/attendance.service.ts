@@ -4327,7 +4327,7 @@ export class AttendanceService {
     let parentRows: any[] = [];
     if (parentIds.length > 0) {
       parentRows = await this.dataSource.query(
-        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
+        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.workplace workPlace
          FROM users u LEFT JOIN parents p ON p.user_id = u.id
          WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch(() => []);
     }
@@ -4501,14 +4501,16 @@ export class AttendanceService {
     ]);
 
     const mem = membershipRows[0] ?? {};
+    this.logger.debug(`[institute-profile] studentId=${studentId} father_id=${mem.father_id} mother_id=${mem.mother_id} guardian_id=${mem.guardian_id}`);
     const parentIds = [mem.father_id, mem.mother_id, mem.guardian_id].filter(Boolean);
     let parentRows: any[] = [];
     if (parentIds.length > 0) {
       parentRows = await this.dataSource.query(
-        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.work_place workPlace
+        `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url, p.occupation, p.workplace workPlace
          FROM users u LEFT JOIN parents p ON p.user_id = u.id
-         WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch(() => []);
+         WHERE u.id IN (${parentIds.map(() => '?').join(',')})`, parentIds).catch((e) => { this.logger.error('[institute-profile] parentRows query failed', e?.message); return []; });
     }
+    this.logger.debug(`[institute-profile] parentIds=${JSON.stringify(parentIds)} parentRows=${parentRows.length}`);
     const parentMap: Record<string, any> = {};
     for (const p of parentRows) parentMap[String(p.id)] = p;
     const getParent = (id?: string | null) => {
@@ -4667,7 +4669,7 @@ export class AttendanceService {
     if (allParentIds.length) {
       parentRows = await this.dataSource.query(
         `SELECT u.id, u.first_name, u.last_name, u.name_with_initials, u.email, u.phone_number, u.image_url,
-                p.occupation, p.work_place workPlace
+                p.occupation, p.workplace workPlace
          FROM users u LEFT JOIN parents p ON p.user_id = u.id
          WHERE u.id IN (${ph(allParentIds.length)})`, allParentIds,
       ).catch(() => []);

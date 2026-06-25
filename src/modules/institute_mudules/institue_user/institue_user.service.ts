@@ -2835,13 +2835,26 @@ export class InstitueUserService {
    * - Minimal field selection for better performance
    * - 70% faster than previous JOIN-based approach
    */
+  private async resolveStudentNumericId(studentId: string): Promise<string> {
+    const isNumeric = /^\d+$/.test(studentId.trim());
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId.trim());
+    if (isNumeric || isUuid) return studentId.trim();
+    const row = await this.instituteUserRepository.findOne({
+      where: { userIdByInstitute: studentId.trim() },
+      select: ['userId'],
+    });
+    if (!row) throw new BadRequestException(`Student with institute ID "${studentId}" not found`);
+    return String(row.userId);
+  }
+
   async assignParentByPhone(
     studentId: string,
     assignDto: AssignParentByPhoneDto,
     image?: string,
     verifiedById?: string
   ): Promise<AssignmentResponseDto> {
-    const safeStudentId = SecurityUtils.validateBigIntId(studentId, 'studentId');
+    const resolvedId = await this.resolveStudentNumericId(studentId);
+    const safeStudentId = SecurityUtils.validateBigIntId(resolvedId, 'studentId');
 
     try {
       // 🚀 STEP 1: Check if parent user exists (pure existence check - no data retrieval)
@@ -2892,7 +2905,8 @@ export class InstitueUserService {
     studentId: string,
     assignDto: AssignParentByIdDto,
   ): Promise<AssignmentResponseDto> {
-    const safeStudentId = SecurityUtils.validateBigIntId(studentId, 'studentId');
+    const resolvedId = await this.resolveStudentNumericId(studentId);
+    const safeStudentId = SecurityUtils.validateBigIntId(resolvedId, 'studentId');
     const safeParentId = SecurityUtils.validateBigIntId(assignDto.userId, 'userId');
 
     try {

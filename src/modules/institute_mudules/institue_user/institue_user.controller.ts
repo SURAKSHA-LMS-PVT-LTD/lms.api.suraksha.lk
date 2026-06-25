@@ -920,7 +920,7 @@ This creates the missing parent or student record with whatever (possibly empty)
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - All parent roles already assigned' })
   async assignParentByPhone(
-    @Param('studentId', ParseIdPipe) studentId: string,
+    @Param('studentId') studentId: string,
     @Body() assignDto: AssignParentByPhoneDto,
     @Req() request?: Request
   ): Promise<AssignmentResponseDto> {
@@ -942,7 +942,7 @@ This creates the missing parent or student record with whatever (possibly empty)
   @ApiResponse({ status: 403, description: 'Forbidden - Institute admin access required' })
   @ApiResponse({ status: 409, description: 'Conflict - Parent role already assigned' })
   async assignParentById(
-    @Param('studentId', ParseIdPipe) studentId: string,
+    @Param('studentId') studentId: string,
     @Body() assignDto: AssignParentByIdDto,
   ): Promise<AssignmentResponseDto> {
     return this.institueUserService.assignParentById(studentId, assignDto);
