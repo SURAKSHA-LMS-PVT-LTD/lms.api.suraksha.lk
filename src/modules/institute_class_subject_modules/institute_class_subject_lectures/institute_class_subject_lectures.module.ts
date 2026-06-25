@@ -14,11 +14,13 @@ import { InstituteClassStudentEntity } from '../../institute_class_modules/insti
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
 import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
+import { InstituteClassLectureEntity } from '../../institute_mudules/institute_class_lectures/entities/institute_class_lecture.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       InstituteClassSubjectLecture,
+      InstituteClassLectureEntity,
       LectureLiveAttendance,
       LectureLiveAttendanceSession,
       LectureLiveAttendanceMark,

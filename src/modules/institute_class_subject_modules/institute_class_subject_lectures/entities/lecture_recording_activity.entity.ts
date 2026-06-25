@@ -4,10 +4,10 @@ import { LectureRecordingSession } from './lecture_recording_session.entity';
 @Entity('lecture_recording_activities')
 @Index(['sessionId'])
 export class LectureRecordingActivity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'session_id', type: 'bigint' })
+  @Column({ name: 'session_id', type: 'varchar', length: 36 })
   sessionId: string;
 
   @ManyToOne(() => LectureRecordingSession, { onDelete: 'CASCADE' })

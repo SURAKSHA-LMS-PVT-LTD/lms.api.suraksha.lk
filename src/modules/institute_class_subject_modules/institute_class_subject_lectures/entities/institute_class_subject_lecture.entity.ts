@@ -36,7 +36,7 @@ const dateTransformer: ValueTransformer = {
 @Index(['lectureType', 'isActive']) // For lecture type filtering
 @Index(['status', 'startTime']) // For status and date filtering
 export class InstituteClassSubjectLecture {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ name: 'institute_id', type: 'varchar', length: 36 })

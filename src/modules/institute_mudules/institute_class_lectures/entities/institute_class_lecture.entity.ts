@@ -29,7 +29,7 @@ const dateTransformer: ValueTransformer = {
 @Index(['status', 'startTime']) // For status-based date filtering
 @Index(['lectureType', 'isActive']) // For lecture type filtering
 export class InstituteClassLectureEntity {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ name: 'institute_id', type: 'varchar', length: 36 })
@@ -108,6 +108,48 @@ export class InstituteClassLectureEntity {
 
   @Column({ name: 'thumbnail_url', type: 'varchar', length: 500, nullable: true })
   thumbnailUrl?: string;
+
+  @Column({ name: 'live_attendance_enabled', type: 'boolean', default: false })
+  liveAttendanceEnabled: boolean;
+
+  @Column({ name: 'live_access_level', type: 'varchar', length: 50, default: 'ENROLLED_ONLY' })
+  liveAccessLevel: string;
+
+  @Column({ name: 'live_payment_id', type: 'varchar', length: 36, nullable: true })
+  livePaymentId?: string;
+
+  @Column({ name: 'live_url_id', type: 'varchar', length: 36, nullable: true })
+  liveUrlId?: string;
+
+  @Column({ name: 'rec_attendance_enabled', type: 'boolean', default: false })
+  recAttendanceEnabled: boolean;
+
+  @Column({ name: 'rec_platform', type: 'varchar', length: 50, default: 'SYSTEM' })
+  recPlatform: string;
+
+  @Column({ name: 'rec_access_level', type: 'varchar', length: 50, default: 'ENROLLED_ONLY' })
+  recAccessLevel: string;
+
+  @Column({ name: 'rec_payment_id', type: 'varchar', length: 36, nullable: true })
+  recPaymentId?: string;
+
+  @Column({ name: 'rec_url_id', type: 'varchar', length: 36, nullable: true })
+  recUrlId?: string;
+
+  @Column({ name: 'rec_tracking_days', type: 'int', nullable: true })
+  recTrackingDays?: number;
+
+  @Column({ name: 'rec_duration_seconds', type: 'int', nullable: true })
+  recDurationSeconds?: number;
+
+  @Column({ name: 'welcome_message_enabled', type: 'boolean', default: false })
+  welcomeMessageEnabled: boolean;
+
+  @Column({ name: 'welcome_message_text', type: 'text', nullable: true })
+  welcomeMessageText?: string;
+
+  @Column({ name: 'welcome_message_voice_enabled', type: 'boolean', default: false })
+  welcomeMessageVoiceEnabled: boolean;
 
   @Column({ name: 'materials', type: 'json', nullable: true })
   materials?: Array<{

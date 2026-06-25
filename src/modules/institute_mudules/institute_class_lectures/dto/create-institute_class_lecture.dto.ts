@@ -142,6 +142,72 @@ export class CreateInstituteClassLectureDto {
   @Type(() => Boolean)
   isActive?: boolean;
 
+  @ApiPropertyOptional({ description: 'Is lecture hidden from students?', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isHidden?: boolean;
+
+  @ApiPropertyOptional({ description: 'Enable live attendance tracking', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  liveAttendanceEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Live attendance access level', enum: ['ENROLLED_ONLY', 'PAID_ONLY', 'ANYONE'] })
+  @IsOptional()
+  @IsString()
+  liveAccessLevel?: string;
+
+  @ApiPropertyOptional({ description: 'Payment ID for live access gating' })
+  @IsOptional()
+  @IsString()
+  livePaymentId?: string;
+
+  @ApiPropertyOptional({ description: 'Enable recording attendance tracking', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  recAttendanceEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Recording platform', enum: ['SYSTEM', 'YOUTUBE', 'GOOGLE_DRIVE'] })
+  @IsOptional()
+  @IsString()
+  recPlatform?: string;
+
+  @ApiPropertyOptional({ description: 'Recording attendance access level', enum: ['ENROLLED_ONLY', 'PAID_ONLY', 'ANYONE'] })
+  @IsOptional()
+  @IsString()
+  recAccessLevel?: string;
+
+  @ApiPropertyOptional({ description: 'Payment ID for recording access gating' })
+  @IsOptional()
+  @IsString()
+  recPaymentId?: string;
+
+  @ApiPropertyOptional({ description: 'Number of days to track recording attendance' })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  recTrackingDays?: number;
+
+  @ApiPropertyOptional({ description: 'Enable welcome message', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  welcomeMessageEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Welcome message text' })
+  @IsOptional()
+  @IsString()
+  welcomeMessageText?: string;
+
+  @ApiPropertyOptional({ description: 'Enable welcome message voice', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  welcomeMessageVoiceEnabled?: boolean;
+
   @ApiPropertyOptional({ description: 'Reference materials', type: [ClassLectureMaterialDto] })
   @IsOptional()
   @IsArray()

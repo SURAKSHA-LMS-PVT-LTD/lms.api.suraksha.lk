@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { InstituteClassSubjectLecture } from './entities/institute_class_subject_lecture.entity';
+import { InstituteClassLectureEntity } from '../../institute_mudules/institute_class_lectures/entities/institute_class_lecture.entity';
 import { LectureLiveAttendance } from './entities/lecture_live_attendance.entity';
 import { LectureLiveAttendanceSession } from './entities/lecture_live_attendance_session.entity';
 import { LectureLiveAttendanceMark } from './entities/lecture_live_attendance_mark.entity';
@@ -38,6 +39,8 @@ export class LectureTrackingService {
   constructor(
     @InjectRepository(InstituteClassSubjectLecture)
     private readonly lectureRepo: Repository<InstituteClassSubjectLecture>,
+    @InjectRepository(InstituteClassLectureEntity)
+    private readonly classLectureRepo: Repository<InstituteClassLectureEntity>,
     @InjectRepository(LectureLiveAttendance)
     private readonly liveAttRepo: Repository<LectureLiveAttendance>,
     @InjectRepository(LectureLiveAttendanceSession)
@@ -57,6 +60,23 @@ export class LectureTrackingService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
   ) {}
+
+  // ─────────────────────────────────────────────────────────────
+  // Lecture resolution (subject or class lecture)
+  // ─────────────────────────────────────────────────────────────
+
+  /** Find a lecture by id from either subject lectures or class lectures. */
+  private async resolveLecture(
+    lectureId: string,
+    withInstitute = false,
+  ): Promise<InstituteClassSubjectLecture | InstituteClassLectureEntity> {
+    const relations = withInstitute ? ['institute'] : [];
+    const subj = await this.lectureRepo.findOne({ where: { id: lectureId }, relations });
+    if (subj) return subj;
+    const cls = await this.classLectureRepo.findOne({ where: { id: lectureId }, relations });
+    if (cls) return cls;
+    throw new NotFoundException('Lecture not found');
+  }
 
   // ─────────────────────────────────────────────────────────────
   // Staff authorization
@@ -187,7 +207,8 @@ export class LectureTrackingService {
     return allowedStatuses.some(s => s.toUpperCase() === submissionStatus);
   }
 
-  private async resolveLiveAccess(lecture: InstituteClassSubjectLecture, user: any) {
+  private async resolveLiveAccess(lecture: InstituteClassSubjectLecture | InstituteClassLectureEntity, user: any) {
+    const lec = lecture as any;
     let hasAccess = false;
     let requirePayment = false;
     let notPaidPaymentId: string | undefined;
@@ -481,14 +502,13 @@ export class LectureTrackingService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } });
-    if (!lecture) throw new NotFoundException('Lecture not found');
+    const lecture = await this.resolveLecture(lectureId);
 
     const record = this.liveAttRepo.create({
       lectureId,
       instituteId: lecture.instituteId,
       classId: lecture.classId,
-      subjectId: lecture.subjectId,
+      subjectId: (lecture as any).subjectId,
       userId,
       guestName,
       guestEmail,
@@ -516,7 +536,7 @@ export class LectureTrackingService {
   // Live attendance link sessions (one-click attendance)
   // ─────────────────────────────────────────────────────────────
 
-  private mapLiveAttendanceSession(session: LectureLiveAttendanceSession, lecture: InstituteClassSubjectLecture, markedCount?: number) {
+  private mapLiveAttendanceSession(session: LectureLiveAttendanceSession, lecture: InstituteClassSubjectLecture | InstituteClassLectureEntity, markedCount?: number) {
     const inst = lecture.institute as any;
     const isExpired = session.expiresAt ? new Date() > new Date(session.expiresAt) : false;
     return {
@@ -540,11 +560,7 @@ export class LectureTrackingService {
     validSeconds?: number,
     userId?: string,
   ) {
-    const lecture = await this.lectureRepo.findOne({
-      where: { id: lectureId },
-      relations: ['institute'],
-    });
-    if (!lecture) throw new NotFoundException('Lecture not found');
+    const lecture = await this.resolveLecture(lectureId, true);
     if (!lecture.liveAttendanceEnabled) {
       throw new BadRequestException('Live attendance is disabled for this lecture');
     }
@@ -575,11 +591,7 @@ export class LectureTrackingService {
     classId: string,
     instituteId: string,
   ) {
-    const lecture = await this.lectureRepo.findOne({
-      where: { id: lectureId },
-      relations: ['institute'],
-    });
-    if (!lecture) throw new NotFoundException('Lecture not found');
+    const lecture = await this.resolveLecture(lectureId, true);
     if (lecture.instituteId !== instituteId) {
       throw new ForbiddenException('Lecture does not belong to this institute');
     }
@@ -587,7 +599,7 @@ export class LectureTrackingService {
       throw new ForbiddenException('Lecture does not belong to this class');
     }
 
-    const roster = await this.loadStudentRoster(instituteId, classId, lecture.subjectId ?? null);
+    const roster = await this.loadStudentRoster(instituteId, classId, (lecture as any).subjectId ?? null);
     const classStudents = roster.students;
 
     const sessions = await this.liveSessionRepo.find({
@@ -603,9 +615,27 @@ export class LectureTrackingService {
         })
       : [];
 
+    // Direct joins via live lecture URL (lecture_live_attendance table)
+    const directJoins = await this.liveAttRepo.find({
+      where: { lectureId },
+      order: { joinTime: 'ASC' } as any,
+    });
+
     const markCountBySession = new Map<string, number>();
     for (const m of marks) {
       markCountBySession.set(m.sessionId, (markCountBySession.get(m.sessionId) ?? 0) + 1);
+    }
+
+    // directJoinByStudent: first join time per registered student
+    const directJoinByStudent = new Map<string, { joinTime: string; count: number }>();
+    for (const j of directJoins) {
+      if (!j.userId) continue; // skip guests — they have no studentId
+      const existing = directJoinByStudent.get(j.userId);
+      if (!existing) {
+        directJoinByStudent.set(j.userId, { joinTime: j.joinTime.toISOString(), count: 1 });
+      } else {
+        existing.count += 1;
+      }
     }
 
     const grid: Record<string, Record<string, { marked: boolean; markedAt?: string }>> = {};
@@ -636,22 +666,21 @@ export class LectureTrackingService {
         id: lecture.id,
         title: lecture.title ?? 'Untitled Lecture',
         startTime: lecture.startTime,
-        subjectId: lecture.subjectId ?? null,
+        subjectId: (lecture as any).subjectId ?? null,
       },
       sessions: sessions.map(s => this.mapLiveAttendanceSession(s, lecture, markCountBySession.get(s.id))),
       students,
       grid,
+      // direct joins keyed by userId: { joinTime, count }
+      directJoins: Object.fromEntries(directJoinByStudent),
     };
   }
 
   async validateLiveAttendanceSessionAccess(urlId: string, user: any) {
-    const session = await this.liveSessionRepo.findOne({
-      where: { urlId },
-      relations: ['lecture', 'lecture.institute'],
-    });
+    const session = await this.liveSessionRepo.findOne({ where: { urlId } });
     if (!session) throw new NotFoundException('Attendance link not found');
 
-    const lecture = session.lecture;
+    const lecture = await this.resolveLecture(session.lectureId, true);
     if (!lecture || !lecture.liveAttendanceEnabled) {
       throw new NotFoundException('Lecture not found or attendance tracking is disabled');
     }

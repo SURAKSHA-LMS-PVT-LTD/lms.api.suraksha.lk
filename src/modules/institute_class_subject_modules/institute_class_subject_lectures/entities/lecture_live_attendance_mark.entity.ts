@@ -1,6 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index, CreateDateColumn } from 'typeorm';
 import { LectureLiveAttendanceSession } from './lecture_live_attendance_session.entity';
-import { InstituteClassSubjectLecture } from './institute_class_subject_lecture.entity';
 
 @Entity('lecture_live_attendance_marks')
 @Index(['sessionId'])
@@ -8,22 +7,19 @@ import { InstituteClassSubjectLecture } from './institute_class_subject_lecture.
 @Index(['studentId'])
 @Index(['sessionId', 'studentId'], { unique: true })
 export class LectureLiveAttendanceMark {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'session_id', type: 'bigint' })
+  @Column({ name: 'session_id', type: 'varchar', length: 36 })
   sessionId: string;
 
   @ManyToOne(() => LectureLiveAttendanceSession, { onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'session_id' }])
   session: LectureLiveAttendanceSession;
 
-  @Column({ name: 'lecture_id', type: 'bigint' })
+  // No FK constraint — lecture_id may reference either lecture table
+  @Column({ name: 'lecture_id', type: 'varchar', length: 36 })
   lectureId: string;
-
-  @ManyToOne(() => InstituteClassSubjectLecture, { onDelete: 'CASCADE' })
-  @JoinColumn([{ name: 'lecture_id' }])
-  lecture: InstituteClassSubjectLecture;
 
   @Column({ name: 'student_id', type: 'bigint' })
   studentId: string;

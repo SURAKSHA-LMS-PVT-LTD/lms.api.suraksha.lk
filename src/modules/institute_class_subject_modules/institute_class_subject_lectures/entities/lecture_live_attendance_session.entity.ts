@@ -1,20 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index, CreateDateColumn } from 'typeorm';
-import { InstituteClassSubjectLecture } from './institute_class_subject_lecture.entity';
+import { Entity, PrimaryGeneratedColumn, Column, Index, CreateDateColumn } from 'typeorm';
 
 @Entity('lecture_live_attendance_sessions')
 @Index(['lectureId'])
 @Index(['urlId'], { unique: true })
 @Index(['lectureId', 'createdAt'])
 export class LectureLiveAttendanceSession {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'lecture_id', type: 'bigint' })
+  // No FK constraint — lecture_id may reference either institute_class_subject_lectures or institute_class_lectures
+  @Column({ name: 'lecture_id', type: 'varchar', length: 36 })
   lectureId: string;
-
-  @ManyToOne(() => InstituteClassSubjectLecture, { onDelete: 'CASCADE' })
-  @JoinColumn([{ name: 'lecture_id' }])
-  lecture: InstituteClassSubjectLecture;
 
   @Column({ name: 'url_id', type: 'varchar', length: 100 })
   urlId: string;

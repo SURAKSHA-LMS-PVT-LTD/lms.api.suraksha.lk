@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { now } from '../../../common/utils/timezone.util';
 import { CreateInstituteClassLectureDto } from './dto/create-institute_class_lecture.dto';
 import { UpdateInstituteClassLectureDto } from './dto/update-institute_class_lecture.dto';
@@ -63,8 +64,22 @@ export class InstituteClassLecturesService {
       isRecorded: createDto.isRecorded ?? false,
       maxParticipants: createDto.maxParticipants,
       isActive: createDto.isActive ?? true,
+      isHidden: (createDto as any).isHidden ?? false,
       materials: createDto.materials ?? undefined,
       thumbnailUrl: createDto.thumbnailUrl,
+      liveAttendanceEnabled: (createDto as any).liveAttendanceEnabled ?? false,
+      liveUrlId: (createDto as any).liveAttendanceEnabled ? ((createDto as any).liveUrlId || uuidv4().replace(/-/g, '').substring(0, 12)) : null,
+      liveAccessLevel: (createDto as any).liveAccessLevel ?? 'ENROLLED_ONLY',
+      livePaymentId: (createDto as any).livePaymentId ?? null,
+      recAttendanceEnabled: (createDto as any).recAttendanceEnabled ?? false,
+      recPlatform: (createDto as any).recPlatform ?? 'SYSTEM',
+      recAccessLevel: (createDto as any).recAccessLevel ?? 'ENROLLED_ONLY',
+      recPaymentId: (createDto as any).recPaymentId ?? null,
+      recTrackingDays: (createDto as any).recTrackingDays ?? null,
+      recDurationSeconds: (createDto as any).recDurationSeconds ?? null,
+      welcomeMessageEnabled: (createDto as any).welcomeMessageEnabled ?? false,
+      welcomeMessageText: (createDto as any).welcomeMessageText ?? null,
+      welcomeMessageVoiceEnabled: (createDto as any).welcomeMessageVoiceEnabled ?? false,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -182,8 +197,27 @@ export class InstituteClassLecturesService {
     if (updateDto.isRecorded !== undefined) updateData.isRecorded = updateDto.isRecorded;
     if (updateDto.maxParticipants !== undefined) updateData.maxParticipants = updateDto.maxParticipants;
     if (updateDto.isActive !== undefined) updateData.isActive = updateDto.isActive;
+    if ((updateDto as any).isHidden !== undefined) updateData.isHidden = (updateDto as any).isHidden;
     if (updateDto.materials !== undefined) updateData.materials = updateDto.materials;
     if (updateDto.thumbnailUrl !== undefined) updateData.thumbnailUrl = updateDto.thumbnailUrl;
+    if ((updateDto as any).liveAttendanceEnabled !== undefined) {
+      updateData.liveAttendanceEnabled = (updateDto as any).liveAttendanceEnabled;
+      // Auto-generate liveUrlId when enabling if not already set
+      if ((updateDto as any).liveAttendanceEnabled && !lecture.liveUrlId && !(updateDto as any).liveUrlId) {
+        updateData.liveUrlId = uuidv4().replace(/-/g, '').substring(0, 12);
+      }
+    }
+    if ((updateDto as any).liveUrlId !== undefined) updateData.liveUrlId = (updateDto as any).liveUrlId;
+    if ((updateDto as any).liveAccessLevel !== undefined) updateData.liveAccessLevel = (updateDto as any).liveAccessLevel;
+    if ((updateDto as any).livePaymentId !== undefined) updateData.livePaymentId = (updateDto as any).livePaymentId;
+    if ((updateDto as any).recAttendanceEnabled !== undefined) updateData.recAttendanceEnabled = (updateDto as any).recAttendanceEnabled;
+    if ((updateDto as any).recPlatform !== undefined) updateData.recPlatform = (updateDto as any).recPlatform;
+    if ((updateDto as any).recAccessLevel !== undefined) updateData.recAccessLevel = (updateDto as any).recAccessLevel;
+    if ((updateDto as any).recPaymentId !== undefined) updateData.recPaymentId = (updateDto as any).recPaymentId;
+    if ((updateDto as any).recTrackingDays !== undefined) updateData.recTrackingDays = (updateDto as any).recTrackingDays;
+    if ((updateDto as any).welcomeMessageEnabled !== undefined) updateData.welcomeMessageEnabled = (updateDto as any).welcomeMessageEnabled;
+    if ((updateDto as any).welcomeMessageText !== undefined) updateData.welcomeMessageText = (updateDto as any).welcomeMessageText;
+    if ((updateDto as any).welcomeMessageVoiceEnabled !== undefined) updateData.welcomeMessageVoiceEnabled = (updateDto as any).welcomeMessageVoiceEnabled;
 
     if (updateData.startTime && updateData.endTime && updateData.endTime <= updateData.startTime) {
       throw new BadRequestException('End time must be after start time');

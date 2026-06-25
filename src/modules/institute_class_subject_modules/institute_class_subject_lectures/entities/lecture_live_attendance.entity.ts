@@ -1,5 +1,4 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index, CreateDateColumn } from 'typeorm';
-import { InstituteClassSubjectLecture } from './institute_class_subject_lecture.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
 
 @Entity('lecture_live_attendance')
@@ -8,15 +7,12 @@ import { UserEntity } from '../../../user/entities/user.entity';
 @Index(['lectureId', 'userId'])
 @Index(['instituteId', 'classId'])
 export class LectureLiveAttendance {
-  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'lecture_id', type: 'bigint' })
+  // No FK constraint — lecture_id may reference either lecture table
+  @Column({ name: 'lecture_id', type: 'varchar', length: 36 })
   lectureId: string;
-
-  @ManyToOne(() => InstituteClassSubjectLecture, { onDelete: 'CASCADE' })
-  @JoinColumn([{ name: 'lecture_id' }])
-  lecture: InstituteClassSubjectLecture;
 
   // Denormalised scope for fast class/subject-level reporting without joining lectures table
   @Column({ name: 'institute_id', type: 'varchar', length: 36, nullable: true })
