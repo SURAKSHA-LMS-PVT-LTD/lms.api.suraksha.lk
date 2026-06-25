@@ -112,17 +112,18 @@ export class FlexibleAccessGuard implements CanActivate {
     // CHECK 1: Global Access (SUPERADMIN, ORG_MANAGER)
     // ============================================
     if (config.global && config.global.length > 0) {
-      // Convert JWT's numeric user type to UserType enum value string
-      // JWT stores: u: 0 (number for SUPERADMIN)
-      // COMPACT_TO_USER_TYPE[0] → 'SUPER_ADMIN' (which equals UserType.SUPERADMIN)
-      const userTypeValue = COMPACT_TO_USER_TYPE[user.u] as string;
-      
+      // Resolve user type from compact numeric (enhanced JWT) or string (legacy JWT).
+      // Legacy tokens don't have u set — fall back to userType injected by the JWT strategy.
+      const userTypeValue = (user.u !== undefined
+        ? COMPACT_TO_USER_TYPE[user.u]
+        : (user as any).userType) as string;
+
       const hasGlobalAccess = config.global.includes(userTypeValue as UserType);
       accessChecks.push({
         check: hasGlobalAccess,
         reason: `Global access (${config.global.join(', ')})`,
       });
-      
+
       if (hasGlobalAccess) {
         return true; // ✅ Global access always wins
       }

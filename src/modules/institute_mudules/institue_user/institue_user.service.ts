@@ -533,8 +533,8 @@ export class InstitueUserService {
     const sortField = this.mapSortFieldForRaw(sortBy);
     const rawResults = await queryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Transform to secure DTOs with optional parent details and respect masking settings
@@ -609,8 +609,8 @@ export class InstitueUserService {
     const sortField = this.mapSortFieldForRaw(sortBy);
     const rawResults = await queryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     const data = rawResults.map((row: any) => ({
@@ -765,8 +765,8 @@ export class InstitueUserService {
     const sortField = sortBy === 'name' ? 'CONCAT(u.first_name, " ", COALESCE(u.last_name, ""))' : 'u.created_at';
     const rawParents = await parentsQueryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Step 4: If students=true, fetch student details for each parent (getParentsByInstitute)
@@ -1022,8 +1022,8 @@ export class InstitueUserService {
     const sortField = sortBy === 'name' ? 'CONCAT(u.first_name, " ", COALESCE(u.last_name, ""))' : 'u.created_at';
     const rawParents = await parentsQueryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Step 4: If students=true, fetch student details for each parent
@@ -1284,8 +1284,8 @@ export class InstitueUserService {
     const sortField = sortBy === 'name' ? 'CONCAT(u.first_name, " ", COALESCE(u.last_name, ""))' : 'u.created_at';
     const rawParents = await parentsQueryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Step 4: Transform to DTOs
@@ -1607,8 +1607,8 @@ export class InstitueUserService {
     const sortField = this.mapSortFieldForRaw(sortBy);
     const rawResults = await queryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Transform to secure DTOs with optional parent details and respect masking settings
@@ -1824,8 +1824,8 @@ export class InstitueUserService {
     const sortField = this.mapSortFieldForRaw(sortBy);
     const rawResults = await queryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Transform to secure DTOs with optional parent details and respect masking settings
@@ -2155,8 +2155,8 @@ export class InstitueUserService {
     const sortField = this.mapSortFieldForRaw(sortBy);
     const rawResults = await queryBuilder
       .orderBy(sortField, sortOrder)
-      .skip(skip)
-      .take(limit)
+      .limit(limit)
+      .offset(skip)
       .getRawMany();
 
     // Transform to secure DTOs with pending status info and respect masking settings

@@ -71,6 +71,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       },
     });
 
+    if (response.headersSent) {
+      return;
+    }
+
     const isProduction = process.env.NODE_ENV === 'production';
     const isServerError = errorInfo.statusCode >= 500;
 
