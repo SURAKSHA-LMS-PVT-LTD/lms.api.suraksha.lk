@@ -166,6 +166,12 @@ export class InstituteClassLectureEntity {
   @Column({ name: 'updated_at', type: 'timestamp', nullable: true, transformer: dateTransformer })
   updatedAt?: Date;
 
+  @Column({ name: 'closed_at', type: 'timestamp', nullable: true })
+  closedAt?: Date;
+
+  @Column({ name: 'lecture_summary', type: 'json', nullable: true })
+  lectureSummary?: Record<string, unknown>;
+
   // Ensure dates are properly serialized when converting to JSON
   toJSON() {
     return {
@@ -174,6 +180,7 @@ export class InstituteClassLectureEntity {
       endTime: this.endTime instanceof Date ? this.endTime.toISOString() : this.endTime,
       createdAt: this.createdAt instanceof Date ? this.createdAt.toISOString() : this.createdAt,
       updatedAt: this.updatedAt instanceof Date ? this.updatedAt.toISOString() : this.updatedAt,
+      closedAt: this.closedAt instanceof Date ? this.closedAt.toISOString() : this.closedAt,
     };
   }
 }
