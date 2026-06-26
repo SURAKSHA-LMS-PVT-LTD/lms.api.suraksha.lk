@@ -556,6 +556,7 @@ export class MysqlAttendanceService {
     instituteId: string,
     eventId: string,
     date?: string,
+    classId?: string,
   ): Promise<MarkAttendanceDto[]> {
     const qb = this.repo.createQueryBuilder('ar')
       .where('ar.instituteId = :instituteId', { instituteId })
@@ -564,6 +565,9 @@ export class MysqlAttendanceService {
 
     if (date) {
       qb.andWhere('ar.date = :date', { date });
+    }
+    if (classId) {
+      qb.andWhere('ar.classId = :classId', { classId });
     }
 
     const entities = await qb.getMany();

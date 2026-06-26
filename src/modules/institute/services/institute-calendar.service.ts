@@ -227,7 +227,7 @@ export class InstituteCalendarService {
     } else {
       const rows: any[] = await this.dataSource.query(
         `SELECT user_id AS id FROM institute_user
-         WHERE institute_id = ? AND institute_user_type = 'STUDENT' AND is_active = 1`,
+         WHERE institute_id = ? AND institute_user_type = 'STUDENT' AND status = 'ACTIVE'`,
         [instituteId],
       );
       targetStudentIds = rows.map(r => String(r.id));

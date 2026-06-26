@@ -24,7 +24,7 @@ import {
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { SubjectParentResponseDto, SubjectParentQueryDto, PaginatedSubjectParentResponseDto } from './dto/subject-parent-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
-import { JwtRequest } from '@common/interfaces/jwt-request.interface';
+import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
 import { UpdateStudentTypeDto } from './dto/update-student-type.dto';
 
 @ApiTags('Institute Class Subject Students')
@@ -875,7 +875,7 @@ export class InstituteClassSubjectStudentsController {
     @Request() req: JwtRequest
   ): Promise<EnrollmentSettingsResponseDto> {
     const user = req.user;
-    const isAdmin = JwtRequest.hasRole(user, instituteId, 8); // IA=8
+    const isAdmin = JwtRequestHelper.hasRole(user, instituteId, 8); // IA=8
 
     return await this.studentsService.updateEnrollmentSettings(
       user.s,

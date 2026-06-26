@@ -9,23 +9,30 @@ import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.deco
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 import { UsersService } from '../user.service';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
-import { IsUrl, IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsUrl, IsString, IsOptional, IsEnum, ValidateIf } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ImageScope } from '../entities/user-image.entity';
 
-/** Encode spaces (and other illegal characters) in the path portion of a URL so
- *  that @IsUrl() accepts filenames with spaces like 'Screenshot 2025-03-29.png'. */
+/** Encode spaces in a URL path so @IsUrl() accepts filenames with spaces. */
 function encodeUrlSpaces(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   return value.replace(/ /g, '%20');
 }
 
+/** Return true when the value looks like a relative storage key (no scheme). */
+function isRelativePath(value: string): boolean {
+  return !value.startsWith('http://') && !value.startsWith('https://');
+}
+
 class UpdateImageUrlDto {
-  @ApiProperty({ 
-    description: 'Profile image URL obtained from /upload/generate-signed-url endpoint',
-    example: 'https://storage.suraksha.lk/profile-images/user-123-profile.png'
+  @ApiProperty({
+    description: 'Profile image URL or relative storage key from /upload/generate-signed-url endpoint',
+    example: 'profile-images/user-123-profile.png'
   })
   @Transform(({ value }) => encodeUrlSpaces(value))
+  @IsString({ message: 'Image URL must be a string' })
+  // Only run @IsUrl when it is actually a full URL; relative paths are accepted directly.
+  @ValidateIf(o => !isRelativePath(o.imageUrl))
   @IsUrl({}, { message: 'Image URL must be a valid URL' })
   imageUrl: string;
 

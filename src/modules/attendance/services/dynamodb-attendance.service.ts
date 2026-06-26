@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getCurrentSriLankaDate, timestampToSriLankaDate } from '../../../common/utils/timezone.util';
 import { DynamoDBClient, QueryCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand, BatchWriteItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
@@ -705,7 +705,8 @@ export class DynamoDBAttendanceService {
   async getAttendanceByEvent(
     instituteId: string,
     eventId: string,
-    date?: string
+    date?: string,
+    classId?: string,
   ): Promise<MarkAttendanceDto[]> {
     const params: QueryCommandInput = {
       TableName: this.tableName,
@@ -737,6 +738,9 @@ export class DynamoDBAttendanceService {
       lastEvaluatedKey = result.LastEvaluatedKey;
     } while (lastEvaluatedKey);
 
+    if (classId) {
+      return allRecords.filter(r => r.classId === classId);
+    }
     return allRecords;
   }
 

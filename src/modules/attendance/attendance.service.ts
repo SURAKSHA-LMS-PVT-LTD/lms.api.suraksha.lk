@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
@@ -1422,17 +1422,19 @@ export class AttendanceService {
   async getAttendanceByEvent(
     instituteId: string,
     eventId: string,
-    date?: string
+    date?: string,
+    classId?: string,
   ): Promise<any> {
     const records = this.syncConfigService.isMysqlOnly()
-      ? await this.mysqlAttendanceService.getAttendanceByEvent(instituteId, eventId, date)
-      : await this.dynamoAttendanceService.getAttendanceByEvent(instituteId, eventId, date);
+      ? await this.mysqlAttendanceService.getAttendanceByEvent(instituteId, eventId, date, classId)
+      : await this.dynamoAttendanceService.getAttendanceByEvent(instituteId, eventId, date, classId);
     const enriched = await this.enrichAttendanceRecordsWithImages(records, instituteId);
     return {
       success: true,
       message: 'Event attendance retrieved successfully',
       eventId,
       date: date || null,
+      classId: classId || null,
       totalRecords: enriched.length,
       data: enriched,
     };

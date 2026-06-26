@@ -61,14 +61,11 @@ export class CalendarAttendanceController {
     @Param('instituteId') instituteId: string,
     @Param('eventId') eventId: string,
     @Query('date') date?: string,
-    // classId / subjectId are read by FlexibleAccessGuard from the request; 
-    // they are not used in the service call but must be accepted to keep the
-    // guard's params extraction working correctly.
-    @Query('classId') _classId?: string,
+    @Query('classId') classId?: string,
     @Query('subjectId') _subjectId?: string,
   ): Promise<any> {
     try {
-      return await this.attendanceService.getAttendanceByEvent(instituteId, eventId, date);
+      return await this.attendanceService.getAttendanceByEvent(instituteId, eventId, date, classId);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
