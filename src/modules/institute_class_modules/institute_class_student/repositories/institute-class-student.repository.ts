@@ -21,7 +21,7 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
   ) {}
 
   // High-performance method to get students in a class with minimal data
-  async getStudentsInClass(classId: string, options: { skip?: number; take?: number; activeOnly?: boolean } = {}): Promise<any[]> {
+  async getStudentsInClass(classId: string, options: { skip?: number; take?: number; activeOnly?: boolean; verifiedOnly?: boolean } = {}): Promise<any[]> {
     const queryBuilder = this.repository.createQueryBuilder('ics')
       .select([
         'ics.studentUserId',
@@ -39,6 +39,11 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
 
     if (options.activeOnly !== false) {
       queryBuilder.andWhere('ics.isActive = true');
+    }
+
+    // Default: only show verified students (hide unverified self-enrollments)
+    if (options.verifiedOnly !== false) {
+      queryBuilder.andWhere('ics.isVerified = true');
     }
 
     if (options.skip) {

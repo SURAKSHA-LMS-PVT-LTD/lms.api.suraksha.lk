@@ -16,7 +16,7 @@ export interface IInstituteClassStudentRepository {
   findByStudent(studentUserId: string, options?: IFindAllOptions): Promise<InstituteClassStudentEntity[]>;
   exists(criteria: IInstituteClassStudentCriteria): Promise<boolean>;
   count(criteria?: Partial<IInstituteClassStudentCriteria>): Promise<number>;
-  getStudentsInClass(classId: string, options?: { skip?: number; take?: number; activeOnly?: boolean }): Promise<any[]>;
+  getStudentsInClass(classId: string, options?: { skip?: number; take?: number; activeOnly?: boolean; verifiedOnly?: boolean }): Promise<any[]>;
   getStudentClasses(studentUserId: string, options?: { skip?: number; take?: number; activeOnly?: boolean }): Promise<any[]>;
 }
 

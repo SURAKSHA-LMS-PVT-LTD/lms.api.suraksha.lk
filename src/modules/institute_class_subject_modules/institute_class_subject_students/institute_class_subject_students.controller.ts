@@ -875,9 +875,7 @@ export class InstituteClassSubjectStudentsController {
     @Request() req: JwtRequest
   ): Promise<EnrollmentSettingsResponseDto> {
     const user = req.user;
-    // Bitmask IA=8 (see ROLE_BITMASKS); superadmins also bypass the teacher check.
-    const instAccess = user.i?.find(inst => inst.i === instituteId);
-    const isAdmin = user.userType === 'SUPER_ADMIN' || user.u === 0 || ((instAccess?.r ?? 0) & 8) !== 0;
+    const isAdmin = JwtRequest.hasRole(user, instituteId, 8); // IA=8
 
     return await this.studentsService.updateEnrollmentSettings(
       user.s,
