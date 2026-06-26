@@ -14,7 +14,7 @@ import { UsersModule } from '../../user/user.module';
 import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
-import { InstitueClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
+import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
 import { CacheModule } from '../../../common/modules/cache.module';
 
 @Module({
@@ -24,7 +24,7 @@ import { CacheModule } from '../../../common/modules/cache.module';
       UserEntity,
       StudentEntity,
       ParentEntity,
-      InstitueClassEntity,
+      InstituteClassEntity,
     ]),
     CacheModule,
     StudentModule,

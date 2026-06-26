@@ -16,7 +16,7 @@ import { InstituteClassStudentEntity } from './entities/institute_class_student.
 import { INSTITUTE_CLASS_STUDENT_CONSTANTS } from './constants/institute-class-student.constants';
 import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
-import { InstitueClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
+import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { StudentsService } from '../../student/student.service';
 import { UsersService } from '../../user/user.service';
@@ -36,8 +36,8 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     private readonly studentRepository: Repository<StudentEntity>,
     @InjectRepository(ParentEntity)
     private readonly parentRepository: Repository<ParentEntity>,
-    @InjectRepository(InstitueClassEntity)
-    private readonly classRepository: Repository<InstitueClassEntity>,
+    @InjectRepository(InstituteClassEntity)
+    private readonly classRepository: Repository<InstituteClassEntity>,
     private readonly studentsService: StudentsService,
     private readonly usersService: UsersService,
     private readonly userManagementService: UserManagementService,
