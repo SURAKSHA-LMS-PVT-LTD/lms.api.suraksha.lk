@@ -5,6 +5,8 @@ import { InstituteCalendarDayEntity } from '../entities/institute-calendar-day.e
 import { InstituteOperatingConfigEntity } from '../entities/institute-operating-config.entity';
 import { InstituteCalendarEventEntity } from '../entities/institute-calendar-event.entity';
 import { InstituteClassCalendarEntity } from '../entities/institute-class-calendar.entity';
+import { InstituteEventSummaryEntity } from '../entities/institute-event-summary.entity';
+import { InstituteEventClassSummaryEntity } from '../entities/institute-event-class-summary.entity';
 import { GenerateCalendarDto } from '../dto/calendar/generate-calendar.dto';
 import { CreateOperatingConfigDto } from '../dto/calendar/create-operating-config.dto';
 import { getCurrentSriLankaDate, getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
@@ -28,6 +30,10 @@ export class InstituteCalendarService {
     private readonly calendarEventRepo: Repository<InstituteCalendarEventEntity>,
     @InjectRepository(InstituteClassCalendarEntity)
     private readonly classCalendarRepo: Repository<InstituteClassCalendarEntity>,
+    @InjectRepository(InstituteEventSummaryEntity)
+    private readonly eventSummaryRepo: Repository<InstituteEventSummaryEntity>,
+    @InjectRepository(InstituteEventClassSummaryEntity)
+    private readonly eventClassSummaryRepo: Repository<InstituteEventClassSummaryEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -145,6 +151,10 @@ export class InstituteCalendarService {
     instituteId: string,
     eventId: string,
     unmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT' = 'KEEP_NOT_MARKED',
+    /** When true (admin-only): after writing the institute-wide summary, also
+     *  compute and store a per-class summary row for every class that has
+     *  students enrolled in this institute. */
+    summarizeClassWide = false,
     userId?: string,
   ): Promise<any> {
     const event = await this.calendarEventRepo.findOne({
@@ -154,7 +164,7 @@ export class InstituteCalendarService {
     if (event.isAttendanceClosed) {
       throw new BadRequestException('Event attendance is already closed');
     }
-    await this.summarizeOneEvent(event, unmarkAction, userId);
+    await this.summarizeOneEvent(event, unmarkAction, userId, summarizeClassWide);
     return {
       success: true,
       message: 'Event attendance closed and summarized',
@@ -201,14 +211,18 @@ export class InstituteCalendarService {
   /**
    * Shared summarizer: one grouped COUNT query (not per-status), optional
    * auto-absent for unmarked targets, then freeze counts + percent on the row.
+   * Also writes to institute_event_summaries (always) and, when summarizeClassWide
+   * is true, to institute_event_class_summaries for every active class.
    */
   private async summarizeOneEvent(
     event: InstituteCalendarEventEntity,
     unmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT',
     userId?: string,
+    summarizeClassWide = false,
   ): Promise<void> {
     const instituteId = event.instituteId;
     const eventId = event.id;
+    const closedAt = new Date();
 
     // Resolve target students for this event (used as percentage denominator and,
     // when MARK_ABSENT, the set to auto-absent). Scope:
@@ -265,35 +279,110 @@ export class InstituteCalendarService {
       }
     }
 
+    // ── Count institute-wide ────────────────────────────────────────────────
+    const { present, absent, late, left } = await this.countAttendanceForEvent(
+      instituteId, eventId, event.allowMultipleMarks ?? false,
+    );
+    const total = targetStudentIds.length > 0
+      ? targetStudentIds.length
+      : (present + absent + late + left);
+    const attendancePercent = total > 0
+      ? Math.round(((present + late) / total) * 10000) / 100
+      : 0;
+
+    // ── Freeze summary columns on the event row ─────────────────────────────
+    event.isAttendanceClosed = true;
+    event.attendanceClosedAt = closedAt;
+    event.attendanceCloseUnmarkAction = unmarkAction;
+    event.summaryPresentCount = present;
+    event.summaryAbsentCount = absent;
+    event.summaryLateCount = late;
+    event.summaryLeftCount = left;
+    event.summaryTotalCount = total;
+    event.summaryAttendancePercent = attendancePercent;
+    await this.calendarEventRepo.save(event);
+
+    // ── Write to institute_event_summaries (institute-wide, always) ─────────
+    const eventDateStr = typeof event.eventDate === 'string'
+      ? (event.eventDate as string).substring(0, 10)
+      : new Date(event.eventDate).toISOString().substring(0, 10);
+
+    await this.dataSource.query(
+      `INSERT INTO institute_event_summaries
+         (institute_id, event_id, event_date, event_type, event_title,
+          present_count, absent_count, late_count, left_count, total_count,
+          attendance_percent, unmark_action, closed_at, closed_by)
+       VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         present_count       = VALUES(present_count),
+         absent_count        = VALUES(absent_count),
+         late_count          = VALUES(late_count),
+         left_count          = VALUES(left_count),
+         total_count         = VALUES(total_count),
+         attendance_percent  = VALUES(attendance_percent),
+         unmark_action       = VALUES(unmark_action),
+         closed_at           = VALUES(closed_at),
+         closed_by           = VALUES(closed_by)`,
+      [
+        instituteId, eventId, eventDateStr, String(event.eventType), event.title,
+        present, absent, late, left, total,
+        attendancePercent, unmarkAction, closedAt, userId ?? null,
+      ],
+    );
+
+    // ── Write per-class summaries (only when admin opts in) ─────────────────
+    if (summarizeClassWide) {
+      await this.summarizePerClass(event, unmarkAction, closedAt, userId);
+    }
+  }
+
+  /**
+   * Count attendance totals for a single event (institute-wide).
+   * Extracted so it can be reused for per-class counting too.
+   */
+  private async countAttendanceForEvent(
+    instituteId: string,
+    eventId: string,
+    allowMultipleMarks: boolean,
+    classId?: string,
+  ): Promise<{ present: number; absent: number; late: number; left: number }> {
     let present = 0, absent = 0, late = 0, left = 0;
-    if (event.allowMultipleMarks) {
-      // Multiple marks allowed → count PER STUDENT so a user with many marks counts
-      // ONCE (10 users never inflate to 200 lates). Arrival precedence Present>Late>Absent;
-      // `left` = students with any departure mark.
-      const perStudent: any[] = await this.dataSource.query(
-        `SELECT MAX(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS hasPresent,
-                MAX(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS hasLate,
-                MAX(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS hasAbsent,
-                MAX(CASE WHEN status IN (3,4,5) THEN 1 ELSE 0 END) AS hasLeft
-         FROM attendance_records
-         WHERE institute_id = ? AND event_id = ?
-         GROUP BY student_id`,
-        [instituteId, eventId],
+
+    // Optional: filter by class (join institute_class_students for the student ids)
+    const classFilter = classId
+      ? `AND ar.student_id IN (
+           SELECT student_user_id FROM institute_class_students
+           WHERE institute_id = ? AND institute_class_id = ? AND is_active = 1 AND is_verified = 1
+         )`
+      : '';
+    const classParams = classId ? [instituteId, classId] : [];
+
+    if (allowMultipleMarks) {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT MAX(CASE WHEN ar.status = 1 THEN 1 ELSE 0 END) AS hasPresent,
+                MAX(CASE WHEN ar.status = 2 THEN 1 ELSE 0 END) AS hasLate,
+                MAX(CASE WHEN ar.status = 0 THEN 1 ELSE 0 END) AS hasAbsent,
+                MAX(CASE WHEN ar.status IN (3,4,5) THEN 1 ELSE 0 END) AS hasLeft
+         FROM attendance_records ar
+         WHERE ar.institute_id = ? AND ar.event_id = ? ${classFilter}
+         GROUP BY ar.student_id`,
+        [instituteId, eventId, ...classParams],
       );
-      for (const r of perStudent) {
-        if (Number(r.hasPresent) === 1) present += 1;
-        else if (Number(r.hasLate) === 1) late += 1;
-        else if (Number(r.hasAbsent) === 1) absent += 1;
-        if (Number(r.hasLeft) === 1) left += 1;
+      for (const r of rows) {
+        if (Number(r.hasPresent) === 1) present++;
+        else if (Number(r.hasLate) === 1) late++;
+        else if (Number(r.hasAbsent) === 1) absent++;
+        if (Number(r.hasLeft) === 1) left++;
       }
     } else {
-      // Single mark per user (default) → simple, cheap grouped count over records.
-      const statusRows: any[] = await this.dataSource.query(
-        `SELECT status, COUNT(*) AS cnt FROM attendance_records
-         WHERE institute_id = ? AND event_id = ? GROUP BY status`,
-        [instituteId, eventId],
+      const rows: any[] = await this.dataSource.query(
+        `SELECT ar.status, COUNT(*) AS cnt
+         FROM attendance_records ar
+         WHERE ar.institute_id = ? AND ar.event_id = ? ${classFilter}
+         GROUP BY ar.status`,
+        [instituteId, eventId, ...classParams],
       );
-      for (const r of statusRows) {
+      for (const r of rows) {
         const cnt = Number(r.cnt) || 0;
         switch (Number(r.status)) {
           case 1: present += cnt; break;
@@ -303,24 +392,162 @@ export class InstituteCalendarService {
         }
       }
     }
-    const total = targetStudentIds.length > 0
-      ? targetStudentIds.length
-      : (present + absent + late + left);
-    const attendancePercent = total > 0
-      ? Math.round(((present + late) / total) * 10000) / 100
-      : 0;
+    return { present, absent, late, left };
+  }
 
-    event.isAttendanceClosed = true;
-    event.attendanceClosedAt = new Date();
-    event.attendanceCloseUnmarkAction = unmarkAction;
-    event.summaryPresentCount = present;
-    event.summaryAbsentCount = absent;
-    event.summaryLateCount = late;
-    event.summaryLeftCount = left;
-    event.summaryTotalCount = total;
-    event.summaryAttendancePercent = attendancePercent;
-    if (userId) event.createdBy = event.createdBy; // no-op; reserved for future "closedBy"
-    await this.calendarEventRepo.save(event);
+  /**
+   * For each active class in the institute, compute class-filtered attendance
+   * counts and upsert a row in institute_event_class_summaries.
+   * Only teachers/admins trigger this path; students never see it.
+   */
+  private async summarizePerClass(
+    event: InstituteCalendarEventEntity,
+    unmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT',
+    closedAt: Date,
+    userId?: string,
+  ): Promise<void> {
+    const instituteId = event.instituteId;
+    const eventId = event.id;
+    const eventDateStr = typeof event.eventDate === 'string'
+      ? (event.eventDate as string).substring(0, 10)
+      : new Date(event.eventDate).toISOString().substring(0, 10);
+
+    // Fetch all active classes for this institute
+    const classRows: any[] = await this.dataSource.query(
+      `SELECT id FROM institute_classes WHERE institute_id = ? AND is_active = 1`,
+      [instituteId],
+    );
+    if (classRows.length === 0) return;
+
+    for (const cls of classRows) {
+      const classId = String(cls.id);
+
+      // How many verified students are enrolled in this class?
+      const totalRows: any[] = await this.dataSource.query(
+        `SELECT COUNT(*) AS cnt FROM institute_class_students
+         WHERE institute_id = ? AND institute_class_id = ? AND is_active = 1 AND is_verified = 1`,
+        [instituteId, classId],
+      );
+      const enrolledTotal = Number(totalRows[0]?.cnt ?? 0);
+      if (enrolledTotal === 0) continue; // skip classes with no verified students
+
+      const { present, absent, late, left } = await this.countAttendanceForEvent(
+        instituteId, eventId, event.allowMultipleMarks ?? false, classId,
+      );
+      const total = enrolledTotal;
+      const pct = total > 0 ? Math.round(((present + late) / total) * 10000) / 100 : 0;
+
+      await this.dataSource.query(
+        `INSERT INTO institute_event_class_summaries
+           (institute_id, event_id, class_id, event_date, event_type, event_title,
+            present_count, absent_count, late_count, left_count, total_count,
+            attendance_percent, unmark_action, closed_at, closed_by)
+         VALUES (?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?)
+         ON DUPLICATE KEY UPDATE
+           present_count      = VALUES(present_count),
+           absent_count       = VALUES(absent_count),
+           late_count         = VALUES(late_count),
+           left_count         = VALUES(left_count),
+           total_count        = VALUES(total_count),
+           attendance_percent = VALUES(attendance_percent),
+           unmark_action      = VALUES(unmark_action),
+           closed_at          = VALUES(closed_at),
+           closed_by          = VALUES(closed_by)`,
+        [
+          instituteId, eventId, classId, eventDateStr, String(event.eventType), event.title,
+          present, absent, late, left, total,
+          pct, unmarkAction, closedAt, userId ?? null,
+        ],
+      );
+    }
+  }
+
+  // ── Public query methods ────────────────────────────────────────────────────
+
+  /**
+   * Returns institute-wide event summaries for a date range.
+   * For IA main portal — no class filter.
+   */
+  async getInstitutEventSummaries(
+    instituteId: string,
+    params: { startDate: string; endDate: string; limit?: number; page?: number },
+  ): Promise<any> {
+    const limit = Math.min(params.limit ?? 50, 200);
+    const offset = (params.page ?? 0) * limit;
+    const rows: any[] = await this.dataSource.query(
+      `SELECT * FROM institute_event_summaries
+       WHERE institute_id = ? AND event_date BETWEEN ? AND ?
+       ORDER BY event_date ASC
+       LIMIT ? OFFSET ?`,
+      [instituteId, params.startDate, params.endDate, limit, offset],
+    );
+    const countRows: any[] = await this.dataSource.query(
+      `SELECT COUNT(*) AS cnt FROM institute_event_summaries
+       WHERE institute_id = ? AND event_date BETWEEN ? AND ?`,
+      [instituteId, params.startDate, params.endDate],
+    );
+    return {
+      data: rows.map(r => this.mapSummaryRow(r)),
+      pagination: { total: Number(countRows[0]?.cnt ?? 0), page: params.page ?? 0, limit },
+    };
+  }
+
+  /**
+   * Returns class-filtered event summaries for a date range.
+   * Used by class-level Calendar, Statistics, and Summarize tabs.
+   */
+  async getClassEventSummaries(
+    instituteId: string,
+    classId: string,
+    params: { startDate: string; endDate: string; limit?: number; page?: number },
+  ): Promise<any> {
+    const limit = Math.min(params.limit ?? 50, 200);
+    const offset = (params.page ?? 0) * limit;
+    const rows: any[] = await this.dataSource.query(
+      `SELECT * FROM institute_event_class_summaries
+       WHERE institute_id = ? AND class_id = ? AND event_date BETWEEN ? AND ?
+       ORDER BY event_date ASC
+       LIMIT ? OFFSET ?`,
+      [instituteId, classId, params.startDate, params.endDate, limit, offset],
+    );
+    const countRows: any[] = await this.dataSource.query(
+      `SELECT COUNT(*) AS cnt FROM institute_event_class_summaries
+       WHERE institute_id = ? AND class_id = ? AND event_date BETWEEN ? AND ?`,
+      [instituteId, classId, params.startDate, params.endDate],
+    );
+    return {
+      data: rows.map(r => this.mapClassSummaryRow(r)),
+      pagination: { total: Number(countRows[0]?.cnt ?? 0), page: params.page ?? 0, limit },
+    };
+  }
+
+  private mapSummaryRow(r: any) {
+    return {
+      id: String(r.id),
+      instituteId: r.institute_id,
+      eventId: String(r.event_id),
+      eventDate: r.event_date instanceof Date
+        ? r.event_date.toISOString().substring(0, 10)
+        : String(r.event_date).substring(0, 10),
+      eventType: r.event_type,
+      eventTitle: r.event_title,
+      presentCount: Number(r.present_count),
+      absentCount: Number(r.absent_count),
+      lateCount: Number(r.late_count),
+      leftCount: Number(r.left_count),
+      totalCount: Number(r.total_count),
+      attendancePercent: Number(r.attendance_percent),
+      unmarkAction: r.unmark_action,
+      closedAt: r.closed_at,
+      closedBy: r.closed_by,
+    };
+  }
+
+  private mapClassSummaryRow(r: any) {
+    return {
+      ...this.mapSummaryRow(r),
+      classId: r.class_id,
+    };
   }
 
   private mapEventSummary(e: InstituteCalendarEventEntity) {

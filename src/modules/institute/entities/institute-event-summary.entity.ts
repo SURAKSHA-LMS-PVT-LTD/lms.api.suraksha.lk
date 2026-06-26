@@ -1,0 +1,68 @@
+import { Entity, PrimaryGeneratedColumn, Column, Index, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+
+/**
+ * Institute-wide frozen attendance summary for a single calendar event.
+ * Written once when the admin closes an event's attendance.
+ * One row per event — unique key on event_id.
+ */
+@Entity('institute_event_summaries')
+@Index('idx_ies_institute_date', ['instituteId', 'eventDate'])
+@Index('idx_ies_institute_type', ['instituteId', 'eventType'])
+export class InstituteEventSummaryEntity {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id: string;
+
+  @Column({ name: 'institute_id', type: 'varchar', length: 36 })
+  @Index()
+  instituteId: string;
+
+  @Column({ name: 'event_id', type: 'bigint', unique: true })
+  eventId: string;
+
+  @Column({ name: 'event_date', type: 'date' })
+  eventDate: string;
+
+  @Column({ name: 'event_type', type: 'varchar', length: 50 })
+  eventType: string;
+
+  @Column({ name: 'event_title', type: 'varchar', length: 255 })
+  eventTitle: string;
+
+  @Column({ name: 'present_count', type: 'int', unsigned: true, default: 0 })
+  presentCount: number;
+
+  @Column({ name: 'absent_count', type: 'int', unsigned: true, default: 0 })
+  absentCount: number;
+
+  @Column({ name: 'late_count', type: 'int', unsigned: true, default: 0 })
+  lateCount: number;
+
+  @Column({ name: 'left_count', type: 'int', unsigned: true, default: 0 })
+  leftCount: number;
+
+  @Column({ name: 'total_count', type: 'int', unsigned: true, default: 0 })
+  totalCount: number;
+
+  @Column({ name: 'attendance_percent', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  attendancePercent: number;
+
+  @Column({
+    name: 'unmark_action',
+    type: 'enum',
+    enum: ['KEEP_NOT_MARKED', 'MARK_ABSENT'],
+    default: 'KEEP_NOT_MARKED',
+  })
+  unmarkAction: 'KEEP_NOT_MARKED' | 'MARK_ABSENT';
+
+  @Column({ name: 'closed_at', type: 'datetime' })
+  closedAt: Date;
+
+  @Column({ name: 'closed_by', type: 'varchar', length: 36, nullable: true })
+  closedBy: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+}

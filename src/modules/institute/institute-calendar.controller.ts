@@ -19,6 +19,7 @@ import { CalendarDayCacheService } from './services/calendar-day-cache.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { GetUser } from '../../auth/decorators/get-user.decorator';
 import { UserType } from '../user/enums/user-type.enum';
 import { CreateOperatingConfigDto } from './dto/calendar/create-operating-config.dto';
 import { BulkOperatingConfigDto } from './dto/calendar/bulk-operating-config.dto';
@@ -608,29 +609,96 @@ export class InstituteCalendarController {
 
   /**
    * Close an event's attendance and freeze its summary.
+   * summarizeClassWide (admin-only): when true, also writes per-class summary rows
+   * to institute_event_class_summaries for every active class.
    */
   @Post('events/:eventId/close-attendance')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiOperation({
     summary: 'Close event attendance',
-    description: 'Freezes the attendance summary so future views need no counting. unmarkAction MARK_ABSENT auto-marks unmarked target students absent before summarizing.',
+    description: 'Freezes the attendance summary. unmarkAction MARK_ABSENT auto-marks unmarked target students absent. summarizeClassWide (admin-only) also stores per-class breakdowns.',
   })
   @ApiParam({ name: 'eventId', description: 'Calendar event ID' })
   @ApiResponse({ status: 200, description: 'Event attendance closed and summarized' })
   async closeEventAttendance(
     @Param('instituteId') instituteId: string,
     @Param('eventId') eventId: string,
-    @Body() body: { unmarkAction?: 'KEEP_NOT_MARKED' | 'MARK_ABSENT' },
+    @Body() body: { unmarkAction?: 'KEEP_NOT_MARKED' | 'MARK_ABSENT'; summarizeClassWide?: boolean },
+    @GetUser() user?: any,
   ) {
     try {
+      // Only admins may trigger class-wide summarization
+      const isAdmin = user?.userType === UserType.SUPERADMIN ||
+        user?.roles?.some?.((r: any) => r?.instituteId === instituteId && r?.role === 'InstituteAdmin');
+      const summarizeClassWide = isAdmin && (body?.summarizeClassWide === true);
       const res = await this.calendarService.closeEventAttendance(
-        instituteId, eventId, body?.unmarkAction ?? 'KEEP_NOT_MARKED',
+        instituteId, eventId,
+        body?.unmarkAction ?? 'KEEP_NOT_MARKED',
+        summarizeClassWide,
+        user?.id ?? user?.userId,
       );
       this.cacheService.invalidate(instituteId);
       return res;
     } catch (error) {
       this.handleError(error, 'Failed to close event attendance');
+    }
+  }
+
+  /**
+   * GET institute-wide event summaries for a date range.
+   * Admin-only. Used by the IA main portal (Calendar, Statistics tabs).
+   */
+  @Get('events/summaries/institute')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Get institute-wide event attendance summaries' })
+  @ApiResponse({ status: 200, description: 'Paginated institute event summaries' })
+  async getInstituteEventSummaries(
+    @Param('instituteId') instituteId: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    try {
+      return await this.calendarService.getInstitutEventSummaries(instituteId, {
+        startDate,
+        endDate,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        page: page ? parseInt(page, 10) : undefined,
+      });
+    } catch (error) {
+      this.handleError(error, 'Failed to load institute event summaries');
+    }
+  }
+
+  /**
+   * GET class-filtered event summaries for a date range.
+   * Teachers and admins. Used by class Calendar, Statistics, Summarize tabs.
+   */
+  @Get('events/summaries/class/:classId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiOperation({ summary: 'Get class-level event attendance summaries' })
+  @ApiResponse({ status: 200, description: 'Paginated class event summaries' })
+  async getClassEventSummaries(
+    @Param('instituteId') instituteId: string,
+    @Param('classId') classId: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    try {
+      return await this.calendarService.getClassEventSummaries(instituteId, classId, {
+        startDate,
+        endDate,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        page: page ? parseInt(page, 10) : undefined,
+      });
+    } catch (error) {
+      this.handleError(error, 'Failed to load class event summaries');
     }
   }
 

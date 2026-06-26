@@ -22,6 +22,8 @@ import { CloudStorageService } from '../../common/services/cloud-storage.service
 
 // ── Public self-registration (/forms/:token) ──────────────────────────────────
 import { InstituteRegistrationLinkEntity } from './entities/institute-registration-link.entity';
+import { InstituteEventSummaryEntity } from './entities/institute-event-summary.entity';
+import { InstituteEventClassSummaryEntity } from './entities/institute-event-class-summary.entity';
 import { InstituteClassSubjectEntity } from '../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { UserEntity } from '../user/entities/user.entity';
@@ -41,6 +43,8 @@ import { FeaturesModule } from '../features/features.module';
       InstituteCalendarDayEntity,
       InstituteCalendarEventEntity,
       InstituteClassCalendarEntity,
+      InstituteEventSummaryEntity,
+      InstituteEventClassSummaryEntity,
       // Self-registration
       InstituteRegistrationLinkEntity,
       InstituteClassSubjectEntity,
