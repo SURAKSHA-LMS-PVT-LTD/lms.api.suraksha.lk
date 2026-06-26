@@ -130,6 +130,7 @@ async function bootstrap() {
     // 🌐 Wildcard patterns for known frontend hosting domains
     const frontendHostingPatterns = [
       /^https:\/\/[a-z0-9][a-z0-9-]*\.lovableproject\.com$/,
+      /^https:\/\/[a-z0-9][a-z0-9-]*\.lovable\.app$/,
       /^https:\/\/[a-z0-9][a-z0-9-]*\.gptengineer\.app$/,
       /^https:\/\/[a-z0-9][a-z0-9-]*\.vercel\.app$/,
       /^https:\/\/[a-z0-9][a-z0-9-]*\.netlify\.app$/,
