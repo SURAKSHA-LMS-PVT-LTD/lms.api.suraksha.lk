@@ -8,6 +8,7 @@ import { AdminWhatsAppController } from './admin-whatsapp.controller';
 import { WhatsAppWebhookController } from './whatsapp-webhook.controller';
 import { WhatsAppWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsAppMenuService } from './services/whatsapp-menu.service';
+import { WhatsAppSessionReminderScheduler } from './services/whatsapp-session-reminder.scheduler';
 import { WhatsAppContactSessionEntity } from './entities/whatsapp-contact-session.entity';
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
@@ -83,6 +84,7 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
     ClassAttendanceSessionService,
     WhatsAppWebhookService,
     WhatsAppMenuService,
+    WhatsAppSessionReminderScheduler,
     CloudStorageService,
     FcmNotificationService,
     EnhancedEmailService,

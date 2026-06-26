@@ -55,6 +55,10 @@ export class WhatsAppContactSessionEntity {
   @Column({ name: 'total_replies', type: 'int', unsigned: true, default: 1 })
   totalReplies: number;
 
+  /** When the 1-hour expiration reminder was sent. */
+  @Column({ name: 'reminder_sent_at', type: 'datetime', nullable: true })
+  reminderSentAt: Date | null;
+
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

@@ -42,9 +42,11 @@ export class InstituteClassLecturesController {
   @Get()
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
   })
-  @ApiOperation({ summary: 'Get all class lectures with filtering and pagination' })
+  @ApiOperation({ summary: 'Get all class lectures with filtering and pagination (admin/teacher only)' })
   @ApiResponse({ status: 200, description: 'List of class lectures' })
   async findAll(
     @Query() queryDto: ClassLectureFilterDto,
@@ -56,9 +58,12 @@ export class InstituteClassLecturesController {
   @Get('class/:classId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireClass: true },
+    student: { requireClass: true },
   })
-  @ApiOperation({ summary: 'Get all lectures for a specific class (all members)' })
+  @ApiOperation({ summary: 'Get all lectures for a specific class (verified class members only)' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
   async findByClass(
     @Param('classId', ParseIdPipe) classId: string,
@@ -70,9 +75,11 @@ export class InstituteClassLecturesController {
   @Get('institute/:instituteId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
   })
-  @ApiOperation({ summary: 'Get all class lectures for an institute' })
+  @ApiOperation({ summary: 'Get all class lectures for an institute (admin/teacher only)' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   async findByInstitute(
     @Param('instituteId', ParseIdPipe) instituteId: string
@@ -83,7 +90,10 @@ export class InstituteClassLecturesController {
   @Get('upcoming/:classId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireClass: true },
+    student: { requireClass: true },
   })
   @ApiOperation({ summary: 'Get upcoming lectures for a class' })
   async findUpcoming(
@@ -97,7 +107,10 @@ export class InstituteClassLecturesController {
   @Get('ongoing/:classId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireClass: true },
+    student: { requireClass: true },
   })
   @ApiOperation({ summary: 'Get ongoing lectures for a class' })
   async findOngoing(
@@ -110,7 +123,10 @@ export class InstituteClassLecturesController {
   @Get('completed/:classId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireClass: true },
+    student: { requireClass: true },
   })
   @ApiOperation({ summary: 'Get completed lectures for a class' })
   async findCompleted(
@@ -124,9 +140,11 @@ export class InstituteClassLecturesController {
   @Get('schedule/:date')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
   })
-  @ApiOperation({ summary: 'Get class lecture schedule for a specific date' })
+  @ApiOperation({ summary: 'Get class lecture schedule for a specific date (admin/teacher only)' })
   @ApiParam({ name: 'date', description: 'Date in YYYY-MM-DD format' })
   async getSchedule(
     @Param('date') date: string,
@@ -139,9 +157,11 @@ export class InstituteClassLecturesController {
   @Get(':id')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
   })
-  @ApiOperation({ summary: 'Get class lecture by ID' })
+  @ApiOperation({ summary: 'Get class lecture by ID (admin/teacher only)' })
   @ApiParam({ name: 'id', description: 'Lecture ID' })
   async findOne(
     @Param('id', ParseIdPipe) id: string,
@@ -153,9 +173,11 @@ export class InstituteClassLecturesController {
   @Get(':id/details')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
   })
-  @ApiOperation({ summary: 'Get class lecture with full relation details' })
+  @ApiOperation({ summary: 'Get class lecture with full relation details (admin/teacher only)' })
   async findOneWithDetails(
     @Param('id', ParseIdPipe) id: string
   ): Promise<InstituteClassLectureEntity> {
