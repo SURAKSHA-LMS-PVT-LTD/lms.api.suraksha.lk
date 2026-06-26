@@ -437,28 +437,19 @@ export class InstitueClassController {
         throw new BadRequestException('Class not found');
       }
       
-      // Check if enrollment is enabled for this class
-      if (!classEntity.enrollmentEnabled) {
-        throw new BadRequestException('Self-enrollment is not enabled for this class');
-      }
-      
-      // Validate enrollment code
-      if (classEntity.enrollmentCode !== selfEnrollDto.enrollmentCode) {
-        throw new BadRequestException('Invalid enrollment code');
-      }
-      
       // Get student ID from the authenticated user
       const studentId = req.user?.s;
-      
+
       if (!studentId) {
         throw new BadRequestException('Student ID not found in token');
       }
 
-      // Create enrollment record using the proper service method
+      // Enrollment enabled check + code validation + requireTeacherVerification handled in service
       const enrollment = await this.classStudentService.selfEnroll(
         classEntity.instituteId,
         classEntity.id,
-        studentId
+        studentId,
+        selfEnrollDto.enrollmentCode,
       );
 
       return {

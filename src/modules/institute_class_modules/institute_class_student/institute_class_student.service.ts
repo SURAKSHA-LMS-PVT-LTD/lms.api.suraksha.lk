@@ -315,7 +315,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     }
 
     // If an enrollment code is configured, validate it
-    if (classEntity.enrollmentCode && enrollmentData.enrollmentCode !== classEntity.enrollmentCode) {
+    if (classEntity.enrollmentCode && (enrollmentData.enrollmentCode?.trim() !== classEntity.enrollmentCode.trim())) {
       throw new BadRequestException('Invalid enrollment code');
     }
 
@@ -631,7 +631,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     }
 
     // If an enrollment code is configured, validate it
-    if (classEntity.enrollmentCode && enrollmentCode !== classEntity.enrollmentCode) {
+    if (classEntity.enrollmentCode && (enrollmentCode?.trim() !== classEntity.enrollmentCode.trim())) {
       throw new BadRequestException('Invalid enrollment code');
     }
 

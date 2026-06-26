@@ -346,6 +346,52 @@ export class InstituteClassSubjectStudentsController {
     return await this.studentsService.findOneWithDetails(instituteId, classId, subjectId, studentId);
   }
 
+  @Get('enrollment-settings/:instituteId/:classId/:subjectId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    anyInstituteRole: true
+  })
+  @ApiOperation({
+    summary: 'Get enrollment settings for a subject (Institute Admin Only)',
+    description: `
+    **View Enrollment Settings:**
+    - Institute admins can view current enrollment settings for subjects
+    - Returns enrollment key for enabled subjects
+    - Shows current enrollment count
+
+    **Authorization:**
+    - Only institute admins can view settings
+    - Must have access to the specified institute
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Enrollment settings retrieved successfully',
+    type: EnrollmentSettingsResponseDto
+  })
+  @ApiResponse({ status: 403, description: 'Only institute admins can view enrollment settings' })
+  async getEnrollmentSettings(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
+    @Request() req: JwtRequest
+  ): Promise<EnrollmentSettingsResponseDto> {
+    const user = req.user;
+    const instAccess = user.i?.find((inst: any) => inst.i === instituteId);
+    const isAdmin = user.userType === 'SUPER_ADMIN' || user.u === 0 || ((instAccess?.r ?? 0) & 8) !== 0;
+
+    return await this.studentsService.getEnrollmentSettings(
+      user.s,
+      instituteId,
+      classId,
+      subjectId,
+      isAdmin
+    );
+  }
+
   @Get(':instituteId/:classId/:subjectId/:studentId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
@@ -365,6 +411,54 @@ export class InstituteClassSubjectStudentsController {
     @Param('studentId', ParseIdPipe) studentId: string
   ): Promise<InstituteClassSubjectStudentResponseDto> {
     return await this.studentsService.findOne(instituteId, classId, subjectId, studentId);
+  }
+
+  @Patch('enrollment-settings/:instituteId/:classId/:subjectId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
+  })
+  @ApiOperation({
+    summary: 'Update enrollment settings for a subject (Institute Admin or Teacher)',
+    description: `
+    **Enrollment Settings Management:**
+    - Institute admins can enable/disable self-enrollment for subjects
+    - Teachers assigned to the subject can manage enrollment settings
+    - Automatically generates unique enrollment keys when enabled
+    - Returns enrollment key only to authorized admins/teachers
+
+    **Authorization:**
+    - Institute admins can modify any subject settings
+    - Teachers can modify settings for their assigned subjects
+    - Must have access to the specified institute
+    `
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiResponse({ status: 200, description: 'Enrollment settings updated successfully', type: EnrollmentSettingsResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 403, description: 'Only institute admins can modify enrollment settings' })
+  async updateEnrollmentSettings(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('classId', ParseIdPipe) classId: string,
+    @Param('subjectId', ParseIdPipe) subjectId: string,
+    @Body() updateDto: UpdateEnrollmentSettingsDto,
+    @Request() req: JwtRequest
+  ): Promise<EnrollmentSettingsResponseDto> {
+    const user = req.user;
+    const isAdmin = JwtRequestHelper.hasRole(user, instituteId, 8); // IA=8
+
+    return await this.studentsService.updateEnrollmentSettings(
+      user.s,
+      instituteId,
+      classId,
+      subjectId,
+      updateDto,
+      isAdmin
+    );
   }
 
   @Patch(':instituteId/:classId/:subjectId/:studentId')
@@ -834,108 +928,6 @@ export class InstituteClassSubjectStudentsController {
       classId, 
       subjectId, 
       assignDto
-    );
-  }
-
-  @Patch('enrollment-settings/:instituteId/:classId/:subjectId')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    global: [UserType.SUPERADMIN],
-    instituteAdmin: true,
-    teacher: { requireSubject: true }
-  })
-  @ApiOperation({ 
-    summary: 'Update enrollment settings for a subject (Institute Admin or Teacher)',
-    description: `
-    **Enrollment Settings Management:**
-    - Institute admins can enable/disable self-enrollment for subjects
-    - Teachers assigned to the subject can manage enrollment settings
-    - Automatically generates unique enrollment keys when enabled
-    - Returns enrollment key only to authorized admins/teachers
-    
-    **Authorization:**
-    - Institute admins can modify any subject settings
-    - Teachers can modify settings for their assigned subjects
-    - Must have access to the specified institute
-    `
-  })
-  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
-  @ApiParam({ name: 'classId', description: 'Class ID' })
-  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Enrollment settings updated successfully',
-    type: EnrollmentSettingsResponseDto
-  })
-  @ApiResponse({ status: 400, description: 'Bad request' })
-  @ApiResponse({ status: 403, description: 'Only institute admins can modify enrollment settings' })
-
-
-  async updateEnrollmentSettings(
-    @Param('instituteId', ParseIdPipe) instituteId: string,
-    @Param('classId', ParseIdPipe) classId: string,
-    @Param('subjectId', ParseIdPipe) subjectId: string,
-    @Body() updateDto: UpdateEnrollmentSettingsDto,
-    @Request() req: JwtRequest
-  ): Promise<EnrollmentSettingsResponseDto> {
-    const user = req.user;
-    const isAdmin = JwtRequestHelper.hasRole(user, instituteId, 8); // IA=8
-
-    return await this.studentsService.updateEnrollmentSettings(
-      user.s,
-      instituteId,
-      classId,
-      subjectId,
-      updateDto,
-      isAdmin
-    );
-  }
-
-  @Get('enrollment-settings/:instituteId/:classId/:subjectId')
-  @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({
-    anyInstituteRole: true
-  })
-  @ApiOperation({ 
-    summary: 'Get enrollment settings for a subject (Institute Admin Only)',
-    description: `
-    **View Enrollment Settings:**
-    - Institute admins can view current enrollment settings for subjects
-    - Returns enrollment key for enabled subjects
-    - Shows current enrollment count
-    
-    **Authorization:**
-    - Only institute admins can view settings
-    - Must have access to the specified institute
-    `
-  })
-  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
-  @ApiParam({ name: 'classId', description: 'Class ID' })
-  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Enrollment settings retrieved successfully',
-    type: EnrollmentSettingsResponseDto
-  })
-  @ApiResponse({ status: 403, description: 'Only institute admins can view enrollment settings' })
-
-
-  async getEnrollmentSettings(
-    @Param('instituteId', ParseIdPipe) instituteId: string,
-    @Param('classId', ParseIdPipe) classId: string,
-    @Param('subjectId', ParseIdPipe) subjectId: string,
-    @Request() req: JwtRequest
-  ): Promise<EnrollmentSettingsResponseDto> {
-    const user = req.user;
-    const instAccess = user.i?.find((inst: any) => inst.i === instituteId);
-    const isAdmin = user.userType === 'SUPER_ADMIN' || user.u === 0 || ((instAccess?.r ?? 0) & 8) !== 0;
-
-    return await this.studentsService.getEnrollmentSettings(
-      user.s,
-      instituteId,
-      classId,
-      subjectId,
-      isAdmin
     );
   }
 

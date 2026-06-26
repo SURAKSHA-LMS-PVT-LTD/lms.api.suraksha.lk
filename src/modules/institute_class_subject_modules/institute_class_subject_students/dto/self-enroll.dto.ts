@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, Length, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsOptional } from 'class-validator';
 
 export class SelfEnrollDto {
   @ApiProperty({
@@ -29,12 +29,11 @@ export class SelfEnrollDto {
   @ApiPropertyOptional({
     description: 'Enrollment key for the subject (not required when payment-gated enrollment is configured without a key)',
     example: 'MATH10-ABC123',
-    minLength: 3,
     maxLength: 50
   })
   @IsOptional()
   @IsString()
-  @Length(3, 50)
+  @MaxLength(50)
   enrollmentKey?: string;
 
   @ApiPropertyOptional({
