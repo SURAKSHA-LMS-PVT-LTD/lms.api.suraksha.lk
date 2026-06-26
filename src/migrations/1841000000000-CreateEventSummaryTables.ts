@@ -18,14 +18,14 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class CreateEventSummaryTables1841000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ── institute_event_summaries ─────────────────────────────────────────────
-    // event_date kept here for index-based range queries (avoids joining just to filter by month).
-    // event_type and event_title are NOT stored — JOIN to institute_calendar_events instead.
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS institute_event_summaries (
         id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         institute_id  VARCHAR(36)  NOT NULL,
         event_id      BIGINT       NOT NULL,
         event_date    DATE         NOT NULL,
+        event_type    VARCHAR(50)  NOT NULL,
+        event_title   VARCHAR(255) NOT NULL,
 
         present_count   INT UNSIGNED NOT NULL DEFAULT 0,
         absent_count    INT UNSIGNED NOT NULL DEFAULT 0,
@@ -43,7 +43,8 @@ export class CreateEventSummaryTables1841000000000 implements MigrationInterface
 
         PRIMARY KEY (id),
         UNIQUE KEY uq_event_summary (event_id),
-        INDEX idx_ies_institute_date (institute_id, event_date)
+        INDEX idx_ies_institute_date (institute_id, event_date),
+        INDEX idx_ies_institute_type (institute_id, event_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
@@ -55,6 +56,8 @@ export class CreateEventSummaryTables1841000000000 implements MigrationInterface
         event_id      BIGINT       NOT NULL,
         class_id      VARCHAR(36)  NOT NULL,
         event_date    DATE         NOT NULL,
+        event_type    VARCHAR(50)  NOT NULL,
+        event_title   VARCHAR(255) NOT NULL,
 
         present_count   INT UNSIGNED NOT NULL DEFAULT 0,
         absent_count    INT UNSIGNED NOT NULL DEFAULT 0,
@@ -73,7 +76,8 @@ export class CreateEventSummaryTables1841000000000 implements MigrationInterface
         PRIMARY KEY (id),
         UNIQUE KEY uq_event_class_summary (event_id, class_id),
         INDEX idx_iecs_institute_date (institute_id, event_date),
-        INDEX idx_iecs_class_date (institute_id, class_id, event_date)
+        INDEX idx_iecs_class_date (institute_id, class_id, event_date),
+        INDEX idx_iecs_institute_type (institute_id, class_id, event_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
