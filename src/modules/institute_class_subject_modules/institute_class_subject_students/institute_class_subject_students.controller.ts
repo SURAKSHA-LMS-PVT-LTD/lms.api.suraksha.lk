@@ -65,13 +65,17 @@ export class InstituteClassSubjectStudentsController {
   @Get('class-subject/:instituteId/:classId/:subjectId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    anyInstituteRole: true
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireClass: true },
+    // Students must NOT reach this endpoint — student list is staff-only data
   })
-  @ApiOperation({ summary: 'Get students in a specific class subject (teacher view)' })
+  @ApiOperation({ summary: 'Get students in a specific class subject (admin/teacher only)' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
   @ApiParam({ name: 'subjectId', description: 'Subject ID' })
   @ApiResponse({ status: 200, description: 'List of students in class subject' })
+  @ApiResponse({ status: 403, description: 'Students cannot access class rosters' })
   async getStudentsInClassSubject(
     @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('classId', ParseIdPipe) classId: string,

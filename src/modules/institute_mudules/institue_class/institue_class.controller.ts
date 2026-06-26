@@ -122,10 +122,31 @@ export class InstitueClassController {
   @Get('institute/:instituteId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], anyInstituteRole: true })
-  //   instituteId: true,
-  //   instituteIdParam: 'instituteId'
-  // })
-  findByInstitute(@Param('instituteId', ParseIdPipe) instituteId: string) {
+  async findByInstitute(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Request() req: JwtRequest,
+  ) {
+    const user = req.user;
+    const instituteAccess = Array.isArray(user?.i) ? user.i : [];
+    const entry = instituteAccess.find((e: any) => String(e.i) === String(instituteId));
+    const isStudentOnly =
+      entry &&
+      (entry.r & 2) === 0 && // not IA
+      (entry.r & 4) === 0 && // not TE
+      (entry.r & 8) === 0 && // not AM
+      (entry.r & 1) !== 0;  // has ST bit
+
+    if (isStudentOnly) {
+      // Students: return only their VERIFIED enrolled classes, not the full class list
+      const studentId = String(user.s);
+      const enrollments = await this.classStudentService.getStudentEnrolledClassesWithFilters(studentId, {
+        instituteId,
+        activeOnly: true,
+        verifiedOnly: true,
+      });
+      return enrollments;
+    }
+
     return this.institueClassService.findByInstitute(instituteId);
   }
 

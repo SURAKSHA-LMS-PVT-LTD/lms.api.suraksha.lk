@@ -16,6 +16,7 @@ import { InstituteClassStudentEntity } from './entities/institute_class_student.
 import { INSTITUTE_CLASS_STUDENT_CONSTANTS } from './constants/institute-class-student.constants';
 import { UserEntity } from '../../user/entities/user.entity';
 import { StudentEntity } from '../../student/entities/student.entity';
+import { InstitueClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { StudentsService } from '../../student/student.service';
 import { UsersService } from '../../user/user.service';
@@ -35,6 +36,8 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
     private readonly studentRepository: Repository<StudentEntity>,
     @InjectRepository(ParentEntity)
     private readonly parentRepository: Repository<ParentEntity>,
+    @InjectRepository(InstitueClassEntity)
+    private readonly classRepository: Repository<InstitueClassEntity>,
     private readonly studentsService: StudentsService,
     private readonly usersService: UsersService,
     private readonly userManagementService: UserManagementService,
@@ -298,6 +301,27 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       );
     }
 
+    // Fetch class to check enrollment and verification settings
+    const classEntity = await this.classRepository.findOne({
+      where: { id: classId }
+    });
+
+    if (!classEntity) {
+      throw new NotFoundException('Class not found');
+    }
+
+    if (!classEntity.enrollmentEnabled) {
+      throw new BadRequestException('Self-enrollment is not enabled for this class');
+    }
+
+    // If an enrollment code is configured, validate it
+    if (classEntity.enrollmentCode && enrollmentData.enrollmentCode !== classEntity.enrollmentCode) {
+      throw new BadRequestException('Invalid enrollment code');
+    }
+
+    // Auto-verify only when teacher verification is NOT required
+    const isVerified = !classEntity.requireTeacherVerification;
+
     try {
       const timestamp = getCurrentSriLankaISO();
       const enrollmentDataToSave = {
@@ -305,7 +329,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         classId,
         studentUserId,
         isActive: true,
-        isVerified: false, // Always requires verification for self-enrollment
+        isVerified,
         enrollmentMethod: 'self_enrollment',
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -593,6 +617,27 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       throw new ConflictException('Student is already enrolled in this class');
     }
 
+    // Fetch class to check enrollment and verification settings
+    const classEntity = await this.classRepository.findOne({
+      where: { id: classId }
+    });
+
+    if (!classEntity) {
+      throw new NotFoundException('Class not found');
+    }
+
+    if (!classEntity.enrollmentEnabled) {
+      throw new BadRequestException('Self-enrollment is not enabled for this class');
+    }
+
+    // If an enrollment code is configured, validate it
+    if (classEntity.enrollmentCode && enrollmentCode !== classEntity.enrollmentCode) {
+      throw new BadRequestException('Invalid enrollment code');
+    }
+
+    // Auto-verify only when teacher verification is NOT required
+    const isVerified = !classEntity.requireTeacherVerification;
+
     try {
       const timestamp = getCurrentSriLankaISO();
       const enrollmentData = {
@@ -600,7 +645,7 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
         classId,
         studentUserId,
         isActive: true,
-        isVerified: false, // Requires verification for self-enrollment
+        isVerified,
         enrollmentMethod: 'self_enrollment',
         createdAt: timestamp,
         updatedAt: timestamp,

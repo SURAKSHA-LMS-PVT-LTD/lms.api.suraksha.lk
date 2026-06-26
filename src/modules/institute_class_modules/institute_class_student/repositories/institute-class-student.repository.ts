@@ -85,6 +85,9 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
       queryBuilder.andWhere('ics.isActive = true AND c.isActive = true');
     }
 
+    // Always filter verified-only — pending enrollments must not appear in class lists
+    queryBuilder.andWhere('ics.isVerified = true');
+
     if (options.skip) {
       queryBuilder.skip(options.skip);
     }
@@ -358,7 +361,8 @@ export class InstituteClassStudentRepository implements IInstituteClassStudentRe
     const entity = this.repository.create({
       ...data,
       isActive: data.isActive ?? INSTITUTE_CLASS_STUDENT_CONSTANTS.DEFAULTS.IS_ACTIVE,
-      isVerified: true, // Admin/teacher assignments are auto-verified
+      // Respect caller-supplied isVerified; default true only for admin/teacher assignments (not self-enrollment)
+      isVerified: data.isVerified !== undefined ? data.isVerified : true,
     });
     return await this.repository.save(entity);
   }
