@@ -63,6 +63,7 @@ export class WhatsAppWebhookService {
       `UPDATE whatsapp_contact_sessions SET
          last_reply_at      = ?,
          session_expires_at = ?,
+         reminder_sent_at   = NULL,
          thanks_count       = thanks_count + ?,
          total_replies      = total_replies + 1
        WHERE phone = ?`,
@@ -88,6 +89,7 @@ export class WhatsAppWebhookService {
          ON DUPLICATE KEY UPDATE
            last_reply_at      = VALUES(last_reply_at),
            session_expires_at = VALUES(session_expires_at),
+           reminder_sent_at   = NULL,
            thanks_count       = thanks_count + VALUES(thanks_count),
            total_replies      = total_replies + 1,
            user_id            = COALESCE(user_id, VALUES(user_id))`,
