@@ -13,13 +13,12 @@ export class WhatsAppSessionReminderScheduler {
    * Format a Date object to "h:mm A" string.
    */
   private formatTime(date: Date): string {
-    let hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
-    const strMinutes = minutes < 10 ? '0' + minutes : minutes;
-    return hours + ':' + strMinutes + ' ' + ampm;
+    return date.toLocaleString('en-US', {
+      timeZone: 'Asia/Colombo',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
   }
 
   private async notifyAdmins(message: string): Promise<void> {
@@ -111,7 +110,7 @@ export class WhatsAppSessionReminderScheduler {
   // Ensure this runs on startup to notify admins that the scheduler is up
   async onApplicationBootstrap() {
     if (process.env.SessionUpdatinMessageSendByHere === 'true') {
-      const startupMsg = `Session reminder scheduler started successfully on service: lms-api-suraksha-lk. Current time: ${new Date().toLocaleString()}`;
+      const startupMsg = `Session reminder scheduler started successfully on service: lms-api-suraksha-lk. Current time: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' })}`;
       this.logger.log(startupMsg);
       await this.notifyAdmins(startupMsg);
     }
