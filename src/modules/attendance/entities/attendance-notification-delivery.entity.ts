@@ -35,7 +35,7 @@ export class AttendanceNotificationDeliveryEntity {
     comment: 'attendance | design | sms_bulk' })
   contextType: string;
 
-  @Column({ name: 'context_id', type: 'varchar', length: 64, nullable: true,
+  @Column({ name: 'context_id', type: 'varchar', length: 255, nullable: true,
     comment: 'PK of originating record (attendance_records.id, etc.)' })
   contextId: string | null;
 
