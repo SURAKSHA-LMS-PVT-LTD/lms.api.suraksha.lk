@@ -116,7 +116,7 @@ export class WhatsAppSessionReminderScheduler {
     }
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Asia/Colombo' })
   async handleCron() {
     if (process.env.SessionUpdatinMessageSendByHere !== 'true') {
       return;
