@@ -26,6 +26,14 @@ export class ApiKeyOrJwtGuard extends AuthGuard('jwt') {
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
     const request = context.switchToHttp().getRequest();
+
+    // ✅ SHORT-CIRCUIT: Never block CORS preflight (OPTIONS) requests.
+    // The CORS middleware in main.ts handles these entirely.
+    // If a guard throws here, Cloud Run surfaces it as a 500 instead of 204.
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     const authHeader = request.headers.authorization;
 
     if (!authHeader) {

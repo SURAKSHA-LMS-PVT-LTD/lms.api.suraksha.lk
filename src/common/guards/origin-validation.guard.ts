@@ -59,6 +59,13 @@ export class OriginValidationGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
 
+    // ✅ SHORT-CIRCUIT: Never block CORS preflight (OPTIONS) requests.
+    // The CORS middleware in main.ts is responsible for handling these.
+    // Any guard throwing here causes Cloud Run to return 500 instead of 204.
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     // ✅ BYPASS in development mode - Allow all requests
     if (this.isDevelopment) {
       return true;

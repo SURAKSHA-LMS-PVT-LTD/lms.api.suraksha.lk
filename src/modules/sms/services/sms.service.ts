@@ -669,10 +669,10 @@ export class SmsService implements OnModuleDestroy {
   /**
    * 📈 Get SMS statistics
    */
-  async getSmsStatistics(instituteId: string, period: string = 'month'): Promise<SmsStatisticsDto> {
+  async getSmsStatistics(instituteId: string | undefined, period: string = 'month'): Promise<SmsStatisticsDto> {
     const fromDate = new Date(nowTimestamp() - (period === 'month' ? 30 : 7) * 24 * 60 * 60 * 1000);
 
-    const stats = await this.smsMessageRepository
+    const query = this.smsMessageRepository
       .createQueryBuilder('sms')
       .select([
         'COUNT(*) as totalMessages',
@@ -681,9 +681,13 @@ export class SmsService implements OnModuleDestroy {
         'SUM(sms.failedSends) as failedSends',
         'SUM(sms.creditsUsed) as totalCreditsUsed'
       ])
-      .where('sms.instituteId = :instituteId', { instituteId })
-      .andWhere('sms.createdAt >= :fromDate', { fromDate })
-      .getRawOne();
+      .where('sms.createdAt >= :fromDate', { fromDate });
+
+    if (instituteId) {
+      query.andWhere('sms.instituteId = :instituteId', { instituteId });
+    }
+
+    const stats = await query.getRawOne();
 
     return {
       period: `Last ${period === 'month' ? 30 : 7} days`,

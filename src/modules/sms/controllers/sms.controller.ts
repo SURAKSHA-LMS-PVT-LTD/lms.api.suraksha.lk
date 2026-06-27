@@ -462,10 +462,10 @@ export class SmsController {
     @Query('period') period: string = 'month',
     @Query('instituteId') queryInstituteId?: string
   ): Promise<SmsStatisticsDto> {
-    // JWT v2: Extract instituteId from token (req.user.i[0].i) or query parameter
+    const isSuperAdmin = req.user.hasGlobalInstituteAccess || req.user.u === 0;
     const instituteId = queryInstituteId || req.user.i?.[0]?.i;
 
-    if (!instituteId) {
+    if (!instituteId && !isSuperAdmin) {
       throw new BadRequestException('Institute ID is required. Provide instituteId query parameter or ensure JWT token contains institute access.');
     }
 

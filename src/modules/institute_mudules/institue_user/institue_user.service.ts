@@ -2859,11 +2859,10 @@ export class InstitueUserService {
     try {
       // 🚀 STEP 1: Check if parent user exists (pure existence check - no data retrieval)
       const parentUserExists = await this.userRepository.exists({
-        where: {
-          phoneNumber: assignDto.phoneNumber,
-          userType: UserType.USER_WITHOUT_STUDENT,
-          isActive: true
-        }
+        where: [
+          { phoneNumber: assignDto.phoneNumber, userType: UserType.USER_WITHOUT_STUDENT, isActive: true },
+          { phoneNumber: assignDto.phoneNumber, userType: UserType.USER, isActive: true },
+        ]
       });
 
       if (!parentUserExists) {
@@ -2874,11 +2873,10 @@ export class InstitueUserService {
 
       // 🚀 STEP 2: Get only parent user ID (minimal data for assignment)
       const parentUser = await this.userRepository.findOne({
-        where: {
-          phoneNumber: assignDto.phoneNumber,
-          userType: UserType.USER_WITHOUT_STUDENT,
-          isActive: true
-        },
+        where: [
+          { phoneNumber: assignDto.phoneNumber, userType: UserType.USER_WITHOUT_STUDENT, isActive: true },
+          { phoneNumber: assignDto.phoneNumber, userType: UserType.USER, isActive: true },
+        ],
         select: ['id', 'firstName', 'lastName'] // Minimal fields for response only
       });
 
@@ -2911,11 +2909,10 @@ export class InstitueUserService {
 
     try {
       const parentUser = await this.userRepository.findOne({
-        where: {
-          id: safeParentId,
-          userType: UserType.USER_WITHOUT_STUDENT,
-          isActive: true
-        },
+        where: [
+          { id: safeParentId, userType: UserType.USER_WITHOUT_STUDENT, isActive: true },
+          { id: safeParentId, userType: UserType.USER, isActive: true },
+        ],
         select: ['id', 'firstName', 'lastName']
       });
 

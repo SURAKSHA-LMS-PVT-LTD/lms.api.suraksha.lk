@@ -10,20 +10,48 @@ import { UserType } from '../user/enums/user-type.enum';
 import { AttendanceNotificationService } from '../attendance/services/attendance-notification.service';
 import { WhatsAppBroadcastService, AudienceFilter } from './whatsapp-broadcast.service';
 
+import { IsDefined, IsObject, ValidateNested, IsOptional, IsString, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
+
 class PreviewDto {
+  @IsDefined()
+  @IsObject()
   filter: AudienceFilter;
 }
 
 class SendDto {
+  @IsDefined()
+  @IsObject()
   filter: AudienceFilter;
+  
+  @IsString()
   message: string;                 // text body / caption (supports {placeholders})
+  
+  @IsOptional()
+  @IsString()
   name?: string;
+  
+  @IsOptional()
+  @IsString()
   templateId?: string;
+  
+  @IsOptional()
+  @IsBoolean()
   sessionOpenOnly?: boolean;       // only send to recipients with an open 24h window
-  // Rich content (all optional — default is plain text):
+  
+  @IsOptional()
+  @IsString()
   messageType?: 'text' | 'image' | 'video' | 'document' | 'audio' | 'interactive';
+  
+  @IsOptional()
+  @IsString()
   mediaUrl?: string;               // for image/video/document/audio
+  
+  @IsOptional()
+  @IsString()
   fileName?: string;               // for document
+  
+  @IsOptional()
   interactive?: any;               // raw WhatsApp interactive object (buttons/list/flow JSON)
 }
 

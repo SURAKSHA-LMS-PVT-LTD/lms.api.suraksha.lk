@@ -77,6 +77,13 @@ export class FlexibleAccessGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+
+    // ✅ SHORT-CIRCUIT: Never block CORS preflight (OPTIONS) requests.
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     const config = this.reflector.getAllAndOverride<FlexibleAccessConfig>(
       FLEXIBLE_ACCESS_KEY,
       [context.getHandler(), context.getClass()],
@@ -88,7 +95,6 @@ export class FlexibleAccessGuard implements CanActivate {
       );
     }
 
-    const request = context.switchToHttp().getRequest();
     const user: EnhancedJwtPayload = request.user;
 
     if (!user) {
