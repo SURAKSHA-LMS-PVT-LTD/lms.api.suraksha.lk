@@ -144,9 +144,18 @@ export class WhatsAppSessionReminderScheduler {
 
         const englishText = `Do you need future updates of you or your childrens related updates from Suraksha LMS. If yes make sure to reply this to click button of yes else stay without repling its consider as you never need any future updates and get resposbity for blickng us yourself. After today ${expireTimeStr} system will block you from future messages even u reply this like that also.`;
         
-        const sinhalaText = `Suraksha LMS වෙතින් ඔබට හෝ ඔබගේ දරුවන්ට අදාල ඉදිරි පනිවිඩ / පැමිනීම් දැනුම් දීම් ලබා ගැනීමට අවශ්යද? එසේ නම් 'ඔව් / Yes' බොත්තම ඔබන්න. එසේ නොමැති නම් මෙම පනිවිඩය නොසලකා හරින්න . එවිට අද ${expireTimeStr} ට පසුව ඔබට පණිවිඩ එවීම් අපගේ පද්ධතිය මගින් ඔබව ස්වයංක්රීයව නවත්වනු කරනු ඇත.ස්තූතී.`;
+        const sinhalaText = `Suraksha LMS වෙතින් ඔබට හෝ ඔබගේ දරුවන්ට අදාල ඉදිරි පනිවිඩ / පැමිනීම් දැනුම් දීම් ලබා ගැනීමට අවශ්යද? එසේ නම් 'ඔව් / Yes' බොත්තම ඔබන්න. \n\nමෙය නොසලකා හැරීමෙන් අද ${expireTimeStr} ඔබට පණිවිඩ එවීම් ස්වයංක්රීයව නවතිනු ඇත.ස්තූතී.`;
 
-        const bodyText = `${sinhalaText}\n\n${englishText}`;
+        let bodyText = '';
+        const langConfig = (process.env.WA_REMINDER_LANGUAGE || 'Both').toLowerCase();
+        
+        if (langConfig === 'sinhala') {
+          bodyText = sinhalaText;
+        } else if (langConfig === 'english') {
+          bodyText = englishText;
+        } else {
+          bodyText = `${sinhalaText}\n\n${englishText}`;
+        }
         const buttons = [{ id: 'extend_session_yes', title: 'ඔව් / Yes' }];
 
         const success = await this.sendButtonMessage(phone, imageUrl, bodyText, buttons);
