@@ -172,18 +172,23 @@ export class UploadController {
       return `${base}.${ext}`;
     })();
 
+    // If frontend sends a full path like "institute/xxx/class-lesson-groups",
+    // extract the last segment as the base folder for validation.
+    const baseFolder = folder.includes('/') ? folder.split('/').pop()! : folder;
+
     // Validate folder type (shared allowlist — see PUBLISHABLE_FOLDERS)
-    if (!UploadController.PUBLISHABLE_FOLDERS.has(folder)) {
+    if (!UploadController.PUBLISHABLE_FOLDERS.has(baseFolder)) {
       throw new BadRequestException(`Invalid folder. Must be one of: ${[...UploadController.PUBLISHABLE_FOLDERS].join(', ')}`);
     }
 
     // Use sanitized filename for validation and signed URL generation
-    this.validateFileExtension(sanitizedFileName, folder);
-    this.validateFileSize(fileSizeNum, folder);
+    this.validateFileExtension(sanitizedFileName, baseFolder);
+    this.validateFileSize(fileSizeNum, baseFolder);
 
     // Get max file size for this folder to enforce in signed URL
-    const maxFileSize = this.getMaxFileSizeForFolder(folder);
+    const maxFileSize = this.getMaxFileSizeForFolder(baseFolder);
 
+    // Use the full path as the storage prefix so files land in the correct location
     const result = await this.cloudStorageService.generateSignedUploadUrl(
       folder,
       sanitizedFileName,
@@ -636,8 +641,13 @@ export class UploadController {
       if (!rp || rp.includes('..') || rp.includes('\0') || rp.startsWith('/') || !/^[^/]+\/.+/.test(rp)) {
         throw new BadRequestException('Invalid relativePath format. Expected: folder/filename.ext');
       }
-      const folder = rp.split('/')[0];
-      if (!UploadController.PUBLISHABLE_FOLDERS.has(folder)) {
+      // Support both simple paths ("class-lesson-groups/file.png") and
+      // prefixed paths ("institute/uuid/class-lesson-groups/file.png") by
+      // checking whether any segment matches an allowed folder.
+      const segments = rp.split('/');
+      const folder = segments[0];
+      const matchedFolder = segments.find(s => UploadController.PUBLISHABLE_FOLDERS.has(s));
+      if (!matchedFolder) {
         this.logger.warn(`verifyAndPublish blocked — folder not allowed: ${folder}`);
         throw new BadRequestException(`Folder '${folder}' is not allowed for publishing`);
       }
@@ -810,8 +820,9 @@ export class UploadController {
       'advertisement-images', 'lecture-covers',
     ];
 
-    const folder = relativePath.split('/')[0];
-    if (!allowedFolders.includes(folder)) {
+    const matchedFolder = relativePath.split('/').find(s => allowedFolders.includes(s));
+    if (!matchedFolder) {
+      const folder = relativePath.split('/')[0];
       throw new BadRequestException(`Deletion not allowed for folder: ${folder}`);
     }
 
