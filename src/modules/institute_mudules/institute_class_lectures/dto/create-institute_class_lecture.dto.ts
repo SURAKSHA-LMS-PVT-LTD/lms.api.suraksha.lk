@@ -220,4 +220,10 @@ export class CreateInstituteClassLectureDto {
   @IsString()
   @MaxLength(500, { message: 'Thumbnail URL cannot exceed 500 characters' })
   thumbnailUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Group ID to associate this lecture with' })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => value?.toString().trim())
+  groupId?: string;
 }

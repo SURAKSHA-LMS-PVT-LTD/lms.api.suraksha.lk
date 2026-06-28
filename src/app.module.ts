@@ -44,6 +44,7 @@ import { PasswordResetTokenEntity, UserFirstLoginLogEntity } from './auth/entiti
 import { SystemConfigEntity } from './common/entities/system-config.entity';
 import { PushNotificationEntity } from './modules/push-notifications/entities/push-notification.entity';
 import { PaymentModule } from './modules/payment/payment.module';
+import { InstituteClassLectureGroupsModule } from './modules/institute_mudules/institute_class_lecture_groups/institute_class_lecture_groups.module';
 import { ApiFrontendModule } from './modules/api-frontend/api-frontend.module';
 import { FileModule } from './modules/files/file.module';
 import { SecurityModule } from './common/security.module';
@@ -181,6 +182,7 @@ import { AppService } from './app.service';
     InstitueClassModule,
     InstitueLecturesModule,
     InstituteClassLecturesModule,
+    InstituteClassLectureGroupsModule,
     InstituteClassStudentModule,
     InstituteClassSubjectModule,
     InstituteClassSubjectExamsModule,

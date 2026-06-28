@@ -67,6 +67,7 @@ export class InstituteClassLecturesService {
       isHidden: (createDto as any).isHidden ?? false,
       materials: createDto.materials ?? undefined,
       thumbnailUrl: createDto.thumbnailUrl,
+      groupId: createDto.groupId ?? null,
       liveAttendanceEnabled: (createDto as any).liveAttendanceEnabled ?? false,
       liveUrlId: (createDto as any).liveAttendanceEnabled ? ((createDto as any).liveUrlId || uuidv4().replace(/-/g, '').substring(0, 12)) : null,
       liveAccessLevel: (createDto as any).liveAccessLevel ?? 'ENROLLED_ONLY',
@@ -200,6 +201,7 @@ export class InstituteClassLecturesService {
     if ((updateDto as any).isHidden !== undefined) updateData.isHidden = (updateDto as any).isHidden;
     if (updateDto.materials !== undefined) updateData.materials = updateDto.materials;
     if (updateDto.thumbnailUrl !== undefined) updateData.thumbnailUrl = updateDto.thumbnailUrl;
+    if ((updateDto as any).groupId !== undefined) updateData.groupId = (updateDto as any).groupId;
     if ((updateDto as any).liveAttendanceEnabled !== undefined) {
       updateData.liveAttendanceEnabled = (updateDto as any).liveAttendanceEnabled;
       // Auto-generate liveUrlId when enabling if not already set

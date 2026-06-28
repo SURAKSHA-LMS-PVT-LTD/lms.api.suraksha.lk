@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { formatSriLankaTime, formatSriLankaDateTime, now } from '../../../common/utils/timezone.util';
 
 @Injectable()
 export class WhatsAppSessionReminderScheduler {
@@ -9,17 +10,7 @@ export class WhatsAppSessionReminderScheduler {
 
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
-  /**
-   * Format a Date object to "h:mm A" string.
-   */
-  private formatTime(date: Date): string {
-    return date.toLocaleString('en-US', {
-      timeZone: 'Asia/Colombo',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  }
+
 
   private async notifyAdmins(message: string): Promise<void> {
     const adminStr = process.env.ADMIN_PHONE_NUMBERS || '';
@@ -110,7 +101,7 @@ export class WhatsAppSessionReminderScheduler {
   // Ensure this runs on startup to notify admins that the scheduler is up
   async onApplicationBootstrap() {
     if (process.env.SessionUpdatinMessageSendByHere === 'true') {
-      const startupMsg = `Session reminder scheduler started successfully on service: lms-api-suraksha-lk. Current time: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' })}`;
+      const startupMsg = `Session reminder scheduler started successfully on service: lms-api-suraksha-lk. Current time: ${formatSriLankaDateTime(now())}`;
       this.logger.log(startupMsg);
       await this.notifyAdmins(startupMsg);
     }
@@ -140,7 +131,7 @@ export class WhatsAppSessionReminderScheduler {
 
       for (const session of sessions) {
         const phone = session.phone;
-        const expireTimeStr = this.formatTime(new Date(session.session_expires_at));
+        const expireTimeStr = formatSriLankaTime(new Date(session.session_expires_at));
 
         const englishText = `Do you need future updates of you or your childrens related updates from Suraksha LMS. If yes make sure to reply this to click button of yes else stay without repling its consider as you never need any future updates and get resposbity for blickng us yourself. After today ${expireTimeStr} system will block you from future messages even u reply this like that also.`;
         

@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 
 class GenerateUploadUrlDto {
   @ApiProperty()
-  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails', 'institute-branding'])
-  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'class-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails' | 'institute-branding';
+  @IsEnum(['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents', 'lecture-thumbnails', 'institute-branding', 'class-lesson-groups'])
+  folder: 'profile-images' | 'student-images' | 'institute-images' | 'institute-user-images' | 'subject-images' | 'homework-files' | 'correction-files' | 'institute-payment-receipts' | 'subject-payment-receipts' | 'enrollment-payment-receipts' | 'class-payment-receipts' | 'id-documents' | 'bookhire-vehicle-images' | 'bookhire-owner-images' | 'service-payment-receipts' | 'structured-lecture-covers' | 'structured-lecture-documents' | 'lecture-thumbnails' | 'institute-branding' | 'class-lesson-groups';
   
   @ApiProperty()
   @IsString()
@@ -51,7 +51,7 @@ export class UploadController {
     'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts',
     'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images',
     'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents',
-    'lecture-thumbnails', 'institute-branding',
+    'lecture-thumbnails', 'institute-branding', 'class-lesson-groups',
   ]);
 
   constructor(
@@ -79,7 +79,7 @@ export class UploadController {
   })
   @ApiQuery({ 
     name: 'folder', 
-    enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'institute-branding'],
+    enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'institute-branding', 'class-lesson-groups'],
     description: 'Target folder for file upload',
     example: 'profile-images'
   })
@@ -396,7 +396,7 @@ export class UploadController {
       properties: {
         folder: {
           type: 'string',
-          enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images'],
+          enum: ['profile-images', 'student-images', 'institute-images', 'institute-user-images', 'subject-images', 'homework-files', 'correction-files', 'institute-payment-receipts', 'subject-payment-receipts', 'enrollment-payment-receipts', 'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images', 'class-lesson-groups'],
           example: 'profile-images'
         },
         fileName: {
@@ -687,6 +687,7 @@ export class UploadController {
       'bookhire-owner-images': ['.jpg', '.jpeg', '.png', '.webp'],
       'lecture-thumbnails': ['.jpg', '.jpeg', '.png', '.webp', '.gif'],
       'institute-branding': ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif'],
+      'class-lesson-groups': ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif'],
     };
 
     const allowed = allowedExtensions[folder] || ['.jpg', '.jpeg', '.png', '.pdf'];
@@ -737,6 +738,7 @@ export class UploadController {
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
       'institute-branding': this.configService.get<number>('MAX_INSTITUTE_BRANDING_SIZE_MB', 5) * 1024 * 1024,
+      'class-lesson-groups': this.configService.get<number>('MAX_CLASS_LESSON_GROUP_SIZE_MB', 5) * 1024 * 1024,
     };
 
     const maxSize = maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
@@ -804,7 +806,7 @@ export class UploadController {
       'subject-payment-receipts', 'enrollment-payment-receipts', 'class-payment-receipts',
       'id-documents', 'bookhire-vehicle-images', 'bookhire-owner-images',
       'service-payment-receipts', 'structured-lecture-covers', 'structured-lecture-documents',
-      'lecture-thumbnails', 'institute-branding', 'sms-payment-receipts',
+      'lecture-thumbnails', 'institute-branding', 'class-lesson-groups', 'sms-payment-receipts',
       'advertisement-images', 'lecture-covers',
     ];
 
@@ -840,6 +842,7 @@ export class UploadController {
       'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
       'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
       'institute-branding': this.configService.get<number>('MAX_INSTITUTE_BRANDING_SIZE_MB', 5) * 1024 * 1024,
+      'class-lesson-groups': this.configService.get<number>('MAX_CLASS_LESSON_GROUP_SIZE_MB', 5) * 1024 * 1024,
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB

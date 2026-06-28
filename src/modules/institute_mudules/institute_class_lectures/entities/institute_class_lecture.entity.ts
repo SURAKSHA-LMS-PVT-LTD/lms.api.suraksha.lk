@@ -3,6 +3,7 @@ import { Exclude } from 'class-transformer';
 import { InstituteEntity } from '../../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institue_class/entities/institue_class.entity';
 import { UserEntity } from '../../../user/entities/user.entity';
+import { InstituteClassLectureGroupEntity } from '../../institute_class_lecture_groups/entities/institute_class_lecture_group.entity';
 
 // Transformer to ensure dates are properly serialized
 const dateTransformer: ValueTransformer = {
@@ -54,6 +55,14 @@ export class InstituteClassLectureEntity {
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn([{ name: 'instructor_id' }])
   instructor?: UserEntity;
+
+  @Column({ name: 'group_id', type: 'uuid', nullable: true })
+  @Index()
+  groupId?: string;
+
+  @ManyToOne(() => InstituteClassLectureGroupEntity, (group) => group.lectures, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn([{ name: 'group_id' }])
+  group?: InstituteClassLectureGroupEntity;
 
   @Column({ type: 'varchar', length: 255 })
   title: string;
