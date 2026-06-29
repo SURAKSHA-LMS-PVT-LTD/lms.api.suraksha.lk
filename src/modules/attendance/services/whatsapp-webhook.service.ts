@@ -73,9 +73,12 @@ export class WhatsAppWebhookService {
     // affectedRows = 0 means this is the first reply from this number.
     if (updated?.affectedRows === 0) {
       // Resolve user_id once — phone_number is indexed, sub-ms.
+      const localPhone = phone.startsWith('94') ? '0' + phone.substring(2) : phone;
+      const plusPhone = phone.startsWith('94') ? '+' + phone : phone;
+
       const userRows: any[] = await this.ds.query(
-        `SELECT id FROM users WHERE phone_number = ? LIMIT 1`,
-        [phone],
+        `SELECT id FROM users WHERE phone_number IN (?, ?, ?) LIMIT 1`,
+        [phone, localPhone, plusPhone],
       );
       const userId: string | null = userRows[0]?.id ?? null;
 
@@ -299,7 +302,10 @@ export class WhatsAppWebhookService {
    * written. Strips all non-digits; rejects implausible lengths.
    */
   static normalisePhone(phone: string): string | null {
-    const n = (phone ?? '').replace(/\D/g, '');
+    let n = (phone ?? '').replace(/\D/g, '');
+    if (n.startsWith('0')) {
+      n = '94' + n.substring(1);
+    }
     return n.length >= 7 && n.length <= 15 ? n : null;
   }
 

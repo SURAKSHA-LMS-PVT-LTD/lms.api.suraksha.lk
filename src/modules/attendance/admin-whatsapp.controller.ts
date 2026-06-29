@@ -513,9 +513,10 @@ export class AdminWhatsAppController {
         return { success: false, error: 'WhatsApp credentials not configured' };
       }
 
+      const normalizedPhone = WhatsAppWebhookService.normalisePhone(phone) || phone.replace('+', '');
       const body = {
         messaging_product: 'whatsapp',
-        to: phone.replace('+', ''),
+        to: normalizedPhone,
         type: 'text',
         text: { body: message },
       };
