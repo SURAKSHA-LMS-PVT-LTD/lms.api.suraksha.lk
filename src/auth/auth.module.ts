@@ -34,6 +34,7 @@ import { FlexibleAccessGuard } from './guards/flexible-access.guard';
 import { ChildrenAccessGuard } from './guards/children-access.guard';
 import { InstituteSelectionController } from './institute-selection.controller';
 import { InstituteAuthController } from './controllers/institute-auth.controller';
+import { PasswordResetController } from './controllers/password-reset.controller';
 import { InstituteLoginService } from './services/institute-login.service';
 import { InstituteSessionService } from './services/institute-session.service';
 import { AccessValidationService } from './services/access-validation.service';
@@ -111,7 +112,7 @@ import { TenantModule } from '../modules/tenant/tenant.module';
       InstituteLoginSessionEntity,
     ]),
   ],
-  controllers: [AuthController, AuthV2Controller, AuthMobileController, InstituteSelectionController, FirstLoginController, InstituteAuthController],
+  controllers: [AuthController, AuthV2Controller, AuthMobileController, InstituteSelectionController, FirstLoginController, InstituteAuthController, PasswordResetController],
   providers: [
     AuthService, 
     JwtStrategy, 

@@ -1021,18 +1021,14 @@ export class PasswordResetService {
     const child = await this.resolveUserByIdentifier(childIdentifier);
     if (!child) throw new NotFoundException('Child account not found');
 
-    // Verify the parent is actually linked to this child in the DB
+    // Verify the parent is actually linked to this child in the DB.
+    // student.fatherId/motherId/guardianId store the parent's userId (not PK).
     const student = await this.studentRepository.findOne({ where: { userId: child.id } });
-    const parentIds = student
-      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean) as string[]
+    const parentUserIds = student
+      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean).map(String)
       : [];
 
-    // Find the parent entity to get their userId
-    const parentRecord = await this.parentRepository.findOne({ where: { userId: parentUserId } });
-    const parentEntityId = parentRecord?.id;
-
-    const isLinked = parentEntityId && parentIds.includes(parentEntityId);
-    if (!isLinked) {
+    if (!parentUserIds.includes(String(parentUserId))) {
       throw new UnauthorizedException('You are not linked to this child in the system');
     }
 
@@ -1060,14 +1056,13 @@ export class PasswordResetService {
     const child = await this.resolveUserByIdentifier(childIdentifier);
     if (!child) throw new NotFoundException('Child account not found');
 
-    // Re-validate parent-child relationship
+    // Re-validate parent-child relationship.
+    // student.fatherId/motherId/guardianId store the parent's userId (not PK).
     const student = await this.studentRepository.findOne({ where: { userId: child.id } });
-    const parentRecord = await this.parentRepository.findOne({ where: { userId: parentUserId } });
-    const parentEntityId = parentRecord?.id;
-    const parentIds = student
-      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean) as string[]
+    const parentUserIds = student
+      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean).map(String)
       : [];
-    if (!parentEntityId || !parentIds.includes(parentEntityId)) {
+    if (!parentUserIds.includes(String(parentUserId))) {
       throw new UnauthorizedException('You are not linked to this child in the system');
     }
 
@@ -1157,14 +1152,13 @@ export class PasswordResetService {
       throw new UnauthorizedException('The OTP has expired. Please start the linking flow again.');
     }
 
-    // Re-validate parent-child relationship one more time
+    // Re-validate parent-child relationship one more time.
+    // student.fatherId/motherId/guardianId store the parent's userId (not PK).
     const student = await this.studentRepository.findOne({ where: { userId: childUserId } });
-    const parentRecord = await this.parentRepository.findOne({ where: { userId: parentUserId } });
-    const parentEntityId = parentRecord?.id;
-    const parentIds = student
-      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean) as string[]
+    const parentUserIds = student
+      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean).map(String)
       : [];
-    if (!parentEntityId || !parentIds.includes(parentEntityId)) {
+    if (!parentUserIds.includes(String(parentUserId))) {
       throw new UnauthorizedException('Parent-child relationship is no longer valid');
     }
 
