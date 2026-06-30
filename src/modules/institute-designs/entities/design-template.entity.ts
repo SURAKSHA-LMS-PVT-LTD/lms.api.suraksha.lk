@@ -74,6 +74,19 @@ export class DesignTemplateEntity {
   @Column({ name: 'whatsapp_ttl_days', type: 'int', nullable: true })
   whatsappTtlDays?: number;
 
+  // ── Server-side rendering (set by system admin on approval) ─────────────────
+  /** System admin must enable this per-template. When true, institute admins may request server-side generation. */
+  @Column({ name: 'allow_server_side_rendering', type: 'boolean', default: false })
+  allowServerSideRendering: boolean;
+
+  /**
+   * Credit multiplier applied on top of the base per-output cost when using
+   * server-side rendering. Default 1.5 means 1 credit base → 1.5 credits SSR.
+   * Stored as a decimal so admin can set e.g. 2.0 for heavy templates.
+   */
+  @Column({ name: 'cost_ssr_multiplier', type: 'decimal', precision: 5, scale: 2, default: 1.5 })
+  costSsrMultiplier: number;
+
   // ── Approval/rejection metadata ──────────────────────────────────────────────
   @Column({ name: 'rejection_reason', type: 'text', nullable: true })
   rejectionReason?: string;

@@ -438,4 +438,81 @@ export class PasswordResetController {
       throw new BadRequestException(error.message);
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Parent → Child profile linking via WhatsApp OTP
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Step 1: List selectable phone contacts for a child (for parent to pick which WA number receives OTP).
+   */
+  @Post('link-child/contacts')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get phone contacts for child-profile WhatsApp linking' })
+  @HttpCode(HttpStatus.OK)
+  async getChildLinkContacts(
+    @Body('childIdentifier') childIdentifier: string,
+    @Request() req: JwtRequest,
+  ) {
+    if (!childIdentifier) throw new BadRequestException('childIdentifier is required');
+    const parentUserId = String(req.user.id ?? req.user.sub);
+    return this.passwordResetService.getChildLinkContacts(parentUserId, childIdentifier);
+  }
+
+  /**
+   * Step 2: Send WhatsApp OTP to the chosen phone number; returns wa.me link.
+   */
+  @Post('link-child/initiate')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 300000 } }) // 3 per 5 min
+  @ApiOperation({ summary: 'Initiate WhatsApp OTP for child profile linking' })
+  @HttpCode(HttpStatus.OK)
+  async initiateChildLink(
+    @Body('childIdentifier') childIdentifier: string,
+    @Body('selectedContactId') selectedContactId: string,
+    @Request() req: JwtRequest,
+    @Req() raw: ExpressRequest,
+  ) {
+    if (!childIdentifier || !selectedContactId) {
+      throw new BadRequestException('childIdentifier and selectedContactId are required');
+    }
+    const parentUserId = String(req.user.id ?? req.user.sub);
+    return this.passwordResetService.initiateChildLinkOtp(
+      parentUserId, childIdentifier, selectedContactId, raw.ip,
+    );
+  }
+
+  /**
+   * Step 3: Poll whether the WhatsApp OTP was confirmed by the webhook.
+   */
+  @Get('link-child/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Poll child-link WhatsApp OTP status' })
+  async getChildLinkStatus(
+    @Query('childUserId') childUserId: string,
+    @Request() req: JwtRequest,
+  ) {
+    if (!childUserId) throw new BadRequestException('childUserId is required');
+    const parentUserId = String(req.user.id ?? req.user.sub);
+    return this.passwordResetService.getChildLinkStatus(parentUserId, childUserId);
+  }
+
+  /**
+   * Step 4: OTP verified — issue a child refresh token the parent stores client-side.
+   */
+  @Post('link-child/complete')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Complete child-profile linking; returns child refresh token' })
+  @HttpCode(HttpStatus.OK)
+  async completeChildLink(
+    @Body('childUserId') childUserId: string,
+    @Request() req: JwtRequest,
+    @Req() raw: ExpressRequest,
+  ) {
+    if (!childUserId) throw new BadRequestException('childUserId is required');
+    const parentUserId = String(req.user.id ?? req.user.sub);
+    return this.passwordResetService.completeChildLink(
+      parentUserId, childUserId, raw.ip, raw.get('User-Agent'),
+    );
+  }
 }

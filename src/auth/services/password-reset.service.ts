@@ -985,11 +985,212 @@ export class PasswordResetService {
    * Clean up expired tokens (should be called periodically)
    */
   async cleanupExpiredTokens(): Promise<number> {
-    
+
     const result = await this.passwordResetTokenRepository.delete({
       expiresAt: now()
     });
 
     return result.affected || 0;
+  }
+
+  // ============================================================
+  // 👨‍👧 PARENT → CHILD PROFILE LINK VIA WHATSAPP OTP
+  //
+  // Flow:
+  //  1. Parent calls /request with childIdentifier
+  //     → resolves child user, picks a phone contact (child's own or parent's)
+  //     → saves UserOtpEntity with purpose=PROFILE_LINK, parentUserId stored in userId field
+  //       and childUserId in phoneNumber? No — we store parentUserId in a separate lookup.
+  //       Actually: store child user id in userId, parent id in ipAddress (abused as opaque ref)
+  //       Cleaner: store as two rows using the `email` column for the parentId.
+  //     → returns wa.me link
+  //  2. WhatsApp webhook fires → sets isVerified=true on the OTP (same as password reset)
+  //  3. Parent polls /status → when verified, calls /complete
+  //  4. /complete: verifies OTP, generates child refresh token, returns it to parent
+  // ============================================================
+
+  /**
+   * Step 1 — Build selectable phone contacts for the child.
+   * Returns own phone + parent phones so the parent can pick the WA number to receive OTP.
+   * The caller must be authenticated as a parent.
+   */
+  async getChildLinkContacts(
+    parentUserId: string,
+    childIdentifier: string,
+  ): Promise<{ contacts: { id: string; label: string; masked: string }[]; childUserId: string }> {
+    const child = await this.resolveUserByIdentifier(childIdentifier);
+    if (!child) throw new NotFoundException('Child account not found');
+
+    // Verify the parent is actually linked to this child in the DB
+    const student = await this.studentRepository.findOne({ where: { userId: child.id } });
+    const parentIds = student
+      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean) as string[]
+      : [];
+
+    // Find the parent entity to get their userId
+    const parentRecord = await this.parentRepository.findOne({ where: { userId: parentUserId } });
+    const parentEntityId = parentRecord?.id;
+
+    const isLinked = parentEntityId && parentIds.includes(parentEntityId);
+    if (!isLinked) {
+      throw new UnauthorizedException('You are not linked to this child in the system');
+    }
+
+    const contacts = await this.buildPhoneContacts(child.id);
+    return {
+      childUserId: String(child.id),
+      contacts: contacts.map(({ id, label, masked }) => ({ id, label, masked })),
+    };
+  }
+
+  /**
+   * Step 2 — Send WhatsApp OTP for child-link verification.
+   * Returns a wa.me link the parent taps.
+   */
+  async initiateChildLinkOtp(
+    parentUserId: string,
+    childIdentifier: string,
+    selectedContactId: string,
+    ipAddress?: string,
+  ): Promise<{ waLink: string; sentTo: string; childUserId: string }> {
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
+
+    const child = await this.resolveUserByIdentifier(childIdentifier);
+    if (!child) throw new NotFoundException('Child account not found');
+
+    // Re-validate parent-child relationship
+    const student = await this.studentRepository.findOne({ where: { userId: child.id } });
+    const parentRecord = await this.parentRepository.findOne({ where: { userId: parentUserId } });
+    const parentEntityId = parentRecord?.id;
+    const parentIds = student
+      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean) as string[]
+      : [];
+    if (!parentEntityId || !parentIds.includes(parentEntityId)) {
+      throw new UnauthorizedException('You are not linked to this child in the system');
+    }
+
+    const contacts = await this.buildPhoneContacts(child.id);
+    const chosen = contacts.find(c => c.id === selectedContactId);
+    if (!chosen) throw new BadRequestException('Invalid contact selection');
+
+    // Invalidate any previous pending PROFILE_LINK OTPs for this parent+child pair
+    await this.otpRepository.update(
+      { userId: String(child.id), otpPurpose: OtpPurpose.PROFILE_LINK, isVerified: false },
+      { isVerified: false, attempts: 99 }, // Mark as exhausted so they can't be reused
+    );
+
+    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await this.otpRepository.save({
+      userId: String(child.id),
+      // Embed parentUserId in the email field (repurposed as opaque link key)
+      email: `parent:${parentUserId}`,
+      phoneNumber: chosen.phone,
+      otpCode,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.PROFILE_LINK,
+      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      expiresAt,
+      isVerified: false,
+      attempts: 0,
+      ipAddress: ipAddress || null,
+      createdAt: now(),
+      createdDate: new Date().toISOString().split('T')[0],
+    });
+
+    const waLink = this.buildWhatsAppOtpLink(otpCode);
+    this.logger.log(`[ChildLink] OTP initiated parent=${parentUserId} child=${child.id} contact=${selectedContactId}`);
+    return { waLink, sentTo: chosen.masked, childUserId: String(child.id) };
+  }
+
+  /**
+   * Step 3 — Poll whether the WhatsApp OTP has been confirmed by the webhook.
+   */
+  async getChildLinkStatus(
+    parentUserId: string,
+    childUserId: string,
+  ): Promise<{ verified: boolean; expired: boolean }> {
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId: childUserId,
+        email: `parent:${parentUserId}`,
+        otpPurpose: OtpPurpose.PROFILE_LINK,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!otp) return { verified: false, expired: true };
+    const expired = !otp.isVerified && otp.expiresAt.getTime() <= Date.now();
+    return { verified: otp.isVerified, expired };
+  }
+
+  /**
+   * Step 4 — Complete the link: verify OTP, issue a child refresh token, return it.
+   * The parent stores this token client-side (same as any linked profile).
+   */
+  async completeChildLink(
+    parentUserId: string,
+    childUserId: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<{
+    refresh_token: string;
+    child: { id: string; nameWithInitials: string; userType: string; imageUrl?: string };
+  }> {
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId: childUserId,
+        email: `parent:${parentUserId}`,
+        otpPurpose: OtpPurpose.PROFILE_LINK,
+        isVerified: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) {
+      throw new UnauthorizedException('WhatsApp OTP not verified yet or has expired. Please restart the linking flow.');
+    }
+    // Expire check
+    if (otp.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException('The OTP has expired. Please start the linking flow again.');
+    }
+
+    // Re-validate parent-child relationship one more time
+    const student = await this.studentRepository.findOne({ where: { userId: childUserId } });
+    const parentRecord = await this.parentRepository.findOne({ where: { userId: parentUserId } });
+    const parentEntityId = parentRecord?.id;
+    const parentIds = student
+      ? [student.fatherId, student.motherId, student.guardianId].filter(Boolean) as string[]
+      : [];
+    if (!parentEntityId || !parentIds.includes(parentEntityId)) {
+      throw new UnauthorizedException('Parent-child relationship is no longer valid');
+    }
+
+    // Consume the OTP (mark as used by exhausting attempts)
+    otp.attempts = 99;
+    await this.otpRepository.save(otp);
+
+    // Load child user for the response payload
+    const childUser = await this.userRepository.findOne({
+      where: { id: childUserId },
+      select: ['id', 'nameWithInitials', 'userType', 'imageUrl'],
+    });
+    if (!childUser) throw new NotFoundException('Child user not found');
+
+    // Issue a long-lived refresh token for the child (rememberMe=true → 30 days)
+    const refreshToken = await this.authService.generateRefreshToken(childUserId, ipAddress, userAgent, true);
+
+    this.logger.log(`[ChildLink] Completed parent=${parentUserId} child=${childUserId}`);
+    return {
+      refresh_token: refreshToken,
+      child: {
+        id: String(childUser.id),
+        nameWithInitials: childUser.nameWithInitials || '',
+        userType: childUser.userType,
+        imageUrl: childUser.imageUrl,
+      },
+    };
   }
 }

@@ -33,6 +33,10 @@ export interface ApproveDesignTemplateDto {
   allowPrint: boolean;
   whatsappTtlDays?: number;
   adminNotes?: string;
+  /** Whether server-side rendering is permitted for this template. Default false. */
+  allowServerSideRendering?: boolean;
+  /** Credit multiplier for SSR vs client-side. Default 1.5. */
+  costSsrMultiplier?: number;
 }
 
 export interface RejectDesignTemplateDto {
@@ -46,6 +50,14 @@ export interface PreviewCostResult {
   totalCost: number;
   balance: number;
   sufficient: boolean;
+  /** Effective cost per card when using server-side rendering (unitCost × ssrMultiplier) */
+  ssrUnitCost: number;
+  /** Total cost for all cards when using SSR */
+  ssrTotalCost: number;
+  /** Whether the template allows SSR at all */
+  allowServerSideRendering: boolean;
+  /** SSR is auto-required when userCount exceeds this threshold */
+  ssrAutoThreshold: number;
 }
 
 export interface CommitGenerationResult {
@@ -54,9 +66,13 @@ export interface CommitGenerationResult {
   transactionId: string;
   unitCost: number;
   totalCost: number;
+  /** True when this commit was charged at the SSR rate */
+  serverSide: boolean;
 }
 
 const FEATURE_KEY = 'institute-designs';
+/** When userCount >= this, SSR is auto-enabled regardless of user preference */
+const SSR_AUTO_THRESHOLD = 500;
 
 @Injectable()
 export class InstituteDesignsService {
@@ -189,6 +205,10 @@ export class InstituteDesignsService {
     const unitCost = this.getUnitCost(tpl, outputType);
     const totalCost = unitCost * userIds.length;
 
+    const multiplier = Number(tpl.costSsrMultiplier) || 1.5;
+    const ssrUnitCost = Math.round(unitCost * multiplier * 100) / 100;
+    const ssrTotalCost = Math.round(ssrUnitCost * userIds.length * 100) / 100;
+
     const balanceDto = await this.creditsService.getBalance(instituteId);
     const balance = Number(balanceDto.balance);
 
@@ -198,6 +218,10 @@ export class InstituteDesignsService {
       totalCost,
       balance,
       sufficient: balance >= totalCost,
+      ssrUnitCost,
+      ssrTotalCost,
+      allowServerSideRendering: tpl.allowServerSideRendering,
+      ssrAutoThreshold: SSR_AUTO_THRESHOLD,
     };
   }
 
@@ -211,16 +235,19 @@ export class InstituteDesignsService {
     outputType: DesignOutputType,
     userIds: string[],
     user: any,
+    serverSide = false,
   ): Promise<CommitGenerationResult> {
     InstituteAccessValidator.validateInstituteAccess(user, instituteId);
     await this.assertFeatureEnabled(instituteId);
     this.validateUserIds(userIds);
 
+    // Auto-enforce SSR when count exceeds threshold
+    const useServerSide = serverSide || userIds.length >= SSR_AUTO_THRESHOLD;
+
     const userId: string = user.id ?? user.sub ?? user.userId;
     const recordId = uuidv4();
 
     const result = await this.dataSource.transaction(async (manager) => {
-      // Re-validate inside the transaction so a concurrent status change is caught
       const tpl = await manager.findOne(DesignTemplateEntity, {
         where: { id: templateId, instituteId },
         lock: { mode: 'pessimistic_read' },
@@ -231,10 +258,17 @@ export class InstituteDesignsService {
       }
       this.assertOutputAllowed(tpl, outputType);
 
-      const unitCost = this.getUnitCost(tpl, outputType);
-      const totalCost = unitCost * userIds.length;
+      if (useServerSide && !tpl.allowServerSideRendering) {
+        throw new ForbiddenException(
+          'Server-side rendering is not enabled for this template. Contact the system administrator.',
+        );
+      }
 
-      // Debit credits (audited, inside transaction)
+      const baseUnitCost = this.getUnitCost(tpl, outputType);
+      const multiplier = useServerSide ? (Number(tpl.costSsrMultiplier) || 1.5) : 1;
+      const unitCost = Math.round(baseUnitCost * multiplier * 100) / 100;
+      const totalCost = Math.round(unitCost * userIds.length * 100) / 100;
+
       const deductResult = await this.creditsService.deductCreditsWithManager(
         manager,
         instituteId,
@@ -243,12 +277,11 @@ export class InstituteDesignsService {
           type: CreditTransactionType.DESIGN_GENERATION,
           referenceType: 'DESIGN_TEMPLATE',
           referenceId: templateId,
-          description: `Design generation: ${outputType} × ${userIds.length} users — "${tpl.name}"`,
+          description: `Design generation${useServerSide ? ' (server-side)' : ''}: ${outputType} × ${userIds.length} users — "${tpl.name}"`,
         },
         userId,
       );
 
-      // Create generation record
       const record = manager.create(DesignGenerationRecordEntity, {
         id: recordId,
         instituteId,
@@ -274,11 +307,12 @@ export class InstituteDesignsService {
         transactionId: deductResult.transactionId,
         unitCost,
         totalCost,
+        serverSide: useServerSide,
       };
     });
 
     this.logger.log(
-      `Design generation committed: institute=${instituteId} template=${templateId} type=${outputType} users=${userIds.length} cost=${result.totalCost}`,
+      `Design generation committed: institute=${instituteId} template=${templateId} type=${outputType} users=${userIds.length} cost=${result.totalCost} ssr=${result.serverSide}`,
     );
     return result;
   }
@@ -405,6 +439,8 @@ export class InstituteDesignsService {
     tpl.allowPrint = dto.allowPrint ?? false;
     tpl.whatsappTtlDays = dto.whatsappTtlDays ?? undefined;
     tpl.adminNotes = dto.adminNotes ?? undefined;
+    tpl.allowServerSideRendering = dto.allowServerSideRendering ?? false;
+    tpl.costSsrMultiplier = dto.costSsrMultiplier ?? 1.5;
     tpl.rejectionReason = undefined;
     tpl.reviewedBy = adminId;
     tpl.reviewedAt = now();

@@ -72,6 +72,7 @@ import { InstituteApiKeysModule } from './modules/institute-api-keys/institute-a
 import { InstituteBankAccountsModule } from './modules/institute-bank-accounts/institute-bank-accounts.module';
 import { ErrorReportsModule } from './modules/error-reports/error-reports.module';
 import { InstituteDesignsModule } from './modules/institute-designs/institute-designs.module';
+import { ServerSideCardGenerationModule } from './modules/server-side-card-generation/server-side-card-generation.module';
 import { PaymentGatewayModule } from './modules/payment-gateway/payment-gateway.module';
 import { WhatsAppBroadcastModule } from './modules/whatsapp-broadcast/whatsapp-broadcast.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -219,8 +220,9 @@ import { AppService } from './app.service';
     InstituteBankAccountsModule, // Institute-level bank accounts for payment collection
     ScheduleModule.forRoot(), // Enable @Cron decorators for scheduled sync jobs
     ErrorReportsModule, // User error reporting with admin status management
-    InstituteDesignsModule, // Design template approval, credit-billed generation, multi-output
-    PaymentGatewayModule,   // Real-time credit top-up via payment gateway (PayHere, etc.)
+    InstituteDesignsModule,            // Design template approval, credit-billed generation, multi-output
+    ServerSideCardGenerationModule,    // SSR generation jobs: Drive upload + share link, mobile-safe
+    PaymentGatewayModule,              // Real-time credit top-up via payment gateway (PayHere, etc.)
     WhatsAppBroadcastModule, // System-admin WhatsApp broadcast portal (filter → count → send)
   ],
   controllers: [AppController],

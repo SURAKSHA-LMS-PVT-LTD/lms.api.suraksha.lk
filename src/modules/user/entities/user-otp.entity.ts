@@ -19,6 +19,8 @@ export enum OtpPurpose {
   EMAIL_CHANGE = 'EMAIL_CHANGE',
   INSTITUTE_PASSWORD_RESET = 'INSTITUTE_PASSWORD_RESET',
   INSTITUTE_ACTIVATION = 'INSTITUTE_ACTIVATION',
+  // Used when a parent links a child profile via WhatsApp OTP
+  PROFILE_LINK = 'PROFILE_LINK',
 }
 
 @Entity('user_otps')

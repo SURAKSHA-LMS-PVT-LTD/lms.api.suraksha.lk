@@ -127,10 +127,10 @@ export class InstituteDesignsController {
   async commitGeneration(
     @Param('id', ParseIdPipe) id: string,
     @Param('templateId') templateId: string,
-    @Body() body: { outputType: DesignOutputType; userIds: string[] },
+    @Body() body: { outputType: DesignOutputType; userIds: string[]; serverSide?: boolean },
     @Request() req: JwtRequest,
   ) {
-    return this.service.commitGeneration(id, templateId, body.outputType, body.userIds, req.user);
+    return this.service.commitGeneration(id, templateId, body.outputType, body.userIds, req.user, body.serverSide ?? false);
   }
 
   @Post('institutes/:id/design-templates/generations/:recordId/result')
@@ -193,7 +193,7 @@ export class InstituteDesignsController {
   @Put('admin/design-templates/:templateId/approve')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
-  @ApiOperation({ summary: 'Approve a design template and set per-output costs + allowed outputs' })
+  @ApiOperation({ summary: 'Approve a design template and set per-output costs + allowed outputs + SSR settings' })
   async approveTemplate(
     @Param('templateId') templateId: string,
     @Body() dto: ApproveDesignTemplateDto,

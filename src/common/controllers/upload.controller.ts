@@ -1,4 +1,4 @@
-import { Controller, Post, Delete, Get, Query, Body, UseGuards, HttpStatus, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Delete, Get, Query, Body, Res, UseGuards, HttpStatus, BadRequestException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsNumber, IsEnum } from 'class-validator';
 import { CloudStorageService } from '../services/cloud-storage.service';
@@ -6,6 +6,9 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ApiKeyOrJwtGuard } from '../../auth/guards/api-key-or-jwt.guard';
 import { Public } from '../decorators/public.decorator';
 import { ConfigService } from '@nestjs/config';
+import { Response } from 'express';
+import * as https from 'https';
+import * as http from 'http';
 
 class GenerateUploadUrlDto {
   @ApiProperty()
@@ -772,6 +775,58 @@ export class UploadController {
         `File size exceeds absolute maximum limit of ${absoluteMaxMB} MB. Your file: ${currentSizeMB} MB`
       );
     }
+  }
+
+  /** Allowed origins for the image proxy — only our own storage domain. */
+  private static readonly PROXY_ALLOWED_HOSTS = new Set<string>([
+    'storage.suraksha.lk',
+  ]);
+
+  @Get('proxy-image')
+  @ApiOperation({
+    summary: '🖼️ Proxy a storage image to bypass browser CORS restrictions',
+    description: 'Fetches an image from storage.suraksha.lk server-side and returns the raw bytes. Only storage.suraksha.lk is permitted.'
+  })
+  @ApiQuery({ name: 'url', type: String, description: 'Full URL of the image to proxy' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Image bytes returned with original Content-Type' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'URL not allowed or invalid' })
+  async proxyImage(@Query('url') url: string, @Res() res: Response): Promise<void> {
+    if (!url) throw new BadRequestException('url query param is required');
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BadRequestException('Invalid URL');
+    }
+
+    if (!UploadController.PROXY_ALLOWED_HOSTS.has(parsed.hostname)) {
+      throw new BadRequestException(`Proxy only allowed for: ${[...UploadController.PROXY_ALLOWED_HOSTS].join(', ')}`);
+    }
+
+    // Only allow http/https schemes
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new BadRequestException('Only http/https URLs are supported');
+    }
+
+    const transport = parsed.protocol === 'https:' ? https : http;
+
+    await new Promise<void>((resolve, reject) => {
+      transport.get(url, (upstream) => {
+        const status = upstream.statusCode ?? 0;
+        if (status < 200 || status >= 300) {
+          res.status(HttpStatus.BAD_GATEWAY).json({ message: `Upstream returned ${status}` });
+          upstream.resume();
+          return resolve();
+        }
+        const contentType = upstream.headers['content-type'] || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        upstream.pipe(res);
+        upstream.on('end', resolve);
+        upstream.on('error', reject);
+      }).on('error', reject);
+    });
   }
 
   @Delete('file')
