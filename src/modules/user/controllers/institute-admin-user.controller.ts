@@ -32,6 +32,7 @@ import { NoDataMasking } from '../../../common/decorators/no-data-masking.decora
 import { ParseBigIntPipe } from '../../../common/pipes/parse-bigint.pipe';
 import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { InstituteAdminUserService } from '../services/institute-admin-user.service';
+import { MockUserBatchCreationService } from '../services/mock-user-batch.service';
 import {
   CreateInstituteUserDto,
   CreateInstituteUserResponseDto,
@@ -45,6 +46,7 @@ import {
 export class InstituteAdminUserController {
   constructor(
     private readonly instituteAdminUserService: InstituteAdminUserService,
+    private readonly mockUserBatchService: MockUserBatchCreationService,
   ) {}
 
   /**
@@ -185,5 +187,61 @@ their password and complete their profile.
     const adminUserId: string = req.user.s ?? req.user.userId ?? req.user.sub;
     return this.instituteAdminUserService.linkInstituteUser(instituteId, adminUserId, userId, dto);
   }
+
+  /**
+   * 🎭 Create a batch of mock (hollow) student records.
+   *
+   * Pre-creates student shells with no name/email/phone — just a system ID, institute
+   * enrollment, class assignment, and optionally a smart card. Students claim these
+   * later by entering their institute user ID on the public registration form.
+   */
+  @Post('mock-batch')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireAnyOfRoles({ instituteAdmin: true })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiOperation({
+    summary: 'Batch-create hollow mock student records (institute admin only)',
+    description:
+      'Creates hollow student records (isMock=true) pre-assigned to classes. ' +
+      'Students claim them later via the public registration form using their institute user ID.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['classDistribution'],
+      properties: {
+        classDistribution: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              classId: { type: 'string' },
+              count: { type: 'number' },
+            },
+          },
+          example: [{ classId: 'abc-123', count: 30 }],
+        },
+        assignCards: { type: 'boolean', default: false, description: 'Deprecated — use assignInstituteCard' },
+        assignInstituteCard: { type: 'boolean', default: false },
+        assignSurakshaCard: { type: 'boolean', default: false },
+      },
+    },
+  })
+  async createMockBatch(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Body() body: { classDistribution: Array<{ classId: string; count: number }>; assignCards?: boolean; assignInstituteCard?: boolean; assignSurakshaCard?: boolean },
+    @Request() req: any,
+  ) {
+    const adminUserId: string = String(req.user.s ?? req.user.userId ?? req.user.sub);
+    return this.mockUserBatchService.createMockBatch({
+      instituteId,
+      adminUserId,
+      classDistribution: body.classDistribution ?? [],
+      assignCards: body.assignCards,
+      assignInstituteCard: body.assignInstituteCard,
+      assignSurakshaCard: body.assignSurakshaCard,
+    });
+  }
+
 }
 

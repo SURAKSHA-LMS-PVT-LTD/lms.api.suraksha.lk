@@ -34,6 +34,7 @@ import { UserRoleValidationService } from './services/user-role-validation.servi
 import { UserNotificationService } from './services/user-notification.service';
 import { SystemAdminUserService } from './services/system-admin-user.service';
 import { InstituteAdminUserService } from './services/institute-admin-user.service';
+import { MockUserBatchCreationService } from './services/mock-user-batch.service';
 import { SmslenzProvider } from '../sms/providers/smslenz.provider';
 import { InstituteHouseEntity } from '../institute_mudules/institute_house/entities/institute_house.entity';
 import { InstituteHouseMemberEntity } from '../institute_mudules/institute_house/entities/institute_house_member.entity';
@@ -78,12 +79,13 @@ import { NotificationCreditsModule } from '../notification-credits/notification-
     UserNotificationService,
     SystemAdminUserService,
     InstituteAdminUserService,
+    MockUserBatchCreationService,
     SmslenzProvider,
     {
       provide: 'UserOtpService',
       useExisting: UserOtpService,
     },
   ],
-  exports: [UsersService, UserFcmTokenService, UserOtpService, UserRoleValidationService, SystemAdminUserService, InstituteAdminUserService, TypeOrmModule], // Export services and TypeOrmModule for repository access
+  exports: [UsersService, UserFcmTokenService, UserOtpService, UserRoleValidationService, SystemAdminUserService, InstituteAdminUserService, MockUserBatchCreationService, TypeOrmModule], // Export services and TypeOrmModule for repository access
 })
 export class UsersModule {}

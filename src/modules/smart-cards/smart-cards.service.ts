@@ -268,6 +268,93 @@ export class SmartCardsService {
     return { moved: toSave.length, skipped: cards.length - toSave.length };
   }
 
+  /**
+   * Institute admin: assign their own institute's cards to a class by suffix + numeric
+   * range, e.g. prefix "CARD" padding 4 range 1-50 → exact ids CARD0001..CARD0050.
+   * Generates the target id list in memory (zero per-id queries), then does one bulk
+   * lookup + one bulk update, scoped to instituteId so an institute can never touch
+   * another institute's cards. Reports which requested ids weren't found/free.
+   */
+  async assignToClassByGeneratedRange(
+    instituteId: string,
+    dto: { classId: string; prefix: string; padding?: number; rangeStart: number; rangeEnd: number },
+  ): Promise<{ requested: number; moved: number; missingOrUnavailable: string[] }> {
+    const { classId, prefix, rangeStart, rangeEnd } = dto;
+    const padding = dto.padding ?? 4;
+    if (rangeEnd < rangeStart) {
+      throw new BadRequestException('rangeEnd must be >= rangeStart.');
+    }
+    if (rangeEnd - rangeStart + 1 > 5000) {
+      throw new BadRequestException('Range too large — max 5000 cards per request.');
+    }
+
+    const targetIds: string[] = [];
+    for (let n = rangeStart; n <= rangeEnd; n++) {
+      targetIds.push(`${prefix}${String(n).padStart(padding, '0')}`);
+    }
+
+    const cards = await this.cardRepo.find({
+      where: { instituteId, cardId: In(targetIds) },
+    });
+
+    const byCardId = new Map(cards.map((c) => [c.cardId, c]));
+    const toSave: SmartCardEntity[] = [];
+    const missingOrUnavailable: string[] = [];
+
+    for (const id of targetIds) {
+      const card = byCardId.get(id);
+      const free =
+        card &&
+        !card.assignedUserId &&
+        (card.status === SmartCardStatus.ASSIGNED_INSTITUTE || card.status === SmartCardStatus.ASSIGNED_CLASS);
+      if (!free) {
+        missingOrUnavailable.push(id);
+        continue;
+      }
+      card!.classId = classId;
+      card!.status = SmartCardStatus.ASSIGNED_CLASS;
+      toSave.push(card!);
+    }
+
+    await this.cardRepo.save(toSave);
+    return { requested: targetIds.length, moved: toSave.length, missingOrUnavailable };
+  }
+
+  /** Institute admin: list cards currently assigned to a given class within their institute. */
+  async listCardsByClass(instituteId: string, classId: string): Promise<SmartCardEntity[]> {
+    return this.cardRepo.find({
+      where: { instituteId, classId },
+      order: { cardId: 'ASC' },
+    });
+  }
+
+  /** Institute admin: count of cards per class within the institute (for an overview list). */
+  async getClassCardCounts(instituteId: string): Promise<Array<{ classId: string; total: number; available: number; assignedToUser: number }>> {
+    const rows = await this.cardRepo
+      .createQueryBuilder('c')
+      .select('c.classId', 'classId')
+      .addSelect('c.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('c.instituteId = :iid', { iid: instituteId })
+      .andWhere('c.classId IS NOT NULL')
+      .groupBy('c.classId')
+      .addGroupBy('c.status')
+      .getRawMany();
+
+    const map = new Map<string, { classId: string; total: number; available: number; assignedToUser: number }>();
+    for (const r of rows) {
+      if (!map.has(r.classId)) {
+        map.set(r.classId, { classId: r.classId, total: 0, available: 0, assignedToUser: 0 });
+      }
+      const bucket = map.get(r.classId)!;
+      const count = Number(r.count);
+      bucket.total += count;
+      if (r.status === SmartCardStatus.ASSIGNED_CLASS) bucket.available += count;
+      if (r.status === SmartCardStatus.ASSIGNED_USER) bucket.assignedToUser += count;
+    }
+    return Array.from(map.values());
+  }
+
   // ───────────────────────── Counts (institute admin) ──────────────────────
 
   /**

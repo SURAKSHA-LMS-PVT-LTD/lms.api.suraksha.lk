@@ -316,13 +316,21 @@ export class UserEntity {
   })
   lastLoginAt?: Date;
 
-  @Column({ 
-    name: 'created_by_admin_id', 
-    type: 'bigint', 
+  @Column({
+    name: 'created_by_admin_id',
+    type: 'bigint',
     nullable: true,
     comment: 'Admin user ID who created this user (for admin-created users)'
   })
   createdByAdminId?: string;
+
+  @Column({
+    name: 'is_mock',
+    type: 'boolean',
+    default: false,
+    comment: 'True = hollow record pre-created by institute admin; set to false when student self-registers and claims the record',
+  })
+  isMock: boolean;
 
 }
 

@@ -7,6 +7,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { InstituteSelfRegistrationService, PublicRegistrationPayload } from './services/institute-self-registration.service';
 import { UserOtpService } from '../user/services/user-otp.service';
+import { MockUserBatchCreationService } from '../user/services/mock-user-batch.service';
 
 /**
  * 🌐 PUBLIC REGISTRATION FORM CONTROLLER  (served under /public/forms)
@@ -27,6 +28,7 @@ export class PublicRegistrationController {
   constructor(
     private readonly selfRegService: InstituteSelfRegistrationService,
     private readonly otpService: UserOtpService,
+    private readonly mockBatchService: MockUserBatchCreationService,
   ) {}
 
   // ── Form config ────────────────────────────────────────────────────────────
@@ -124,6 +126,20 @@ export class PublicRegistrationController {
     @Body() body: { phoneNumber?: string; email?: string },
   ) {
     return this.selfRegService.lookupParentContact(token, body);
+  }
+
+  // ── Mock user lookup (institute user ID → is this a claimable hollow record?) ─
+
+  @Get(':token/mock-lookup')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: 'Check if an institute user ID belongs to an unclaimed mock student record' })
+  async mockLookup(
+    @Param('token') token: string,
+    @Query('userIdByInstitute') userIdByInstitute: string,
+  ) {
+    if (!userIdByInstitute?.trim()) throw new BadRequestException('userIdByInstitute is required');
+    const instituteId = await this.selfRegService.getInstituteIdFromToken(token);
+    return this.mockBatchService.lookupMockUser(instituteId, userIdByInstitute.trim());
   }
 
   // ── Register / claim ─────────────────────────────────────────────────────────

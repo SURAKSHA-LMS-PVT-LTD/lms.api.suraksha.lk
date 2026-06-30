@@ -181,6 +181,40 @@ export class BulkAssignToClassByRangeDto {
   cardIdMax: string;
 }
 
+/**
+ * Bulk assign cards to a class by suffix + numeric range, e.g. suffix "CARD", padding 4,
+ * range 1-50 → generates the exact ids CARD0001 .. CARD0050 and assigns whichever of
+ * those exist, are free, and belong to the calling institute.
+ */
+export class AssignCardsToClassByGeneratedRangeDto {
+  @ApiProperty({ example: 'class-uuid' })
+  @IsString()
+  @IsNotEmpty()
+  classId: string;
+
+  @ApiProperty({ example: 'CARD', description: 'Prefix printed before the zero-padded number.' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  prefix: string;
+
+  @ApiPropertyOptional({ example: 4, description: 'Zero-pad width for the number (default 4, e.g. 1 -> "0001").' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  padding?: number;
+
+  @ApiProperty({ example: 1, description: 'Range start (inclusive).' })
+  @IsInt()
+  @Min(0)
+  rangeStart: number;
+
+  @ApiProperty({ example: 50, description: 'Range end (inclusive).' })
+  @IsInt()
+  @Min(0)
+  rangeEnd: number;
+}
+
 /** Institute admin: assign one card to a user (manual = cardValue given, auto = scope only). */
 export class AssignCardToUserDto {
   @ApiProperty({ example: '123', description: 'Target user id.' })

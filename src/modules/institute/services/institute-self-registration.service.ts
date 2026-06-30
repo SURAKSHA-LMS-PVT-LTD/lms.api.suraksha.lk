@@ -77,6 +77,8 @@ export interface PublicRegistrationPayload {
   guardian?: Record<string, any>;
   classEnrollments?: { classId: string; subjectEnrollments?: { subjectId: string }[] }[];
   extraData?: Record<string, any>;
+  /** When set, this is a mock-user claim: the student is taking ownership of a hollow pre-created record. */
+  mockUserIdByInstitute?: string;
 }
 
 @Injectable()
@@ -189,6 +191,12 @@ export class InstituteSelfRegistrationService {
   // ─────────────────────────────────────────────────────────────────────────
   // PUBLIC: resolve link + build form config
   // ─────────────────────────────────────────────────────────────────────────
+
+  /** Return the instituteId for an active link — used by public endpoints that need it without full config. */
+  async getInstituteIdFromToken(token: string): Promise<string> {
+    const link = await this.resolveActiveLink(token);
+    return link.instituteId;
+  }
 
   /** Load an active, non-expired link by token, or throw 404/410. */
   private async resolveActiveLink(token: string): Promise<InstituteRegistrationLinkEntity> {
@@ -521,6 +529,11 @@ export class InstituteSelfRegistrationService {
     const sanitizedExtra = await this.validateAndCollectCustomColumns(link, userType, payload.extraData);
     payload.extraData = sanitizedExtra;
 
+    // 2c. Mock-user claim path: student enters institute user ID → claims a hollow record.
+    if (payload.mockUserIdByInstitute?.trim()) {
+      return this.claimMockUser(link, userType, payload);
+    }
+
     // 3. Existing-account detection → claim path.
     //    Look up ONLY by verified contacts. An unverified contact must never resolve to an
     //    existing account, or an attacker could claim someone else's account (H-4).
@@ -675,6 +688,100 @@ export class InstituteSelfRegistrationService {
       mode: 'claimed',
       message: 'Your existing account has been submitted to join this institute. Pending admin approval.',
       userId: String(user.id),
+    };
+  }
+
+  /**
+   * Mock-user claim: student takes ownership of an admin-created hollow record.
+   * - Finds the mock user by (instituteId + userIdByInstitute)
+   * - Fills in real profile data
+   * - Sets isMock = false
+   * - Upgrades the institute membership status to ACTIVE (already enrolled by admin)
+   * - No OTP required — possession of the card (i.e. knowing the institute user ID) is the identity proof
+   */
+  private async claimMockUser(
+    link: InstituteRegistrationLinkEntity,
+    userType: InstituteUserType,
+    payload: PublicRegistrationPayload,
+  ): Promise<any> {
+    const userIdByInstitute = payload.mockUserIdByInstitute!.trim();
+
+    // Locate the institute membership for this ID
+    const membership = await this.instituteUserRepo.findOne({
+      where: { instituteId: link.instituteId, userIdByInstitute } as any,
+    });
+    if (!membership) {
+      throw new BadRequestException('No student record found for this institute user ID.');
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: membership.userId as any } });
+    if (!user) {
+      throw new NotFoundException('User record not found.');
+    }
+    if (!(user as any).isMock) {
+      throw new BadRequestException('This student ID has already been claimed.');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Fill in real profile data — only empty slots
+      const patch: Record<string, any> = {};
+      const setIfEmpty = (field: string, value: any) => {
+        if (value !== undefined && value !== null && value !== '' && (user as any)[field] == null) {
+          patch[field] = value;
+        }
+      };
+      setIfEmpty('firstName', payload.firstName);
+      setIfEmpty('lastName', payload.lastName);
+      setIfEmpty('nameWithInitials', payload.nameWithInitials ||
+        (payload.firstName && payload.lastName ? `${payload.firstName[0]}. ${payload.lastName}` : undefined));
+      setIfEmpty('fullName', payload.fullName || (payload.firstName && payload.lastName ? `${payload.firstName} ${payload.lastName}` : undefined));
+      setIfEmpty('religion', payload.religion);
+      setIfEmpty('birthCertificateNo', payload.birthCertificateNo);
+      setIfEmpty('email', payload.email?.toLowerCase());
+      setIfEmpty('phoneNumber', payload.phoneNumber);
+      setIfEmpty('gender', payload.gender);
+      setIfEmpty('dateOfBirth', payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined);
+      setIfEmpty('nic', payload.nic);
+      setIfEmpty('addressLine1', payload.addressLine1);
+      setIfEmpty('addressLine2', payload.addressLine2);
+      setIfEmpty('city', payload.city);
+      setIfEmpty('district', payload.district);
+      setIfEmpty('province', payload.province);
+      setIfEmpty('postalCode', payload.postalCode);
+
+      // Mark as claimed
+      patch.isMock = false;
+      patch.updatedAt = now();
+
+      await queryRunner.manager.update(UserEntity, { id: user.id }, patch);
+
+      // Upgrade membership to ACTIVE (admin pre-enrolled them; self-reg just confirms identity)
+      await queryRunner.manager.update(
+        InstituteUserEntity,
+        { instituteId: membership.instituteId, userId: membership.userId },
+        { status: InstituteUserStatus.ACTIVE, updatedAt: now() },
+      );
+
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+
+    await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
+
+    return {
+      success: true,
+      mode: 'claimed',
+      message: 'Profile completed successfully. You are now enrolled.',
+      userId: String(user.id),
+      userIdByInstitute,
     };
   }
 

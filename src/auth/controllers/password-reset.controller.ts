@@ -455,7 +455,7 @@ export class PasswordResetController {
     @Request() req: JwtRequest,
   ) {
     if (!childIdentifier) throw new BadRequestException('childIdentifier is required');
-    const parentUserId = String(req.user.id ?? req.user.sub);
+    const parentUserId = String(req.user.s);
     return this.passwordResetService.getChildLinkContacts(parentUserId, childIdentifier);
   }
 
@@ -476,7 +476,7 @@ export class PasswordResetController {
     if (!childIdentifier || !selectedContactId) {
       throw new BadRequestException('childIdentifier and selectedContactId are required');
     }
-    const parentUserId = String(req.user.id ?? req.user.sub);
+    const parentUserId = String(req.user.s);
     return this.passwordResetService.initiateChildLinkOtp(
       parentUserId, childIdentifier, selectedContactId, raw.ip,
     );
@@ -493,7 +493,7 @@ export class PasswordResetController {
     @Request() req: JwtRequest,
   ) {
     if (!childUserId) throw new BadRequestException('childUserId is required');
-    const parentUserId = String(req.user.id ?? req.user.sub);
+    const parentUserId = String(req.user.s);
     return this.passwordResetService.getChildLinkStatus(parentUserId, childUserId);
   }
 
@@ -510,7 +510,7 @@ export class PasswordResetController {
     @Req() raw: ExpressRequest,
   ) {
     if (!childUserId) throw new BadRequestException('childUserId is required');
-    const parentUserId = String(req.user.id ?? req.user.sub);
+    const parentUserId = String(req.user.s);
     return this.passwordResetService.completeChildLink(
       parentUserId, childUserId, raw.ip, raw.get('User-Agent'),
     );

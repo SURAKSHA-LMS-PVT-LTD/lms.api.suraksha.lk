@@ -26,6 +26,7 @@ import {
   AssignCardsToInstituteDto,
   AssignCardsToClassDto,
   BulkAssignToClassByRangeDto,
+  AssignCardsToClassByGeneratedRangeDto,
   AssignCardToUserDto,
   ListSmartCardsQueryDto,
 } from './dto/smart-card.dto';
@@ -156,5 +157,38 @@ export class InstituteSmartCardsController {
   ) {
     await this.service.assertFeatureEnabled(instituteId);
     return this.service.revokeUserCard(instituteId, body.userId, body.scope);
+  }
+
+  @Get('classes/counts')
+  @RequireAnyOfRoles({ instituteAdmin: true })
+  @ApiOperation({ summary: 'Per-class card counts within this institute' })
+  async classCounts(@Param('instituteId') instituteId: string) {
+    await this.service.assertFeatureEnabled(instituteId);
+    return this.service.getClassCardCounts(instituteId);
+  }
+
+  @Get('classes/:classId')
+  @RequireAnyOfRoles({ instituteAdmin: true })
+  @ApiOperation({ summary: 'List cards currently assigned to a class within this institute' })
+  async classCards(@Param('instituteId') instituteId: string, @Param('classId') classId: string) {
+    await this.service.assertFeatureEnabled(instituteId);
+    return this.service.listCardsByClass(instituteId, classId);
+  }
+
+  @Post('assign-to-class-by-range')
+  @HttpCode(HttpStatus.OK)
+  @RequireAnyOfRoles({ instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Assign a generated suffix+number range of this institute\'s own cards to a class',
+    description:
+      'E.g. prefix "CARD", padding 4, range 1-50 generates CARD0001..CARD0050 and assigns ' +
+      'whichever of those cards exist, are free, and belong to this institute.',
+  })
+  async assignToClassByGeneratedRange(
+    @Param('instituteId') instituteId: string,
+    @Body() dto: AssignCardsToClassByGeneratedRangeDto,
+  ) {
+    await this.service.assertFeatureEnabled(instituteId);
+    return this.service.assignToClassByGeneratedRange(instituteId, dto);
   }
 }
