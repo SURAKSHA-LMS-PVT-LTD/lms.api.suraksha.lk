@@ -72,7 +72,7 @@ export interface CommitGenerationResult {
 
 const FEATURE_KEY = 'institute-designs';
 /** When userCount >= this, SSR is auto-enabled regardless of user preference */
-const SSR_AUTO_THRESHOLD = 500;
+const SSR_AUTO_THRESHOLD = 10000;
 
 @Injectable()
 export class InstituteDesignsService {
@@ -99,7 +99,6 @@ export class InstituteDesignsService {
     return this.templateRepo.find({
       where: { instituteId },
       order: { createdAt: 'DESC' },
-      take: 500,
     });
   }
 

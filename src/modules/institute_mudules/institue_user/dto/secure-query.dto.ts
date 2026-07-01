@@ -23,16 +23,16 @@ export class SecureUserQueryDto {
   page?: string = '1';
 
   @ApiPropertyOptional({
-    description: 'Number of items per page (max 500)',
+    description: 'Number of items per page (max 10000)',
     example: 10,
     minimum: 1,
-    maximum: 500
+    maximum: 10000
   })
   @IsOptional()
   @IsNumberString({}, { message: 'Limit must be a valid number' })
   @Transform(({ value }) => {
     const num = parseInt(value);
-    return isNaN(num) || num < 1 ? '10' : Math.min(num, 500).toString(); // Max 500 items
+    return isNaN(num) || num < 1 ? '10' : Math.min(num, 10000).toString(); // Max 10000 items
   })
   limit?: string = '10';
 
