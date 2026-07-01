@@ -13,13 +13,17 @@ import {
   RequestServerSideJobDto,
   CompleteServerSideJobDto,
 } from './server-side-card-generation.service';
+import { LocalPdfGenerationService } from './local-pdf-generation.service';
 import { DesignOutputType } from '../institute-designs/entities/design-template.entity';
 
 @ApiTags('Server-Side Card Generation')
 @ApiBearerAuth()
 @Controller()
 export class ServerSideCardGenerationController {
-  constructor(private readonly service: ServerSideCardGenerationService) {}
+  constructor(
+    private readonly service: ServerSideCardGenerationService,
+    private readonly localGen: LocalPdfGenerationService,
+  ) {}
 
   // ───────────────────────────────────────────────────────────────────────────
   // INSTITUTE ADMIN — /institutes/:id/card-generation/server-side
@@ -65,6 +69,21 @@ export class ServerSideCardGenerationController {
     @Request() req: JwtRequest,
   ) {
     return this.service.completeJob(id, jobId, body, req.user);
+  }
+
+  /**
+   * DEV-ONLY: full backend generation — render all cards, build PDF, save to disk, open folder.
+   * Frontend sends template + users + layout config and just waits for the response.
+   */
+  @Post('dev/card-generation/generate-local')
+  @ApiOperation({ summary: '[DEV] Full backend card generation — render, PDF, save, open folder' })
+  async generateLocal(@Body() body: {
+    template: any;
+    users: any[];
+    layout: any;
+    baseName: string;
+  }) {
+    return this.localGen.generate(body);
   }
 
   /**

@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { CardGenerationJobEntity } from './entities/card-generation-job.entity';
 import { ServerSideCardGenerationService } from './server-side-card-generation.service';
 import { ServerSideCardGenerationController } from './server-side-card-generation.controller';
+import { CardRendererService } from './card-renderer.service';
+import { LocalPdfGenerationService } from './local-pdf-generation.service';
 import { InstituteDesignsModule } from '../institute-designs/institute-designs.module';
 import { NotificationCreditsModule } from '../notification-credits/notification-credits.module';
 
@@ -28,7 +30,7 @@ import { NotificationCreditsModule } from '../notification-credits/notification-
     NotificationCreditsModule,
   ],
   controllers: [ServerSideCardGenerationController],
-  providers: [ServerSideCardGenerationService],
+  providers: [ServerSideCardGenerationService, CardRendererService, LocalPdfGenerationService],
   exports: [ServerSideCardGenerationService],
 })
 export class ServerSideCardGenerationModule {}
