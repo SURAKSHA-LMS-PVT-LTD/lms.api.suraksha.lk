@@ -73,6 +73,7 @@ export class InstituteClassLecturesService {
       liveAccessLevel: (createDto as any).liveAccessLevel ?? 'ENROLLED_ONLY',
       livePaymentId: (createDto as any).livePaymentId ?? null,
       recAttendanceEnabled: (createDto as any).recAttendanceEnabled ?? false,
+      recUrlId: (createDto as any).recAttendanceEnabled ? ((createDto as any).recUrlId || uuidv4().replace(/-/g, '').substring(0, 12)) : null,
       recPlatform: (createDto as any).recPlatform ?? 'SYSTEM',
       recAccessLevel: (createDto as any).recAccessLevel ?? 'ENROLLED_ONLY',
       recPaymentId: (createDto as any).recPaymentId ?? null,
@@ -212,7 +213,14 @@ export class InstituteClassLecturesService {
     if ((updateDto as any).liveUrlId !== undefined) updateData.liveUrlId = (updateDto as any).liveUrlId;
     if ((updateDto as any).liveAccessLevel !== undefined) updateData.liveAccessLevel = (updateDto as any).liveAccessLevel;
     if ((updateDto as any).livePaymentId !== undefined) updateData.livePaymentId = (updateDto as any).livePaymentId;
-    if ((updateDto as any).recAttendanceEnabled !== undefined) updateData.recAttendanceEnabled = (updateDto as any).recAttendanceEnabled;
+    if ((updateDto as any).recAttendanceEnabled !== undefined) {
+      updateData.recAttendanceEnabled = (updateDto as any).recAttendanceEnabled;
+      // Auto-generate recUrlId when enabling if not already set
+      if ((updateDto as any).recAttendanceEnabled && !lecture.recUrlId && !(updateDto as any).recUrlId) {
+        updateData.recUrlId = uuidv4().replace(/-/g, '').substring(0, 12);
+      }
+    }
+    if ((updateDto as any).recUrlId !== undefined) updateData.recUrlId = (updateDto as any).recUrlId;
     if ((updateDto as any).recPlatform !== undefined) updateData.recPlatform = (updateDto as any).recPlatform;
     if ((updateDto as any).recAccessLevel !== undefined) updateData.recAccessLevel = (updateDto as any).recAccessLevel;
     if ((updateDto as any).recPaymentId !== undefined) updateData.recPaymentId = (updateDto as any).recPaymentId;
