@@ -566,24 +566,41 @@ export class MockUserBatchCreationService {
 
   async lookupMockUser(
     instituteId: string,
-    userIdByInstitute: string,
+    identifier: string,
+    mode: 'card' | 'userId' = 'card',
   ): Promise<{ found: boolean; isMock?: boolean; userId?: string; cardId?: string }> {
-    if (!userIdByInstitute?.trim()) {
-      throw new BadRequestException('userIdByInstitute is required.');
+    if (!identifier?.trim()) {
+      throw new BadRequestException(mode === 'userId' ? 'User ID is required.' : 'Card ID / RFID is required.');
     }
+    const cleanId = identifier.trim();
+
+    let user: UserEntity | null;
+    if (mode === 'userId') {
+      // Raw system user ID (users.id) — must be numeric (bigint column).
+      if (!/^\d+$/.test(cleanId)) {
+        return { found: false };
+      }
+      user = await this.userRepo.findOne({ where: { id: cleanId } });
+    } else {
+      user = await this.userRepo.findOne({
+        where: [
+          { cardId: cleanId },
+          { rfid: cleanId },
+        ],
+      });
+    }
+    if (!user) return { found: false };
+
     const link = await this.instituteUserRepo.findOne({
-      where: { instituteId, userIdByInstitute: userIdByInstitute.trim() },
+      where: { instituteId, userId: String(user.id) },
     });
     if (!link) return { found: false };
-
-    const user = await this.userRepo.findOne({ where: { id: link.userId } });
-    if (!user) return { found: false };
 
     return {
       found: true,
       isMock: (user as any).isMock ?? false,
-      userId: user.id,
-      cardId: user.cardId ?? undefined,
+      userId: String(user.id),
+      cardId: (user as any).cardId,
     };
   }
 }

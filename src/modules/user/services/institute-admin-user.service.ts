@@ -1182,6 +1182,7 @@ export class InstituteAdminUserService {
       gender: data.gender,
       nic: data.nic ?? null,
       addressLine1: data.addressLine1 ?? null,
+      addressLine2: data.addressLine2 ?? null,
       city: data.city ?? null,
       district: data.district,
       province: data.province,

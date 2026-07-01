@@ -91,6 +91,10 @@ export class InstituteRegistrationLinkEntity {
   @Column({ name: 'extra_data_fields', type: 'json', nullable: true })
   extraDataFields?: Record<string, 'off' | 'optional' | 'required'> | null;
 
+  // ── Auto-Verify ────────────────────────────────────────────────────────────
+  @Column({ name: 'auto_verify', type: 'boolean', default: false })
+  autoVerify: boolean;
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

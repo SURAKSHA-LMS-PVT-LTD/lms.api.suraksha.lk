@@ -181,6 +181,12 @@ export class InstAdminParentDto {
   @MaxLength(200)
   addressLine1?: string;
 
+  @ApiPropertyOptional({ description: 'Address line 2', maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  addressLine2?: string;
+
   @ApiPropertyOptional({ description: 'City', maxLength: 50 })
   @IsOptional()
   @IsString()

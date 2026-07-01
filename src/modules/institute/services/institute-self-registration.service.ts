@@ -28,6 +28,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { now } from '../../../common/utils/timezone.util';
 
@@ -40,6 +41,7 @@ import { InstituteUserEntity } from '../../institute_mudules/institue_user/entit
 import { InstituteUserStatus } from '../../institute_mudules/institue_user/enums/institute-user-status.enum';
 import { InstituteUserType } from '../../institute_mudules/institue_user/enums/institute-user-type.enum';
 import { UserEntity } from '../../user/entities/user.entity';
+import { ProfileCompletionStatus } from '../../user/enums/profile-completion-status.enum';
 import { StudentEntity } from '../../student/entities/student.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
@@ -79,6 +81,8 @@ export interface PublicRegistrationPayload {
   extraData?: Record<string, any>;
   /** When set, this is a mock-user claim: the student is taking ownership of a hollow pre-created record. */
   mockUserIdByInstitute?: string;
+  password?: string;
+  isClaiming?: boolean;
 }
 
 @Injectable()
@@ -143,6 +147,7 @@ export class InstituteSelfRegistrationService {
       label: body.label ?? null,
       allowedUserTypes: allowed,
       autoAssignCard: !!body.autoAssignCard,
+      autoVerify: !!body.autoVerify,
       cardScope: body.cardScope ?? 'INSTITUTE',
       cardEmptyPoolBehavior: body.cardEmptyPoolBehavior ?? 'skip',
       allowClassEnrollment: !!body.allowClassEnrollment,
@@ -174,7 +179,7 @@ export class InstituteSelfRegistrationService {
     const mutable: (keyof InstituteRegistrationLinkEntity)[] = [
       'label', 'allowedUserTypes', 'autoAssignCard', 'cardScope', 'cardEmptyPoolBehavior',
       'allowClassEnrollment', 'allowSubjectEnrollment', 'requirePhoneVerification',
-      'requireEmailVerification', 'extraDataFields', 'isActive', 'expiresAt',
+      'requireEmailVerification', 'extraDataFields', 'autoVerify', 'isActive', 'expiresAt',
     ];
     for (const key of mutable) {
       if (patch[key] !== undefined) (link as any)[key] = patch[key];
@@ -280,6 +285,7 @@ export class InstituteSelfRegistrationService {
       config: {
         allowedUserTypes: link.allowedUserTypes,
         autoAssignCard: link.autoAssignCard,
+        autoVerify: link.autoVerify,
         cardScope: link.cardScope,
         // Card UI is only actionable when the feature is on. The form should show a
         // "Enable Smart Cards feature" note when this is false but autoAssignCard is set.
@@ -542,6 +548,9 @@ export class InstituteSelfRegistrationService {
       email: emailVerified ? payload.email : undefined,
     });
     if (existing) {
+      if (!payload.isClaiming) {
+        throw new ConflictException('This phone number or email is already registered. If this is your account, please use the "Find account" feature to link it.');
+      }
       return this.claimExisting(link, existing, userType, payload);
     }
 
@@ -559,14 +568,35 @@ export class InstituteSelfRegistrationService {
       },
     );
 
+    if (payload.password) {
+      const hashed = await bcrypt.hash(payload.password, 10);
+      await this.userRepo.update({ id: BigInt(result.userId) as any }, { password: hashed, passwordSetAt: now() });
+    }
+
+    // Auto-verify status update for new users
+    if (link.autoVerify) {
+      await this.userRepo.update({ id: BigInt(result.userId) as any }, { 
+        profileCompletionStatus: ProfileCompletionStatus.COMPLETE,
+        profileCompletionPercentage: 100 
+      });
+      // also update the created institute user to ACTIVE
+      await this.dataSource.manager.update('institute_users', {
+        institute_id: link.instituteId,
+        user_id: result.userId,
+      }, {
+        status: InstituteUserStatus.ACTIVE
+      });
+    }
+
     await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
 
     const response = {
       success: true,
       mode: 'created',
-      message: 'Registration submitted. Your enrollment is pending institute approval.',
+      message: link.autoVerify ? 'Registration successful.' : 'Registration submitted. Your enrollment is pending institute approval.',
       userId: result.userId,
       cardPendingScopes: (result as any).cardPendingScopes,
+      autoVerify: link.autoVerify,
     };
 
     // Fire-and-forget WhatsApp notifications to student + parents.
@@ -580,6 +610,7 @@ export class InstituteSelfRegistrationService {
       mode: 'created',
       userIdByInstitute: (result as any).userIdByInstitute,
       assignedCards: (result as any).smartCards,
+      autoVerify: link.autoVerify,
     }).catch(err => this.logger.warn(`WhatsApp reg notification failed: ${err.message}`));
 
     return response;
@@ -625,6 +656,12 @@ export class InstituteSelfRegistrationService {
         await queryRunner.manager.update(UserEntity, { id: user.id }, patch);
       }
 
+      if (link.autoVerify) {
+        user.profileCompletionStatus = ProfileCompletionStatus.COMPLETE;
+        user.profileCompletionPercentage = 100;
+        await queryRunner.manager.save(user);
+      }
+
       // Create the institute membership in a pending state with the link's user type.
       // Persist any collected institute custom-column values onto the membership row.
       await queryRunner.manager.save(
@@ -632,7 +669,7 @@ export class InstituteSelfRegistrationService {
           instituteId: link.instituteId,
           userId: String(user.id),
           instituteUserType: userType,
-          status: InstituteUserStatus.PENDING,
+          status: link.autoVerify ? InstituteUserStatus.ACTIVE : InstituteUserStatus.PENDING,
           extraData: payload.extraData ?? undefined,
           createdAt: now(),
           updatedAt: now(),
@@ -680,14 +717,18 @@ export class InstituteSelfRegistrationService {
       motherPhone: (payload.mother as any)?.phoneNumber,
       displayName: user.nameWithInitials || user.firstName || payload.firstName,
       mode: 'claimed',
+      autoVerify: link.autoVerify,
     }).catch(err => this.logger.warn(`WhatsApp reg notification failed: ${err.message}`));
 
 
     return {
       success: true,
       mode: 'claimed',
-      message: 'Your existing account has been submitted to join this institute. Pending admin approval.',
+      message: link.autoVerify
+        ? 'Your existing account has been successfully linked to this institute and approved.'
+        : 'Your existing account has been submitted to join this institute. Pending admin approval.',
       userId: String(user.id),
+      autoVerify: link.autoVerify,
     };
   }
 
@@ -782,6 +823,7 @@ export class InstituteSelfRegistrationService {
       message: 'Profile completed successfully. You are now enrolled.',
       userId: String(user.id),
       userIdByInstitute,
+      autoVerify: true, // mock-user claim always activates membership immediately (see line above)
     };
   }
 
@@ -836,7 +878,7 @@ export class InstituteSelfRegistrationService {
                 studentId: userId,
                 isActive: true,
                 enrollmentMethod: 'self_enrolled',
-                verificationStatus: 'pending',
+                verificationStatus: link.autoVerify ? 'verified' : 'pending',
                 createdAt: now(),
                 updatedAt: now(),
               }),
@@ -866,6 +908,7 @@ export class InstituteSelfRegistrationService {
     mode: 'created' | 'claimed';
     userIdByInstitute?: string;
     assignedCards?: Array<{ cardName: string; cardId: string; scope: string }>;
+    autoVerify?: boolean;
   }): Promise<void> {
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -884,29 +927,39 @@ export class InstituteSelfRegistrationService {
       ? `\n💳 *ස්මාර්ට් කාඩ්:* ${params.assignedCards.map(c => `${c.cardName} (${c.cardId})`).join(', ')}`
       : '';
 
+    const statusLineStudent = params.autoVerify 
+      ? `තත්ත්වය: ✅ *අනුමතයි* / Approved\n\n`
+      : (params.mode === 'claimed' 
+          ? `තත්ත්වය: ⏳ *අනුමත කිරීම බලාපොරොත්තු වෙමින්* / Pending Verification\n\n`
+          : `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු වෙමින්* / Pending Institute Approval\n\n`);
+
     const studentMsg =
       params.mode === 'claimed'
         ? `🎓 *සුරක්ෂා LMS - ලියාපදිංචිය* / *Registration Confirmed*\n\n` +
           `ආයුබෝවන් ${name}!\n` +
           `ඔබගේ ගිණුම *${instituteName}* ආයතනයට සම්බන්ධ කර ඇත.\n` +
           `${idLine}${cardLines}\n` +
-          `තත්ත්වය: ⏳ *අනුමත කිරීම බලාපොරොත්තු වෙමින්* / Pending Verification\n\n` +
+          statusLineStudent +
           `ශිෂ්‍ය අනුමතිය ලැබෙන විට ඔබට දැනුම් දෙනු ලැබේ.\n` +
           `_Powered by Suraksha LMS_`
         : `🎓 *සුරක්ෂා LMS - ලියාපදිංචිය* / *Registration Successful*\n\n` +
           `ආයුබෝවන් ${name}!\n` +
           `ඔබ *${instituteName}* ආයතනයට සාර්ථකව ලියාපදිංචි වී ඇත.\n` +
           `${idLine}${cardLines}\n` +
-          `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු වෙමින්* / Pending Institute Approval\n\n` +
-          `ඔබගේ ලියාපදිංචිය සමාලෝචනය කර ඉක්මනින් ක්‍රියාත්මක කරනු ලැබේ.\n` +
+          statusLineStudent +
+          (params.autoVerify ? `` : `ඔබගේ ලියාපදිංචිය සමාලෝචනය කර ඉක්මනින් ක්‍රියාත්මක කරනු ලැබේ.\n`) +
           `_Powered by Suraksha LMS_`;
+
+    const statusLineParent = params.autoVerify 
+      ? `තත්ත්වය: ✅ *අනුමතයි* / Approved\n\n`
+      : `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු* / Pending Approval\n\n`;
 
     const parentMsg = (relation: 'පියා' | 'මව') =>
       `🎓 *සුරක්ෂා LMS - දරු ලියාපදිංචිය* / *Child Registration*\n\n` +
       `${relation} ට දැනුම් දීම:\n` +
       `ඔබේ දරු/දරිය *${name}* *${instituteName}* ආයතනයට ලියාපදිංචි කර ඇත.\n` +
       `${idLine}${cardLines}\n` +
-      `තත්ත්වය: ⏳ *ආයතන අනුමතිය බලාපොරොත්තු* / Pending Approval\n\n` +
+      statusLineParent +
       `_Powered by Suraksha LMS_`;
 
     const sendOne = async (phone: string, message: string) => {

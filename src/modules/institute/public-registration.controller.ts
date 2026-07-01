@@ -132,14 +132,15 @@ export class PublicRegistrationController {
 
   @Get(':token/mock-lookup')
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  @ApiOperation({ summary: 'Check if an institute user ID belongs to an unclaimed mock student record' })
+  @ApiOperation({ summary: 'Check if a card ID/RFID or raw system user ID belongs to an unclaimed mock student record' })
   async mockLookup(
     @Param('token') token: string,
-    @Query('userIdByInstitute') userIdByInstitute: string,
+    @Query('studentIdOrRfid') studentIdOrRfid: string,
+    @Query('mode') mode?: 'card' | 'userId',
   ) {
-    if (!userIdByInstitute?.trim()) throw new BadRequestException('userIdByInstitute is required');
+    if (!studentIdOrRfid?.trim()) throw new BadRequestException(mode === 'userId' ? 'User ID is required' : 'Card ID / RFID is required');
     const instituteId = await this.selfRegService.getInstituteIdFromToken(token);
-    return this.mockBatchService.lookupMockUser(instituteId, userIdByInstitute.trim());
+    return this.mockBatchService.lookupMockUser(instituteId, studentIdOrRfid.trim(), mode === 'userId' ? 'userId' : 'card');
   }
 
   // ── Register / claim ─────────────────────────────────────────────────────────
