@@ -4490,5 +4490,50 @@ export class InstitueUserService {
       }
     };
   }
+
+  /**
+   * Resolve each student's current active class (id + name) for a batch of user IDs in a
+   * single query — used by bulk card/design generation so per-user class names never
+   * require an N+1 query, even for 1000+ students at once.
+   */
+  async getBulkCurrentClassNames(
+    instituteId: string,
+    userIds: string[]
+  ): Promise<{ userId: string; classId: string | null; className: string | null }[]> {
+    const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
+    const safeUserIds = [...new Set(userIds.map(id => SecurityUtils.validateBigIntId(id, 'userId')))];
+
+    if (safeUserIds.length === 0) return [];
+
+    const rows = await this.classStudentRepository
+      .createQueryBuilder('ics')
+      .innerJoin('institute_classes', 'ic', 'ic.id = ics.institute_class_id')
+      .select([
+        'ics.student_user_id as user_id',
+        'ic.id as class_id',
+        'ic.name as class_name',
+      ])
+      .where('ics.institute_id = :instituteId', { instituteId: safeInstituteId })
+      .andWhere('ics.student_user_id IN (:...userIds)', { userIds: safeUserIds })
+      .andWhere('ics.is_active = :isActive', { isActive: true })
+      .andWhere('ics.is_verified = :isVerified', { isVerified: true })
+      // A student should only have one active+verified class per institute, but if data
+      // ever ends up with more than one, keep the most recently created enrollment.
+      .orderBy('ics.created_at', 'DESC')
+      .getRawMany();
+
+    const byUser = new Map<string, { classId: string; className: string }>();
+    for (const row of rows) {
+      if (!byUser.has(row.user_id)) {
+        byUser.set(row.user_id, { classId: row.class_id, className: row.class_name });
+      }
+    }
+
+    return safeUserIds.map(userId => ({
+      userId,
+      classId: byUser.get(userId)?.classId ?? null,
+      className: byUser.get(userId)?.className ?? null,
+    }));
+  }
 }
 

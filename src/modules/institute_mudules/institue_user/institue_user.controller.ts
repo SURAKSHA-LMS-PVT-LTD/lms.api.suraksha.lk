@@ -37,6 +37,7 @@ import { AdminUserDataResponseDto } from './dto/admin-user-data-response.dto';
 import { ImageVerificationStatus } from './enums/image-verification-status.enum';
 import { UpdateExtraDataDto } from './dto/update-extra-data.dto';
 import { ChangeInstituteUserRoleDto } from './dto/change-role.dto';
+import { BulkClassNamesRequestDto, BulkClassNameResultDto } from './dto/bulk-class-names.dto';
 
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
@@ -1047,6 +1048,24 @@ This creates the missing parent or student record with whatever (possibly empty)
     @Body() bulkAssignDto: BulkAssignUsersDto
   ): Promise<BulkAssignmentResponseDto> {
     return this.institueUserService.bulkAssignUsers(instituteId, bulkAssignDto);
+  }
+
+  @Post('institute/:instituteId/students/bulk-class-names')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: {} })
+  @ApiOperation({
+    summary: 'Resolve current class name for a batch of student user IDs (single query)',
+    description: 'Given up to 5000 student user IDs, returns each student\'s currently active + verified class (id and name) in one query. Used by bulk card/design generation to avoid N+1 lookups for 1000+ students at once.'
+  })
+  @ApiResponse({ status: 201, description: 'Class names resolved successfully', type: [BulkClassNameResultDto] })
+  @ApiResponse({ status: 400, description: 'Invalid request (empty or oversized userIds list)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Valid JWT required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Institute admin or teacher access required' })
+  async getBulkCurrentClassNames(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Body() dto: BulkClassNamesRequestDto
+  ): Promise<BulkClassNameResultDto[]> {
+    return this.institueUserService.getBulkCurrentClassNames(instituteId, dto.userIds);
   }
 
   // =================== INSTITUTE USER IMAGE UPLOAD ENDPOINTS ===================
