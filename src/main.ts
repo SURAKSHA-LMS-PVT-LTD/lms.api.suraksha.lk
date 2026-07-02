@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
 import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
+import { getDataSourceToken } from '@nestjs/typeorm';
 
 // ⚠️ CRITICAL: Set timezone to Sri Lanka BEFORE any date operations
 ensureTimezoneSet();
@@ -156,7 +157,7 @@ async function bootstrap() {
       const now = Date.now();
       if (now - lastCacheRefresh > CACHE_TTL_MS) {
         try {
-          const dataSource = app.get('DataSource' as any) || app.get('default_DataSource' as any);
+          const dataSource = app.get(getDataSourceToken());
           if (dataSource?.isInitialized) {
             const rows = await dataSource.query(
               `SELECT custom_domain FROM institutes WHERE custom_domain IS NOT NULL AND custom_domain_verified = TRUE AND is_active = TRUE`
