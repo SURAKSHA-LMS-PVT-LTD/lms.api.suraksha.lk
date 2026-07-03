@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { SystemConfigService } from '../../../common/services/system-config.service';
 
 /**
  * ============================================================================
@@ -78,7 +79,10 @@ export class DynamoDBAttendanceServiceV2 {
   private readonly docClient: DynamoDBDocumentClient;
   private readonly tableName: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly systemConfigService: SystemConfigService,
+  ) {
     this.dynamoClient = new DynamoDBClient({
       region: this.configService.get('AWS_REGION', 'us-east-1'),
       credentials: {
@@ -134,7 +138,7 @@ export class DynamoDBAttendanceServiceV2 {
     );
     
     // ✅ CALCULATE TTL
-    const ttlYears = parseInt(this.configService.get('ATTENDANCE_TTL_YEARS', '7'), 10);
+    const ttlYears = parseInt(this.systemConfigService.getSync('ATTENDANCE', 'TTL_YEARS', '7'), 10);
     const ttl = Math.floor(timestamp / 1000) + (ttlYears * 365 * 24 * 60 * 60);
 
     // ✅ CREATE MINIMAL RECORD
@@ -190,7 +194,7 @@ export class DynamoDBAttendanceServiceV2 {
       
       // NO DUPLICATE CHECKS (same as V1)
       const timestamp = Date.now();
-      const ttlYears = parseInt(this.configService.get('ATTENDANCE_TTL_YEARS', '7'), 10);
+      const ttlYears = parseInt(this.systemConfigService.getSync('ATTENDANCE', 'TTL_YEARS', '7'), 10);
       const ttl = Math.floor(timestamp / 1000) + (ttlYears * 365 * 24 * 60 * 60);
 
       const putRequests = batch.map((dto, idx) => {

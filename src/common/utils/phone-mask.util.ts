@@ -1,12 +1,4 @@
-const TRUTHY_ENV_VALUES = new Set(['true', '1', 'yes', 'on']);
-
-function isMaskingEnabled(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-
-  return TRUTHY_ENV_VALUES.has(value.trim().toLowerCase());
-}
+import { getMaskingFlags } from '../config/masking-flags.bridge';
 
 /**
  * Utility function to mask email addresses for security when enabled via environment variables.
@@ -23,7 +15,7 @@ export function maskEmail(email: string | null | undefined): string | undefined 
     return undefined;
   }
 
-  const shouldMask = isMaskingEnabled(process.env.IS_EMAILS_MASKED);
+  const shouldMask = getMaskingFlags().email;
   if (!shouldMask) {
     return rawEmail;
   }
@@ -100,7 +92,7 @@ export function maskPhoneNumber(phoneNumber: string | null | undefined): string 
     return undefined;
   }
 
-  const shouldMask = isMaskingEnabled(process.env.IS_PHONENUMBERS_MASKED);
+  const shouldMask = getMaskingFlags().phone;
   if (!shouldMask) {
     return hasPlus ? `+${digits}` : digits;
   }

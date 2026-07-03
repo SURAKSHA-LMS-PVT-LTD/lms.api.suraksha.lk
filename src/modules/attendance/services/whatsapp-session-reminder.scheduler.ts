@@ -3,17 +3,21 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { formatSriLankaTime, formatSriLankaDateTime, now } from '../../../common/utils/timezone.util';
+import { SystemConfigService } from '../../../common/services/system-config.service';
 
 @Injectable()
 export class WhatsAppSessionReminderScheduler {
   private readonly logger = new Logger(WhatsAppSessionReminderScheduler.name);
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly systemConfigService: SystemConfigService,
+  ) {}
 
 
 
   private async notifyAdmins(message: string): Promise<void> {
-    const adminStr = process.env.ADMIN_PHONE_NUMBERS || '';
+    const adminStr = await this.systemConfigService.get('WHATSAPP', 'ADMIN_PHONE_NUMBERS', '');
     const adminNumbers = adminStr.split(',').map((n) => n.trim()).filter(Boolean);
 
     if (adminNumbers.length === 0) return;
@@ -100,7 +104,7 @@ export class WhatsAppSessionReminderScheduler {
 
   // Ensure this runs on startup to notify admins that the scheduler is up
   async onApplicationBootstrap() {
-    if (process.env.SessionUpdatinMessageSendByHere === 'true') {
+    if (await this.systemConfigService.getBoolean('WHATSAPP', 'SessionUpdatinMessageSendByHere', false)) {
       const startupMsg = `Session reminder scheduler started successfully on service: lms-api-suraksha-lk. Current time: ${formatSriLankaDateTime(now())}`;
       this.logger.log(startupMsg);
       await this.notifyAdmins(startupMsg);
@@ -109,7 +113,7 @@ export class WhatsAppSessionReminderScheduler {
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Asia/Colombo' })
   async handleCron() {
-    if (process.env.SessionUpdatinMessageSendByHere !== 'true') {
+    if (!(await this.systemConfigService.getBoolean('WHATSAPP', 'SessionUpdatinMessageSendByHere', false))) {
       return;
     }
 
@@ -127,7 +131,7 @@ export class WhatsAppSessionReminderScheduler {
       `);
 
       let sentCount = 0;
-      const imageUrl = process.env.WA_LOGO_URL || 'https://suraksha.lk/assets/logos/surakshalms-logo.png';
+      const imageUrl = await this.systemConfigService.get('WHATSAPP', 'WA_LOGO_URL', 'https://suraksha.lk/assets/logos/surakshalms-logo.png');
 
       for (const session of sessions) {
         const phone = session.phone;

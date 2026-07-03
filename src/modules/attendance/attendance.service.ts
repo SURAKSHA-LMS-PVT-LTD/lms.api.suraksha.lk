@@ -15,6 +15,7 @@ import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteC
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { SystemConfigService } from '../../common/services/system-config.service';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentBookhireEnrollmentEntity } from '../private-transportation/entities/student-bookhire-enrollment.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
@@ -95,6 +96,7 @@ export class AttendanceService {
     private readonly attendanceRecordRepository: Repository<AttendanceRecordEntity>,
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
+    private readonly systemConfigService: SystemConfigService,
   ) {
     // âš¡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
@@ -1889,7 +1891,7 @@ export class AttendanceService {
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
       const channels = packageConfig?.channels || ['sms'];
       const isAdsEnabled = this.adsDeliveryEnabled && packageConfig?.isAds === true;
-      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
+      const isAdsFromDB = await this.systemConfigService.getBoolean('ADS', 'IS_ADS_FROM_DB', true);
 
       this.logger.debug(
         `[Notification] student=${sid} plan=${normalizedPlan} channels=${channels.join(',')} ` +
@@ -1908,11 +1910,11 @@ export class AttendanceService {
         } else {
           advertisementData = {
             id: 'default-company-ad',
-            mediaUrl: process.env.DEFAULT_AD_URL || '',
-            mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-            title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
-            content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
-            sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
+            mediaUrl: await this.systemConfigService.get('ADS', 'DEFAULT_AD_URL', ''),
+            mediaType: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TYPE', 'text'),
+            title: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TITLE', 'Your Company Name'),
+            content: await this.systemConfigService.get('ADS', 'DEFAULT_AD_CONTENT', 'Professional education services.'),
+            sendingUrl: (await this.systemConfigService.get('ADS', 'DEFAULT_AD_SENDING_URL', '')) || undefined,
             supportivePlatforms: [],
             modeOfSending: []
           };
@@ -2058,11 +2060,11 @@ export class AttendanceService {
           // ðŸ¢ Use default company branding from environment
           advertisementData = {
             id: 'default-company-ad',
-            mediaUrl: process.env.DEFAULT_AD_URL || '',
-            mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-            title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
-            content: process.env.DEFAULT_AD_CONTENT || 'Professional education services for your child\'s bright future.',
-            sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
+            mediaUrl: await this.systemConfigService.get('ADS', 'DEFAULT_AD_URL', ''),
+            mediaType: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TYPE', 'text'),
+            title: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TITLE', 'Your Company Name'),
+            content: await this.systemConfigService.get('ADS', 'DEFAULT_AD_CONTENT', 'Professional education services for your child\'s bright future.'),
+            sendingUrl: (await this.systemConfigService.get('ADS', 'DEFAULT_AD_SENDING_URL', '')) || undefined,
             supportivePlatforms: [],  // Default ads support all platforms
             modeOfSending: [],  // Default ads use all available channels
             cascadeToParents: false  // Default ads don't cascade
@@ -2874,7 +2876,9 @@ export class AttendanceService {
 
     // âœ… STEP 7: Send notifications ONLY for students (non-blocking)
     if (isStudent && (parentContact || parentEmail || parentTelegramId)) {
-      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
+      // getSync — this sits on the hot attendance-mark path; avoid adding an await
+      // here before the fire-and-forget notification kicks off.
+      const isAdsFromDB = this.systemConfigService.getSync('ADS', 'IS_ADS_FROM_DB', 'true') === 'true';
 
       this.sendImmediateNotification({
         studentId,
@@ -2935,9 +2939,10 @@ export class AttendanceService {
     detectedUserType: AttendanceUserType,
     prefetchedInstituteUser?: InstituteUserEntity | null
   ): Promise<void> {
-    // Check if enrollment validation is enabled via environment variable
-    const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
-    const shouldValidate = envValue === 'true';
+    // Check if enrollment validation is enabled — live-editable via system_config
+    const shouldValidate = await this.systemConfigService.getBoolean(
+      'ATTENDANCE', 'MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS', false,
+    );
 
     if (!shouldValidate) {
       return;

@@ -9,6 +9,8 @@ import compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
 import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { SystemConfigService } from './common/services/system-config.service';
+import { setMaskingFlags } from './common/config/masking-flags.bridge';
 
 // ⚠️ CRITICAL: Set timezone to Sri Lanka BEFORE any date operations
 ensureTimezoneSet();
@@ -322,6 +324,22 @@ async function bootstrap() {
     // Enable NestJS shutdown hooks so SIGTERM/SIGINT drain in-flight requests
     // before the process exits. Required for PM2 graceful reload.
     app.enableShutdownHooks();
+
+    // 🔒 Bridge live-editable masking flags into phone-mask.util.ts (plain
+    // functions used in DTO @Transform decorators have no DI access).
+    const systemConfigService = app.get(SystemConfigService);
+    const refreshMaskingFlags = async () => {
+      try {
+        setMaskingFlags({
+          email: await systemConfigService.getBoolean('PRIVACY', 'IS_EMAILS_MASKED', true),
+          phone: await systemConfigService.getBoolean('PRIVACY', 'IS_PHONENUMBERS_MASKED', true),
+        });
+      } catch (error: any) {
+        bootstrapLogger.warn(`Could not refresh masking flags: ${error.message}`);
+      }
+    };
+    await refreshMaskingFlags();
+    setInterval(refreshMaskingFlags, 5 * 60 * 1000);
 
     const port = parseInt(process.env.PORT || '8080', 10);
 

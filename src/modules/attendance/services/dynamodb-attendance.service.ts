@@ -6,6 +6,7 @@ import { QueryCommandInput, PutItemCommandInput, UpdateItemCommandInput, DeleteI
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { MarkAttendanceDto, BulkAttendanceDto, AttendanceStatus, MarkingMethod } from '../dto/attendance.dto';
 import { MarkAttendanceByCardDto, BulkCardAttendanceDto } from '../dto/card-attendance.dto';
+import { SystemConfigService } from '../../../common/services/system-config.service';
 
 export interface AttendanceRecord {
   id: string;        // Base64url-encoded PK~SK — used for deep-link lookup (no GSI needed)
@@ -43,7 +44,10 @@ export class DynamoDBAttendanceService {
   private readonly tableName: string;
   private readonly gsiName: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly systemConfigService: SystemConfigService,
+  ) {
     // Initialize DynamoDB client
     this.dynamoClient = new DynamoDBClient({
       region: this.configService.get('AWS_REGION', 'us-east-1'),
@@ -138,7 +142,7 @@ export class DynamoDBAttendanceService {
 
   // Calculate TTL timestamp
   private calculateTTL(): number {
-    const ttlYears = this.configService.get('ATTENDANCE_TTL_YEARS', '7');
+    const ttlYears = this.systemConfigService.getSync('ATTENDANCE', 'TTL_YEARS', '7');
     const ttlSeconds = parseInt(ttlYears) * 365 * 24 * 60 * 60;
     return Math.floor(Date.now() / 1000) + ttlSeconds;
   }

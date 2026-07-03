@@ -8,28 +8,26 @@ import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { maskEmail, maskPhoneNumber } from '../utils/phone-mask.util';
+import { getMaskingFlags } from '../config/masking-flags.bridge';
 import { NO_DATA_MASKING_KEY } from '../decorators/no-data-masking.decorator';
 
 /**
  * Global Data Masking Interceptor
  * Automatically masks sensitive data (emails, phone numbers) in ALL API responses
- * Based on IS_EMAILS_MASKED and IS_PHONENUMBERS_MASKED environment variables
+ * Based on the live-editable PRIVACY.IS_EMAILS_MASKED / PRIVACY.IS_PHONENUMBERS_MASKED
+ * config values (see masking-flags.bridge.ts).
  */
 @Injectable()
 export class DataMaskingInterceptor implements NestInterceptor {
-  private readonly shouldMaskEmails: boolean;
-  private readonly shouldMaskPhones: boolean;
-
-  constructor(private reflector: Reflector) {
-    this.shouldMaskEmails = this.isEnabled(process.env.IS_EMAILS_MASKED);
-    this.shouldMaskPhones = this.isEnabled(process.env.IS_PHONENUMBERS_MASKED);
+  private get shouldMaskEmails(): boolean {
+    return getMaskingFlags().email;
   }
 
-  private isEnabled(value: string | undefined): boolean {
-    if (!value) return false;
-    const truthy = ['true', '1', 'yes', 'on'];
-    return truthy.includes(value.trim().toLowerCase());
+  private get shouldMaskPhones(): boolean {
+    return getMaskingFlags().phone;
   }
+
+  constructor(private reflector: Reflector) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     // Check if endpoint has @NoDataMasking() decorator

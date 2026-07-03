@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, GetCommand, UpdateCommand, DeleteCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentSriLankaISO } from '../../../common/utils/timezone.util';
+import { SystemConfigService } from '../../../common/services/system-config.service';
 
 export interface BookhireAttendanceRecord {
   // Primary table structure (optimized for bookhire owners)
@@ -78,7 +79,7 @@ export class DynamoDBBookhireAttendanceService {
   private docClient: DynamoDBDocumentClient;
   private tableName: string;
 
-  constructor() {
+  constructor(private readonly systemConfigService: SystemConfigService) {
     // Initialize DynamoDB client
     this.dynamoClient = new DynamoDBClient({
       region: process.env.AWS_REGION || 'us-east-1',
@@ -185,7 +186,7 @@ export class DynamoDBBookhireAttendanceService {
     const GSI_SK = `D#${dto.attendanceDate}#TS#${timestamp}#BOOK#${dto.bookhireId}#ID#${attendanceId}`;
     
     // Calculate TTL from environment variable (default: 7 years)
-    const ttlYears = parseInt(process.env.ATTENDANCE_TTL_YEARS || '7', 10);
+    const ttlYears = parseInt(this.systemConfigService.getSync('ATTENDANCE', 'TTL_YEARS', '7'), 10);
     const ttl = Math.floor(Date.now() / 1000) + (ttlYears * 365 * 24 * 60 * 60);
 
     const attendanceRecord: BookhireAttendanceRecord = {
