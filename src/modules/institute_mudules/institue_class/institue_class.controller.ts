@@ -21,6 +21,7 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../../user/enums/user-type.enum';
+import { ROLE_BITMASKS } from '../../../auth/interfaces/enhanced-jwt-payload.interface';
 
 import { ClassExistsPipe } from './pipes/class-exists.pipe';
 import { UniqueClassCodePipe } from './pipes/unique-class-code.pipe';
@@ -131,10 +132,10 @@ export class InstitueClassController {
     const entry = instituteAccess.find((e: any) => String(e.i) === String(instituteId));
     const isStudentOnly =
       entry &&
-      (entry.r & 2) === 0 && // not IA
-      (entry.r & 4) === 0 && // not TE
-      (entry.r & 8) === 0 && // not AM
-      (entry.r & 1) !== 0;  // has ST bit
+      (entry.r & ROLE_BITMASKS.IA) === 0 &&
+      (entry.r & ROLE_BITMASKS.TE) === 0 &&
+      (entry.r & ROLE_BITMASKS.AM) === 0 &&
+      (entry.r & ROLE_BITMASKS.ST) !== 0;
 
     if (isStudentOnly) {
       // Students: return only their VERIFIED enrolled classes, not the full class list

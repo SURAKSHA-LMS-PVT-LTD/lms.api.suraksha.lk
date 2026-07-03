@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller, Post, Get, Patch,
   Param, Body, Query, Request,
   UseGuards, UsePipes, ValidationPipe,
@@ -249,9 +249,12 @@ export class InstituteClassPaymentSubmissionController {
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('paymentTier') paymentTier?: string,
     @Request() req: JwtRequest,
   ) {
-    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user);
+    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user, search, status, paymentTier);
   }
 
   /**
@@ -271,9 +274,12 @@ export class InstituteClassPaymentSubmissionController {
     @Param('paymentId', ParseBigIntPipe) paymentId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('paymentTier') paymentTier?: string,
     @Request() req: JwtRequest,
   ) {
-    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user);
+    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user, search, status, paymentTier);
   }
 
   /**

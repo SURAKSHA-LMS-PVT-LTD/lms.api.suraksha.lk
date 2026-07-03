@@ -1,4 +1,4 @@
-﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { InstituteClassPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-payment.entity';
@@ -596,6 +596,9 @@ export class InstituteClassPaymentService {
     page: number = 1,
     limit: number = 20,
     user: JwtPayload,
+    search?: string,
+    status?: string,
+    paymentTier?: string,
   ) {
     try {
       // Validate inputs
@@ -634,15 +637,10 @@ export class InstituteClassPaymentService {
         this.logger.log(`[studentsDetails] raw count for class=${classId} institute=${instituteId}: ${rawCount}`);
         totalStudents = rawCount;
 
-        const pageSize = Math.max(1, Math.min(limit, 100));
-        const offset  = Math.max(0, (page - 1) * pageSize);
-
-        // Load class students
+        // Load ALL class students for filtering
         classStudents = await this.classStudentRepository.find({
           where: { instituteId, classId },
           order: { createdAt: 'DESC' },
-          skip: offset,
-          take: pageSize,
         });
 
         this.logger.log(`[studentsDetails] classStudents=${classStudents.length} totalStudents=${totalStudents}`);
@@ -800,15 +798,45 @@ export class InstituteClassPaymentService {
         }
       }).filter(s => s !== null);
 
-      this.logger.log(`[studentsDetails] enrichedStudents=${enrichedStudents.length}`);
+      // --- Apply Filters ---
+      let filteredStudents = enrichedStudents as any[];
+
+      if (search) {
+        const lowerSearch = search.toLowerCase();
+        filteredStudents = filteredStudents.filter(s =>
+          (s.studentName || '').toLowerCase().includes(lowerSearch) ||
+          (s.instituteUserId || '').toLowerCase().includes(lowerSearch) ||
+          (s.studentId || '').toLowerCase().includes(lowerSearch)
+        );
+      }
+
+      if (status && status !== 'ALL' && status !== 'all') {
+        filteredStudents = filteredStudents.filter(s => {
+          if (status === 'NOT_SUBMITTED') return s.submissionStatus === 'NOT_SUBMITTED';
+          return s.submissionStatus === status;
+        });
+      }
+
+      // (Optional) paymentTier filtering if applicable in the future
+      if (paymentTier && paymentTier !== 'all') {
+        // Implementation for paymentTier filtering if needed
+      }
+
+      // --- Apply Pagination on Filtered Array ---
+      const totalFiltered = filteredStudents.length;
+      const pageSize = Math.max(1, Math.min(limit, 100));
+      const offset = Math.max(0, (page - 1) * pageSize);
+      const paginatedStudents = filteredStudents.slice(offset, offset + pageSize);
+
+      this.logger.log(`[studentsDetails] enrichedStudents=${enrichedStudents.length}, filtered=${totalFiltered}, paginated=${paginatedStudents.length}`);
 
       return {
         success: true,
-        data: enrichedStudents,
-        total: totalStudents,
+        data: paginatedStudents,
+        total: totalFiltered,
         page,
         limit,
-        totalPages: Math.ceil(totalStudents / limit),
+        totalPages: Math.ceil(totalFiltered / limit),
         summary: {
           totalStudents,
           verified: verifiedCount,

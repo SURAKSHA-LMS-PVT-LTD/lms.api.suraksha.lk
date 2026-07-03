@@ -1030,9 +1030,14 @@ export class UserOtpService {
   }): Promise<void> {
     if (params.phoneNumber) {
       if (params.phoneOtpId) {
+        const normalizedPhone = normalizeSriLankanPhone(params.phoneNumber);
+        if (!normalizedPhone) throw new BadRequestException('Invalid phone number format');
         // Fast path: look up by the exact OTP record id captured at verification time.
+        // Must also match the phone number being claimed in THIS request — otherwise an
+        // attacker could verify their own phone, then submit a victim's phone number
+        // alongside their own verified otpId (audit H-4 regression).
         const otp = await this.otpRepository.findOne({
-          where: { id: params.phoneOtpId, isVerified: true },
+          where: { id: params.phoneOtpId, phoneNumber: normalizedPhone, isVerified: true },
         });
         if (!otp) {
           throw new BadRequestException(
@@ -1061,8 +1066,11 @@ export class UserOtpService {
     }
     if (params.email) {
       if (params.emailOtpId) {
+        const normalizedEmail = params.email.trim().toLowerCase();
+        // Must also match the email being claimed in THIS request (see phone fast-path
+        // comment above for why the id-only lookup alone is unsafe).
         const otp = await this.otpRepository.findOne({
-          where: { id: params.emailOtpId, isVerified: true },
+          where: { id: params.emailOtpId, email: normalizedEmail, isVerified: true },
         });
         if (!otp) {
           throw new BadRequestException(

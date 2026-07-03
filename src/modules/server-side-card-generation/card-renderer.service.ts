@@ -96,9 +96,24 @@ async function collectFontBuffers(tpl: any): Promise<Buffer[]> {
 
 const imgCache = new Map<string, string>();
 
+/** Only our own storage domain may be fetched server-side — prevents SSRF via
+ * attacker/institute-admin-controlled template or profile image URLs. */
+const ALLOWED_IMAGE_HOSTS = new Set<string>(['storage.suraksha.lk']);
+
+function isAllowedImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:')
+      && ALLOWED_IMAGE_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function urlToDataUrl(url: string): Promise<string> {
   if (!url) return '';
   if (url.startsWith('data:')) return url;
+  if (!isAllowedImageUrl(url)) return '';
   if (imgCache.has(url)) return imgCache.get(url)!;
   const buf = await fetchBuffer(url);
   if (!buf) return '';

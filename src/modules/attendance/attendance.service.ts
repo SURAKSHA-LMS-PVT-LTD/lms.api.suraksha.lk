@@ -1549,8 +1549,11 @@ export class AttendanceService {
     limit?: number;
     status?: string;
     studentId?: string;
+    searchTerm?: string;
+    sortBy?: string;
+    sortOrder?: string;
   }): Promise<any> {
-    const { instituteId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
+    const { instituteId, startDate, endDate, page = 1, limit = 50, status, studentId, searchTerm, sortBy, sortOrder } = params;
 
     // Use the attendance summary method for institute-wide data
     const dbService = this.syncConfigService.isMysqlOnly()
@@ -1577,6 +1580,26 @@ export class AttendanceService {
       filteredRecords = filteredRecords.filter(record =>
         record.studentId === studentId
       );
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filteredRecords = filteredRecords.filter(record =>
+        (record.studentName || '').toLowerCase().includes(term) ||
+        (record.studentId || '').toLowerCase().includes(term)
+      );
+    }
+
+    if (sortBy) {
+      filteredRecords.sort((a, b) => {
+        let valA = a[sortBy];
+        let valB = b[sortBy];
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        
+        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
+        return 0;
+      });
     }
 
     // Apply pagination
@@ -1619,8 +1642,11 @@ export class AttendanceService {
     limit?: number;
     status?: string;
     studentId?: string;
+    searchTerm?: string;
+    sortBy?: string;
+    sortOrder?: string;
   }): Promise<any> {
-    const { instituteId, classId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
+    const { instituteId, classId, startDate, endDate, page = 1, limit = 50, status, studentId, searchTerm, sortBy, sortOrder } = params;
 
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
@@ -1646,6 +1672,26 @@ export class AttendanceService {
       filteredRecords = filteredRecords.filter(record =>
         record.studentId === studentId
       );
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filteredRecords = filteredRecords.filter(record =>
+        (record.studentName || '').toLowerCase().includes(term) ||
+        (record.studentId || '').toLowerCase().includes(term)
+      );
+    }
+
+    if (sortBy) {
+      filteredRecords.sort((a, b) => {
+        let valA = a[sortBy];
+        let valB = b[sortBy];
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        
+        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
+        return 0;
+      });
     }
 
     // Apply pagination
@@ -1689,8 +1735,11 @@ export class AttendanceService {
     limit?: number;
     status?: string;
     studentId?: string;
+    searchTerm?: string;
+    sortBy?: string;
+    sortOrder?: string;
   }): Promise<any> {
-    const { instituteId, classId, subjectId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
+    const { instituteId, classId, subjectId, startDate, endDate, page = 1, limit = 50, status, studentId, searchTerm, sortBy, sortOrder } = params;
 
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
@@ -1715,6 +1764,26 @@ export class AttendanceService {
     if (studentId) {
       filteredRecords = filteredRecords.filter(record => {
         return record.studentId === studentId || record.studentId == studentId;
+      });
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filteredRecords = filteredRecords.filter(record =>
+        (record.studentName || '').toLowerCase().includes(term) ||
+        (record.studentId || '').toLowerCase().includes(term)
+      );
+    }
+
+    if (sortBy) {
+      filteredRecords.sort((a, b) => {
+        let valA = a[sortBy];
+        let valB = b[sortBy];
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        
+        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
+        return 0;
       });
     }
 

@@ -226,8 +226,11 @@ export class PasswordResetService {
     if (!user) throw new BadRequestException('Invalid request.');
     let confirmed: any;
     if (otpId) {
+      // Must also be scoped to this user + purpose — an id-only lookup would let an
+      // attacker verify their own OTP and reuse its id to reset a different user's
+      // password by supplying that victim's identifier instead.
       confirmed = await this.otpRepository.findOne({
-        where: { id: otpId, isVerified: true },
+        where: { id: otpId, userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, isVerified: true },
       });
     } else {
       confirmed = await this.otpRepository.findOne({

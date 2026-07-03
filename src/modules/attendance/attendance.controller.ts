@@ -638,7 +638,10 @@ export class AttendanceController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
-    @Query('studentId') studentId?: string
+    @Query('studentId') studentId?: string,
+    @Query('searchTerm') searchTerm?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string
   ) {
     try {
       // Default to last 7 days if dates not provided
@@ -676,7 +679,10 @@ export class AttendanceController {
         page,
         limit,
         status,
-        studentId
+        studentId,
+        searchTerm,
+        sortBy,
+        sortOrder
       });
       
       return result;
@@ -788,7 +794,10 @@ export class AttendanceController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
-    @Query('studentId') studentId?: string
+    @Query('studentId') studentId?: string,
+    @Query('searchTerm') searchTerm?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string
   ) {
     try {
       // Validate required parameters
@@ -826,7 +835,10 @@ export class AttendanceController {
         page,
         limit,
         status,
-        studentId
+        studentId,
+        searchTerm,
+        sortBy,
+        sortOrder
       });
       
       return result;
@@ -1356,7 +1368,10 @@ export class AttendanceController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
-    @Query('studentId') studentId?: string
+    @Query('studentId') studentId?: string,
+    @Query('searchTerm') searchTerm?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string
   ) {
     try {
       // Validate required parameters
@@ -1395,7 +1410,10 @@ export class AttendanceController {
         page,
         limit,
         status,
-        studentId
+        studentId,
+        searchTerm,
+        sortBy,
+        sortOrder
       });
       
       return result;

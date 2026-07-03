@@ -565,8 +565,16 @@ export class InstituteLoginService {
       // so a user who spent a long time filling the form isn't rejected by a time window.
       let confirmed: any;
       if (dto.otpId) {
+        // Must also be scoped to this institute user + purpose — an id-only lookup
+        // would let an attacker verify their own OTP and reuse its id to reset a
+        // different institute user's password.
         confirmed = await this.otpRepository.findOne({
-          where: { id: dto.otpId, isVerified: true },
+          where: {
+            id: dto.otpId,
+            userId: instituteUser.userId,
+            otpPurpose: OtpPurpose.INSTITUTE_PASSWORD_RESET,
+            isVerified: true,
+          },
         });
       } else {
         confirmed = await this.otpRepository.findOne({

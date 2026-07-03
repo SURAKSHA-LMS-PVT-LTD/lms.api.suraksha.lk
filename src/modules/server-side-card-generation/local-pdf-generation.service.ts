@@ -182,8 +182,23 @@ export class LocalPdfGenerationService {
     return { outputDir, files: savedFiles };
   }
 
+  /** Only our own storage domain may be fetched server-side — prevents SSRF via
+   * attacker/institute-admin-controlled template or profile image URLs. */
+  private static readonly ALLOWED_IMAGE_HOSTS = new Set<string>(['storage.suraksha.lk']);
+
+  private isAllowedImageUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return (parsed.protocol === 'https:' || parsed.protocol === 'http:')
+        && LocalPdfGenerationService.ALLOWED_IMAGE_HOSTS.has(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+
   private async fetchDataUrl(url: string): Promise<string> {
     if (!url || url.startsWith('data:')) return url || '';
+    if (!this.isAllowedImageUrl(url)) return '';
     try {
       const https = require('https');
       const http = require('http');
