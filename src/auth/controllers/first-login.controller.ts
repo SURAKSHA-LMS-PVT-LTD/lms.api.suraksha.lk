@@ -35,7 +35,6 @@ import {
   RequestEmailOtpFirstLoginDto,
   VerifyEmailOtpFirstLoginDto,
   RequestPhoneOtpFirstLoginDto,
-  VerifyPhoneOtpInFlowDto,
   CompleteFirstLoginProfileDto
 } from '../dto/first-login.dto';
 
@@ -410,42 +409,6 @@ export class FirstLoginController {
     return await this.firstLoginService.verifyPhoneOtpFirstLogin(dto, ipAddress, userAgent);
   }
 
-  @Post('first-login/phone/request-otp')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 900000 } })
-  @ApiOperation({
-    summary: 'Request phone OTP during profile completion',
-    description: 'Send SMS OTP to verify phone number during first login profile completion. Requires JWT from initial verification.'
-  })
-  @ApiBody({ type: RequestPhoneOtpFirstLoginDto })
-  @ApiResponse({ status: 200, description: 'Phone OTP sent' })
-  @ApiResponse({ status: 400, description: 'Phone already taken or invalid token' })
-  async requestPhoneOtpInFlow(
-    @Body() dto: RequestPhoneOtpFirstLoginDto,
-    @Headers('authorization') authorization: string,
-    @Req() req: Request
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    return await this.firstLoginService.requestPhoneOtpInFlow(dto, authorization, ipAddress);
-  }
-
-  @Post('first-login/phone/verify-in-flow')
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 900000 } })
-  @ApiOperation({
-    summary: 'Verify phone OTP during profile completion',
-    description: 'Verify phone SMS OTP during first login profile completion. Requires JWT from initial verification.'
-  })
-  @ApiBody({ type: VerifyPhoneOtpInFlowDto })
-  @ApiResponse({ status: 200, description: 'Phone verified successfully' })
-  async verifyPhoneOtpInFlow(
-    @Body() dto: VerifyPhoneOtpInFlowDto,
-    @Headers('authorization') authorization: string,
-    @Req() req: Request
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    return await this.firstLoginService.verifyPhoneOtpInFlow(dto, authorization, ipAddress);
-  }
 
   @Post('first-login/phone/request-otp-whatsapp')
   @HttpCode(HttpStatus.OK)
@@ -478,6 +441,19 @@ export class FirstLoginController {
     @Headers('authorization') authorization: string,
   ) {
     return await this.firstLoginService.getPhoneOtpStatusInFlow(phoneNumber, authorization);
+  }
+
+  @Get('first-login/profile')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Fetch annotated profile for the first-login form (requires JWT)',
+    description: 'Used when a step other than verify-otp (e.g. WhatsApp phone verification) needs to populate the profile-completion form.'
+  })
+  async getAnnotatedProfileInFlow(
+    @Headers('authorization') authorization: string,
+  ) {
+    return await this.firstLoginService.getAnnotatedProfileInFlow(authorization);
   }
 
   @Post('first-login/email/request-otp')

@@ -12,6 +12,8 @@ import { FcmNotificationService } from './services/fcm-notification.service';
 import { SystemConfigService } from './services/system-config.service';
 import { UserEntity } from '../modules/user/entities/user.entity';
 import { UserFcmTokenEntity } from '../modules/user/entities/user-fcm-token.entity';
+import { UserOtpEntity } from '../modules/user/entities/user-otp.entity';
+import { WhatsAppOtpService } from './services/whatsapp-otp.service';
 import { SystemConfigEntity } from './entities/system-config.entity';
 import { UserFcmTokenRepository } from '../modules/user/repositories/user-fcm-token.repository';
 import { CacheModule } from './modules/cache.module';
@@ -26,9 +28,10 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      UserEntity, 
+      UserEntity,
       UserFcmTokenEntity,
       SystemConfigEntity,
+      UserOtpEntity,
     ]),
     CacheModule,
   ],
@@ -45,6 +48,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
     EnhancedAccessGuard,
     EnhancedValidationGuard,
     UrlTransformerHelper,
+    WhatsAppOtpService,
     {
       provide: APP_FILTER,
       useClass: GlobalExceptionFilter,
@@ -64,6 +68,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
     EnhancedAccessGuard,
     EnhancedValidationGuard,
     UrlTransformerHelper,
+    WhatsAppOtpService,
   ],
 })
 export class CommonModule {}

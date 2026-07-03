@@ -760,6 +760,11 @@ export class CompleteFirstLoginProfileDto {
   @IsString()
   nameWithInitials?: string;
 
+  @ApiPropertyOptional({ description: 'Full Name', example: 'Sugath Perera' })
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
   @ApiPropertyOptional({ description: 'Date of birth (YYYY-MM-DD)', example: '2005-03-15' })
   @IsOptional()
   @IsString()
@@ -769,6 +774,11 @@ export class CompleteFirstLoginProfileDto {
   @IsOptional()
   @IsString()
   gender?: string;
+
+  @ApiPropertyOptional({ description: 'Religion', example: 'Buddhist' })
+  @IsOptional()
+  @IsString()
+  religion?: string;
 
   @ApiPropertyOptional({ description: 'NIC number', example: '200512345678' })
   @IsOptional()

@@ -16,6 +16,7 @@ import { AuthService } from '../auth.service';
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
 import { SmslenzProvider } from '../../modules/sms/providers/smslenz.provider';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
+import { WhatsAppOtpService } from '../../common/services/whatsapp-otp.service';
 import { normalizeSriLankanPhone } from '../../common/utils/phone-normalizer.util';
 import { now } from '../../common/utils/timezone.util';
 import {
@@ -63,6 +64,7 @@ export class InstituteLoginService {
     private readonly smslenzProvider: SmslenzProvider,
     private readonly cloudStorageService: CloudStorageService,
     private readonly instituteSessionService: InstituteSessionService,
+    private readonly whatsAppOtpService: WhatsAppOtpService,
   ) {}
 
   /**
@@ -513,8 +515,8 @@ export class InstituteLoginService {
       sentTo = `${local[0]}***@${domain}`;
     } else if (deliveryChannel === InstitutePasswordResetChannel.WHATSAPP) {
       // Reverse-OTP: no message is sent. The user taps the wa.me link and sends the
-      // code from their own WhatsApp; the webhook confirms it (code + sender phone).
-      waLink = this.buildWhatsAppOtpLink(otpCode);
+      // code from their own WhatsApp; the webhook confirms it.
+      waLink = this.whatsAppOtpService.buildOtpLink(otpCode);
       sentTo = this.maskPhone(normalizedPhone!);
     } else {
       await this.smslenzProvider.sendSms({
@@ -647,12 +649,6 @@ export class InstituteLoginService {
     return `${email.charAt(0) || '*'}***@${email.slice(atIdx + 1)}`;
   }
 
-  /** Build the wa.me deep link the user taps to send the reverse-OTP to the business number. */
-  private buildWhatsAppOtpLink(otpCode: string): string {
-    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
-    const text = encodeURIComponent(`My OTP code is ${otpCode}`);
-    return `https://wa.me/${businessNumber}?text=${text}`;
-  }
 
   /**
    * Poll whether the latest WhatsApp password-reset OTP for this institute user has been

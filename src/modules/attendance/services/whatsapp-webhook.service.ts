@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { WhatsAppOtpService } from '../../../common/services/whatsapp-otp.service';
 
 /**
  * WhatsApp session tracker — single responsibility, zero notification logic.
@@ -34,7 +35,10 @@ export class WhatsAppWebhookService {
 
   private static readonly SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly whatsAppOtpService: WhatsAppOtpService,
+  ) {}
 
   // ─── Hot path: inbound message ────────────────────────────────────────────
 
@@ -101,6 +105,20 @@ export class WhatsAppWebhookService {
     }
 
     if (isThanks) this.logger.debug(`[WA] Thanks from ${this.mask(phone)}`);
+  }
+
+  // ─── Reverse-OTP: inbound "OTP 123456" ────────────────────────────────────
+
+  /**
+   * Delegates to the shared WhatsAppOtpService, which every reverse-OTP
+   * producer (user-otp.service.ts, password-reset.service.ts,
+   * institute-login.service.ts, first-login.service.ts) also uses to build
+   * the wa.me link — one canonical message format, one matcher.
+   * Never throws — the webhook must always return 200 to Meta.
+   */
+  async tryConfirmOtpFromText(rawPhone: string, text: string | null | undefined): Promise<void> {
+    const phone = WhatsAppWebhookService.normalisePhone(rawPhone);
+    await this.whatsAppOtpService.confirmFromInboundText(phone, text);
   }
 
   // ─── Hot path: Meta delivery/read/failed statuses ────────────────────────

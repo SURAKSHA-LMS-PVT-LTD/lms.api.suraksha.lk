@@ -182,7 +182,15 @@ export class WhatsAppWebhookController {
           // 1) Always upsert the contact session (records the reply / Thanks).
           inboundTasks.push(this.webhookService.handleInbound(phone, interactiveId));
 
-          // 2) Conversational menu: any inbound that is NOT the Thanks button
+          // 2) Reverse-OTP: a plain-text message may carry a 6-digit OTP code
+          //    (the wa.me link pre-fills "OTP 123456" / "My OTP code is 123456").
+          //    No-ops silently if the text doesn't match or nothing is pending.
+          if (msg?.type === 'text') {
+            const body = msg?.text?.body;
+            inboundTasks.push(this.webhookService.tryConfirmOtpFromText(phone, body));
+          }
+
+          // 3) Conversational menu: any inbound that is NOT the Thanks button
           //    gets a reply — either the tailored menu (free text like "hi"),
           //    or the requested attendance (a tapped menu row).
           if (interactiveId !== 'attendance_thanks') {

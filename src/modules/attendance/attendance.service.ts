@@ -315,11 +315,14 @@ export class AttendanceService {
         markAttendanceDto.instituteId
       );
 
-      // âœ… STEP 2: Validate enrollment if configured (applies to all user types)
+      // âœ… STEP 2: Validate enrollment if configured (applies to all user types).
+      // Reuses the institute_user row already fetched above — avoids a second,
+      // near-identical (userId, instituteId) lookup on every single scan.
       await this.validateUserEnrollment(
         markAttendanceDto.studentId,
         markAttendanceDto.instituteId,
-        userType
+        userType,
+        instituteUser
       );
 
       // âœ… STEP 3: Fetch user data based on user type
@@ -598,14 +601,16 @@ export class AttendanceService {
         instituteUsers.map(iu => [iu.userId, iu])
       );
 
-      // âœ… STEP 2: Validate enrollment (if configured) - batch operation
+      // âœ… STEP 2: Validate enrollment (if configured) - batch operation.
+      // Reuses the batch-fetched institute_user rows above — avoids re-querying
+      // (userId, instituteId) once per student on top of the batch already done.
       await Promise.all(
         userIds.map(userId => {
           const iu = instituteUserMap.get(userId);
           const detectedType = iu
             ? (AttendanceUserType[iu.instituteUserType as keyof typeof AttendanceUserType] || AttendanceUserType.STUDENT)
             : AttendanceUserType.NOT_ENROLLED;
-          return this.validateUserEnrollment(userId, bulkAttendanceDto.instituteId, detectedType);
+          return this.validateUserEnrollment(userId, bulkAttendanceDto.instituteId, detectedType, iu ?? null);
         })
       );
 
@@ -2927,7 +2932,8 @@ export class AttendanceService {
   private async validateUserEnrollment(
     userId: string,
     instituteId: string,
-    detectedUserType: AttendanceUserType
+    detectedUserType: AttendanceUserType,
+    prefetchedInstituteUser?: InstituteUserEntity | null
   ): Promise<void> {
     // Check if enrollment validation is enabled via environment variable
     const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
@@ -2946,14 +2952,18 @@ export class AttendanceService {
     }
 
     try {
-      // Check if user is enrolled in the institute
-      const enrollment = await this.instituteUserRepository.findOne({
-        where: {
-          userId: userId,
-          instituteId: instituteId
-        },
-        select: ['userId', 'status'],
-      });
+      // Reuse the caller's already-fetched (userId, instituteId) row when available
+      // (detectInstituteUserType's select already includes 'status') — otherwise
+      // fall back to querying it directly, same as before.
+      const enrollment = prefetchedInstituteUser !== undefined
+        ? prefetchedInstituteUser
+        : await this.instituteUserRepository.findOne({
+            where: {
+              userId: userId,
+              instituteId: instituteId
+            },
+            select: ['userId', 'status'],
+          });
 
       if (!enrollment) {
         this.logger.warn(`User ${userId} is not enrolled in institute ${instituteId}`);
