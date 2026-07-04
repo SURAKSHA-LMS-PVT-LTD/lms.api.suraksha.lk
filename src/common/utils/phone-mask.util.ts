@@ -134,3 +134,46 @@ export function isValidPhoneFormat(phone: any): phone is string {
  * 1234567890 → +12****890
  * 94123456789 → +94****789
  */
+
+/**
+ * Utility function to mask a free-text home/delivery address for security when
+ * enabled via the live-editable IS_ADDRESS_MASKED flag. Address is free text
+ * (not a fixed-shape value like a phone/email), so the mask keeps only the
+ * first word (usually the house/lot number or first line token) and replaces
+ * everything else with asterisks, rather than character-position slicing.
+ */
+export function maskAddress(address: string | null | undefined): string | undefined {
+  if (!address) {
+    return undefined;
+  }
+
+  const rawAddress = address.toString().trim();
+  if (!rawAddress) {
+    return undefined;
+  }
+
+  const shouldMask = getMaskingFlags().address;
+  if (!shouldMask) {
+    return rawAddress;
+  }
+
+  const words = rawAddress.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return undefined;
+  }
+
+  const firstWord = words[0];
+  if (words.length === 1) {
+    // Single token — mask like an identifier (keep first char only).
+    return firstWord.length <= 2 ? '***' : `${firstWord[0]}***`;
+  }
+
+  return `${firstWord} ***`;
+}
+
+/**
+ * Examples of masked addresses:
+ * "12 Galle Road, Colombo 03" → "12 ***"
+ * "No. 45/A, Kandy" → "No. ***"
+ * "Colombo" → "C***"
+ */

@@ -333,6 +333,7 @@ async function bootstrap() {
         setMaskingFlags({
           email: await systemConfigService.getBoolean('PRIVACY', 'IS_EMAILS_MASKED', true),
           phone: await systemConfigService.getBoolean('PRIVACY', 'IS_PHONENUMBERS_MASKED', true),
+          address: await systemConfigService.getBoolean('PRIVACY', 'IS_ADDRESS_MASKED', true),
         });
       } catch (error: any) {
         bootstrapLogger.warn(`Could not refresh masking flags: ${error.message}`);
