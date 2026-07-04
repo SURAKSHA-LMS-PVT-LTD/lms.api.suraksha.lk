@@ -18,7 +18,6 @@ import { SystemConfigEntity } from './entities/system-config.entity';
 import { UserFcmTokenRepository } from '../modules/user/repositories/user-fcm-token.repository';
 import { CacheModule } from './modules/cache.module';
 import { EnhancedAccessGuard } from './guards/enhanced-access.guard';
-import { EnhancedValidationGuard } from './guards/enhanced-validation.guard';
 import { UploadController } from './controllers/upload.controller';
 import { PublicUploadController } from './controllers/public-upload.controller';
 import { SystemConfigAdminController } from './controllers/system-config-admin.controller';
@@ -48,7 +47,6 @@ import { CloudStorageCleanupSubscriber } from './subscribers/cloud-storage-clean
     SystemConfigService,
     UserFcmTokenRepository,
     EnhancedAccessGuard,
-    EnhancedValidationGuard,
     UrlTransformerHelper,
     WhatsAppOtpService,
     {
@@ -68,7 +66,6 @@ import { CloudStorageCleanupSubscriber } from './subscribers/cloud-storage-clean
     SystemConfigService,
     UserFcmTokenRepository,
     EnhancedAccessGuard,
-    EnhancedValidationGuard,
     UrlTransformerHelper,
     WhatsAppOtpService,
   ],

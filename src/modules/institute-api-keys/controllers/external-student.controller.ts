@@ -1,10 +1,12 @@
 import {
   Controller, Post, Body, Req,
-  UseGuards, HttpCode, HttpStatus, ForbiddenException,
+  UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InstituteApiKeyGuard } from '../guards/institute-api-key.guard';
+import { ApiKeyScopeGuard } from '../guards/api-key-scope.guard';
+import { RequireApiKeyScope } from '../decorators/require-api-key-scope.decorator';
 import { ApiKeyScope } from '../entities/institute-api-key.entity';
 import { ExternalStudentService } from '../services/external-student.service';
 import { BulkExternalStudentDto } from '../dto/external-student.dto';
@@ -16,7 +18,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 @Public()
 @SkipOriginValidation()
 @Controller('api/external/v1/students')
-@UseGuards(InstituteApiKeyGuard)
+@UseGuards(InstituteApiKeyGuard, ApiKeyScopeGuard)
 export class ExternalStudentController {
   constructor(private readonly svc: ExternalStudentService) {}
 
@@ -37,6 +39,7 @@ export class ExternalStudentController {
   @Post('bulk')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @RequireApiKeyScope(ApiKeyScope.STUDENT_CREATE)
   @ApiOperation({
     summary: 'Bulk create/link students via API key',
     description:
@@ -64,12 +67,6 @@ export class ExternalStudentController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 403, description: 'API key lacks STUDENT_CREATE scope' })
   async bulkCreate(@Body() dto: BulkExternalStudentDto, @Req() req: any) {
-    const apiKey = req.apiKey;
-
-    if (!apiKey.scopes?.includes(ApiKeyScope.STUDENT_CREATE)) {
-      throw new ForbiddenException(`API key does not have the '${ApiKeyScope.STUDENT_CREATE}' scope`);
-    }
-
     return this.svc.bulkCreateStudents(req.instituteId, dto);
   }
 }

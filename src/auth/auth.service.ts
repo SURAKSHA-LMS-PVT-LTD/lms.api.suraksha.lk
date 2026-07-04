@@ -646,7 +646,7 @@ export class AuthService {
           'iu.userType as roleInInstitute',
           'iu.createdAt as assignedDate'
         ])
-        .from('institute_users', 'iu')
+        .from('institute_user', 'iu')
         .leftJoin('institutes', 'i', 'iu.instituteId = i.id')
         .where('iu.userId = :userId', { userId })
         .andWhere("iu.status = 'ACTIVE'")
@@ -674,7 +674,7 @@ export class AuthService {
           'COUNT(DISTINCT ics.id) as totalStudents',
           'COUNT(DISTINCT icss.teacherId) as totalTeachers'
         ])
-        .from('institute_users', 'iu')
+        .from('institute_user', 'iu')
         .leftJoin('institutes', 'i', 'iu.instituteId = i.id')
         .leftJoin('institute_classes', 'ic', 'i.id = ic.instituteId')
         .leftJoin('institute_class_students', 'ics', 'i.id = ics.instituteId AND ics.isActive = 1')

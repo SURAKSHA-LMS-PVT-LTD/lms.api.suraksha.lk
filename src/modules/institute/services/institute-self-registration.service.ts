@@ -593,12 +593,10 @@ export class InstituteSelfRegistrationService {
         profileCompletionPercentage: 100 
       });
       // also update the created institute user to ACTIVE
-      await this.dataSource.manager.update('institute_users', {
-        institute_id: link.instituteId,
-        user_id: result.userId,
-      }, {
-        status: InstituteUserStatus.ACTIVE
-      });
+      await this.instituteUserRepo.update(
+        { instituteId: link.instituteId, userId: String(result.userId) },
+        { status: InstituteUserStatus.ACTIVE },
+      );
     }
 
     await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
