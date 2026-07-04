@@ -84,6 +84,16 @@ export class FlexibleAccessGuard implements CanActivate {
       return true;
     }
 
+    // ✅ SHORT-CIRCUIT: Bypass if route is @Public()
+    const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) {
+      return true;
+    }
+
     const config = this.reflector.getAllAndOverride<FlexibleAccessConfig>(
       FLEXIBLE_ACCESS_KEY,
       [context.getHandler(), context.getClass()],

@@ -1,6 +1,7 @@
 import { IsOptional, IsString, IsEnum, IsNumber, IsBoolean } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class UpdateClassLectureStatusDto {
   @ApiPropertyOptional({ description: 'Lecture status', enum: ['scheduled', 'ongoing', 'completed', 'cancelled'] })
@@ -15,6 +16,7 @@ export class RescheduleClassLectureDto {
 
   @ApiPropertyOptional({ description: 'New end time (ISO 8601)' })
   @IsString()
+    @IsAfter('startTime')
   endTime: string;
 }
 

@@ -1,6 +1,7 @@
 import { IsArray, IsString, ValidateNested, IsNumber, IsBoolean, IsOptional, Min, Max, ArrayMinSize, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 /**
  * Individual operating config item for bulk operations.
@@ -25,6 +26,7 @@ export class BulkOperatingConfigItemDto {
   @ApiPropertyOptional({ description: 'End time in HH:MM format, e.g. 15:00' })
   @IsOptional()
   @IsString()
+    @IsAfter('startTime')
   endTime?: string;
 }
 

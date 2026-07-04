@@ -13,6 +13,7 @@ import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 
 @ApiTags('Structured Lectures')
+@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
 @Controller('api/structured-lectures')
 export class StructuredLecturesController {
   constructor(
@@ -23,7 +24,6 @@ export class StructuredLecturesController {
   // ─── Cover image signed URL endpoints ───────────────────────────────────────
 
   @Post('upload/cover-image/signed-url')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -63,7 +63,6 @@ export class StructuredLecturesController {
   }
 
   @Post('upload/cover-image/verify')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -99,7 +98,6 @@ export class StructuredLecturesController {
   // This ensures documents persist when a teacher is removed from the institute.
 
   @Post('upload/document/signed-url')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -189,7 +187,6 @@ export class StructuredLecturesController {
   }
 
   @Post('upload/document/verify')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -226,7 +223,6 @@ export class StructuredLecturesController {
   // ─── CRUD endpoints ──────────────────────────────────────────────────────────
 
   @Post()
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -297,7 +293,6 @@ export class StructuredLecturesController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -336,7 +331,6 @@ export class StructuredLecturesController {
   }
 
   @Get('institute/:instituteId/subject/:subjectId')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -388,7 +382,6 @@ export class StructuredLecturesController {
   }
 
   @Get('subject/:subjectId/grade/:grade')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -451,7 +444,6 @@ export class StructuredLecturesController {
   }
 
   @Get('subject/:subjectId')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -501,7 +493,6 @@ export class StructuredLecturesController {
   }
 
   @Get('statistics/:subjectId')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -563,7 +554,6 @@ export class StructuredLecturesController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -611,7 +601,6 @@ export class StructuredLecturesController {
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -689,7 +678,6 @@ export class StructuredLecturesController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -735,7 +723,6 @@ export class StructuredLecturesController {
   }
 
   @Delete(':id/permanent')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN]
   })

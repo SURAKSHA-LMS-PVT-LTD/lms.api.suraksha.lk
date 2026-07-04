@@ -23,6 +23,7 @@ import { UploadController } from './controllers/upload.controller';
 import { PublicUploadController } from './controllers/public-upload.controller';
 import { SystemConfigAdminController } from './controllers/system-config-admin.controller';
 import { UrlTransformerHelper } from './helpers/url-transformer.helper';
+import { CloudStorageCleanupSubscriber } from './subscribers/cloud-storage-cleanup.subscriber';
 
 @Global()
 @Module({
@@ -39,6 +40,7 @@ import { UrlTransformerHelper } from './helpers/url-transformer.helper';
     AuditService, 
     AuditLogInterceptor,
     CloudStorageService,
+    CloudStorageCleanupSubscriber,
     PackageUpgradeService,
     InputValidationService,
     InputSanitizationService,

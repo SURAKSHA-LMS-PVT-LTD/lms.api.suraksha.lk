@@ -1,4 +1,4 @@
-﻿import * as crypto from 'crypto';
+import * as crypto from 'crypto';
 import {
   ExceptionFilter,
   Catch,
@@ -139,13 +139,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       // We must turn the array into a readable top-level message + structured details.
       if (typeof response === 'object' && Array.isArray((response as any).message)) {
         const validationMessages: string[] = (response as any).message;
-        const firstMessage = validationMessages[0] || 'Validation failed';
-        // Capitalise first letter and ensure it ends with a period.
-        const friendlyFirst = firstMessage.charAt(0).toUpperCase() + firstMessage.slice(1);
-        const suffix = validationMessages.length > 1 ? ` (and ${validationMessages.length - 1} more issue${validationMessages.length - 1 > 1 ? 's' : ''})` : '';
+        const formattedMessages = validationMessages.map(msg => 
+          msg.charAt(0).toUpperCase() + msg.slice(1)
+        );
+        const message = formattedMessages.join('\n');
         return {
           statusCode: exception.getStatus(),
-          message: `${friendlyFirst}${suffix}`,
+          message: message,
           type: 'ValidationError',
           details: {
             actionHint: 'Please check the highlighted fields and correct the errors before submitting again.',

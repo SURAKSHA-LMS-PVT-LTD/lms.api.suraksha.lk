@@ -6,6 +6,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { CloseUnmarkAction } from '../entities/institute-class-attendance-session.entity';
+import { IsAfter } from "../../../common/validators/is-after.validator";
 
 // ─────────────────────────────────────────────────────────────────
 // SESSION GROUP DTOs
@@ -75,6 +76,7 @@ export class CreateSessionDto {
   @ApiPropertyOptional({ example: '09:30', description: 'HH:MM end time' })
   @IsString()
   @IsOptional()
+    @IsAfter('startTime')
   endTime?: string;
 
   @ApiPropertyOptional({ example: 15, description: 'Minutes after startTime before marking is LATE' })
@@ -125,6 +127,7 @@ export class UpdateSessionDto {
   @ApiPropertyOptional({ example: '10:00' })
   @IsString()
   @IsOptional()
+    @IsAfter('startTime')
   endTime?: string;
 
   @ApiPropertyOptional({ example: 15 })

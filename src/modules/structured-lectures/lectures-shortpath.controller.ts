@@ -13,12 +13,12 @@ import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorat
  * Exists so the frontend can call DELETE /lectures/:id, GET /lectures/:id, etc.
  */
 @ApiTags('Structured Lectures')
+@UseGuards(JwtAuthGuard, FlexibleAccessGuard)
 @Controller('lectures')
 export class LecturesShortpathController {
   constructor(private readonly lecturesService: StructuredLecturesService) {}
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -42,7 +42,6 @@ export class LecturesShortpathController {
   }
 
   @Delete(':id/permanent')
-  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @ApiOperation({ summary: 'Permanently delete a lecture — /lectures alias' })
   async permanentlyDeleteLecture(@Param('id') id: string) {
