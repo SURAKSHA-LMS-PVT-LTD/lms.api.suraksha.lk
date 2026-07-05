@@ -9,10 +9,8 @@ import { UserEntity } from '../../user/entities/user.entity';
 import { SubjectEntity } from '../../subject/entities/subject.entity';
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
-import { InstituteClassSubjectPayment } from '../../payment/entities/institute-class-subject-payment.entity';
-import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
-import { InstituteClassPayment } from '../../payment/entities/institute-class-payment.entity';
-import { InstituteClassPaymentSubmission } from '../../payment/entities/institute-class-payment-submission.entity';
+import { ClassPayment } from '../../payment/entities/class-payment.entity';
+import { ClassPaymentSubmission } from '../../payment/entities/class-payment-submission.entity';
 import { CacheModule } from '../../../common/modules/cache.module';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
 
@@ -26,10 +24,8 @@ import { CloudStorageService } from '../../../common/services/cloud-storage.serv
       SubjectEntity,
       InstituteClassSubjectEntity,
       InstituteClassStudentEntity,
-      InstituteClassSubjectPayment,
-      InstituteClassSubjectPaymentSubmission,
-      InstituteClassPayment,
-      InstituteClassPaymentSubmission,
+      ClassPayment,
+      ClassPaymentSubmission,
     ]),
     CacheModule
   ],

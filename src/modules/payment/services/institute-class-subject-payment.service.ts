@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
-import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-subject-payment.entity';
-import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
+import { ClassPayment, PaymentScope, PaymentStatus, PaymentTargetType } from '../entities/class-payment.entity';
+import { ClassPaymentSubmission, SubmissionStatus } from '../entities/class-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
@@ -23,10 +23,10 @@ export class InstituteClassSubjectPaymentService {
   private readonly logger = new Logger(InstituteClassSubjectPaymentService.name);
 
   constructor(
-    @InjectRepository(InstituteClassSubjectPayment)
-    private readonly paymentRepository: Repository<InstituteClassSubjectPayment>,
-    @InjectRepository(InstituteClassSubjectPaymentSubmission)
-    private readonly submissionRepository: Repository<InstituteClassSubjectPaymentSubmission>,
+    @InjectRepository(ClassPayment)
+    private readonly paymentRepository: Repository<ClassPayment>,
+    @InjectRepository(ClassPaymentSubmission)
+    private readonly submissionRepository: Repository<ClassPaymentSubmission>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(InstituteUserEntity)
@@ -100,6 +100,7 @@ export class InstituteClassSubjectPaymentService {
     // Create payment
     const timestamp = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     const payment = this.paymentRepository.create({
+      scope: PaymentScope.CLASS_SUBJECT,
       instituteId,
       classId,
       subjectId,
@@ -149,6 +150,7 @@ export class InstituteClassSubjectPaymentService {
         classId,
         subjectId,
         isActive: true, // Only show active payments
+        scope: PaymentScope.CLASS_SUBJECT,
       },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
@@ -500,7 +502,7 @@ export class InstituteClassSubjectPaymentService {
     return;
   }
 
-  private mapPaymentToResponse(payment: InstituteClassSubjectPayment): InstituteClassSubjectPaymentResponseDto {
+  private mapPaymentToResponse(payment: ClassPayment): InstituteClassSubjectPaymentResponseDto {
     return {
       id: payment.id,
       instituteId: payment.instituteId,
@@ -528,7 +530,7 @@ export class InstituteClassSubjectPaymentService {
     };
   }
 
-  private mapSubmissionToResponse(submission: InstituteClassSubjectPaymentSubmission): InstituteClassSubjectPaymentSubmissionResponseDto {
+  private mapSubmissionToResponse(submission: ClassPaymentSubmission): InstituteClassSubjectPaymentSubmissionResponseDto {
     return {
       id: submission.id,
       paymentId: submission.paymentId,
@@ -589,6 +591,7 @@ export class InstituteClassSubjectPaymentService {
         instituteId, classId, subjectId,
         status: PaymentStatus.ACTIVE,
         targetType: PaymentTargetType.STUDENTS,
+        scope: PaymentScope.CLASS_SUBJECT,
       });
     }
     if (instituteRole === InstituteUserType.PARENT || instituteRole === 'SUPERADMIN') {
@@ -596,6 +599,7 @@ export class InstituteClassSubjectPaymentService {
         instituteId, classId, subjectId,
         status: PaymentStatus.ACTIVE,
         targetType: PaymentTargetType.PARENTS,
+        scope: PaymentScope.CLASS_SUBJECT,
       });
     }
 
@@ -716,6 +720,7 @@ export class InstituteClassSubjectPaymentService {
         instituteId,
         classId,
         isActive: true, // Only show active payments
+        scope: PaymentScope.CLASS_SUBJECT,
       },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
@@ -748,6 +753,7 @@ export class InstituteClassSubjectPaymentService {
       where: {
         instituteId,
         isActive: true, // Only show active payments
+        scope: PaymentScope.CLASS_SUBJECT,
       },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
@@ -879,6 +885,7 @@ export class InstituteClassSubjectPaymentService {
       .andWhere('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
       .andWhere('payment.subjectId = :subjectId', { subjectId })
+      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS_SUBJECT })
       .orderBy('submission.uploadedAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -1193,7 +1200,8 @@ export class InstituteClassSubjectPaymentService {
       .innerJoinAndSelect('submission.payment', 'payment')
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
-      .andWhere('payment.subjectId = :subjectId', { subjectId });
+      .andWhere('payment.subjectId = :subjectId', { subjectId })
+      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS_SUBJECT });
 
     if (status && Object.values(SubmissionStatus).includes(status as SubmissionStatus)) {
       qb.andWhere('submission.status = :status', { status });
@@ -1235,6 +1243,7 @@ export class InstituteClassSubjectPaymentService {
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
       .andWhere('payment.subjectId = :subjectId', { subjectId })
+      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS_SUBJECT })
       .getRawOne();
 
     const total = parseInt(stats.totalSubmissions) || 0;

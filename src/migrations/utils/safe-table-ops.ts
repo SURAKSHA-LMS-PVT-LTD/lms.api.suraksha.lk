@@ -34,3 +34,21 @@ export async function assertTableExists(queryRunner: QueryRunner, tableName: str
     );
   }
 }
+
+/** True if `columnName` exists on `tableName` in the current database schema. */
+export async function columnExists(queryRunner: QueryRunner, tableName: string, columnName: string): Promise<boolean> {
+  const rows: any[] = await queryRunner.query(
+    `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1`,
+    [tableName, columnName],
+  );
+  return rows.length > 0;
+}
+
+/** True if an index named `indexName` exists on `tableName` in the current database schema. */
+export async function indexExists(queryRunner: QueryRunner, tableName: string, indexName: string): Promise<boolean> {
+  const rows: any[] = await queryRunner.query(
+    `SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+    [tableName, indexName],
+  );
+  return rows.length > 0;
+}

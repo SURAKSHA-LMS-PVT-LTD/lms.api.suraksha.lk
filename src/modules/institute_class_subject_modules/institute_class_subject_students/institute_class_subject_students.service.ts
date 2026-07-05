@@ -23,10 +23,8 @@ import { SubjectEntity } from '../../subject/entities/subject.entity';
 import { SubjectResponseDto } from '../../subject/dto/subject-response.dto';
 import { InstituteClassSubjectEntity } from '../../institute_class_modules/institute_class_subject/entities/institute_class_subject.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
-import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType, PaymentPriority } from '../../payment/entities/institute-class-subject-payment.entity';
-import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../../payment/entities/institute-class-subject-payment-submission.entity';
-import { InstituteClassPayment } from '../../payment/entities/institute-class-payment.entity';
-import { InstituteClassPaymentSubmission } from '../../payment/entities/institute-class-payment-submission.entity';
+import { ClassPayment, PaymentScope, PaymentStatus, PaymentTargetType, PaymentPriority } from '../../payment/entities/class-payment.entity';
+import { ClassPaymentSubmission, SubmissionStatus } from '../../payment/entities/class-payment-submission.entity';
 import { PaginatedResponseDto } from '../../../common/dto/paginated-response.dto';
 import { UserType } from '../../user/enums/user-type.enum';
 import { UserManagementService } from '../../../common/services/cache-user-management.service';
@@ -50,14 +48,14 @@ export class InstituteClassSubjectStudentsService {
     private readonly classSubjectRepository: Repository<InstituteClassSubjectEntity>,
     @InjectRepository(InstituteClassStudentEntity)
     private readonly classStudentRepository: Repository<InstituteClassStudentEntity>,
-    @InjectRepository(InstituteClassSubjectPayment)
-    private readonly paymentRepository: Repository<InstituteClassSubjectPayment>,
-    @InjectRepository(InstituteClassSubjectPaymentSubmission)
-    private readonly submissionRepository: Repository<InstituteClassSubjectPaymentSubmission>,
-    @InjectRepository(InstituteClassPayment)
-    private readonly classPaymentRepository: Repository<InstituteClassPayment>,
-    @InjectRepository(InstituteClassPaymentSubmission)
-    private readonly classPaymentSubmissionRepository: Repository<InstituteClassPaymentSubmission>,
+    @InjectRepository(ClassPayment)
+    private readonly paymentRepository: Repository<ClassPayment>,
+    @InjectRepository(ClassPaymentSubmission)
+    private readonly submissionRepository: Repository<ClassPaymentSubmission>,
+    @InjectRepository(ClassPayment)
+    private readonly classPaymentRepository: Repository<ClassPayment>,
+    @InjectRepository(ClassPaymentSubmission)
+    private readonly classPaymentSubmissionRepository: Repository<ClassPaymentSubmission>,
     private readonly userManagementService: UserManagementService,
     private readonly cloudStorageService: CloudStorageService,
   ) {}
@@ -947,6 +945,7 @@ export class InstituteClassSubjectStudentsService {
               dueDate.setDate(dueDate.getDate() + 30);
 
               const reEnrollPayment = this.paymentRepository.create({
+                scope: PaymentScope.CLASS_SUBJECT,
                 instituteId: classSubject.instituteId,
                 classId: classSubject.classId,
                 subjectId: classSubject.subjectId,
@@ -1008,7 +1007,7 @@ export class InstituteClassSubjectStudentsService {
       // If a specific class-level payment is configured, verify the student already paid.
       // Uses institute_class_payment_submissions (class-level), NOT subject payment submissions.
       let hasValidPayment = false;
-      let gatedPaymentRecord: InstituteClassPayment | null = null;
+      let gatedPaymentRecord: ClassPayment | null = null;
       if (!isClassFreeCard && classSubject.enrollmentPaymentRefId) {
         const allowedStatuses: string[] = classSubject.enrollmentPaymentStatuses
           ? classSubject.enrollmentPaymentStatuses.split(',').map(s => s.trim())
@@ -1078,6 +1077,7 @@ export class InstituteClassSubjectStudentsService {
           dueDate.setDate(dueDate.getDate() + 30); // 30-day deadline
 
           const enrollmentPayment = this.paymentRepository.create({
+            scope: PaymentScope.CLASS_SUBJECT,
             instituteId: classSubject.instituteId,
             classId: classSubject.classId,
             subjectId: classSubject.subjectId,

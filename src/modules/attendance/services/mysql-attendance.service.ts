@@ -299,6 +299,12 @@ export class MysqlAttendanceService {
     entity.syncStatus = AttendanceSyncStatus.SYNCED;
     entity.syncError = null;
     entity.syncedAt = new Date();
+
+    // Check-in fields — independent of the legacy status/timestamp pair above.
+    entity.checkInTime = new Date(timestamp);
+    entity.checkInStatus = entity.status;
+    entity.checkInMarkedBy = dto.markedBy || (dto as any).deviceUid || 'system';
+
     return entity;
   }
 
@@ -325,6 +331,7 @@ export class MysqlAttendanceService {
           'subject_id', 'calendar_day_id', 'event_id', 'class_session_id',
           'location', 'latitude', 'longitude', 'remarks', 'marking_method',
           'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
+          'check_in_time', 'check_in_status', 'check_in_marked_by',
         ],
         ['dynamo_pk', 'dynamo_sk'],
       )
@@ -358,6 +365,7 @@ export class MysqlAttendanceService {
         address: bulkData.address,
         remarks: studentData.remarks,
         markingMethod: bulkData.markingMethod,
+        markedBy: (bulkData as any).markedBy,
       } as any;
       // Attach calendar/event from bulk DTO
       (dto as any).calendarDayId = (bulkData as any).calendarDayId;
@@ -387,6 +395,7 @@ export class MysqlAttendanceService {
               'subject_id', 'calendar_day_id', 'event_id', 'class_session_id',
               'location', 'latitude', 'longitude', 'remarks', 'marking_method',
               'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
+              'check_in_time', 'check_in_status', 'check_in_marked_by',
             ],
             ['dynamo_pk', 'dynamo_sk'],
           )
@@ -701,9 +710,10 @@ export class MysqlAttendanceService {
     } else if (classId && !subjectId) {
       qb.andWhere('ar.classId = :classId', { classId });
       qb.andWhere('(ar.subjectId IS NULL OR ar.subjectId = :defaultSubject)', { defaultSubject: 'default' });
-    } else if (!classId && !subjectId) {
-      qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
     }
+    // Institute-wide (no classId/subjectId given): no further filter — every class's
+    // attendance rolls up into the institute view. Previously this restricted to only
+    // classless rows, which hid ~96% of real attendance (everything class/session-scoped).
 
     if (startDate && endDate) {
       qb.andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });
@@ -769,6 +779,12 @@ export class MysqlAttendanceService {
           'ar.markingMethod AS markingMethod',
           'ar.calendarDayId AS calendarDayId',
           'ar.eventId AS eventId',
+          'ar.checkInTime AS checkInTime',
+          'ar.checkInStatus AS checkInStatus',
+          'ar.checkInMarkedBy AS checkInMarkedBy',
+          'ar.checkOutTime AS checkOutTime',
+          'ar.checkOutStatus AS checkOutStatus',
+          'ar.checkOutMarkedBy AS checkOutMarkedBy',
         ])
         .orderBy('ar.timestamp', 'DESC')
         .take(maxItems);
@@ -797,6 +813,8 @@ export class MysqlAttendanceService {
 
       records = rawRows.map(row => {
         const statusValue = Number(row.status);
+        const checkInStatusValue = row.checkInStatus != null ? Number(row.checkInStatus) : null;
+        const checkOutStatusValue = row.checkOutStatus != null ? Number(row.checkOutStatus) : null;
         return {
           studentId: row.studentId,
           studentName: userMap.get(row.studentId) || null,
@@ -810,6 +828,12 @@ export class MysqlAttendanceService {
           markingMethod: row.markingMethod,
           calendarDayId: row.calendarDayId,
           eventId: row.eventId,
+          checkIn: row.checkInTime
+            ? { time: row.checkInTime, status: checkInStatusValue != null ? this.numberToStatus(checkInStatusValue) : null, markedBy: row.checkInMarkedBy }
+            : null,
+          checkOut: row.checkOutTime
+            ? { time: row.checkOutTime, status: checkOutStatusValue != null ? this.numberToStatus(checkOutStatusValue) : null, markedBy: row.checkOutMarkedBy }
+            : null,
         };
       });
     }

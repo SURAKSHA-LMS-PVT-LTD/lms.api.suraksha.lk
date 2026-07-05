@@ -55,6 +55,7 @@ interface DynamoRecord {
   calendarDayId?: string;
   eventId?: string;
   deviceUid?: string;
+  markedBy?: string;
 }
 
 @Injectable()
@@ -99,6 +100,7 @@ export class AttendanceSyncSchedulerService {
             'subject_id', 'calendar_day_id', 'event_id',
             'location', 'remarks', 'marking_method', 'user_type', 'device_uid',
             'sync_status', 'sync_error', 'synced_at',
+            'check_in_time', 'check_in_status', 'check_in_marked_by',
           ],
           ['dynamo_pk', 'dynamo_sk'],
         )
@@ -166,6 +168,11 @@ export class AttendanceSyncSchedulerService {
       entity.syncError = null;
       entity.syncedAt = new Date();
 
+      // Check-in fields — independent of the legacy status/timestamp pair above.
+      entity.checkInTime = new Date(ts);
+      entity.checkInStatus = entity.status;
+      entity.checkInMarkedBy = dto.markedBy || (dto as any).deviceUid || 'system';
+
       await this.attendanceRecordRepo
         .createQueryBuilder()
         .insert()
@@ -177,6 +184,7 @@ export class AttendanceSyncSchedulerService {
             'subject_id', 'calendar_day_id', 'event_id',
             'location', 'remarks', 'marking_method', 'user_type', 'device_uid',
             'sync_status', 'sync_error', 'synced_at',
+            'check_in_time', 'check_in_status', 'check_in_marked_by',
           ],
           ['dynamo_pk', 'dynamo_sk'],
         )
@@ -328,6 +336,7 @@ export class AttendanceSyncSchedulerService {
           userType: (record as any).userType,
           calendarDayId: (record as any).calendarDayId,
           eventId: (record as any).eventId,
+          markedBy: (record as any).markedBy,
         };
         return this.mapToEntity(dynamoRecord);
       });
@@ -345,6 +354,7 @@ export class AttendanceSyncSchedulerService {
               'subject_id', 'calendar_day_id', 'event_id',
               'location', 'remarks', 'marking_method', 'user_type', 'device_uid',
               'sync_status', 'sync_error', 'synced_at',
+              'check_in_time', 'check_in_status', 'check_in_marked_by',
             ],
             ['dynamo_pk', 'dynamo_sk'],
           )
@@ -392,6 +402,12 @@ export class AttendanceSyncSchedulerService {
     entity.syncStatus = AttendanceSyncStatus.SYNCED;
     entity.syncError = null;
     entity.syncedAt = new Date();
+
+    // Check-in fields — independent of the legacy status/timestamp pair above.
+    entity.checkInTime = new Date(record.timestamp);
+    entity.checkInStatus = entity.status;
+    entity.checkInMarkedBy = record.markedBy || record.deviceUid || 'system';
+
     return entity;
   }
 

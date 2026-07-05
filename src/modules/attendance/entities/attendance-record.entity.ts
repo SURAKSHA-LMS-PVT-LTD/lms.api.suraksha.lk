@@ -34,6 +34,8 @@ import {
 @Index('IDX_event', ['eventId'])
 @Index('idx_inst_event_student', ['instituteId', 'eventId', 'studentId'])
 @Index('IDX_sync_status', ['syncStatus'])
+@Index('IDX_session_checkin_open', ['classSessionId', 'studentId', 'checkOutTime'])
+@Index('IDX_institute_event_checkin_open', ['instituteId', 'studentId', 'date', 'eventId', 'checkOutTime'])
 export class AttendanceRecordEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
@@ -98,6 +100,61 @@ export class AttendanceRecordEntity {
     comment: 'DynamoDB write timestamp (epoch ms)',
   })
   timestamp: string;
+
+  // ══════════════════════════════════════════════════
+  // Check-in / Check-out (independent of the legacy status/timestamp
+  // pair above, which remain the source of truth for reporting/exports)
+  // ══════════════════════════════════════════════════
+
+  @Column({
+    name: 'check_in_time',
+    type: 'datetime',
+    nullable: true,
+    comment: 'When the student checked in (first mark of this attendance instance)',
+  })
+  checkInTime: Date | null;
+
+  @Column({
+    name: 'check_in_status',
+    type: 'tinyint',
+    nullable: true,
+    comment: 'Status at check-in: 0=Absent,1=Present,2=Late,3=Left,4=LeftEarly,5=LeftLately',
+  })
+  checkInStatus: number | null;
+
+  @Column({
+    name: 'check_in_marked_by',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    comment: 'User ID (or system/device UID) who recorded the check-in',
+  })
+  checkInMarkedBy: string | null;
+
+  @Column({
+    name: 'check_out_time',
+    type: 'datetime',
+    nullable: true,
+    comment: 'When the student checked out, if this instance has a checkout',
+  })
+  checkOutTime: Date | null;
+
+  @Column({
+    name: 'check_out_status',
+    type: 'tinyint',
+    nullable: true,
+    comment: 'Status at check-out, independent of check_in_status',
+  })
+  checkOutStatus: number | null;
+
+  @Column({
+    name: 'check_out_marked_by',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    comment: 'User ID (or system/device UID) who recorded the check-out',
+  })
+  checkOutMarkedBy: string | null;
 
   // ══════════════════════════════════════════════════
   // Optional Class / Subject

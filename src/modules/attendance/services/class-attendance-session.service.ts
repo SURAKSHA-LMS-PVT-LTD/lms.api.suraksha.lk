@@ -3,7 +3,7 @@ import {
   BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, In, DataSource, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { InstituteClassAttendanceSessionGroupEntity } from '../entities/institute-class-attendance-session-group.entity';
 import { InstituteClassAttendanceSessionEntity, CloseUnmarkAction } from '../entities/institute-class-attendance-session.entity';
@@ -441,18 +441,21 @@ export class ClassAttendanceSessionService {
       if (!Number.isNaN(parsed)) checkInEpochMs = parsed;
     }
 
-    const existing = await this.recordRepo.findOne({
-      where: { classSessionId: sessionId, studentId: dto.studentId },
+    const markerId = userId || 'system';
+
+    // Most recent open (no checkout yet) instance for this student in this session —
+    // a repeat mark against it is treated as the checkout, not a new/edited check-in.
+    const openExisting = await this.recordRepo.findOne({
+      where: { classSessionId: sessionId, studentId: dto.studentId, checkOutTime: IsNull() },
+      order: { checkInTime: 'DESC' },
     });
 
-    if (existing) {
-      existing.status = autoStatus;
-      existing.remarks = dto.remarks ?? existing.remarks;
-      // check-in time (timestamp) reflects the entered/real time; createdAt stays real insert time
-      existing.timestamp = BigInt(checkInEpochMs).toString();
-      existing.createdAt = timestamp;
-      await this.recordRepo.save(existing);
-      return { success: true, record: existing };
+    if (openExisting) {
+      openExisting.checkOutTime = new Date(checkInEpochMs);
+      openExisting.checkOutStatus = autoStatus;
+      openExisting.checkOutMarkedBy = markerId;
+      await this.recordRepo.save(openExisting);
+      return { success: true, record: openExisting };
     }
 
     const syntheticPk = `I#${instituteId}`;
@@ -482,6 +485,9 @@ export class ClassAttendanceSessionService {
       longitude: null,
       deviceUid: null,
       advertisementId: null,
+      checkInTime: new Date(checkInEpochMs),
+      checkInStatus: autoStatus,
+      checkInMarkedBy: markerId,
     });
     const saved = await this.recordRepo.save(record);
 

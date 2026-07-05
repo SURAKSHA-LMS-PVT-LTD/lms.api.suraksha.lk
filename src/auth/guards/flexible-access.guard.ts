@@ -63,9 +63,14 @@ export interface FlexibleAccessConfig {
   
   // Any institute role access
   anyInstituteRole?: boolean;
-  
+
   // Allow access to own resource (checks if params.id or params.userId matches current user)
   allowSelf?: boolean;
+
+  // Any authenticated user, regardless of role — for endpoints that are
+  // self-service by nature (e.g. "my attendance history") and only need a
+  // valid JWT, not a specific role check.
+  anyAuthenticated?: boolean;
 }
 
 export const FLEXIBLE_ACCESS_KEY = 'flexible_access_config';
@@ -109,6 +114,11 @@ export class FlexibleAccessGuard implements CanActivate {
 
     if (!user) {
       throw new ForbiddenException('User not authenticated');
+    }
+
+    // Any authenticated user passes — no role check needed.
+    if (config.anyAuthenticated) {
+      return true;
     }
 
     // ============================================

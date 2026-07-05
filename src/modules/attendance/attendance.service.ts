@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, In, DataSource, IsNull, Between } from 'typeorm';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { InstituteCalendarService } from '../institute/services/institute-calendar.service';
@@ -306,9 +306,69 @@ export class AttendanceService {
     }
   }
 
+  /**
+   * Check-out detection: if the student already has an open (no checkout yet)
+   * attendance instance matching this same session/event today, this mark is
+   * the checkout for that instance — update it in place instead of inserting
+   * a new row. Returns null when no open instance is found (caller proceeds
+   * with a normal check-in insert).
+   *
+   * Pairing key (matches the two real marking modes in this codebase — see
+   * conversation record for why a single key can't cover both):
+   *   - class_session_id present  → pair by (class_session_id, student_id)
+   *   - otherwise (institute-level) → pair by (institute_id, student_id, date, event_id)
+   *
+   * No DB-level UNIQUE constraint backs this (real historical data already
+   * has legitimate duplicate rows on both keys), so this is an
+   * application-level "most recent open row wins" match, not a hard guarantee.
+   */
+  private async tryRecordCheckout(dto: MarkAttendanceDto): Promise<any | null> {
+    const classSessionId = (dto as any).classSessionId as string | undefined;
+    const eventId = (dto as any).eventId as string | undefined;
+
+    const where = classSessionId
+      ? { classSessionId, studentId: dto.studentId }
+      : (eventId ? { instituteId: dto.instituteId, studentId: dto.studentId, date: dto.date, eventId } : null);
+
+    if (!where) return null; // no stable pairing key resolved — treat as a normal check-in
+
+    const openRow = await this.attendanceRecordRepository.findOne({
+      where: { ...where, checkOutTime: IsNull() },
+      order: { checkInTime: 'DESC' },
+    });
+
+    if (!openRow) return null; // nothing open — this is a fresh check-in
+
+    const checkOutStatus = dto.status ?? AttendanceStatus.PRESENT;
+    await this.attendanceRecordRepository.update(openRow.id, {
+      checkOutTime: new Date(),
+      checkOutStatus: this.attendanceStatusToNumber(checkOutStatus),
+      checkOutMarkedBy: dto.markedBy || 'system',
+    });
+
+    return {
+      success: true,
+      action: 'CHECK_OUT',
+      imageUrl: dto.studentImageUrl || null,
+      status: checkOutStatus,
+      date: dto.date,
+      eventId: eventId || null,
+      calendarDayId: (dto as any).calendarDayId || null,
+    };
+  }
+
+  private attendanceStatusToNumber(status: AttendanceStatus | string | number): number {
+    if (typeof status === 'number') return status;
+    const map: Record<string, number> = {
+      ABSENT: 0, PRESENT: 1, LATE: 2, LEFT: 3, LEFT_EARLY: 4, LEFT_LATELY: 5,
+    };
+    return map[String(status).toUpperCase()] ?? 1;
+  }
+
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
+    markAttendanceDto.markedBy = markedBy;
 
     try {
       // âœ… STEP 1: Auto-detect user type from institute_user table
@@ -513,6 +573,14 @@ export class AttendanceService {
       const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
       markAttendanceDto.studentImageUrl = imageUrl || undefined;
 
+      // âœ… STEP 3.9: Check-out detection — if this student already has an open
+      // check-in today for this same attendance instance (session, or institute+event),
+      // this mark is treated as the checkout: update that row instead of inserting a new one.
+      const checkoutResult = await this.tryRecordCheckout(markAttendanceDto);
+      if (checkoutResult) {
+        return checkoutResult;
+      }
+
       // âœ… STEP 4.1: Mark attendance based on database mode
       const isMysqlOnly = this.syncConfigService.isMysqlOnly();
       let result: any;
@@ -588,6 +656,7 @@ export class AttendanceService {
 
     try {
       bulkAttendanceDto.date = getCurrentSriLankaDate();
+      bulkAttendanceDto.markedBy = markedBy;
 
       const userIds = bulkAttendanceDto.students.map(s => s.studentId);
 
@@ -1630,6 +1699,48 @@ export class AttendanceService {
         totalLeftLately: summary.leftLatelyCount || 0,
         attendanceRate: summary.attendanceRate
       }
+    };
+  }
+
+  /**
+   * Check-in / check-out detail for one student in one class over a date range.
+   * Additive, read-only view of the new check-in / check-out columns —
+   * deliberately separate from getClassAttendance()/getAttendanceSummary() so the
+   * existing reporting/export paths (which key off the legacy status/timestamp
+   * pair) are completely untouched.
+   */
+  async getClassStudentCheckInOut(params: {
+    instituteId: string;
+    classId: string;
+    studentId: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<any> {
+    const { instituteId, classId, studentId, startDate, endDate } = params;
+
+    const rows = await this.attendanceRecordRepository.find({
+      where: {
+        instituteId,
+        classId,
+        studentId,
+        date: Between(startDate, endDate) as any,
+      },
+      order: { date: 'ASC', checkInTime: 'ASC' },
+    });
+
+    return {
+      success: true,
+      studentId,
+      classId,
+      records: rows.map(r => ({
+        date: r.date,
+        checkIn: r.checkInTime
+          ? { time: r.checkInTime, status: r.checkInStatus, markedBy: r.checkInMarkedBy }
+          : null,
+        checkOut: r.checkOutTime
+          ? { time: r.checkOutTime, status: r.checkOutStatus, markedBy: r.checkOutMarkedBy }
+          : null,
+      })),
     };
   }
 
@@ -2912,6 +3023,7 @@ export class AttendanceService {
       markingMethod: markAttendanceDto.markingMethod,
       userType: detectedUserType,  // âœ… Auto-detected user type
       date: getCurrentSriLankaDate(),
+      markedBy,
       location: markAttendanceDto.location || this.generateAddress(
         markAttendanceDto.instituteName,
         markAttendanceDto.className,

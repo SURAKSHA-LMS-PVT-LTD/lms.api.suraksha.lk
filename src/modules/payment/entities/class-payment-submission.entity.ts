@@ -1,23 +1,34 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
-import { InstituteClassPayment } from './institute-class-payment.entity';
+import { ClassPayment } from './class-payment.entity';
 import { UserType } from '../../user/enums/user-type.enum';
-import { SubmissionStatus } from './institute-class-subject-payment-submission.entity';
 
 const dateTransformer = {
   to: (value: Date | string | undefined) => value instanceof Date ? value : value ? new Date(value) : null,
   from: (value: Date | string | undefined) => value instanceof Date ? value : value ? new Date(value) : null,
 };
 
-export { SubmissionStatus };
+export enum SubmissionStatus {
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  HALF_VERIFIED = 'HALF_VERIFIED',
+  QUARTER_VERIFIED = 'QUARTER_VERIFIED',
+  REJECTED = 'REJECTED',
+}
 
-@Entity('institute_class_payment_submissions')
+/**
+ * Unified submission record for a ClassPayment (class-wide or class+subject scoped).
+ * Replaces the previously separate InstituteClassPaymentSubmission and
+ * InstituteClassSubjectPaymentSubmission entities, which were identical in every
+ * field (the latter already re-used this same SubmissionStatus enum).
+ */
+@Entity('class_payment_submissions')
 @Index(['receiptUrl'])
 @Index('idx_cps_payment', ['paymentId'])
 @Index('idx_cps_user', ['userId'])
 @Index('idx_cps_status', ['status'])
 @Index('idx_cps_payment_status', ['paymentId', 'status'])
-export class InstituteClassPaymentSubmission {
+export class ClassPaymentSubmission {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
@@ -78,9 +89,9 @@ export class InstituteClassPaymentSubmission {
     };
   }
 
-  @ManyToOne(() => InstituteClassPayment, payment => payment.submissions, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ClassPayment, payment => payment.submissions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'payment_id' })
-  payment: InstituteClassPayment;
+  payment: ClassPayment;
 
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

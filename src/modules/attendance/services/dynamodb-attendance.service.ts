@@ -291,6 +291,9 @@ export class DynamoDBAttendanceService {
     if (attendance.markingMethod) {
       record.markingMethod = attendance.markingMethod;
     }
+    if (attendance.markedBy) {
+      record.markedBy = attendance.markedBy;
+    }
 
     // Add user type if provided (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.)
     if ((attendance as any).userType) {
@@ -513,6 +516,7 @@ export class DynamoDBAttendanceService {
       calendarDayId: (bulkData as any).calendarDayId,  // ✅ BUG-001 FIX: calendar linkage
       eventId: (bulkData as any).defaultEventId || (bulkData as any).eventId,  // ✅ BUG-001 FIX: event linkage
       userType: (bulkData as any).userTypeMap?.get(studentData.studentId) || undefined, // user type from service
+      markedBy: (bulkData as any).markedBy,
     }));
 
     // Use true batch operations for maximum performance
@@ -1036,11 +1040,10 @@ export class DynamoDBAttendanceService {
       attributeNames['#subjectId'] = 'subjectId';
       attributeValues[':classId'] = classId;
       attributeValues[':defaultSubject'] = 'default';
-    } else if (!classId && !subjectId) {
-      filterConditions.push('(attribute_not_exists(#classId) OR #classId = :defaultClass)');
-      attributeNames['#classId'] = 'classId';
-      attributeValues[':defaultClass'] = 'default';
     }
+    // Institute-wide (no classId/subjectId given): no further filter — every class's
+    // attendance rolls up into the institute view. Previously this restricted to only
+    // classless rows, which hid ~96% of real attendance (everything class/session-scoped).
 
     if (startDate && endDate) {
       filterConditions.push('#date >= :startDate AND #date <= :endDate');

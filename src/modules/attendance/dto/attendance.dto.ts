@@ -95,6 +95,9 @@ export class MarkAttendanceDto {
   /** @internal set by the server to today's Sri Lanka date — not accepted from client */
   date: string;
 
+  /** @internal set by the server from the authenticated caller (or device/system) — not accepted from client */
+  markedBy?: string;
+
   @ApiPropertyOptional({ description: 'Location/Address' })
   @IsString()
   @IsOptional()
@@ -247,6 +250,9 @@ export class BulkAttendanceDto {
 
   /** @internal set by the server to today's Sri Lanka date — not accepted from client */
   date?: string;
+
+  /** @internal set by the server from the authenticated caller (or device/system) — not accepted from client */
+  markedBy?: string;
 
   @ApiPropertyOptional({ enum: MarkingMethod, description: 'Method used to mark attendance' })
   @IsEnum(MarkingMethod)
