@@ -109,30 +109,6 @@ async function bootstrap() {
       console.log('✅ Cookie parser enabled');
     }
 
-    // 🌐 EXTERNAL API — /api/external/* routes are explicitly designed for
-    // third-party institute sites (@Public() + @SkipOriginValidation(), guarded
-    // instead by InstituteApiKeyGuard via the Authorization header — no cookies,
-    // so no credentialed-CORS risk). The global origin allowlist below has no
-    // knowledge of that per-route exemption, since Express CORS runs ahead of
-    // NestJS routing/guards — so without this, any third-party site calling
-    // these routes with a valid API key still gets blocked by the browser
-    // before the request even reaches the API key guard. Runs before the
-    // strict global CORS handler so external routes short-circuit past it.
-    app.use((req, res, next) => {
-      if (req.path.startsWith('/api/external/')) {
-        // Wildcard, not origin-reflection: this surface takes no cookies (auth
-        // is a bearer API key), so there's no credentialed-CORS scenario to
-        // restrict — genuinely open to any calling site by design.
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-        if (req.method === 'OPTIONS') {
-          return res.sendStatus(204);
-        }
-      }
-      next();
-    });
-
     // 🔒 STRICT CORS - Only allow whitelisted frontend domains + wildcard subdomains
     const isDevelopment = process.env.NODE_ENV === 'development';
     const allowedOrigins = process.env.CORS_ORIGINS
@@ -202,67 +178,94 @@ async function bootstrap() {
       return customDomainCache.has(origin);
     };
 
-    app.enableCors({
-      // When an origin is allowed we return the ORIGIN STRING (not boolean `true`).
-      // With `credentials: true`, the `cors` package only reliably emits
-      // `Access-Control-Allow-Credentials: true` when Allow-Origin is a specific
-      // origin. Returning `true` can reflect the origin yet drop the credentials
-      // header, which breaks cookie/credentialed requests (login, token refresh).
-      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) => {
-        // No Origin header (mobile apps, server-to-server, curl): allow — there
-        // are no browser credentials semantics, and auth guards reject
-        // unauthenticated calls downstream.
-        if (!origin) {
-          return callback(null, true);
-        }
+    // The `cors` package supports passing a FUNCTION as the whole options
+    // object — it's invoked per-request as `optionsCallback(req, cb)`, which
+    // is the only place in this library that actually receives `req`. The
+    // `origin` sub-option's own callback signature is (origin, cb) with NO
+    // req — a per-path branch inside `origin` can't see the request path.
+    // This is why the earlier `/api/external/*` bypass attempts (an `app.use`
+    // middleware before enableCors, and a `req` param added to the `origin`
+    // function) didn't work: the middleware ran but couldn't skip the global
+    // CORS middleware that ran after it, and the `origin` function's `req`
+    // parameter was always undefined since `cors` never passes it there.
+    const corsOptionsDelegate = (req: any, callback: (err: Error | null, options?: any) => void) => {
+      const baseOptions = {
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
+        exposedHeaders: ['Access-Control-Allow-Private-Network'],
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+      };
 
-        // ✅ Development: only allow local origins (never a blanket pass-all)
-        if (isDevelopment) {
-          const devAllowed = [
-            'http://localhost:5173',
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://127.0.0.1:5173',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:3001',
-          ].includes(origin);
-          if (devAllowed) return callback(null, origin);
-        }
+      // 🌐 EXTERNAL API — /api/external/* is explicitly designed for
+      // third-party institute sites (@Public() + @SkipOriginValidation(),
+      // guarded instead by InstituteApiKeyGuard via the Authorization
+      // header — no cookies, so no credentialed-CORS risk). Genuinely open
+      // to any origin: the API key is the real access control here.
+      if (req.path?.startsWith('/api/external/')) {
+        return callback(null, { ...baseOptions, origin: true, credentials: false });
+      }
 
-        // Check if origin is in static whitelist
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, origin);
-        }
-
-        // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
-        if (subdomainPattern.test(origin)) {
-          return callback(null, origin);
-        }
-
-        // 🌐 Check frontend hosting platform wildcard patterns
-        if (frontendHostingPatterns.some(pattern => pattern.test(origin))) {
-          return callback(null, origin);
-        }
-
-        // 🏢 Multi-tenant: Check custom domain origins dynamically
-        isCustomDomainAllowed(origin).then(allowed => {
-          if (allowed) {
-            return callback(null, origin);
+      callback(null, {
+        ...baseOptions,
+        // When an origin is allowed we return the ORIGIN STRING (not boolean `true`).
+        // With `credentials: true`, the `cors` package only reliably emits
+        // `Access-Control-Allow-Credentials: true` when Allow-Origin is a specific
+        // origin. Returning `true` can reflect the origin yet drop the credentials
+        // header, which breaks cookie/credentialed requests (login, token refresh).
+        origin: (origin: string | undefined, originCb: (err: Error | null, allow?: boolean | string) => void) => {
+          // No Origin header (mobile apps, server-to-server, curl): allow — there
+          // are no browser credentials semantics, and auth guards reject
+          // unauthenticated calls downstream.
+          if (!origin) {
+            return originCb(null, true);
           }
-          bootstrapLogger.warn(`CORS blocked origin: ${origin}`);
-          callback(new Error('Not allowed by CORS'));
-        }).catch(() => {
-          bootstrapLogger.warn(`CORS blocked origin (lookup error): ${origin}`);
-          callback(new Error('Not allowed by CORS'));
-        });
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
-      exposedHeaders: ['Access-Control-Allow-Private-Network'],
-      preflightContinue: false,
-      optionsSuccessStatus: 204,
-    });
+
+          // ✅ Development: only allow local origins (never a blanket pass-all)
+          if (isDevelopment) {
+            const devAllowed = [
+              'http://localhost:5173',
+              'http://localhost:3000',
+              'http://localhost:3001',
+              'http://127.0.0.1:5173',
+              'http://127.0.0.1:3000',
+              'http://127.0.0.1:3001',
+            ].includes(origin);
+            if (devAllowed) return originCb(null, origin);
+          }
+
+          // Check if origin is in static whitelist
+          if (allowedOrigins.includes(origin)) {
+            return originCb(null, origin);
+          }
+
+          // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
+          if (subdomainPattern.test(origin)) {
+            return originCb(null, origin);
+          }
+
+          // 🌐 Check frontend hosting platform wildcard patterns
+          if (frontendHostingPatterns.some(pattern => pattern.test(origin))) {
+            return originCb(null, origin);
+          }
+
+          // 🏢 Multi-tenant: Check custom domain origins dynamically
+          isCustomDomainAllowed(origin).then(allowed => {
+            if (allowed) {
+              return originCb(null, origin);
+            }
+            bootstrapLogger.warn(`CORS blocked origin: ${origin}`);
+            originCb(new Error('Not allowed by CORS'));
+          }).catch(() => {
+            bootstrapLogger.warn(`CORS blocked origin (lookup error): ${origin}`);
+            originCb(new Error('Not allowed by CORS'));
+          });
+        },
+      });
+    };
+
+    app.enableCors(corsOptionsDelegate as any);
 
     // 🔒 Private Network Access (PNA) - Allow HTTPS origins to access local development server
     app.use((req, res, next) => {
