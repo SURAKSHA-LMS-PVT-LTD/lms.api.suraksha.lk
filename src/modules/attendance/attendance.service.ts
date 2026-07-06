@@ -872,11 +872,44 @@ export class AttendanceService {
         }
       }
 
+      // âœ… STEP 8.5: Check-out detection, per student. A student who already has an
+      // open (no checkout yet) attendance instance matching this bulk mark's
+      // session/event is checked out individually; only students without an open
+      // instance go through the batch check-in write below. Mirrors the single-mark
+      // path's tryRecordCheckout() — bulk marking bypassed it entirely before this fix,
+      // meaning a second bulk mark of the same class always created duplicate
+      // check-in-only rows instead of recording checkouts.
+      const checkoutResults: any[] = [];
+      const studentsNeedingCheckIn: typeof bulkAttendanceDto.students = [];
+      for (const student of bulkAttendanceDto.students) {
+        const perStudentDto: MarkAttendanceDto = {
+          studentId: student.studentId,
+          instituteId: bulkAttendanceDto.instituteId,
+          instituteName: bulkAttendanceDto.instituteName,
+          date: bulkAttendanceDto.date,
+          status: student.status,
+          markedBy: bulkAttendanceDto.markedBy,
+          classSessionId: (bulkAttendanceDto as any).classSessionId,
+          eventId: (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId,
+          calendarDayId: (bulkAttendanceDto as any).calendarDayId,
+        } as any;
+
+        const checkoutResult = await this.tryRecordCheckout(perStudentDto);
+        if (checkoutResult) {
+          checkoutResults.push({ studentId: student.studentId, ...checkoutResult });
+        } else {
+          studentsNeedingCheckIn.push(student);
+        }
+      }
+      bulkAttendanceDto.students = studentsNeedingCheckIn;
+
       // âœ… STEP 9: Mark attendance based on database mode
       const isMysqlOnly = this.syncConfigService.isMysqlOnly();
-      let results: MarkAttendanceDto[];
+      let results: MarkAttendanceDto[] = [];
 
-      if (isMysqlOnly) {
+      if (studentsNeedingCheckIn.length === 0) {
+        // Every student in this bulk call was a checkout — nothing left to insert.
+      } else if (isMysqlOnly) {
         // MySQL-only mode: write directly to MySQL, no DynamoDB
         results = await this.mysqlAttendanceService.markBulkAttendance(bulkAttendanceDto);
       } else {
@@ -963,14 +996,16 @@ export class AttendanceService {
 
       return {
         success: true,
-        message: `Bulk attendance marked successfully for ${results.length} users`,
-        totalProcessed: results.length,
-        action: 'bulk_created',
+        message: `Bulk attendance processed for ${results.length + checkoutResults.length} users `
+          + `(${results.length} checked in, ${checkoutResults.length} checked out)`,
+        totalProcessed: results.length + checkoutResults.length,
+        action: checkoutResults.length > 0 ? 'bulk_mixed' : 'bulk_created',
         date: bulkAttendanceDto.date,
         eventId: (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId || null,
         calendarDayId: (bulkAttendanceDto as any).calendarDayId || null,
         availableEvents,  // âœ… All events for this date â€” frontend can use for event picker
-        records: results
+        records: results,
+        checkouts: checkoutResults,
       };
     } catch (error) {
       this.logger.error(`[${requestId}] âŒ ERROR: Bulk attendance failed - ${error.message}`, error.stack);
