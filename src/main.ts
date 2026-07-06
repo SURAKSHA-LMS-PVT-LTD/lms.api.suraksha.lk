@@ -109,6 +109,31 @@ async function bootstrap() {
       console.log('✅ Cookie parser enabled');
     }
 
+    // 🌐 EXTERNAL API — /api/external/* routes are explicitly designed for
+    // third-party institute sites (@Public() + @SkipOriginValidation(), guarded
+    // instead by InstituteApiKeyGuard via the Authorization header — no cookies,
+    // so no credentialed-CORS risk). The global origin allowlist below has no
+    // knowledge of that per-route exemption, since Express CORS runs ahead of
+    // NestJS routing/guards — so without this, any third-party site calling
+    // these routes with a valid API key still gets blocked by the browser
+    // before the request even reaches the API key guard. Runs before the
+    // strict global CORS handler so external routes short-circuit past it.
+    app.use((req, res, next) => {
+      if (req.path.startsWith('/api/external/')) {
+        const origin = req.headers.origin;
+        if (origin) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Vary', 'Origin');
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        if (req.method === 'OPTIONS') {
+          return res.sendStatus(204);
+        }
+      }
+      next();
+    });
+
     // 🔒 STRICT CORS - Only allow whitelisted frontend domains + wildcard subdomains
     const isDevelopment = process.env.NODE_ENV === 'development';
     const allowedOrigins = process.env.CORS_ORIGINS
