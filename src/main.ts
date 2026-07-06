@@ -120,11 +120,10 @@ async function bootstrap() {
     // strict global CORS handler so external routes short-circuit past it.
     app.use((req, res, next) => {
       if (req.path.startsWith('/api/external/')) {
-        const origin = req.headers.origin;
-        if (origin) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Vary', 'Origin');
-        }
+        // Wildcard, not origin-reflection: this surface takes no cookies (auth
+        // is a bearer API key), so there's no credentialed-CORS scenario to
+        // restrict — genuinely open to any calling site by design.
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
         if (req.method === 'OPTIONS') {
