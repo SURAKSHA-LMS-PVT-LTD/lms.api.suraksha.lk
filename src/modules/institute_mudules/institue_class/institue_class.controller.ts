@@ -1,4 +1,4 @@
-﻿import * as crypto from 'crypto';
+import * as crypto from 'crypto';
 import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { ImageUrlDto, TeacherIdDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UsePipes, ValidationPipe, Request, BadRequestException, Headers, HttpStatus, Inject, ParseIntPipe, ForbiddenException, UseInterceptors, ClassSerializerInterceptor } from '@nestjs/common';
@@ -118,6 +118,16 @@ export class InstitueClassController {
     }
     
     return this.institueClassService.updateClassImage(classId, body.imageUrl);
+  }
+
+  @Get('institute/:instituteId/enrollable')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ anyInstituteRole: true })
+  async findEnrollableByInstitute(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+  ) {
+    const classes = await this.institueClassService.findByInstitute(instituteId);
+    return classes.filter(c => c.isActive !== false && c.enrollmentEnabled !== false);
   }
 
   @Get('institute/:instituteId')

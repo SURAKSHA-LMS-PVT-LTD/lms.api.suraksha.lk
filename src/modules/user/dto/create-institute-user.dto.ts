@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import {
   IsString,
   IsEmail,
@@ -629,4 +629,22 @@ export class CreateInstituteUserResponseDto {
     items: { type: 'string' },
   })
   cardPendingScopes?: string[];
+}
+
+export class LinkInstituteUserDto extends PartialType(
+  OmitType(CreateInstituteUserDto, ['instituteUserType'] as const)
+) {
+  @ApiProperty({
+    description: 'Role in the institute. TEACHER / STUDENT / INSTITUTE_ADMIN / ATTENDANCE_MARKER',
+    enum: [
+      InstituteUserType.STUDENT,
+      InstituteUserType.TEACHER,
+      InstituteUserType.INSTITUTE_ADMIN,
+      InstituteUserType.ATTENDANCE_MARKER,
+    ],
+    example: InstituteUserType.STUDENT,
+  })
+  @IsNotEmpty()
+  @IsEnum(InstituteUserType)
+  instituteUserType: InstituteUserType;
 }
