@@ -3280,10 +3280,18 @@ export class AttendanceService {
     // Sort newest first (DynamoDB GSI returns newest first already, but re-sort after filter)
     rawRecords.sort((a, b) => ((b as any).timestamp || 0) - ((a as any).timestamp || 0));
 
-    // 2. Collect unique IDs for enrichment
-    const uniqueClassIds = [...new Set(rawRecords.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
-    const uniqueStudentIds = [...new Set(rawRecords.map(r => String(r.studentId)))];
-    const uniqueInstituteIds = [...new Set(rawRecords.map(r => String(r.instituteId)))];
+    // Only the page actually being returned needs enrichment (class name, student
+    // image, institute logo) — the summary/byInstitute/byStudent counters below only
+    // need status + IDs, which are already on rawRecords. Restricting the enrichment
+    // lookups (2/3 below) to the current page keeps their cost proportional to
+    // `limit` instead of to the whole 30-day window, which matters once a student/
+    // parent has many sessions across many institutes.
+    const pageSlice = rawRecords.slice((page - 1) * limit, page * limit);
+
+    // 2. Collect unique IDs for enrichment (page only)
+    const uniqueClassIds = [...new Set(pageSlice.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
+    const uniqueStudentIds = [...new Set(pageSlice.map(r => String(r.studentId)))];
+    const uniqueInstituteIds = [...new Set(pageSlice.map(r => String(r.instituteId)))];
 
     // 3. Bulk-fetch from DB: classes, user profiles (for images), institutes (for logos)
     const [classes, users, institutes] = await Promise.all([
@@ -3326,7 +3334,49 @@ export class AttendanceService {
       [AttendanceStatus.LEFT_LATELY]: 'Left Lately',
     };
 
-    const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
+    // Summary counters run over the FULL window (rawRecords) since they must
+    // reflect the whole 30-day range, not just the current page — but this pass
+    // only touches IDs/status already in-memory, no per-row enrichment lookups.
+    for (const r of rawRecords) {
+      const iid = String(r.instituteId);
+      const sid = String(r.studentId);
+      const instituteName = r.instituteName || iid;
+
+      if (!byInstitute[iid]) {
+        byInstitute[iid] = { instituteName, instituteLogoUrl: undefined, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+      }
+
+      if (child && childrenIds.includes(sid)) {
+        if (!byStudent[sid]) {
+          byStudent[sid] = { studentName: r.studentName, studentImageUrl: undefined, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+        }
+        byStudent[sid].totalRecords++;
+      }
+
+      if (r.status === AttendanceStatus.PRESENT) { totalPresent++; byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
+      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++; byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
+      else if (r.status === AttendanceStatus.LATE) { totalLate++; byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
+      else if (r.status === AttendanceStatus.LEFT) { totalLeft++; byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
+      else if (r.status === AttendanceStatus.LEFT_EARLY) { totalLeftEarly++; byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
+      else if (r.status === AttendanceStatus.LEFT_LATELY) { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
+    }
+
+    // Fill in institute logo / student image on the summary maps using the
+    // page-scoped lookup maps where available (best-effort — a window's
+    // institute/student may not appear on the current page, in which case it
+    // simply stays undefined rather than triggering another DB round-trip).
+    for (const iid of Object.keys(byInstitute)) {
+      const rawLogo = instituteLogoMap.get(iid);
+      if (rawLogo) byInstitute[iid].instituteLogoUrl = this.CloudStorageService.getFullUrl(rawLogo);
+    }
+    for (const sid of Object.keys(byStudent)) {
+      const rawImg = userImageMap.get(sid);
+      if (rawImg) byStudent[sid].studentImageUrl = this.CloudStorageService.getFullUrl(rawImg);
+    }
+
+    // Enrichment (class name, student image, institute logo) only runs for the
+    // page actually being returned to the client.
+    const enriched: MyAttendanceRecordDto[] = pageSlice.map(r => {
       const iid = String(r.instituteId);
       const cid = r.classId ? String(r.classId) : undefined;
       const sid = String(r.studentId);
@@ -3336,35 +3386,12 @@ export class AttendanceService {
       const className = dbClass?.name || r.className || undefined;
       const studentName = r.studentName;
 
-      // Resolve student image: prefer record-level (stored at marking), fall back to user profile
       const rawStudentImg = (r as any).studentImageUrl || (r as any).imageUrl;
       const studentImageRaw = rawStudentImg || userImageMap.get(sid);
       const studentImageUrl = studentImageRaw ? this.CloudStorageService.getFullUrl(studentImageRaw) : undefined;
 
-      // Resolve institute logo from MySQL institute table
       const rawLogo = instituteLogoMap.get(iid);
       const instituteLogoUrl = rawLogo ? this.CloudStorageService.getFullUrl(rawLogo) : undefined;
-
-      // Summary counters - by institute
-      if (!byInstitute[iid]) {
-        byInstitute[iid] = { instituteName, instituteLogoUrl, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
-      }
-
-      // Summary counters - by student (when children included)
-      if (child && childrenIds.includes(sid)) {
-        if (!byStudent[sid]) {
-          byStudent[sid] = { studentName, studentImageUrl, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
-        }
-        byStudent[sid].totalRecords++;
-      }
-
-      // Status counters
-      if (r.status === AttendanceStatus.PRESENT) { totalPresent++; byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
-      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++; byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
-      else if (r.status === AttendanceStatus.LATE) { totalLate++; byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
-      else if (r.status === AttendanceStatus.LEFT) { totalLeft++; byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
-      else if (r.status === AttendanceStatus.LEFT_EARLY) { totalLeftEarly++; byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
-      else if (r.status === AttendanceStatus.LEFT_LATELY) { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
 
       return {
         date: r.date,
@@ -3406,10 +3433,10 @@ export class AttendanceService {
       s.attendanceRate = denom > 0 ? parseFloat(((s.totalPresent / denom) * 100).toFixed(2)) : 0;
     }
 
-    // 6. Paginate
-    const totalRecords = enriched.length;
+    // 6. Paginate — `enriched` is already just the requested page (see pageSlice above)
+    const totalRecords = rawRecords.length;
     const totalPages = Math.ceil(totalRecords / limit);
-    const paginated = enriched.slice((page - 1) * limit, page * limit);
+    const paginated = enriched;
     const presentAbsent = totalPresent + totalAbsent;
     const attendanceRate = presentAbsent > 0
       ? parseFloat(((totalPresent / presentAbsent) * 100).toFixed(2))

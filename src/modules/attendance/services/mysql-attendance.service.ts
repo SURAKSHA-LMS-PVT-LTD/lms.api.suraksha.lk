@@ -196,8 +196,12 @@ export class MysqlAttendanceService {
     latitude?: number;
     longitude?: number;
     id?: string;
+    checkIn?: { time: Date; status: string | null; markedBy: string | null } | null;
+    checkOut?: { time: Date; status: string | null; markedBy: string | null } | null;
   } {
     const id = this.generateId(entity.dynamoPk, entity.dynamoSk);
+    const checkInStatusValue = entity.checkInStatus != null ? Number(entity.checkInStatus) : null;
+    const checkOutStatusValue = entity.checkOutStatus != null ? Number(entity.checkOutStatus) : null;
     return {
       studentId: entity.studentId,
       studentName: names.students.get(entity.studentId) || null,
@@ -225,6 +229,12 @@ export class MysqlAttendanceService {
       advertisementId: entity.advertisementId || undefined,
       timestamp: entity.timestamp ? Number(entity.timestamp) : undefined,
       id,
+      checkIn: entity.checkInTime
+        ? { time: entity.checkInTime, status: checkInStatusValue != null ? this.numberToStatus(checkInStatusValue) : null, markedBy: entity.checkInMarkedBy }
+        : null,
+      checkOut: entity.checkOutTime
+        ? { time: entity.checkOutTime, status: checkOutStatusValue != null ? this.numberToStatus(checkOutStatusValue) : null, markedBy: entity.checkOutMarkedBy }
+        : null,
     } as any;
   }
 
@@ -670,9 +680,14 @@ export class MysqlAttendanceService {
     startDate?: string,
     endDate?: string,
   ): Promise<(MarkAttendanceDto & { timestamp?: number; calendarDayId?: string; eventId?: string })[]> {
+    // Hard cap so a student/child with many daily sessions over a 30-day window
+    // can't force this query (and the per-row enrichment lookups after it) to
+    // scan and hydrate an unbounded number of rows just to return a summary/page.
+    const MAX_ROWS = 2000;
     const qb = this.repo.createQueryBuilder('ar')
       .where('ar.studentId = :studentId', { studentId })
-      .orderBy('ar.timestamp', 'DESC');
+      .orderBy('ar.timestamp', 'DESC')
+      .take(MAX_ROWS);
 
     if (startDate && endDate) {
       qb.andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });

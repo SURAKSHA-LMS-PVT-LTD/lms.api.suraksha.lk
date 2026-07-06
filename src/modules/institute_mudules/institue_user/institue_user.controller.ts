@@ -1,4 +1,4 @@
-﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { ImageUrlDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpCode, HttpStatus, BadRequestException, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -628,6 +628,25 @@ export class InstitueUserController {
   }
 
   // =================== ADMIN UTILITIES ===================
+
+  @Patch('institute/:instituteId/users/:userId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Update basic fields for an institute user (ADMIN ONLY)',
+    description: 'Updates fields like userIdByInstitute on the institute_user record.'
+  })
+  @ApiResponse({ status: 200, description: 'User updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'User not found in institute' })
+  async updateInstituteUserBasic(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
+    @Body() updateData: { userIdByInstitute?: string }
+  ): Promise<any> {
+    return this.institueUserService.updateInstituteUserBasic(instituteId, userId, updateData);
+  }
 
   @Patch('institute/:instituteId/users/:userId/extra-data')
   @UseGuards(FlexibleAccessGuard)

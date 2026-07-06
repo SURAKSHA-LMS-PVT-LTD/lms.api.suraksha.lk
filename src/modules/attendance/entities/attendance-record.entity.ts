@@ -20,22 +20,29 @@
 import {
   Entity,
   PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   Index,
   Unique,
 } from 'typeorm';
 
+/**
+ * PARTITIONED TABLE: monthly RANGE partitions on `date` (see migration
+ * 1852000000000-PartitionAttendanceRecordsMonthly). MySQL requires the
+ * partition column in every unique key, hence the composite PK (id, date)
+ * and `date` in the dynamo dedup key. Always filter queries by `date` (or a
+ * date range within a month) so MySQL prunes to a single partition.
+ * AttendancePartitionScheduler maintains future partitions + hot retention.
+ */
 @Entity('attendance_records')
-@Unique('UQ_dynamo_pk_sk', ['dynamoPk', 'dynamoSk'])
-@Index('IDX_institute_date', ['instituteId', 'date'])
-@Index('IDX_student_date', ['studentId', 'date'])
+@Unique('UQ_dynamo_pk_sk_date', ['dynamoPk', 'dynamoSk', 'date'])
+@Index('IDX_institute_date_class', ['instituteId', 'date', 'classId'])
 @Index('IDX_student_institute_date', ['studentId', 'instituteId', 'date'])
-@Index('IDX_calendar_day', ['calendarDayId'])
-@Index('IDX_event', ['eventId'])
-@Index('idx_inst_event_student', ['instituteId', 'eventId', 'studentId'])
-@Index('IDX_sync_status', ['syncStatus'])
+@Index('IDX_student_date', ['studentId', 'date'])
+@Index('IDX_event_student', ['eventId', 'studentId'])
 @Index('IDX_session_checkin_open', ['classSessionId', 'studentId', 'checkOutTime'])
-@Index('IDX_institute_event_checkin_open', ['instituteId', 'studentId', 'date', 'eventId', 'checkOutTime'])
+@Index('IDX_calendar_day', ['calendarDayId'])
+@Index('IDX_sync_status', ['syncStatus'])
 export class AttendanceRecordEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

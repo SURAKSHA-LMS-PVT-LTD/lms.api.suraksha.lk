@@ -1445,7 +1445,7 @@ export class InstitueUserService {
     const queryBuilder = this.userRepository
       .createQueryBuilder('u')
       .leftJoin(InstituteUserEntity, 'iu', 'iu.userId = u.id AND iu.instituteId = :instituteIdForJoin')
-      .leftJoin(InstituteClassStudentEntity, 'ics', 'ics.studentUserId = u.id AND ics.classId = :classIdForJoin')
+      .leftJoin(InstituteClassStudentEntity, 'ics', 'ics.student_user_id = u.id AND ics.institute_class_id = :classIdForJoin')
       .leftJoin(StudentEntity, 's', 's.userId = u.id')
       .select([
         'u.id as user_id',
@@ -1464,7 +1464,7 @@ export class InstitueUserService {
         'iu.image_verification_status',  // Image verification status
         'iu.extra_data as extra_data',
         'iu.created_at',
-        'ics.isVerified as student_is_verified',
+        'ics.is_verified as student_is_verified',
         'ics.student_type as student_type',
         's.father_id as father_id',
         's.mother_id as mother_id',
@@ -1476,9 +1476,9 @@ export class InstitueUserService {
         'iu.max_devices_per_user as max_devices_per_user'
       ])
       .where('iu.instituteUserType = :userType', { userType: safeUserType })  // ✅ FIX: Use institute user type, not global user type
-      .andWhere('u.is_active = :userActive', { userActive: true })
+      .andWhere(query.isActive !== undefined ? 'u.is_active = :userActive' : '1=1', { userActive: query.isActive === 'true' })
       .andWhere('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
-      .andWhere('ics.classId = :classId', { classId: safeClassId })
+      .andWhere('ics.institute_class_id = :classId', { classId: safeClassId })
       .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
       .andWhere('ics.is_active = :classStatus', { classStatus: true })
       .setParameter('instituteIdForJoin', safeInstituteId)
@@ -1488,12 +1488,12 @@ export class InstitueUserService {
     const countQueryBuilder = this.userRepository
       .createQueryBuilder('u')
       .leftJoin(InstituteUserEntity, 'iu', 'iu.userId = u.id AND iu.instituteId = :instituteIdForJoin')
-      .leftJoin(InstituteClassStudentEntity, 'ics', 'ics.studentUserId = u.id AND ics.classId = :classIdForJoin')
+      .leftJoin(InstituteClassStudentEntity, 'ics', 'ics.student_user_id = u.id AND ics.institute_class_id = :classIdForJoin')
       .leftJoin(StudentEntity, 's', 's.userId = u.id')
       .where('iu.instituteUserType = :userType', { userType: safeUserType })  // ✅ FIX: Use institute user type, not global user type
-      .andWhere('u.is_active = :userActive', { userActive: true })
+      .andWhere(query.isActive !== undefined ? 'u.is_active = :userActive' : '1=1', { userActive: query.isActive === 'true' })
       .andWhere('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
-      .andWhere('ics.classId = :classId', { classId: safeClassId })
+      .andWhere('ics.institute_class_id = :classId', { classId: safeClassId })
       .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
       .andWhere('ics.is_active = :classStatus', { classStatus: true })
       .setParameter('instituteIdForJoin', safeInstituteId)
@@ -1570,6 +1570,13 @@ export class InstitueUserService {
         countQueryBuilder.andWhere('s.student_id LIKE :studentId', { studentId: `%${safeStudentId}%` });
       }
 
+      // Filter by studentType (e.g. normal, free_card)
+      if (query.studentType) {
+        const safeStudentType = SecurityUtils.sanitizeSearchInput(query.studentType);
+        queryBuilder.andWhere('ics.student_type = :studentType', { studentType: safeStudentType });
+        countQueryBuilder.andWhere('ics.student_type = :studentType', { studentType: safeStudentType });
+      }
+
       // Filter by emergency contact
       if (query.emergencyContact) {
         const safeEmergencyContact = SecurityUtils.sanitizeSearchInput(query.emergencyContact);
@@ -1597,11 +1604,13 @@ export class InstitueUserService {
     }
 
     // Always filter for active and verified students only - no parameters needed
-    queryBuilder.andWhere('ics.isVerified = :isVerified', { isVerified: true });
-    countQueryBuilder.andWhere('ics.isVerified = :isVerified', { isVerified: true });
+    queryBuilder.andWhere('ics.is_verified = :isVerified', { isVerified: true });
+    countQueryBuilder.andWhere('ics.is_verified = :isVerified', { isVerified: true });
 
     // Get total count
     const total = await countQueryBuilder.getCount();
+    console.log('TOTAL IS:', total, 'LIMIT IS:', limit);
+    console.log('SQL:', countQueryBuilder.getSql());
 
     // Apply sorting and pagination to main query
     const sortField = this.mapSortFieldForRaw(sortBy);
@@ -1690,7 +1699,7 @@ export class InstitueUserService {
         'iu.max_devices_per_user as max_devices_per_user'
       ])
       .where('iu.instituteUserType = :userType', { userType: safeUserType })  // ✅ FIX: Use institute user type, not global user type
-      .andWhere('u.is_active = :userActive', { userActive: true })
+      .andWhere(query.isActive !== undefined ? 'u.is_active = :userActive' : '1=1', { userActive: query.isActive === 'true' })
       .andWhere('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
       .andWhere('icss.classId = :classId', { classId: safeClassId })
       .andWhere('icss.subjectId = :subjectId', { subjectId: safeSubjectId })
@@ -1707,7 +1716,7 @@ export class InstitueUserService {
       .leftJoin(InstituteClassSubjectStudent, 'icss', 'icss.studentId = u.id AND icss.classId = :classIdForJoin AND icss.subjectId = :subjectIdForJoin')
       .leftJoin(StudentEntity, 's', 's.userId = u.id')
       .where('iu.instituteUserType = :userType', { userType: safeUserType })  // ✅ FIX: Use institute user type, not global user type
-      .andWhere('u.is_active = :userActive', { userActive: true })
+      .andWhere(query.isActive !== undefined ? 'u.is_active = :userActive' : '1=1', { userActive: query.isActive === 'true' })
       .andWhere('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
       .andWhere('icss.classId = :classId', { classId: safeClassId })
       .andWhere('icss.subjectId = :subjectId', { subjectId: safeSubjectId })
@@ -1786,6 +1795,13 @@ export class InstitueUserService {
         const safeStudentId = SecurityUtils.sanitizeSearchInput(query.studentId);
         queryBuilder.andWhere('s.student_id LIKE :studentId', { studentId: `%${safeStudentId}%` });
         countQueryBuilder.andWhere('s.student_id LIKE :studentId', { studentId: `%${safeStudentId}%` });
+      }
+
+      // Filter by studentType (e.g. normal, free_card)
+      if (query.studentType) {
+        const safeStudentType = SecurityUtils.sanitizeSearchInput(query.studentType);
+        queryBuilder.andWhere('icss.student_type = :studentType', { studentType: safeStudentType });
+        countQueryBuilder.andWhere('icss.student_type = :studentType', { studentType: safeStudentType });
       }
 
       // Filter by emergency contact
@@ -2344,6 +2360,46 @@ export class InstitueUserService {
         `Failed to deactivate user: ${error.message}`
       );
     }
+  }
+
+  async updateInstituteUserBasic(
+    instituteId: string,
+    userId: string,
+    updateData: { userIdByInstitute?: string },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    userId: string;
+    instituteId: string;
+    userIdByInstitute?: string;
+  }> {
+    const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
+    const safeUserId = SecurityUtils.validateBigIntId(userId, 'userId');
+
+    const instituteUser = await this.instituteUserRepository.findOne({
+      where: { instituteId: safeInstituteId, userId: safeUserId },
+    });
+
+    if (!instituteUser) {
+      throw new NotFoundException(`User ${userId} not found in institute ${instituteId}`);
+    }
+
+    if (updateData.userIdByInstitute !== undefined) {
+      instituteUser.userIdByInstitute = updateData.userIdByInstitute;
+    }
+
+    await this.instituteUserRepository.save(instituteUser);
+    
+    // Clear cache (Not available in this service, rely on frontend or global cache clearing)
+    // this.invalidateInstituteCache(instituteId);
+
+    return {
+      success: true,
+      message: 'Institute user updated successfully',
+      userId,
+      instituteId,
+      userIdByInstitute: instituteUser.userIdByInstitute,
+    };
   }
 
   /**
