@@ -45,6 +45,8 @@ function currentSLMinutes(): number {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
+// CHECK-IN status only — arrival-side (Present/Late). Never returns a departure
+// status; a fresh check-in can't be "left early".
 function resolveAutoStatus(
   session: InstituteClassAttendanceSessionEntity,
 ): number {
@@ -52,14 +54,23 @@ function resolveAutoStatus(
   const startMin = toMinutes(session.startTime);
 
   if (session.lateAfterMinutes != null && nowMin > startMin + session.lateAfterMinutes) {
-    if (session.endTime && session.leftEarlyBeforeMinutes != null) {
-      const endMin = toMinutes(session.endTime);
-      if (nowMin < endMin - session.leftEarlyBeforeMinutes) return 2; // Late
-      return 4; // LeftEarly
-    }
     return 2; // Late
   }
   return 1; // Present
+}
+
+// CHECKOUT status only — departure-side (LeftEarly/Left/LeftLately), for closing an
+// already-open check-in. Never returns an arrival-side status. Returns null when the
+// session has no end time configured (caller falls back to plain "Left").
+function resolveAutoCheckoutStatus(
+  session: InstituteClassAttendanceSessionEntity,
+): number | null {
+  if (!session.endTime) return null;
+  const nowMin = currentSLMinutes();
+  const endMin = toMinutes(session.endTime);
+  if (nowMin > endMin) return 5; // LeftLately — stayed past the session's official end
+  if (session.leftEarlyBeforeMinutes != null && nowMin < endMin - session.leftEarlyBeforeMinutes) return 4; // LeftEarly
+  return 3; // Left — on-time departure
 }
 
 
@@ -450,6 +461,8 @@ export class ClassAttendanceSessionService {
 
     // Session records always take precedence in the session view, so non-session records
     // from other sources (e.g. gate check-in) are allowed to co-exist.
+    // Explicit marker choice (dto.status) always wins over auto-resolution — this is
+    // the check-in-side default only, used for the fresh-insert branch below.
     const autoStatus = dto.status ?? resolveAutoStatus(session);
     const timestamp = now();
 
@@ -472,9 +485,17 @@ export class ClassAttendanceSessionService {
     });
 
     if (openExisting) {
+      // This is a CHECKOUT, not a check-in — resolve a departure-side status
+      // (Left/LeftEarly) instead of reusing the check-in-oriented autoStatus above.
+      // Explicit marker choice still wins when given.
+      const checkoutStatus = dto.status ?? resolveAutoCheckoutStatus(session) ?? 3 /* Left */;
       openExisting.checkOutTime = new Date(checkInEpochMs);
-      openExisting.checkOutStatus = autoStatus;
+      openExisting.checkOutStatus = checkoutStatus;
       openExisting.checkOutMarkedBy = markerId;
+      // `status` is the source of truth read everywhere else (session grid, exports) —
+      // it must reflect this record's final state, not the check-in-time value it was
+      // created with, otherwise a student who left early keeps showing as "Present".
+      openExisting.status = checkoutStatus;
       await this.recordRepo.save(openExisting);
       return { success: true, record: openExisting };
     }

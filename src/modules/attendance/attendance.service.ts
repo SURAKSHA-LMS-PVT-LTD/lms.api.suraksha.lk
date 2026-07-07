@@ -260,48 +260,80 @@ export class AttendanceService {
     });
   }
 
+  /** Shared event time-rule lookup for the two auto-status resolvers below. */
+  private async getEventTimeRules(eventId: string): Promise<{ startTime: string; endTime: string | null; lateAfter: number | null; leftEarly: number | null } | undefined> {
+    const rows: any[] = await this.dataSource.query(
+      `SELECT start_time AS startTime, end_time AS endTime,
+              late_after_minutes AS lateAfter, left_early_before_minutes AS leftEarly
+       FROM institute_calendar_events WHERE id = ? LIMIT 1`,
+      [eventId],
+    );
+    const ev = rows[0];
+    if (!ev || ev.startTime == null) return undefined;
+    return ev;
+  }
+
+  private static toMin(t: string): number {
+    const [h, m] = String(t).split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  }
+
+  /** Current Sri Lanka minutes-of-day (UTC + 5:30). */
+  private static nowMinSriLanka(): number {
+    const slNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
+    return slNow.getUTCHours() * 60 + slNow.getUTCMinutes();
+  }
+
   /**
-   * Resolve the auto-status for a mark against a calendar event, from the event's
-   * time rules (lateAfterMinutes / leftEarlyBeforeMinutes) vs the current Sri Lanka
-   * time. Returns undefined when the event has no time rules (status left as sent).
-   *   Present   — at/before start + lateAfterMinutes
-   *   Late      — after that cutoff, but not yet in the left-early window
-   *   LeftEarly — after the late cutoff AND within leftEarlyBeforeMinutes of end_time
+   * Resolve the auto-status for a CHECK-IN (first scan) against the event's time
+   * rules. Only ever produces an arrival-side status — Present or Late — since a
+   * check-in can't be a departure. Returns undefined when the event has no late
+   * rule configured (status left as sent / defaulted by the caller).
+   *   Present — at/before start + lateAfterMinutes
+   *   Late    — after that cutoff
    */
   private async resolveEventAutoStatus(eventId: string): Promise<AttendanceStatus | undefined> {
     try {
-      const rows: any[] = await this.dataSource.query(
-        `SELECT start_time AS startTime, end_time AS endTime,
-                late_after_minutes AS lateAfter, left_early_before_minutes AS leftEarly
-         FROM institute_calendar_events WHERE id = ? LIMIT 1`,
-        [eventId],
-      );
-      const ev = rows[0];
-      if (!ev || ev.startTime == null) return undefined;
-      // No late rule → nothing to auto-resolve (keep whatever was sent / default).
-      if (ev.lateAfter == null) return undefined;
+      const ev = await this.getEventTimeRules(eventId);
+      if (!ev || ev.lateAfter == null) return undefined;
 
-      const toMin = (t: string) => {
-        const [h, m] = String(t).split(':').map(Number);
-        return (h || 0) * 60 + (m || 0);
-      };
-      // Current Sri Lanka minutes-of-day (UTC + 5:30).
-      const slNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
-      const nowMin = slNow.getUTCHours() * 60 + slNow.getUTCMinutes();
-      const startMin = toMin(ev.startTime);
+      const nowMin = AttendanceService.nowMinSriLanka();
+      const startMin = AttendanceService.toMin(ev.startTime);
 
-      if (nowMin > startMin + Number(ev.lateAfter)) {
-        if (ev.endTime && ev.leftEarly != null) {
-          const endMin = toMin(ev.endTime);
-          if (nowMin >= endMin - Number(ev.leftEarly)) {
-            return AttendanceStatus.LEFT_EARLY;
-          }
-        }
-        return AttendanceStatus.LATE;
-      }
-      return AttendanceStatus.PRESENT;
+      return nowMin > startMin + Number(ev.lateAfter)
+        ? AttendanceStatus.LATE
+        : AttendanceStatus.PRESENT;
     } catch (e: any) {
       this.logger.warn(`resolveEventAutoStatus failed for event ${eventId}: ${e.message}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Resolve the auto-status for a CHECKOUT (closing an already-open check-in)
+   * against the event's time rules. Only ever produces a departure-side status —
+   * LeftEarly, Left, or LeftLately — since this is closing a row that was already
+   * checked in; it must never resolve to an arrival-side status (Present/Late).
+   *   LeftEarly  — before end_time, within leftEarlyBeforeMinutes of it
+   *   Left       — on-time departure (at/after that early-window cutoff, at/before end_time)
+   *   LeftLately — after end_time (stayed past the event's official end)
+   * Returns undefined when the event has no end_time configured (caller falls
+   * back to whatever the marker explicitly sent, or plain "Left").
+   */
+  private async resolveEventAutoCheckoutStatus(eventId: string | undefined): Promise<AttendanceStatus | undefined> {
+    if (!eventId) return undefined;
+    try {
+      const ev = await this.getEventTimeRules(eventId);
+      if (!ev || !ev.endTime) return undefined;
+
+      const nowMin = AttendanceService.nowMinSriLanka();
+      const endMin = AttendanceService.toMin(ev.endTime);
+
+      if (nowMin > endMin) return AttendanceStatus.LEFT_LATELY;
+      if (ev.leftEarly != null && nowMin < endMin - Number(ev.leftEarly)) return AttendanceStatus.LEFT_EARLY;
+      return AttendanceStatus.LEFT;
+    } catch (e: any) {
+      this.logger.warn(`resolveEventAutoCheckoutStatus failed for event ${eventId}: ${e.message}`);
       return undefined;
     }
   }
@@ -322,7 +354,7 @@ export class AttendanceService {
    * has legitimate duplicate rows on both keys), so this is an
    * application-level "most recent open row wins" match, not a hard guarantee.
    */
-  private async tryRecordCheckout(dto: MarkAttendanceDto): Promise<any | null> {
+  private async tryRecordCheckout(dto: MarkAttendanceDto, explicitStatus?: AttendanceStatus): Promise<any | null> {
     const classSessionId = (dto as any).classSessionId as string | undefined;
     const eventId = (dto as any).eventId as string | undefined;
 
@@ -348,7 +380,19 @@ export class AttendanceService {
 
     if (!openRow) return null; // nothing open — this is a fresh check-in
 
-    const checkOutStatus = dto.status ?? AttendanceStatus.PRESENT;
+    // Explicit marker choice always wins (e.g. a teacher manually picking "Absent").
+    // Otherwise resolve a departure-side status (Left/LeftEarly) from the event's
+    // end-time rules — this is a checkout, so it must never resolve to an
+    // arrival-side status like Present/Late.
+    const autoCheckoutStatus = explicitStatus ? undefined : await this.resolveEventAutoCheckoutStatus(eventId);
+    const checkOutStatus = explicitStatus ?? autoCheckoutStatus ?? AttendanceStatus.LEFT;
+    // The `status` column is the documented source of truth for reporting/exports
+    // (see entity comment) — it must reflect this record's FINAL state, not the
+    // check-in-time value it was created with. Without this, a student marked
+    // "Present" at check-in and then "Left"/"LeftEarly" at checkout keeps showing
+    // "Present" everywhere that reads `status`, even though checkOutStatus/checkOutTime
+    // correctly recorded the departure.
+    const checkOutStatusNum = this.attendanceStatusToNumber(checkOutStatus);
     // Composite PK (id, date): object criteria required — a scalar id is ambiguous,
     // and including date lets MySQL prune to the row's monthly partition.
     // checkOutTime: IsNull() re-asserted here (not just in the findOne above) is
@@ -357,8 +401,9 @@ export class AttendanceService {
       { id: openRow.id, date: openRow.date, checkOutTime: IsNull() },
       {
         checkOutTime: new Date(),
-        checkOutStatus: this.attendanceStatusToNumber(checkOutStatus),
+        checkOutStatus: checkOutStatusNum,
         checkOutMarkedBy: dto.markedBy || 'system',
+        status: checkOutStatusNum,
       },
     );
 
@@ -563,12 +608,21 @@ export class AttendanceService {
         }
       }
 
-      // STEP 3.55: Auto-resolve status from the event's time rules.
+      // Capture whether the marker explicitly chose a status BEFORE STEP 3.55 can
+      // overwrite it with the check-in auto-status — an explicit choice (e.g. a
+      // teacher picking "Absent"/"Left" by hand) must never be silently clobbered
+      // by the event's time-rule computation. Used below by both the check-in
+      // auto-resolve step and the checkout branch.
+      const explicitStatus = markAttendanceDto.status;
+
+      // STEP 3.55: Auto-resolve CHECK-IN status from the event's time rules.
       // When attendance is marked against a calendar event that defines time rules
-      // (lateAfterMinutes / leftEarlyBeforeMinutes), the status is computed from the
-      // current time vs the event window — the marker never chooses it. This produces
-      // Present / Late / LeftEarly automatically.
-      {
+      // (lateAfterMinutes), the status is computed from the current time vs the
+      // event start — but only as a default for a fresh check-in, and only when
+      // the marker didn't already pick one. This produces Present/Late automatically;
+      // the checkout branch below (STEP 3.9) resolves its own Left/LeftEarly status
+      // independently once we know this mark is actually closing an open check-in.
+      if (!explicitStatus) {
         const resolvedEventId = (markAttendanceDto as any).eventId;
         if (resolvedEventId) {
           const autoStatus = await this.resolveEventAutoStatus(resolvedEventId);
@@ -619,7 +673,10 @@ export class AttendanceService {
       // âœ… STEP 3.9: Check-out detection — if this student already has an open
       // check-in today for this same attendance instance (session, or institute+event),
       // this mark is treated as the checkout: update that row instead of inserting a new one.
-      const checkoutResult = await this.tryRecordCheckout(markAttendanceDto);
+      // Pass explicitStatus separately so the checkout branch can tell "marker picked
+      // this" apart from "STEP 3.55's check-in auto-resolve picked this" — only the
+      // former should skip the checkout's own Left/LeftEarly auto-resolution.
+      const checkoutResult = await this.tryRecordCheckout(markAttendanceDto, explicitStatus);
       if (checkoutResult) {
         return checkoutResult;
       }
@@ -915,19 +972,29 @@ export class AttendanceService {
         }
       }
 
-      // âœ… STEP 8.4: Resolve time-based status from the event's rules once for the
-      // whole batch (same event for every student in one bulk call), same as the
-      // single-mark path — otherwise bulk-marked status is always exactly whatever
+      // Capture each student's explicitly-sent status BEFORE the batch auto-resolve
+      // below can overwrite it — an explicit per-student choice must survive into
+      // the checkout branch instead of being mistaken for the bulk auto-status.
+      const explicitStatusByStudent = new Map(
+        bulkAttendanceDto.students.map(s => [s.studentId, s.status] as const),
+      );
+
+      // âœ… STEP 8.4: Resolve time-based CHECK-IN status from the event's rules once
+      // for the whole batch (same event for every student in one bulk call), same as
+      // the single-mark path — otherwise bulk-marked status is always exactly whatever
       // the client sent, while single-marking the same class at the same real time
-      // auto-overrides to present/late/left-early, giving inconsistent results
-      // depending on which marking path was used.
+      // auto-overrides to present/late, giving inconsistent results depending on
+      // which marking path was used. Only applied to students who didn't explicitly
+      // choose a status.
       const bulkEventId = (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId;
       let bulkAutoStatus: AttendanceStatus | undefined;
       if (bulkEventId) {
         bulkAutoStatus = await this.resolveEventAutoStatus(bulkEventId);
         if (bulkAutoStatus) {
           for (const student of bulkAttendanceDto.students) {
-            student.status = bulkAutoStatus;
+            if (!explicitStatusByStudent.get(student.studentId)) {
+              student.status = bulkAutoStatus;
+            }
           }
         }
       }
@@ -954,7 +1021,7 @@ export class AttendanceService {
           calendarDayId: (bulkAttendanceDto as any).calendarDayId,
         } as any;
 
-        const checkoutResult = await this.tryRecordCheckout(perStudentDto);
+        const checkoutResult = await this.tryRecordCheckout(perStudentDto, explicitStatusByStudent.get(student.studentId));
         if (checkoutResult) {
           checkoutResults.push({ studentId: student.studentId, ...checkoutResult });
         } else {
@@ -3147,10 +3214,16 @@ export class AttendanceService {
       ? instituteUser.instituteUserImageUrl
       : globalImageUrl;
 
-    // âœ… STEP 5: Resolve time-based status from the event's rules, same as the
-    // main markAttendance() path — otherwise this card-marking path always uses
-    // whatever status the client sent, regardless of actual arrival time.
-    if (markAttendanceDto.eventId) {
+    // Capture the explicitly-sent status before the check-in auto-resolve below can
+    // overwrite it — needed so the checkout branch (STEP 5.2) can tell an explicit
+    // marker choice apart from this step's own auto-resolution.
+    const explicitCardStatus = markAttendanceDto.status;
+
+    // âœ… STEP 5: Resolve time-based CHECK-IN status from the event's rules, same as
+    // the main markAttendance() path — otherwise this card-marking path always uses
+    // whatever status the client sent, regardless of actual arrival time. Only
+    // applied when the marker didn't already choose a status.
+    if (!explicitCardStatus && markAttendanceDto.eventId) {
       const autoStatus = await this.resolveEventAutoStatus(markAttendanceDto.eventId);
       if (autoStatus) {
         markAttendanceDto.status = autoStatus;
@@ -3188,7 +3261,7 @@ export class AttendanceService {
     // the checkout instead of inserting a duplicate check-in row. Only resolves
     // when eventId/classSessionId is provided (same pairing-key requirement as
     // the main markAttendance() path — see tryRecordCheckout's doc comment).
-    const checkoutResult = await this.tryRecordCheckout(attendanceDto);
+    const checkoutResult = await this.tryRecordCheckout(attendanceDto, explicitCardStatus);
     if (checkoutResult) {
       return checkoutResult;
     }
