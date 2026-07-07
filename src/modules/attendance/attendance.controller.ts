@@ -15,6 +15,7 @@ import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { resolveAttendanceDateRange } from './utils/attendance-date-range.util';
 import { AttendanceCacheService } from './services/attendance-cache.service';
+import { getCurrentSriLankaDate } from '../../common/utils/timezone.util';
 
 @ApiTags('Attendance')
 @UseGuards(FlexibleAccessGuard)
@@ -640,6 +641,39 @@ export class AttendanceController {
     }
   }
 
+  @Get('institute/:instituteId/classes-summary')
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: true,
+    attendanceMarker: true,
+  })
+  @ApiOperation({
+    summary: 'Class-wise check-in/check-out overview for the admin drilldown',
+    description: 'Returns one row per active class in the institute (always — classes with zero students/records still appear), with roster size and check-in/check-out counts for one date. Defaults to today; pass eventId to scope to a specific calendar event.',
+  })
+  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD, defaults to today (Sri Lanka time)' })
+  @ApiQuery({ name: 'eventId', required: false, description: 'Scope counts to one calendar event' })
+  async getClassesAttendanceSummary(
+    @Param('instituteId') instituteId: string,
+    @Query('date') date?: string,
+    @Query('eventId') eventId?: string,
+  ) {
+    try {
+      const effectiveDate = date || getCurrentSriLankaDate();
+      return await this.attendanceService.getClassesAttendanceSummary(instituteId, effectiveDate, eventId);
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'Failed to retrieve class attendance summary',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get('institute/:instituteId/class/:classId')
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
@@ -649,7 +683,7 @@ export class AttendanceController {
     student: { allowSelfOnly: true }, // Students can access when filtering by their own studentId
     parent: { requireStudent: true } // Parents can access when filtering by their child's studentId
   })
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get all attendance records for a specific class',
     description: 'Retrieve all attendance records for a specific class within an institute. Date range limit: 5 days for all students, 30 days when filtering by specific studentId. Accessible by SUPERADMIN, Institute Admin, Teacher, Attendance Marker, Students (own data), or Parents (children data). Supports filtering by status and studentId.'
   })

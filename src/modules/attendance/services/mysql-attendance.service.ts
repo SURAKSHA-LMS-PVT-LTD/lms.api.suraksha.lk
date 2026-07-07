@@ -20,6 +20,7 @@ import { AttendanceRecordEntity } from '../entities/attendance-record.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
+import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { SubjectEntity } from '../../subject/entities/subject.entity';
 import {
   MarkAttendanceDto,
@@ -43,6 +44,8 @@ export class MysqlAttendanceService {
     private readonly instituteRepo: Repository<InstituteEntity>,
     @InjectRepository(InstituteClassEntity)
     private readonly classRepo: Repository<InstituteClassEntity>,
+    @InjectRepository(InstituteClassStudentEntity)
+    private readonly classStudentRepo: Repository<InstituteClassStudentEntity>,
     @InjectRepository(SubjectEntity)
     private readonly subjectRepo: Repository<SubjectEntity>,
   ) {}
@@ -697,6 +700,144 @@ export class MysqlAttendanceService {
     if (!entities.length) return [];
     const names = await this.resolveNames(entities);
     return entities.map(e => this.entityToDto(e, names));
+  }
+
+  /**
+   * Class-wise attendance overview for the admin drilldown: one row per class
+   * in the institute, always (even classes with zero students/records show up,
+   * via LEFT JOIN), with roster size AS OF THE GIVEN DATE + check-in/check-out
+   * breakdowns for that date (optionally scoped to one event).
+   *
+   * Roster size uses `createdAt <= date` (when the enrollment row was created)
+   * rather than "isActive/isVerified right now" — a student who enrolls 6
+   * months after a past date must not inflate that past date's total, or
+   * "not marked" (total − checkIns) would be wrong for historical dates even
+   * though it's correct for today. This isn't a perfect point-in-time roster
+   * (unenrollment has no timestamp, only a boolean isActive flip), but it
+   * correctly fixes the reported case: late enrollment inflating earlier days.
+   *
+   * Check-in splits into present/late/absent (checkInStatus 1/2/0); check-out
+   * splits into left/left-early/left-lately (checkOutStatus 3/4/5) — status
+   * codes per numberToStatus() above. "Still checked in" (checked in, never
+   * checked out) is also computed here rather than left for the frontend to
+   * derive, so it doesn't drift if the roster changes later — it's a snapshot
+   * of that day's actual rows, not a live roster diff.
+   *
+   * All of this is one single GROUP BY query rather than one query per class
+   * or per bucket — check-in/check-out state is never frozen anywhere (only
+   * present/absent/late/left get frozen on event close), and it doesn't change
+   * after the fact, so there is no "use the frozen summary instead" shortcut
+   * available for these columns; the query itself is already cheap (indexed,
+   * single day, GROUP BY) rather than a per-row fetch, and every extra
+   * SUM(CASE...) bucket costs nothing extra round-trip-wise.
+   */
+  async getClassesAttendanceSummary(
+    instituteId: string,
+    date: string,
+    eventId?: string,
+  ): Promise<Array<{
+    classId: string;
+    className: string;
+    grade: number | null;
+    totalStudents: number;
+    checkIn: { present: number; late: number; absent: number; total: number; rate: number };
+    checkOut: { left: number; leftEarly: number; leftLately: number; total: number; rate: number };
+    stillCheckedIn: number;
+  }>> {
+    const [classes, rosterCounts, attendanceCounts] = await Promise.all([
+      this.classRepo.find({
+        where: { instituteId, isActive: true },
+        select: ['id', 'name', 'grade'],
+        order: { name: 'ASC' },
+      }),
+      this.classStudentRepo
+        .createQueryBuilder('cs')
+        .select('cs.classId', 'classId')
+        .addSelect('COUNT(*)', 'total')
+        .where('cs.instituteId = :instituteId', { instituteId })
+        .andWhere('cs.isActive = true')
+        .andWhere('cs.isVerified = true')
+        // As-of-date roster: exclude students who enrolled AFTER this date so a
+        // late enrollment doesn't inflate an earlier day's total.
+        .andWhere('cs.createdAt <= :endOfDay', { endOfDay: `${date} 23:59:59` })
+        .groupBy('cs.classId')
+        .getRawMany<{ classId: string; total: string }>(),
+      (() => {
+        const qb = this.repo
+          .createQueryBuilder('ar')
+          .select('ar.classId', 'classId')
+          .addSelect('SUM(CASE WHEN ar.checkInStatus = 1 THEN 1 ELSE 0 END)', 'checkInPresent')
+          .addSelect('SUM(CASE WHEN ar.checkInStatus = 2 THEN 1 ELSE 0 END)', 'checkInLate')
+          .addSelect('SUM(CASE WHEN ar.checkInStatus = 0 THEN 1 ELSE 0 END)', 'checkInAbsent')
+          .addSelect('SUM(CASE WHEN ar.checkOutStatus = 3 THEN 1 ELSE 0 END)', 'checkOutLeft')
+          .addSelect('SUM(CASE WHEN ar.checkOutStatus = 4 THEN 1 ELSE 0 END)', 'checkOutLeftEarly')
+          .addSelect('SUM(CASE WHEN ar.checkOutStatus = 5 THEN 1 ELSE 0 END)', 'checkOutLeftLately')
+          .addSelect('SUM(CASE WHEN ar.checkInTime IS NOT NULL AND ar.checkOutTime IS NULL THEN 1 ELSE 0 END)', 'stillCheckedIn')
+          .where('ar.instituteId = :instituteId', { instituteId })
+          .andWhere('ar.date = :date', { date });
+        if (eventId) qb.andWhere('ar.eventId = :eventId', { eventId });
+        return qb.groupBy('ar.classId').getRawMany<{
+          classId: string;
+          checkInPresent: string;
+          checkInLate: string;
+          checkInAbsent: string;
+          checkOutLeft: string;
+          checkOutLeftEarly: string;
+          checkOutLeftLately: string;
+          stillCheckedIn: string;
+        }>();
+      })(),
+    ]);
+
+    const rosterMap = new Map(rosterCounts.map(r => [r.classId, Number(r.total)]));
+    const attendanceMap = new Map(attendanceCounts.map(a => [a.classId, {
+      checkInPresent: Number(a.checkInPresent) || 0,
+      checkInLate: Number(a.checkInLate) || 0,
+      checkInAbsent: Number(a.checkInAbsent) || 0,
+      checkOutLeft: Number(a.checkOutLeft) || 0,
+      checkOutLeftEarly: Number(a.checkOutLeftEarly) || 0,
+      checkOutLeftLately: Number(a.checkOutLeftLately) || 0,
+      stillCheckedIn: Number(a.stillCheckedIn) || 0,
+    }]));
+
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+
+    return classes.map(c => {
+      const a = attendanceMap.get(c.id);
+      const totalStudents = rosterMap.get(c.id) ?? 0;
+
+      const checkInPresent = a?.checkInPresent ?? 0;
+      const checkInLate = a?.checkInLate ?? 0;
+      const checkInAbsent = a?.checkInAbsent ?? 0;
+      const checkInTotal = checkInPresent + checkInLate;
+
+      const checkOutLeft = a?.checkOutLeft ?? 0;
+      const checkOutLeftEarly = a?.checkOutLeftEarly ?? 0;
+      const checkOutLeftLately = a?.checkOutLeftLately ?? 0;
+      const checkOutTotal = checkOutLeft + checkOutLeftEarly + checkOutLeftLately;
+
+      return {
+        classId: c.id,
+        className: c.name,
+        grade: c.grade ?? null,
+        totalStudents,
+        checkIn: {
+          present: checkInPresent,
+          late: checkInLate,
+          absent: checkInAbsent,
+          total: checkInTotal,
+          rate: totalStudents > 0 ? round1((checkInTotal / totalStudents) * 100) : 0,
+        },
+        checkOut: {
+          left: checkOutLeft,
+          leftEarly: checkOutLeftEarly,
+          leftLately: checkOutLeftLately,
+          total: checkOutTotal,
+          rate: totalStudents > 0 ? round1((checkOutTotal / totalStudents) * 100) : 0,
+        },
+        stillCheckedIn: a?.stillCheckedIn ?? 0,
+      };
+    });
   }
 
   /**

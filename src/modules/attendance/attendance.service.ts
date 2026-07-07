@@ -1514,6 +1514,27 @@ export class AttendanceService {
     };
   }
 
+  /**
+   * Class-wise check-in/check-out overview for the admin drilldown tab —
+   * always lists every active class in the institute (LEFT JOIN semantics),
+   * with roster size + check-in/check-out counts for one date/event.
+   * MySQL-only aggregation (GROUP BY across all classes in one query) — no
+   * DynamoDB equivalent, matching how this attendance system already runs
+   * (ATTENDANCE_DB_MODE=only_mysql in production).
+   */
+  async getClassesAttendanceSummary(
+    instituteId: string,
+    date: string,
+    eventId?: string,
+  ): Promise<any> {
+    const rows = await this.mysqlAttendanceService.getClassesAttendanceSummary(instituteId, date, eventId);
+    return {
+      success: true,
+      message: 'Class attendance summary retrieved successfully',
+      data: rows,
+    };
+  }
+
   async getAttendanceByDate(instituteId: string, date: string): Promise<any> {
     const records = this.syncConfigService.isMysqlOnly()
       ? await this.mysqlAttendanceService.getAttendanceByDate(instituteId, date)
@@ -2916,13 +2937,19 @@ export class AttendanceService {
     markAttendanceDto: MarkAttendanceByInstituteCardDto,
     markedBy: string
   ): Promise<any> {
-    const { instituteCardId, instituteId } = markAttendanceDto;
+    const { instituteCardId, userIdByInstitute, instituteId } = markAttendanceDto;
 
-    // âœ… STEP 1: Query institute_user with user data (works for ALL user types)
-    const instituteUser = await this.instituteUserRepository
+    if (!instituteCardId && !userIdByInstitute) {
+      throw new Error('Either instituteCardId or userIdByInstitute is required.');
+    }
+
+    // âœ… STEP 1: Query institute_user with user data (works for ALL user types).
+    // Looks up by whichever identifier was provided — a physical card scan
+    // (instituteCardId) or a typed-in institute user ID (userIdByInstitute),
+    // e.g. when the card is lost/unavailable but the admin knows the ID.
+    const lookupQb = this.instituteUserRepository
       .createQueryBuilder('institute_user')
       .leftJoinAndSelect('institute_user.user', 'user')
-      .where('institute_user.instituteCardId = :instituteCardId', { instituteCardId })
       .andWhere('institute_user.instituteId = :instituteId', { instituteId })
       .select([
         'institute_user.instituteId',
@@ -2939,13 +2966,21 @@ export class AttendanceService {
         'user.nameWithInitials',
         'user.imageUrl',
         'user.userType'
-      ])
-      .getOne();
+      ]);
+    if (instituteCardId) {
+      lookupQb.andWhere('institute_user.instituteCardId = :instituteCardId', { instituteCardId });
+    } else {
+      lookupQb.andWhere('institute_user.userIdByInstitute = :userIdByInstitute', { userIdByInstitute });
+    }
+    const instituteUser = await lookupQb.getOne();
 
     if (!instituteUser) {
+      const identifierLabel = instituteCardId
+        ? `institute card ID: ${instituteCardId}`
+        : `institute user ID: ${userIdByInstitute}`;
       throw new Error(
-        `No user found with institute card ID: ${instituteCardId} in institute: ${instituteId}. ` +
-        `Please check: 1) Card ID is registered, 2) Card ID is correct, 3) User is assigned to this institute.`
+        `No user found with ${identifierLabel} in institute: ${instituteId}. ` +
+        `Please check: 1) The ID is registered, 2) The ID is correct, 3) User is assigned to this institute.`
       );
     }
 
@@ -3128,7 +3163,7 @@ export class AttendanceService {
       name: userName,
       nameWithInitials: (isStudent ? studentData?.user?.nameWithInitials : instituteUser.user?.nameWithInitials) || null,
       userType: detectedUserType,  // âœ… NEW: Return user type
-      instituteCardId: instituteCardId,
+      instituteCardId: instituteUser.instituteCardId || null,
       userIdByInstitute: instituteUser.userIdByInstitute,
       data: {
         studentId: studentId,

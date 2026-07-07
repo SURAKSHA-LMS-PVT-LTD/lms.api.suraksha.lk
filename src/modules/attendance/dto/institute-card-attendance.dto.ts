@@ -3,13 +3,21 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AttendanceStatus, MarkingMethod } from './attendance.dto';
 
 export class MarkAttendanceByInstituteCardDto {
-  @ApiProperty({ 
-    description: 'Institute Card ID (from institute_user table)', 
-    example: 'CARD001' 
+  @ApiPropertyOptional({
+    description: 'Institute Card ID (from institute_user table). Exactly one of instituteCardId / userIdByInstitute is required.',
+    example: 'CARD001'
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  instituteCardId: string;
+  instituteCardId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Institute-assigned user ID (from institute_user table) — alternative to instituteCardId, e.g. for marking by typed-in ID instead of a physical card.',
+    example: 'STU2024001'
+  })
+  @IsOptional()
+  @IsString()
+  userIdByInstitute?: string;
 
   @ApiProperty({ 
     description: 'Institute ID', 
