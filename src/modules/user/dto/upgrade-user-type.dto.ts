@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsEnum, Length, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { BloodGroup } from '../../student/enums/blood-group.enum';
 import { Occupation } from '../enums/occupation.enum';
 
@@ -28,6 +28,22 @@ export class UpgradeStudentDataDto {
 
   @ApiPropertyOptional({ description: 'Blood group', enum: BloodGroup })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (!value || typeof value !== 'string' || value.trim() === '') return null;
+    const str = value.trim().toUpperCase();
+    // Normalize legacy underscore format (A_POSITIVE) to the real enum value (A+)
+    // so a stale client build can't crash/400 on this endpoint either.
+    const normalized = str
+      .replace('A_POSITIVE', 'A+')
+      .replace('A_NEGATIVE', 'A-')
+      .replace('B_POSITIVE', 'B+')
+      .replace('B_NEGATIVE', 'B-')
+      .replace('O_POSITIVE', 'O+')
+      .replace('O_NEGATIVE', 'O-')
+      .replace('AB_POSITIVE', 'AB+')
+      .replace('AB_NEGATIVE', 'AB-');
+    return (Object.values(BloodGroup) as string[]).includes(normalized) ? normalized : null;
+  })
   @IsEnum(BloodGroup)
   bloodGroup?: BloodGroup;
 }

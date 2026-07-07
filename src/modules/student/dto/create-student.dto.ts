@@ -5,6 +5,9 @@ import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '../../user/enums/gender.enum';
 import { UserType } from '../../user/enums/user-type.enum';
+import { District } from '../../user/enums/district.enum';
+import { Province } from '../../user/enums/province.enum';
+import { Country } from '../../user/enums/country.enum';
 import { IsDateOfBirth } from '../../../common/validators/date-format.validator';
 import { IsOptionalNic } from '../../../common/validators/optional-nic.validator';
 
@@ -120,27 +123,19 @@ class CreateUserDto {
   @Length(1, 100)
   city?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'District',
-    example: 'Colombo',
-    maxLength: 100
-  })
+  @ApiPropertyOptional({ description: 'District', enum: District, example: District.COLOMBO })
   @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  district?: string;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase().replace(/\s+/g, '_') : value)
+  @IsEnum(District)
+  district?: District;
 
-  @ApiPropertyOptional({ 
-    description: 'Province',
-    example: 'Western Province',
-    maxLength: 100
-  })
+  @ApiPropertyOptional({ description: 'Province', enum: Province, example: Province.WESTERN })
   @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  province?: string;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase().replace(/\s+/g, '_') : value)
+  @IsEnum(Province)
+  province?: Province;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Postal code',
     example: '10100',
     maxLength: 20
@@ -150,16 +145,10 @@ class CreateUserDto {
   @Length(1, 20)
   postalCode?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Country',
-    example: 'Sri Lanka',
-    default: 'Sri Lanka',
-    maxLength: 100
-  })
+  @ApiPropertyOptional({ description: 'Country', enum: Country, default: Country.SRI_LANKA })
   @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  country?: string;
+  @IsEnum(Country)
+  country?: Country;
 
   @ApiPropertyOptional({ 
     description: 'Active status', 
