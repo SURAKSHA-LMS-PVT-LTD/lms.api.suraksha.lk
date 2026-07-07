@@ -14,7 +14,10 @@ import { UserType } from '../../user/enums/user-type.enum';
 import { InstituteBankAccountsService } from '../services/institute-bank-accounts.service';
 
 const ADMIN_ROLES = { global: [UserType.SUPERADMIN], instituteAdmin: true };
-const MEMBER_ROLES = { global: [UserType.SUPERADMIN], instituteAdmin: true, instituteMember: true };
+// `instituteMember: true` was a no-op — FlexibleAccessGuard has no such config key,
+// so this always fell through to "admin only" and 403'd every Teacher/Student/Parent.
+// anyInstituteRole is the guard's actual "any member of this institute" check.
+const MEMBER_ROLES = { global: [UserType.SUPERADMIN], instituteAdmin: true, anyInstituteRole: true };
 
 class CreateBankAccountDto {
   @IsString() @IsNotEmpty() @MaxLength(100)

@@ -279,7 +279,9 @@ export class StructuredLecturesService {
 
   async createLectureAsDto(lectureData: CreateLectureDto, userId: string): Promise<LectureResponseDto> {
     // Map DTO fields to entity fields
-    const { documents, documentUrls, coverImageUrl, lectureLink, ...rest } = lectureData as any;
+    const { documents, documentUrls, coverImageUrl, lectureLink, lectureVideoUrl, ...rest } = lectureData as any;
+    // lectureLink and lectureVideoUrl are both aliases for the entity's videoUrl column
+    const resolvedVideoUrl = lectureLink ?? lectureVideoUrl;
     
     // Combine documents array and documentUrls into attachments
     let attachments = [];
@@ -318,10 +320,10 @@ export class StructuredLecturesService {
     }
     
     const timestamp = now();
-    const lecture = this.lectureRepository.create({ 
+    const lecture = this.lectureRepository.create({
       ...rest,
       thumbnailUrl: coverImageUrl,
-      videoUrl: lectureLink,
+      videoUrl: resolvedVideoUrl,
       attachments,
       createdBy: userId,
       updatedBy: userId,
