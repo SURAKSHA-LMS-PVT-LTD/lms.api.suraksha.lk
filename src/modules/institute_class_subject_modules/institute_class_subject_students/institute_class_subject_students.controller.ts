@@ -492,15 +492,20 @@ export class InstituteClassSubjectStudentsController {
   @Delete(':instituteId/:classId/:subjectId/:studentId')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({
-    global: [UserType.SUPERADMIN]
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    teacher: { requireSubject: true }
   })
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a student from class subject (Institute Admin or Teacher)' })
+  @ApiOperation({
+    summary: 'Remove a student from class subject (Institute Admin or Teacher)',
+    description: 'Soft delete: sets isActive=false. The enrollment row (payment/verification history) is kept and is reactivated automatically if the student is re-enrolled.',
+  })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
   @ApiParam({ name: 'subjectId', description: 'Subject ID' })
   @ApiParam({ name: 'studentId', description: 'Student ID' })
-  @ApiResponse({ status: 204, description: 'Student enrollment removed successfully' })
+  @ApiResponse({ status: 204, description: 'Student enrollment deactivated (soft-deleted) successfully' })
   @ApiResponse({ status: 404, description: 'Student enrollment not found' })
   @ApiResponse({ status: 403, description: 'Only institute admins and teachers can remove students from subjects' })
 

@@ -73,7 +73,25 @@ export class InstituteClassSubjectStudentsService {
       });
 
       if (existingEnrollment) {
-        throw new ConflictException('Student is already enrolled in this class subject');
+        if (existingEnrollment.isActive) {
+          throw new ConflictException('Student is already enrolled in this class subject');
+        }
+
+        // Previously soft-deleted — reactivate the same row instead of inserting
+        // (the composite PK would reject a duplicate insert anyway).
+        existingEnrollment.isActive = createDto.isActive ?? true;
+        existingEnrollment.enrollmentMethod = 'teacher_assigned';
+        existingEnrollment.verificationStatus = 'verified';
+        existingEnrollment.rejectionReason = null;
+        if (createDto.extraData !== undefined) existingEnrollment.extraData = createDto.extraData;
+        existingEnrollment.updatedAt = getCurrentSriLankaISO() as any;
+
+        const reactivated = await this.studentRepository.save(existingEnrollment);
+
+        // Refresh student cache after subject re-enrollment
+        await this.userManagementService.refreshUserCache(createDto.studentId);
+
+        return InstituteClassSubjectStudentResponseDto.fromEntity(reactivated);
       }
 
       const timestamp = getCurrentSriLankaISO();
@@ -251,17 +269,20 @@ export class InstituteClassSubjectStudentsService {
         studentId,
       },
     });
-    
+
     if (!enrollment) {
       throw new NotFoundException(`Student enrollment not found`);
     }
 
-    await this.studentRepository.delete({
-      instituteId,
-      classId,
-      subjectId,
-      studentId,
-    });
+    // Soft delete: keep the row (composite PK on instituteId/classId/subjectId/studentId
+    // means a hard delete followed by re-enroll would otherwise lose enrollment history —
+    // payment records, verification history, studentType — tied to this row). Rosters and
+    // "already enrolled" checks already filter on isActive, so this is invisible to normal
+    // queries; update()/re-enroll flows reactivate the same row instead of inserting a new one.
+    await this.studentRepository.update(
+      { instituteId, classId, subjectId, studentId },
+      { isActive: false, updatedAt: getCurrentSriLankaISO() as any },
+    );
 
     // Refresh student cache after removing subject enrollment
     await this.userManagementService.refreshUserCache(studentId);
@@ -271,28 +292,56 @@ export class InstituteClassSubjectStudentsService {
     try {
       // Determine enrollment method based on user role for backend tracking
       let enrollmentMethod: 'teacher_assigned' | 'self_enrolled' = 'teacher_assigned';
-      
+
       // Access control will be handled by decorators
       enrollmentMethod = 'teacher_assigned'; // Keep the enum value valid
 
-      const timestamp = getCurrentSriLankaISO();
-      const enrollments = bulkDto.studentIds.map(studentId => {
-        const enrollmentData = {
+      // Existing rows (active OR soft-deleted) for these students must be reactivated
+      // in place rather than inserted again — the composite PK would otherwise throw
+      // a duplicate-key DB error for anyone previously removed from this subject.
+      const existingRows = await this.studentRepository.find({
+        where: {
           instituteId: bulkDto.instituteId,
           classId: bulkDto.classId,
           subjectId: bulkDto.subjectId,
-          studentId: studentId,
-          isActive: bulkDto.isActive ?? true,
-          enrollmentMethod: enrollmentMethod,
-          enrolledBy: user.userId, // Track who performed the enrollment (from JWT)
-          verificationStatus: 'verified' as const,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
-        return this.studentRepository.create(enrollmentData);
+          studentId: In(bulkDto.studentIds),
+        },
       });
+      const existingByStudentId = new Map(existingRows.map(e => [e.studentId, e]));
 
-      const savedEnrollments = await this.studentRepository.save(enrollments);
+      const timestamp = getCurrentSriLankaISO();
+      const toInsert: InstituteClassSubjectStudent[] = [];
+      const toReactivate: InstituteClassSubjectStudent[] = [];
+
+      for (const studentId of bulkDto.studentIds) {
+        const existing = existingByStudentId.get(studentId);
+        if (existing) {
+          existing.isActive = bulkDto.isActive ?? true;
+          existing.enrollmentMethod = enrollmentMethod;
+          existing.enrolledBy = user.userId;
+          existing.verificationStatus = 'verified';
+          existing.rejectionReason = null;
+          existing.updatedAt = timestamp as any;
+          toReactivate.push(existing);
+          continue;
+        }
+        toInsert.push(
+          this.studentRepository.create({
+            instituteId: bulkDto.instituteId,
+            classId: bulkDto.classId,
+            subjectId: bulkDto.subjectId,
+            studentId,
+            isActive: bulkDto.isActive ?? true,
+            enrollmentMethod,
+            enrolledBy: user.userId,
+            verificationStatus: 'verified',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }),
+        );
+      }
+
+      const savedEnrollments = await this.studentRepository.save([...toReactivate, ...toInsert]);
 
       // Refresh cache for all enrolled students
       for (const studentId of bulkDto.studentIds) {
@@ -927,7 +976,9 @@ export class InstituteClassSubjectStudentsService {
         },
       });
 
-      if (existingEnrollment) {
+      // A soft-deleted (isActive: false) row is treated as "not enrolled" — the
+      // student can self-enroll fresh below, which reactivates the same row.
+      if (existingEnrollment && existingEnrollment.isActive) {
         // Allow re-enrollment if payment was rejected (student wants to resubmit)
         if (existingEnrollment.verificationStatus === 'payment_rejected') {
           // Reset to pending_payment so they can upload a new slip
@@ -1050,21 +1101,24 @@ export class InstituteClassSubjectStudentsService {
         enrollmentStudentType = 'normal';
       }
 
-      // Create enrollment with appropriate verification status
+      // Create enrollment with appropriate verification status — or reactivate the
+      // existing soft-deleted row (composite PK would reject a duplicate insert).
       const timestamp = getCurrentSriLankaISO();
-      const enrollment = this.studentRepository.create({
+      const enrollment = existingEnrollment ?? this.studentRepository.create({
         instituteId: classSubject.instituteId,
         classId: classSubject.classId,
         subjectId: classSubject.subjectId,
         studentId: studentId,
-        enrollmentMethod: 'self_enrolled',
-        enrolledBy: null, // Self-enrolled
-        isActive: true,
-        verificationStatus: verificationStatus as any,
-        studentType: enrollmentStudentType,
         createdAt: timestamp,
-        updatedAt: timestamp,
       });
+      enrollment.enrollmentMethod = 'self_enrolled';
+      enrollment.enrolledBy = null; // Self-enrolled
+      enrollment.isActive = true;
+      enrollment.verificationStatus = verificationStatus as any;
+      enrollment.studentType = enrollmentStudentType;
+      enrollment.rejectionReason = null;
+      enrollment.enrollmentPaymentId = null;
+      enrollment.updatedAt = timestamp as any;
 
       const savedEnrollment = await this.studentRepository.save(enrollment);
 
@@ -1303,9 +1357,10 @@ export class InstituteClassSubjectStudentsService {
       // Build lookup maps for O(1) access
       const userMap = new Map(users.map(u => [u.id, u]));
       const classEnrolledSet = new Set(classEnrollments.map(e => e.studentUserId));
-      const subjectEnrolledSet = new Set(existingSubjectEnrollments.map(e => e.studentId));
+      const existingSubjectEnrollmentByStudentId = new Map(existingSubjectEnrollments.map(e => [e.studentId, e]));
 
       const enrollmentsToCreate = [];
+      const enrollmentsToReactivate = [];
       const cacheRefreshIds: string[] = [];
 
       for (const studentId of studentIds) {
@@ -1322,7 +1377,8 @@ export class InstituteClassSubjectStudentsService {
           continue;
         }
 
-        if (subjectEnrolledSet.has(studentId)) {
+        const existing = existingSubjectEnrollmentByStudentId.get(studentId);
+        if (existing?.isActive) {
           failedAssignments.push({
             studentId,
             studentName,
@@ -1333,21 +1389,33 @@ export class InstituteClassSubjectStudentsService {
         }
 
         const timestamp = getCurrentSriLankaISO();
-        enrollmentsToCreate.push(
-          this.studentRepository.create({
-            instituteId,
-            classId,
-            subjectId,
-            studentId,
-            enrollmentMethod: 'teacher_assigned',
-            enrolledBy: teacherId,
-            isActive: true,
-            verificationStatus: 'verified',
-            studentType: assignDto.studentType || 'normal',
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }),
-        );
+        if (existing) {
+          // Previously soft-deleted — reactivate the same row instead of inserting.
+          existing.enrollmentMethod = 'teacher_assigned';
+          existing.enrolledBy = teacherId;
+          existing.isActive = true;
+          existing.verificationStatus = 'verified';
+          existing.rejectionReason = null;
+          existing.studentType = assignDto.studentType || 'normal';
+          existing.updatedAt = timestamp as any;
+          enrollmentsToReactivate.push(existing);
+        } else {
+          enrollmentsToCreate.push(
+            this.studentRepository.create({
+              instituteId,
+              classId,
+              subjectId,
+              studentId,
+              enrollmentMethod: 'teacher_assigned',
+              enrolledBy: teacherId,
+              isActive: true,
+              verificationStatus: 'verified',
+              studentType: assignDto.studentType || 'normal',
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            }),
+          );
+        }
         cacheRefreshIds.push(studentId);
 
         successfulAssignments.push({
@@ -1357,9 +1425,9 @@ export class InstituteClassSubjectStudentsService {
         });
       }
 
-      // Batch insert all enrollments at once
-      if (enrollmentsToCreate.length > 0) {
-        await this.studentRepository.save(enrollmentsToCreate);
+      // Batch save all new + reactivated enrollments at once
+      if (enrollmentsToCreate.length > 0 || enrollmentsToReactivate.length > 0) {
+        await this.studentRepository.save([...enrollmentsToReactivate, ...enrollmentsToCreate]);
       }
 
       // Refresh caches in parallel
