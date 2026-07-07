@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 
 // DTOs
 import { SmartCardsService } from '../../smart-cards/smart-cards.service';
+import { UserTypesService } from '../../rbac/services/user-types.service';
 import { SmartCardScope } from '../../smart-cards/enums/smart-card.enums';
 import { CreateInstitueUserDto } from './dto/create-institue_user.dto';
 import { UpdateInstitueUserDto } from './dto/update-institue_user.dto';
@@ -134,6 +135,8 @@ export class InstitueUserService {
     private readonly userRoleValidationService: UserRoleValidationService,
     @Optional()
     private readonly smartCardsService?: SmartCardsService,
+    @Optional()
+    private readonly userTypesService?: UserTypesService,
   ) {
     // Initialize caching flag based on environment variable
     this.isCachingEnabled = this.configService.get<string>('CACHE_ENABLED') === 'true';
@@ -2565,6 +2568,85 @@ export class InstitueUserService {
         `Failed to change user role: ${error.message}`
       );
     }
+  }
+
+  /**
+   * Assign a custom institute user type (RBAC role) to a user's institute membership.
+   *
+   * `userTypeId` accepts a real institute_user_types.id, its slug, or a synthetic
+   * "system-*" id for a built-in type not yet materialized as a row (see
+   * UserTypesService.list()). Real rows are written to primary_user_type_id;
+   * synthetic system types instead update the legacy institute_user_type enum
+   * column and clear primary_user_type_id, matching RbacContextService's existing
+   * fallback (primary_user_type_id preferred, enum slug as fallback) — no fake
+   * row is created for a synthetic id.
+   */
+  async changeInstituteUserType(
+    instituteId: string,
+    userId: string,
+    userTypeId: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    userId: string;
+    instituteId: string;
+    userTypeId: string;
+    userTypeName: string;
+  }> {
+    if (!this.userTypesService) {
+      throw new InternalServerErrorException('User type service is not available');
+    }
+    const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
+    const safeUserId = SecurityUtils.validateBigIntId(userId, 'userId');
+
+    const instituteUser = await this.instituteUserRepository.findOne({
+      where: { instituteId: safeInstituteId, userId: safeUserId },
+    });
+    if (!instituteUser) {
+      throw new NotFoundException(`User ${userId} is not assigned to institute ${instituteId}`);
+    }
+
+    const type = await this.userTypesService.findByHandle(safeInstituteId, userTypeId, true);
+    if (!type) {
+      throw new NotFoundException(`User type "${userTypeId}" not found for this institute`);
+    }
+
+    const isSyntheticSystemType = type.id.startsWith('system-') || !(await this.userTypeRowExists(type.id));
+    if (isSyntheticSystemType) {
+      // No real institute_user_types row — fall back to the legacy enum column,
+      // matching RbacContextService.getMyContext's fallback order.
+      const enumValue = Object.values(InstituteUserType).find(
+        v => v.toLowerCase() === type.slug.toLowerCase(),
+      );
+      if (!enumValue) {
+        throw new BadRequestException(`"${type.slug}" has no matching built-in role and no custom row to assign`);
+      }
+      instituteUser.instituteUserType = enumValue;
+      instituteUser.primaryUserTypeId = null;
+    } else {
+      instituteUser.primaryUserTypeId = type.id;
+    }
+
+    await this.instituteUserRepository.save(instituteUser);
+
+    return {
+      success: true,
+      message: 'User type changed successfully',
+      userId,
+      instituteId,
+      userTypeId: isSyntheticSystemType ? type.id : type.id,
+      userTypeName: type.name,
+    };
+  }
+
+  /** True if `id` is a real institute_user_types row (not one of UserTypesService's synthetic "system-*" entries). */
+  private async userTypeRowExists(id: string): Promise<boolean> {
+    if (id.startsWith('system-')) return false;
+    const rows: any[] = await this.instituteUserRepository.manager.query(
+      `SELECT 1 FROM institute_user_types WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    return rows.length > 0;
   }
 
   /**

@@ -91,12 +91,29 @@ export class MarkAttendanceByInstituteCardDto {
   @IsEnum(AttendanceStatus)
   status: AttendanceStatus;
 
-  @ApiPropertyOptional({ 
-    description: 'Location/Address (auto-generated if not provided)' 
+  @ApiPropertyOptional({
+    description: 'Location/Address (auto-generated if not provided)'
   })
   @IsOptional()
   @IsString()
   location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Calendar event ID — enables checkout detection (a second scan today becomes the checkout instead of a duplicate check-in) and time-based status auto-resolution (present/late/left-early from the event\'s time rules). If omitted, attendance auto-links to the default Regular Classes event for today.',
+  })
+  @IsOptional()
+  @IsString()
+  eventId?: string;
+
+  @ApiPropertyOptional({ description: 'Class session ID — links this attendance record to a specific session and enables checkout detection for it' })
+  @IsOptional()
+  @IsString()
+  classSessionId?: string;
+
+  @ApiPropertyOptional({ description: 'Calendar day ID — links this attendance record to a specific calendar day' })
+  @IsOptional()
+  @IsString()
+  calendarDayId?: string;
 }
 
 export class GetInstituteUserByCardDto {

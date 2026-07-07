@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsNotEmpty, IsEnum,
-  IsBoolean, IsDateString, IsInt, Min, IsArray,
+  IsBoolean, IsDateString, IsInt, Min, Max, IsArray,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -182,10 +182,13 @@ export class MarkSessionAttendanceDto {
   @ApiPropertyOptional({
     description: 'Attendance status: 0=Absent, 1=Present, 2=Late, 3=Left, 4=LeftEarly, 5=LeftLately. Omit to auto-resolve from session time rules.',
     example: 1,
+    minimum: 0,
+    maximum: 5,
   })
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(5)
   status?: number;
 
   @ApiPropertyOptional()

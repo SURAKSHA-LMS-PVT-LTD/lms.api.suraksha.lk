@@ -332,6 +332,15 @@ export class AttendanceService {
 
     if (!where) return null; // no stable pairing key resolved — treat as a normal check-in
 
+    // Find the candidate row first (to know its date, needed for the composite
+    // PK below), then perform the actual state transition as a single
+    // conditional UPDATE guarded by checkOutTime IS NULL. This collapses the
+    // earlier find-then-update pattern's check-then-act race: two near-
+    // simultaneous requests can both still see the row as "open" via findOne,
+    // but only one of the two subsequent UPDATEs can match `check_out_time IS
+    // NULL` (whichever commits first flips it non-null) — the second's
+    // affected-row count is exactly 0, so it correctly falls through to a
+    // fresh check-in insert instead of silently double-checking-out.
     const openRow = await this.attendanceRecordRepository.findOne({
       where: { ...where, checkOutTime: IsNull() },
       order: { checkInTime: 'DESC' },
@@ -342,11 +351,23 @@ export class AttendanceService {
     const checkOutStatus = dto.status ?? AttendanceStatus.PRESENT;
     // Composite PK (id, date): object criteria required — a scalar id is ambiguous,
     // and including date lets MySQL prune to the row's monthly partition.
-    await this.attendanceRecordRepository.update({ id: openRow.id, date: openRow.date }, {
-      checkOutTime: new Date(),
-      checkOutStatus: this.attendanceStatusToNumber(checkOutStatus),
-      checkOutMarkedBy: dto.markedBy || 'system',
-    });
+    // checkOutTime: IsNull() re-asserted here (not just in the findOne above) is
+    // what actually closes the race — it's the atomic compare-and-set.
+    const updateResult = await this.attendanceRecordRepository.update(
+      { id: openRow.id, date: openRow.date, checkOutTime: IsNull() },
+      {
+        checkOutTime: new Date(),
+        checkOutStatus: this.attendanceStatusToNumber(checkOutStatus),
+        checkOutMarkedBy: dto.markedBy || 'system',
+      },
+    );
+
+    if (!updateResult.affected) {
+      // Lost the race — another concurrent request already checked this row
+      // out between our findOne and this update. Treat this call as a fresh
+      // check-in rather than silently no-op'ing.
+      return null;
+    }
 
     return {
       success: true,
@@ -364,7 +385,27 @@ export class AttendanceService {
     const map: Record<string, number> = {
       ABSENT: 0, PRESENT: 1, LATE: 2, LEFT: 3, LEFT_EARLY: 4, LEFT_LATELY: 5,
     };
-    return map[String(status).toUpperCase()] ?? 1;
+    // Unrecognized input defaults to Absent (never silently mark someone present)
+    // — matches mysqlAttendanceService.statusToNumber's fallback for consistency.
+    return map[String(status).toUpperCase()] ?? 0;
+  }
+
+  /**
+   * Rejects marking with a card that's been revoked/lost/expired. The card-based
+   * marking paths (markAttendanceByCard, markBulkAttendanceByCard) fetch
+   * rfidCardStatus/cardStatus/*ExpiryDate but never checked them before this fix —
+   * a card marked LOST or past its expiry date still successfully marked attendance.
+   */
+  private assertCardIsUsable(cardType: 'rfid' | 'normal', user: UserEntity, cardId: string): void {
+    const status = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
+    const expiryDate = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
+
+    if (status && status !== CardStatus.ACTIVE) {
+      throw new Error(`Card "${cardId}" is ${status.toLowerCase()} and cannot be used to mark attendance.`);
+    }
+    if (expiryDate && new Date(expiryDate) < new Date()) {
+      throw new Error(`Card "${cardId}" expired on ${new Date(expiryDate).toISOString().split('T')[0]} and cannot be used to mark attendance.`);
+    }
   }
 
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
@@ -874,6 +915,23 @@ export class AttendanceService {
         }
       }
 
+      // âœ… STEP 8.4: Resolve time-based status from the event's rules once for the
+      // whole batch (same event for every student in one bulk call), same as the
+      // single-mark path — otherwise bulk-marked status is always exactly whatever
+      // the client sent, while single-marking the same class at the same real time
+      // auto-overrides to present/late/left-early, giving inconsistent results
+      // depending on which marking path was used.
+      const bulkEventId = (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId;
+      let bulkAutoStatus: AttendanceStatus | undefined;
+      if (bulkEventId) {
+        bulkAutoStatus = await this.resolveEventAutoStatus(bulkEventId);
+        if (bulkAutoStatus) {
+          for (const student of bulkAttendanceDto.students) {
+            student.status = bulkAutoStatus;
+          }
+        }
+      }
+
       // âœ… STEP 8.5: Check-out detection, per student. A student who already has an
       // open (no checkout yet) attendance instance matching this bulk mark's
       // session/event is checked out individually; only students without an open
@@ -892,7 +950,7 @@ export class AttendanceService {
           status: student.status,
           markedBy: bulkAttendanceDto.markedBy,
           classSessionId: (bulkAttendanceDto as any).classSessionId,
-          eventId: (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId,
+          eventId: bulkEventId,
           calendarDayId: (bulkAttendanceDto as any).calendarDayId,
         } as any;
 
@@ -1237,6 +1295,8 @@ export class AttendanceService {
       throw new Error(errorDetails.message);
     }
 
+    this.assertCardIsUsable(cardType, user, studentCardId);
+
     const markAttendanceDto: MarkAttendanceDto = {
       studentId: user.id.toString(),
       studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
@@ -1321,11 +1381,18 @@ export class AttendanceService {
 
     // Map students, skip invalid cards & not-found
     const notFound: string[] = [];
+    const resolvedCardType = isNfc || cardType === 'rfid' ? 'rfid' : 'normal';
     const students = bulkCardAttendanceDto.students
       .filter(student => {
         const user = userMap.get(student.studentCardId);
         if (!user) {
           notFound.push(student.studentCardId);
+          return false;
+        }
+        try {
+          this.assertCardIsUsable(resolvedCardType, user, student.studentCardId);
+        } catch (e: any) {
+          invalidCards.push({ cardId: student.studentCardId, reason: e.message });
           return false;
         }
         return true;
@@ -3080,7 +3147,17 @@ export class AttendanceService {
       ? instituteUser.instituteUserImageUrl
       : globalImageUrl;
 
-    // âœ… STEP 5: Build attendance DTO with auto-detected userType
+    // âœ… STEP 5: Resolve time-based status from the event's rules, same as the
+    // main markAttendance() path — otherwise this card-marking path always uses
+    // whatever status the client sent, regardless of actual arrival time.
+    if (markAttendanceDto.eventId) {
+      const autoStatus = await this.resolveEventAutoStatus(markAttendanceDto.eventId);
+      if (autoStatus) {
+        markAttendanceDto.status = autoStatus;
+      }
+    }
+
+    // âœ… STEP 5.1: Build attendance DTO with auto-detected userType
     const attendanceDto: MarkAttendanceDto = {
       studentId: studentId,
       studentName: userName,
@@ -3100,8 +3177,21 @@ export class AttendanceService {
         markAttendanceDto.instituteName,
         markAttendanceDto.className,
         markAttendanceDto.subjectName
-      )
-    };
+      ),
+      eventId: markAttendanceDto.eventId,
+      classSessionId: markAttendanceDto.classSessionId,
+      calendarDayId: markAttendanceDto.calendarDayId,
+    } as any;
+
+    // âœ… STEP 5.2: Check-out detection — if this card scan matches an already
+    // open check-in (same session, or same institute+event today), treat it as
+    // the checkout instead of inserting a duplicate check-in row. Only resolves
+    // when eventId/classSessionId is provided (same pairing-key requirement as
+    // the main markAttendance() path — see tryRecordCheckout's doc comment).
+    const checkoutResult = await this.tryRecordCheckout(attendanceDto);
+    if (checkoutResult) {
+      return checkoutResult;
+    }
 
     // âœ… STEP 6: Mark attendance based on database mode
     const isMysqlOnlyMode = this.syncConfigService.isMysqlOnly();
@@ -3165,6 +3255,8 @@ export class AttendanceService {
       userType: detectedUserType,  // âœ… NEW: Return user type
       instituteCardId: instituteUser.instituteCardId || null,
       userIdByInstitute: instituteUser.userIdByInstitute,
+      eventId: markAttendanceDto.eventId || null,
+      calendarDayId: markAttendanceDto.calendarDayId || null,
       data: {
         studentId: studentId,
         studentName: userName,
