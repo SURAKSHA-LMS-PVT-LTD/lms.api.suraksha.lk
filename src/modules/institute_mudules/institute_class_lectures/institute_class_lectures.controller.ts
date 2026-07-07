@@ -62,6 +62,7 @@ export class InstituteClassLecturesController {
     instituteAdmin: true,
     teacher: { requireClass: true },
     student: { requireClass: true },
+    attendanceMarker: { requireClass: true },
   })
   @ApiOperation({ summary: 'Get all lectures for a specific class (verified class members only)' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
