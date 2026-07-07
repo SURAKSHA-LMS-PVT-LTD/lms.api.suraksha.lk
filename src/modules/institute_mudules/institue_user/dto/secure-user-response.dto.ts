@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserType } from '../../../user/enums/user-type.enum';
 import { Gender } from '../../../user/enums/gender.enum';
-import { maskPhoneNumber, maskEmail } from '../../../../common/utils/phone-mask.util';
+import { maskPhoneNumber, maskEmail, maskAddress } from '../../../../common/utils/phone-mask.util';
 import { UserEntity } from '../../../user/entities/user.entity';
 import { StudentEntity } from '../../../student/entities/student.entity';
 import { ParentEntity } from '../../../parent/entities/parent.entity';
@@ -67,9 +67,10 @@ interface InstituteUserLikeData {
  * Secure user response DTO that only includes allowed fields for institute user endpoints
  * NEVER includes sensitive data like password, subscriptionPlan, paymentExpiresAt, idUrl, etc.
  * 
- * ✅ ENVIRONMENT-BASED MASKING: Respects IS_EMAILS_MASKED and IS_PHONENUMBERS_MASKED settings
+ * ✅ ENVIRONMENT-BASED MASKING: Respects IS_EMAILS_MASKED, IS_PHONENUMBERS_MASKED, and IS_ADDRESS_MASKED settings
  * - When IS_EMAILS_MASKED=true: Masks email addresses (e.g., j***@example.com)
  * - When IS_PHONENUMBERS_MASKED=true: Masks phone numbers (e.g., +94****567)
+ * - When IS_ADDRESS_MASKED=true: Masks home addresses (e.g., "12 ***")
  * - Emergency contacts are NEVER masked for safety reasons
  */
 export class SecureUserResponseDto {
@@ -85,10 +86,10 @@ export class SecureUserResponseDto {
   @ApiProperty({ example: 'john.doe@example.com', description: 'User email address (respects IS_EMAILS_MASKED env)' })
   email: string;
 
-  @ApiProperty({ example: 'Line 1, Building Name', description: 'Address line 1' })
+  @ApiProperty({ example: 'Line 1, Building Name', description: 'Address line 1 (respects IS_ADDRESS_MASKED env)' })
   addressLine1?: string;
 
-  @ApiProperty({ example: 'Line 2, Street Name', description: 'Address line 2' })
+  @ApiProperty({ example: 'Line 2, Street Name', description: 'Address line 2 (respects IS_ADDRESS_MASKED env)' })
   addressLine2?: string;
 
   @ApiProperty({ example: '+94****789', description: 'Phone number (respects IS_PHONENUMBERS_MASKED env)' })
@@ -154,9 +155,11 @@ export class SecureUserResponseDto {
     const email = user.email || (user as any).email || '';
     this.email = maskSensitiveData ? maskEmail(email) : email;
 
-    // ✅ Handle address from both naming conventions
-    this.addressLine1 = user.addressLine1 || (user as any).address_line1;
-    this.addressLine2 = user.addressLine2 || (user as any).address_line2;
+    // ✅ Handle address from both naming conventions and apply masking if needed
+    const addressLine1 = user.addressLine1 || (user as any).address_line1;
+    const addressLine2 = user.addressLine2 || (user as any).address_line2;
+    this.addressLine1 = maskSensitiveData ? maskAddress(addressLine1) : addressLine1;
+    this.addressLine2 = maskSensitiveData ? maskAddress(addressLine2) : addressLine2;
 
     // ✅ Handle phone from both naming conventions and apply masking
     const phoneNumber = user.phoneNumber || (user as any).phone_number;

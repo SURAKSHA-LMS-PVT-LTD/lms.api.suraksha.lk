@@ -13,10 +13,11 @@ import { WhatsAppContactSessionEntity } from './entities/whatsapp-contact-sessio
 import { AttendanceService } from './attendance.service';
 import { SmsModule } from '../sms/sms.module';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
-import { DynamoDBAttendanceServiceV2 } from './services/dynamodb-attendance.service.v2';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
 import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
+import { AttendancePartitionScheduler } from './services/attendance-partition.scheduler';
+import { AttendanceCacheService } from './services/attendance-cache.service';
 import { MysqlAttendanceService } from './services/mysql-attendance.service';
 import { ClassAttendanceSessionService } from './services/class-attendance-session.service';
 import { InstituteClassAttendanceSessionEntity } from './entities/institute-class-attendance-session.entity';
@@ -76,11 +77,12 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
   providers: [
     AttendanceService,
     DynamoDBAttendanceService,
-    DynamoDBAttendanceServiceV2,
     MysqlAttendanceService,
     AttendanceNotificationService,
     AttendanceSyncConfigService,
     AttendanceSyncSchedulerService,
+    AttendancePartitionScheduler,
+    AttendanceCacheService,
     ClassAttendanceSessionService,
     WhatsAppWebhookService,
     WhatsAppMenuService,
@@ -90,7 +92,7 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
     EnhancedEmailService,
     UserFcmTokenRepository
   ],
-  exports: [AttendanceService, DynamoDBAttendanceService, DynamoDBAttendanceServiceV2, MysqlAttendanceService, AttendanceNotificationService]
+  exports: [AttendanceService, DynamoDBAttendanceService, MysqlAttendanceService, AttendanceNotificationService]
 })
 export class AttendanceModule {}
 

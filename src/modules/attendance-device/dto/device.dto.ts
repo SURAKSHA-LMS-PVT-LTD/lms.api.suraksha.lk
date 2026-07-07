@@ -5,6 +5,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 import { DeviceType, DeviceStatus, AllowedStatusMode } from '../enums/device.enums';
+import { IsAfter } from "../../../common/validators/is-after.validator";
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  CREATE / REGISTER DEVICE  (System Admin)
@@ -167,6 +168,7 @@ export class UpdateDeviceConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(5)
+    @IsAfter('operatingStartTime')
   operatingEndTime?: string;
 }
 

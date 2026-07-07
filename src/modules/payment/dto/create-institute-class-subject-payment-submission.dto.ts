@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsOptional, IsString, IsIn, IsDateString, IsNumber, MaxLength, IsEnum, Min, Max, IsUrl } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
+import { SubmissionStatus } from '../entities/class-payment-submission.entity';
 
 export class CreateInstituteClassSubjectPaymentSubmissionDto {
   @ApiProperty({ 

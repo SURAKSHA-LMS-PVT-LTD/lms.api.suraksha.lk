@@ -1,5 +1,6 @@
 import { IsNumber, IsBoolean, IsString, IsOptional, Min, Max } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class CreateOperatingConfigDto {
   @ApiPropertyOptional({ description: 'Day of week (1=Monday, 7=Sunday)', minimum: 1, maximum: 7 })
@@ -20,6 +21,7 @@ export class CreateOperatingConfigDto {
   @ApiPropertyOptional({ description: 'End time in HH:MM format, e.g. 15:00' })
   @IsOptional()
   @IsString()
+    @IsAfter('startTime')
   endTime?: string;
 
   @ApiPropertyOptional({ description: 'Academic year, e.g. 2025 or 2025/2026' })

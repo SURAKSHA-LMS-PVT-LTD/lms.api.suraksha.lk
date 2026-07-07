@@ -1,10 +1,12 @@
 import {
   Controller, Post, Body, Param, Req,
-  UseGuards, HttpCode, HttpStatus, ForbiddenException,
+  UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InstituteApiKeyGuard } from '../guards/institute-api-key.guard';
+import { ApiKeyScopeGuard } from '../guards/api-key-scope.guard';
+import { RequireApiKeyScope } from '../decorators/require-api-key-scope.decorator';
 import { ApiKeyScope } from '../entities/institute-api-key.entity';
 import { ExternalAttendanceService } from '../services/external-attendance.service';
 import { BulkExternalAttendanceDto } from '../dto/external-attendance.dto';
@@ -16,7 +18,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 @Public()
 @SkipOriginValidation()
 @Controller('api/external/v1/attendance')
-@UseGuards(InstituteApiKeyGuard)
+@UseGuards(InstituteApiKeyGuard, ApiKeyScopeGuard)
 export class ExternalAttendanceController {
   constructor(private readonly svc: ExternalAttendanceService) {}
 
@@ -33,6 +35,7 @@ export class ExternalAttendanceController {
   @Post('sessions/:sessionId/mark-bulk')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 bulk calls per minute per IP
+  @RequireApiKeyScope(ApiKeyScope.ATTENDANCE_MARK)
   @ApiOperation({
     summary: 'Bulk mark session attendance via API key',
     description:
@@ -64,12 +67,6 @@ export class ExternalAttendanceController {
     @Body() dto: BulkExternalAttendanceDto,
     @Req() req: any,
   ) {
-    const apiKey = req.apiKey;
-
-    if (!apiKey.scopes?.includes(ApiKeyScope.ATTENDANCE_MARK)) {
-      throw new ForbiddenException(`API key does not have the '${ApiKeyScope.ATTENDANCE_MARK}' scope`);
-    }
-
-    return this.svc.bulkMarkAttendance(sessionId, req.instituteId, dto, apiKey.id);
+    return this.svc.bulkMarkAttendance(sessionId, req.instituteId, dto, req.apiKey.id);
   }
 }

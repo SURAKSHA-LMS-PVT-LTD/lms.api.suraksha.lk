@@ -8,6 +8,7 @@ import { Request as ExpressRequest, Response as ExpressResponse } from 'express'
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../guards/flexible-access.guard';
+import { InstituteLoginThrottlerGuard } from '../guards/institute-login-throttler.guard';
 import { RequireAnyOfRoles } from '../decorators/flexible-access.decorator';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { getClientIp } from '../../common/utils/ip-extractor.util';
@@ -64,10 +65,11 @@ export class InstituteAuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 900000 } }) // 5 attempts per 15 minutes
+  @UseGuards(InstituteLoginThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 900000 } }) // 5 attempts per 15 minutes, PER ACCOUNT (institute + userIdByInstitute) — not per IP, since public live-lecture links funnel many real students through the same school/home network IP.
   @ApiOperation({
     summary: 'Institute-level login with institute user ID and password',
-    description: 'Authenticates using institute-assigned user ID and institute-level password. Token is scoped to the originating subdomain/custom domain. Returns device limit info if max sessions reached.',
+    description: 'Authenticates using institute-assigned user ID and institute-level password. Token is scoped to the originating subdomain/custom domain. Rate-limited per account (institute + userIdByInstitute), not per IP — so a shared school network cannot exhaust the budget for unrelated students. Returns device limit info if max sessions reached.',
   })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })

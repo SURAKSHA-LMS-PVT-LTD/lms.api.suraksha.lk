@@ -382,12 +382,12 @@ export class InstitutesController {
           'u.isActive as isActive'
         ])
         .from('users', 'u')
-        .innerJoin('institute_users', 'iu', 'u.id = iu.user_id')
+        .innerJoin('institute_user', 'iu', 'u.id = iu.user_id')
         .where('u.id = :teacherId', { teacherId })
         .andWhere("u.userType = 'TEACHER'")
         .andWhere('u.isActive = true')
         .andWhere('iu.institute_id = :instituteId', { instituteId })
-        .andWhere('iu.is_active = true')
+        .andWhere("iu.status = 'ACTIVE'")
         .limit(1)
         .getRawMany();
       

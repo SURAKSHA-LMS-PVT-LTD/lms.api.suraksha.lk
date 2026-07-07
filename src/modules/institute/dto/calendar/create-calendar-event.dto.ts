@@ -14,6 +14,7 @@ import {
   CalendarEventScope,
   AttendanceOpenTo,
 } from '../../enums/calendar-day-type.enum';
+import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class CreateCalendarEventDto {
   @ApiProperty({ description: 'Calendar day ID this event belongs to' })
@@ -51,6 +52,7 @@ export class CreateCalendarEventDto {
   @ApiPropertyOptional({ description: 'End time in HH:MM format' })
   @IsOptional()
   @IsString()
+    @IsAfter('startTime')
   endTime?: string;
 
   @ApiPropertyOptional({ description: 'Is this an all-day event?' })

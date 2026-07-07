@@ -15,16 +15,64 @@ export class UserTypesService {
     private readonly dataSource: DataSource,
   ) {}
 
+  async findByHandle(instituteId: string, handle: string, requireActive = false): Promise<InstituteUserTypeEntity | null> {
+    const normalized = handle.trim();
+
+    const byId = await this.repo.findOne({
+      where: { id: normalized, instituteId, ...(requireActive ? { isActive: true } : {}) },
+    });
+    if (byId) return byId;
+
+    const bySlug = await this.repo.findOne({
+      where: { instituteId, slug: normalized, ...(requireActive ? { isActive: true } : {}) },
+    });
+    if (bySlug) return bySlug;
+
+    if (normalized.startsWith('system-')) {
+      const aliasSlug = normalized.slice('system-'.length).replace(/-/g, '_');
+      return this.repo.findOne({
+        where: { instituteId, slug: aliasSlug, ...(requireActive ? { isActive: true } : {}) },
+      });
+    }
+
+    return null;
+  }
+
   async list(instituteId: string): Promise<UserTypeResponseDto[]> {
     const types = await this.repo.find({
       where: { instituteId, isActive: true },
       order: { sortOrder: 'ASC', createdAt: 'ASC' },
     });
-    const mapped = types.map(this.toDto);
+    const mapped = types.map(t => {
+      const dto = this.toDto(t);
+      if (t.slug === 'student') {
+        return {
+          ...dto,
+          id: 'system-student',
+          isSystemType: true,
+        };
+      }
+      return dto;
+    });
 
     // Inject synthetic entries for built-in enum roles not stored as table rows
     const existingSlugs = new Set(mapped.map(t => t.slug));
     const systemTypes: UserTypeResponseDto[] = [
+      {
+        id: 'system-student',
+        instituteId,
+        name: 'Student',
+        namePlural: 'Students',
+        slug: 'student',
+        description: 'Base learner role with submission access',
+        color: '#3B82F6',
+        isSystemType: true,
+        isPublic: true,
+        isActive: true,
+        sortOrder: 0,
+        createdAt: null,
+        updatedAt: null,
+      },
       {
         id: 'system-institute-admin',
         instituteId,
@@ -72,11 +120,17 @@ export class UserTypesService {
       },
     ].filter(s => !existingSlugs.has(s.slug));
 
-    return [...systemTypes, ...mapped];
+    const combined = [...systemTypes, ...mapped];
+    combined.sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    return combined;
   }
 
   async getById(instituteId: string, id: string): Promise<UserTypeResponseDto> {
-    const type = await this.repo.findOne({ where: { id, instituteId } });
+    const type = await this.findByHandle(instituteId, id);
     if (!type) throw new NotFoundException('User type not found');
     return this.toDto(type);
   }
@@ -135,7 +189,7 @@ export class UserTypesService {
   }
 
   async update(instituteId: string, id: string, dto: UpdateUserTypeDto): Promise<UserTypeResponseDto> {
-    const type = await this.repo.findOne({ where: { id, instituteId } });
+    const type = await this.findByHandle(instituteId, id, true);
     if (!type) throw new NotFoundException('User type not found');
 
     // System types guard: only non-structural fields may be touched
@@ -164,7 +218,7 @@ export class UserTypesService {
   }
 
   async remove(instituteId: string, id: string): Promise<void> {
-    const type = await this.repo.findOne({ where: { id, instituteId } });
+    const type = await this.findByHandle(instituteId, id, true);
     if (!type) throw new NotFoundException('User type not found');
     if (type.isSystemType) throw new ForbiddenException('System user types cannot be deleted');
 

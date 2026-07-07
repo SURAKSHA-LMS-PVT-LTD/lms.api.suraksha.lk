@@ -7,29 +7,31 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { maskEmail, maskPhoneNumber } from '../utils/phone-mask.util';
+import { maskEmail, maskPhoneNumber, maskAddress } from '../utils/phone-mask.util';
+import { getMaskingFlags } from '../config/masking-flags.bridge';
 import { NO_DATA_MASKING_KEY } from '../decorators/no-data-masking.decorator';
 
 /**
  * Global Data Masking Interceptor
- * Automatically masks sensitive data (emails, phone numbers) in ALL API responses
- * Based on IS_EMAILS_MASKED and IS_PHONENUMBERS_MASKED environment variables
+ * Automatically masks sensitive data (emails, phone numbers, addresses) in ALL API responses
+ * Based on the live-editable PRIVACY.IS_EMAILS_MASKED / PRIVACY.IS_PHONENUMBERS_MASKED /
+ * PRIVACY.IS_ADDRESS_MASKED config values (see masking-flags.bridge.ts).
  */
 @Injectable()
 export class DataMaskingInterceptor implements NestInterceptor {
-  private readonly shouldMaskEmails: boolean;
-  private readonly shouldMaskPhones: boolean;
-
-  constructor(private reflector: Reflector) {
-    this.shouldMaskEmails = this.isEnabled(process.env.IS_EMAILS_MASKED);
-    this.shouldMaskPhones = this.isEnabled(process.env.IS_PHONENUMBERS_MASKED);
+  private get shouldMaskEmails(): boolean {
+    return getMaskingFlags().email;
   }
 
-  private isEnabled(value: string | undefined): boolean {
-    if (!value) return false;
-    const truthy = ['true', '1', 'yes', 'on'];
-    return truthy.includes(value.trim().toLowerCase());
+  private get shouldMaskPhones(): boolean {
+    return getMaskingFlags().phone;
   }
+
+  private get shouldMaskAddresses(): boolean {
+    return getMaskingFlags().address;
+  }
+
+  constructor(private reflector: Reflector) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     // Check if endpoint has @NoDataMasking() decorator
@@ -43,8 +45,8 @@ export class DataMaskingInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Skip masking if both flags are disabled
-    if (!this.shouldMaskEmails && !this.shouldMaskPhones) {
+    // Skip masking if all flags are disabled
+    if (!this.shouldMaskEmails && !this.shouldMaskPhones && !this.shouldMaskAddresses) {
       return next.handle();
     }
 
@@ -87,6 +89,8 @@ export class DataMaskingInterceptor implements NestInterceptor {
       'emergencyContact',
       'emergency_contact',
       'contactPhone',  // Skip masking for card order contact phone (needed for delivery)
+      'deliveryAddress',  // Skip masking for card order delivery address (needed for shipping)
+      'delivery_address',
     ];
 
     // If this is an institute object, also skip masking the main email and phone fields
@@ -124,6 +128,20 @@ export class DataMaskingInterceptor implements NestInterceptor {
       'mobile',
     ];
 
+    // Common home address field names. Deliberately excludes ipAddress,
+    // emailSenderAddress, deliveryAddress (see skipMaskingFields — shipping
+    // needs the real address), and similar non-PII "address" fields.
+    const addressFields = [
+      'address',
+      'addressLine1',
+      'address_line1',
+      'addressLine2',
+      'address_line2',
+      'homeAddress',
+      'studentAddress',
+      'parentAddress',
+    ];
+
     // Mask emails (except those in skipMaskingFields)
     if (this.shouldMaskEmails) {
       for (const field of emailFields) {
@@ -138,6 +156,15 @@ export class DataMaskingInterceptor implements NestInterceptor {
       for (const field of phoneFields) {
         if (!skipMaskingFields.includes(field) && maskedData[field] && typeof maskedData[field] === 'string') {
           maskedData[field] = maskPhoneNumber(maskedData[field]) || maskedData[field];
+        }
+      }
+    }
+
+    // Mask home addresses (except those in skipMaskingFields like deliveryAddress)
+    if (this.shouldMaskAddresses) {
+      for (const field of addressFields) {
+        if (!skipMaskingFields.includes(field) && maskedData[field] && typeof maskedData[field] === 'string') {
+          maskedData[field] = maskAddress(maskedData[field]) || maskedData[field];
         }
       }
     }

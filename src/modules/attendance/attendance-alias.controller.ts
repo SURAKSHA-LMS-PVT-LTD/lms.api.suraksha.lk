@@ -1,6 +1,6 @@
 /**
  * Attendance Alias Controller
- * 
+ *
  * Provides shorthand routes at /institute/:instituteId for attendance queries.
  * The frontend AttendanceApiClient calls these paths directly instead of the
  * full /api/attendance/institute/:instituteId paths.
@@ -12,6 +12,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { UserType } from '../user/enums/user-type.enum';
+import { resolveAttendanceDateRange } from './utils/attendance-date-range.util';
+import { AttendanceCacheService } from './services/attendance-cache.service';
 
 @ApiTags('Attendance (Alias)')
 @UseGuards(JwtAuthGuard)
@@ -19,10 +21,11 @@ import { UserType } from '../user/enums/user-type.enum';
 export class AttendanceAliasController {
   constructor(
     private readonly attendanceService: AttendanceService,
+    private readonly attendanceCache: AttendanceCacheService,
   ) {}
 
   /**
-   * GET /institute/:instituteId?startDate=...&endDate=...&limit=...
+   * GET /institute/:instituteId?month=YYYY-MM (or startDate/endDate)
    * Alias for GET /api/attendance/institute/:instituteId
    */
   @Get(':instituteId')
@@ -37,57 +40,44 @@ export class AttendanceAliasController {
   })
   @ApiOperation({
     summary: 'Get institute attendance records (alias)',
-    description: 'Alias route for /api/attendance/institute/:instituteId. Retrieves attendance records for a specific institute with date range filtering.',
+    description: 'Alias route for /api/attendance/institute/:instituteId. month=YYYY-MM preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.',
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiResponse({ status: 200, description: 'Attendance records retrieved successfully' })
-  @ApiResponse({ status: 400, description: 'Missing required date parameters' })
+  @ApiResponse({ status: 400, description: 'Invalid date parameters' })
   async getInstituteAttendance(
     @Param('instituteId') instituteId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
     @Query('studentId') studentId?: string,
   ) {
     try {
-      // Default to last 7 days if dates not provided
-      if (!startDate || !endDate) {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(now.getDate() - 7);
-        
-        startDate = startDate || sevenDaysAgo.toISOString().split('T')[0];
-        endDate = endDate || now.toISOString().split('T')[0];
-      }
+      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
+      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
+      // Defaults to the last 7 days when nothing is given (previous behavior).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 7 });
+      startDate = range.startDate;
+      endDate = range.endDate;
 
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      const maxDays = studentId ? 30 : 5;
-      if (daysDiff > maxDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: studentId
-              ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 5 days for institute-wide queries. Add studentId parameter to query up to 30 days.',
-          },
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      return await this.attendanceService.getInstituteAttendance({
-        instituteId,
-        startDate,
+      // Month-scoped cache: past months immutable (long TTL), current month short TTL.
+      // No-op unless ATTENDANCE_CACHE_ENABLED + CACHE_ENABLED.
+      return await this.attendanceCache.getOrCompute(
+        ['inst', instituteId, startDate, endDate, page, limit, status, studentId],
         endDate,
-        page,
-        limit,
-        status,
-        studentId,
-      });
+        () => this.attendanceService.getInstituteAttendance({
+          instituteId,
+          startDate,
+          endDate,
+          page,
+          limit,
+          status,
+          studentId,
+        }),
+      );
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -104,7 +94,7 @@ export class AttendanceAliasController {
   }
 
   /**
-   * GET /institute/:instituteId/class/:classId?startDate=...&endDate=...
+   * GET /institute/:instituteId/class/:classId?month=YYYY-MM (or startDate/endDate)
    * Alias for GET /api/attendance/institute/:instituteId/class/:classId
    */
   @Get(':instituteId/class/:classId')
@@ -119,7 +109,7 @@ export class AttendanceAliasController {
   })
   @ApiOperation({
     summary: 'Get class attendance records (alias)',
-    description: 'Alias route for /api/attendance/institute/:instituteId/class/:classId',
+    description: 'Alias route for /api/attendance/institute/:instituteId/class/:classId. month=YYYY-MM preferred.',
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
@@ -128,45 +118,38 @@ export class AttendanceAliasController {
     @Param('classId') classId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
     @Query('studentId') studentId?: string,
   ) {
     try {
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
-          { success: false, message: 'startDate and endDate are required parameters' },
+          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
           HttpStatus.BAD_REQUEST,
         );
       }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      const maxDays = studentId ? 30 : 5;
-      if (daysDiff > maxDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: studentId
-              ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 5 days. Add studentId to query up to 30 days.',
-          },
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      return await this.attendanceService.getClassAttendance({
-        instituteId,
-        classId,
-        startDate,
+      return await this.attendanceCache.getOrCompute(
+        ['cls', instituteId, classId, startDate, endDate, page, limit, status, studentId],
         endDate,
-        page,
-        limit,
-        status,
-        studentId,
-      });
+        () => this.attendanceService.getClassAttendance({
+          instituteId,
+          classId,
+          startDate,
+          endDate,
+          page,
+          limit,
+          status,
+          studentId,
+        }),
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -177,7 +160,7 @@ export class AttendanceAliasController {
   }
 
   /**
-   * GET /institute/:instituteId/class/:classId/subject/:subjectId?startDate=...&endDate=...
+   * GET /institute/:instituteId/class/:classId/subject/:subjectId?month=YYYY-MM (or startDate/endDate)
    * Alias for GET /api/attendance/institute/:instituteId/class/:classId/subject/:subjectId
    */
   @Get(':instituteId/class/:classId/subject/:subjectId')
@@ -192,7 +175,7 @@ export class AttendanceAliasController {
   })
   @ApiOperation({
     summary: 'Get subject attendance records (alias)',
-    description: 'Alias route for /api/attendance/institute/:instituteId/class/:classId/subject/:subjectId',
+    description: 'Alias route for /api/attendance/institute/:instituteId/class/:classId/subject/:subjectId. month=YYYY-MM preferred.',
   })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
@@ -203,46 +186,39 @@ export class AttendanceAliasController {
     @Param('subjectId') subjectId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
     @Query('studentId') studentId?: string,
   ) {
     try {
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
-          { success: false, message: 'startDate and endDate are required parameters' },
+          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
           HttpStatus.BAD_REQUEST,
         );
       }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      const maxDays = studentId ? 30 : 5;
-      if (daysDiff > maxDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: studentId
-              ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 5 days. Add studentId to query up to 30 days.',
-          },
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      return await this.attendanceService.getSubjectAttendance({
-        instituteId,
-        classId,
-        subjectId,
-        startDate,
+      return await this.attendanceCache.getOrCompute(
+        ['subj', instituteId, classId, subjectId, startDate, endDate, page, limit, status, studentId],
         endDate,
-        page,
-        limit,
-        status,
-        studentId,
-      });
+        () => this.attendanceService.getSubjectAttendance({
+          instituteId,
+          classId,
+          subjectId,
+          startDate,
+          endDate,
+          page,
+          limit,
+          status,
+          studentId,
+        }),
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

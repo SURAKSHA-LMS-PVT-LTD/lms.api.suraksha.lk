@@ -20,6 +20,7 @@ import { now, nowTimestamp } from '../../common/utils/timezone.util';
 import { PackageDefinitionEntity } from '../payment/entities/package-definition.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { UserManagementService } from '../../common/services/cache-user-management.service';
+import { SystemConfigService } from '../../common/services/system-config.service';
 
 /** LKR credit pricing — 1 credit = CREDIT_PRICE_LKR */
 const CREDIT_PRICE_LKR = 1.0;
@@ -40,6 +41,7 @@ export class PaymentGatewayService {
     private readonly userManagementService: UserManagementService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
+    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   private get appBaseUrl(): string {
@@ -50,9 +52,9 @@ export class PaymentGatewayService {
     return this.config.get<string>('API_BASE_URL') ?? 'https://lmsapi.suraksha.lk';
   }
 
-  /** Returns true only when PAYMENT_GATEWAY_SUPPORTIVE=true in env */
+  /** Returns true only when PAYMENT_GATEWAY_SUPPORTIVE=true in config */
   isGatewayEnabled(): boolean {
-    return this.config.get<string>('PAYMENT_GATEWAY_SUPPORTIVE') === 'true';
+    return this.systemConfigService.getSync('PAYMENT', 'GATEWAY_SUPPORTIVE', 'true') === 'true';
   }
 
   /** Throws 503 if PAYMENT_GATEWAY_SUPPORTIVE is not exactly "true" */

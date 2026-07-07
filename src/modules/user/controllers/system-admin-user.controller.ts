@@ -58,6 +58,12 @@ import {
   ImageStatsResponseDto,
   UserImageHistoryResponseDto,
 } from '../dto/image-verification.dto';
+import {
+  CompleteFirstLoginDto,
+  QuickGenerateProfileImageUrlDto,
+  AssignNormalCardDto,
+  UpdateUserCardStatusDto
+} from '../dto/system-admin-user.dto';
 
 @ApiTags('System Admin - User Management')
 @Controller('admin/users')
@@ -221,13 +227,7 @@ After completion, user can login normally.
   })
   async completeFirstLogin(
     @Param('userId') userId: string,
-    @Body() body: {
-      password: string;
-      firstName?: string;
-      lastName?: string;
-      dateOfBirth?: string;
-      gender?: string;
-    }
+    @Body() body: CompleteFirstLoginDto
   ) {
     return this.systemAdminUserService.completeFirstLogin(
       userId,
@@ -515,7 +515,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
   })
   async generateProfileImageUrlByPath(
     @Param('studentId') studentId: string,
-    @Body() body: { fileName: string; contentType: string; fileSize?: number }
+    @Body() body: QuickGenerateProfileImageUrlDto
   ): Promise<GenerateProfileImageUrlResponseDto> {
     return this.systemAdminUserService.generateProfileImageUrl({
       studentId,
@@ -608,7 +608,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
   })
   async quickGenerateProfileImageUrlByUserId(
     @Param('userId') userId: number,
-    @Body() body: { fileName: string; contentType: string; fileSize?: number }
+    @Body() body: QuickGenerateProfileImageUrlDto
   ): Promise<GenerateProfileImageUrlResponseDto> {
     return this.systemAdminUserService.generateProfileImageUrlByUserId({
       userId,
@@ -758,7 +758,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
   })
   async assignNormalCard(
     @Param('userId') userId: number,
-    @Body() dto: { cardId: string; cardExpiryDate?: string },
+    @Body() dto: AssignNormalCardDto,
     @Request() req
   ) {
     return this.systemAdminUserService.assignNormalCard(userId, dto, req.user.userId);
@@ -787,7 +787,7 @@ POST /admin/users/student/STU-20260123-001/profile-image
   })
   async updateUserCardStatus(
     @Param('userId') userId: number,
-    @Body() dto: { cardType: 'normal' | 'rfid'; status: any },
+    @Body() dto: UpdateUserCardStatusDto,
     @Request() req
   ) {
     return this.systemAdminUserService.updateUserCardStatus(userId, dto, req.user.userId);

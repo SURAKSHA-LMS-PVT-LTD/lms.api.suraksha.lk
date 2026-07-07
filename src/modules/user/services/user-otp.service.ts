@@ -6,6 +6,7 @@ import { UserEntity } from '../entities/user.entity';
 import { normalizeSriLankanPhone } from '../../../common/utils/phone-normalizer.util';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { SmslenzProvider } from '../../../modules/sms/providers/smslenz.provider';
+import { WhatsAppOtpService } from '../../../common/services/whatsapp-otp.service';
 import { now, nowTimestamp, getCurrentSriLankaDate } from '../../../common/utils/timezone.util';
 import * as crypto from 'crypto';
 
@@ -23,6 +24,7 @@ export class UserOtpService {
     private userRepository: Repository<UserEntity>,
     private readonly enhancedEmailService: EnhancedEmailService,
     private readonly smsProvider: SmslenzProvider,
+    private readonly whatsAppOtpService: WhatsAppOtpService,
   ) {}
 
   /**
@@ -343,20 +345,12 @@ export class UserOtpService {
   // ============================================================
   // 💬 WHATSAPP-LINK PHONE OTP (reverse-OTP)
   //
-  // The server generates the code and returns a wa.me deep link. The user
-  // sends the code from their OWN WhatsApp to the business number; the
-  // whatsapp-webhook service confirms it (code + sender phone must match) and
+  // The server generates the code and returns a wa.me deep link (via the
+  // shared WhatsAppOtpService). The user sends the code from their OWN
+  // WhatsApp to the business number; the whatsapp-webhook confirms it and
   // flips is_verified. The site then polls/checks status on the "Next" click.
   // No SMS is sent for this path.
   // ============================================================
-
-  /** Build the wa.me deep link the user taps/scans to send the OTP to us. */
-  private buildWhatsAppOtpLink(otpCode: string): string {
-    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
-    // Message text the webhook will parse. Keep "OTP" prefix so it's unambiguous.
-    const text = encodeURIComponent(`OTP ${otpCode}`);
-    return `https://wa.me/${businessNumber}?text=${text}`;
-  }
 
   /**
    * Request a WhatsApp-link OTP for phone verification (registration).
@@ -371,9 +365,7 @@ export class UserOtpService {
       throw new BadRequestException('Invalid phone number format');
     }
 
-    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
-      throw new BadRequestException('WhatsApp verification is not configured on this server.');
-    }
+    this.whatsAppOtpService.assertConfigured();
 
     // Phone must not already be registered
     const existingUser = await this.userRepository.findOne({
@@ -395,32 +387,18 @@ export class UserOtpService {
       );
     }
 
-    // Invalidate previous pending OTPs for this phone
-    await this.otpRepository.update(
-      { phoneNumber: normalizedPhone, isVerified: false, expiresAt: MoreThan(now()) },
-      { expiresAt: now() },
-    );
-
-    const otpCode = this.generateOtpCode();
-    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
-
-    const otp = this.otpRepository.create({
+    const { waLink, expiresAt } = await this.whatsAppOtpService.createPendingOtp({
       phoneNumber: normalizedPhone,
-      otpCode,
       otpType: OtpType.PHONE,
       otpPurpose: OtpPurpose.VERIFICATION,
-      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-      expiresAt,
-      createdAt: now(),
-      createdDate: this.getTodayDate(),
+      expiryMinutes: this.OTP_EXPIRY_MINUTES,
       ipAddress,
     });
-    await this.otpRepository.save(otp);
 
     return {
       success: true,
       message: `Tap the WhatsApp link (or scan the QR) and send the message to verify. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s).`,
-      waLink: this.buildWhatsAppOtpLink(otpCode),
+      waLink,
       expiresAt,
       remainingAttempts: remaining - 1,
     };
@@ -467,9 +445,7 @@ export class UserOtpService {
     if (!normalizedPhone) {
       throw new BadRequestException('Invalid phone number format.');
     }
-    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
-      throw new BadRequestException('WhatsApp verification is not configured on this server.');
-    }
+    this.whatsAppOtpService.assertConfigured();
 
     const requestingUser = await this.userRepository.findOne({ where: { id: userId } });
     if (!requestingUser) throw new BadRequestException('User not found');
@@ -490,32 +466,19 @@ export class UserOtpService {
       );
     }
 
-    await this.otpRepository.update(
-      { userId, phoneNumber: normalizedPhone, isVerified: false, expiresAt: MoreThan(now()) },
-      { expiresAt: now() },
-    );
-
-    const otpCode = this.generateOtpCode();
-    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
-
-    const otp = this.otpRepository.create({
+    const { waLink, expiresAt } = await this.whatsAppOtpService.createPendingOtp({
       userId,
       phoneNumber: normalizedPhone,
-      otpCode,
       otpType: OtpType.PHONE,
       otpPurpose: OtpPurpose.PHONE_CHANGE,
-      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-      expiresAt,
-      createdAt: now(),
-      createdDate: this.getTodayDate(),
+      expiryMinutes: this.OTP_EXPIRY_MINUTES,
       ipAddress,
     });
-    await this.otpRepository.save(otp);
 
     return {
       success: true,
       message: `Tap the WhatsApp link (or scan the QR) and send the message to verify your new number.`,
-      waLink: this.buildWhatsAppOtpLink(otpCode),
+      waLink,
       expiresAt,
       remainingAttempts: remaining - 1,
     };
@@ -921,9 +884,7 @@ export class UserOtpService {
     if (!normalizedPhone) {
       throw new BadRequestException('Invalid phone number format');
     }
-    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
-      throw new BadRequestException('WhatsApp verification is not configured on this server.');
-    }
+    this.whatsAppOtpService.assertConfigured();
 
     // Detect (but do NOT block) an existing account on this phone.
     const existingUser = await this.userRepository.findOne({
@@ -937,39 +898,18 @@ export class UserOtpService {
       );
     }
 
-    // Invalidate previous pending registration OTPs for this phone.
-    await this.otpRepository.update(
-      {
-        phoneNumber: normalizedPhone,
-        otpPurpose: OtpPurpose.VERIFICATION,
-        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-        isVerified: false,
-        expiresAt: MoreThan(now()),
-      },
-      { expiresAt: now() },
-    );
-
-    const otpCode = this.generateOtpCode();
-    const expiresAt = new Date(nowTimestamp() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
-
-    await this.otpRepository.save(
-      this.otpRepository.create({
-        phoneNumber: normalizedPhone,
-        otpCode,
-        otpType: OtpType.PHONE,
-        otpPurpose: OtpPurpose.VERIFICATION,
-        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-        expiresAt,
-        createdAt: now(),
-        createdDate: this.getTodayDate(),
-        ipAddress,
-      }),
-    );
+    const { waLink, expiresAt } = await this.whatsAppOtpService.createPendingOtp({
+      phoneNumber: normalizedPhone,
+      otpType: OtpType.PHONE,
+      otpPurpose: OtpPurpose.VERIFICATION,
+      expiryMinutes: this.OTP_EXPIRY_MINUTES,
+      ipAddress,
+    });
 
     return {
       success: true,
       message: `Tap the WhatsApp link (or scan the QR) and send the message to verify. Valid for ${this.OTP_EXPIRY_MINUTES} minute(s).`,
-      waLink: this.buildWhatsAppOtpLink(otpCode),
+      waLink,
       expiresAt,
       existingUserId: existingUser ? String(existingUser.id) : null,
     };
@@ -1090,9 +1030,14 @@ export class UserOtpService {
   }): Promise<void> {
     if (params.phoneNumber) {
       if (params.phoneOtpId) {
+        const normalizedPhone = normalizeSriLankanPhone(params.phoneNumber);
+        if (!normalizedPhone) throw new BadRequestException('Invalid phone number format');
         // Fast path: look up by the exact OTP record id captured at verification time.
+        // Must also match the phone number being claimed in THIS request — otherwise an
+        // attacker could verify their own phone, then submit a victim's phone number
+        // alongside their own verified otpId (audit H-4 regression).
         const otp = await this.otpRepository.findOne({
-          where: { id: params.phoneOtpId, isVerified: true },
+          where: { id: params.phoneOtpId, phoneNumber: normalizedPhone, isVerified: true },
         });
         if (!otp) {
           throw new BadRequestException(
@@ -1121,8 +1066,11 @@ export class UserOtpService {
     }
     if (params.email) {
       if (params.emailOtpId) {
+        const normalizedEmail = params.email.trim().toLowerCase();
+        // Must also match the email being claimed in THIS request (see phone fast-path
+        // comment above for why the id-only lookup alone is unsafe).
         const otp = await this.otpRepository.findOne({
-          where: { id: params.emailOtpId, isVerified: true },
+          where: { id: params.emailOtpId, email: normalizedEmail, isVerified: true },
         });
         if (!otp) {
           throw new BadRequestException(

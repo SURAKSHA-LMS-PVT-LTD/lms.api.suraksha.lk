@@ -57,7 +57,6 @@ export class OriginValidationGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const response = context.switchToHttp().getResponse();
 
     // ✅ SHORT-CIRCUIT: Never block CORS preflight (OPTIONS) requests.
     // The CORS middleware in main.ts is responsible for handling these.
@@ -98,11 +97,10 @@ export class OriginValidationGuard implements CanActivate {
         return true;
       }
       
-      // 🚫 SILENT BLOCK - Return empty 403 (looks like DNS/network error)
+      // 🚫 SILENT BLOCK - looks like DNS/network error via SilentForbiddenExceptionFilter
       const clientIP = request.ip || request.connection?.remoteAddress || 'unknown';
       this.logger.warn(`SECURITY BLOCK - Unauthorized origin: ${origin} from IP: ${clientIP}`);
-      response.status(403).send();
-      return false;
+      throw new ForbiddenException();
     }
 
     // 🔍 Fallback: Check Referer if Origin is missing
@@ -112,18 +110,16 @@ export class OriginValidationGuard implements CanActivate {
         return true;
       }
 
-      // 🚫 SILENT BLOCK - Return empty 403
+      // 🚫 SILENT BLOCK
       const clientIP = request.ip || request.connection?.remoteAddress || 'unknown';
       this.logger.warn(`SECURITY BLOCK - Unauthorized referer from IP: ${clientIP}`);
-      response.status(403).send();
-      return false;
+      throw new ForbiddenException();
     }
 
     // 🚫 PRODUCTION STRICT MODE: No Origin or Referer - SILENT BLOCK
     const clientIP = request.ip || request.connection?.remoteAddress || 'unknown';
     this.logger.warn(`SECURITY BLOCK - No origin/referer headers from IP: ${clientIP}`);
-    response.status(403).send();
-    return false;
+    throw new ForbiddenException();
   }
 
   // Matches any https://<subdomain>.suraksha.lk origin (same pattern as CORS middleware)

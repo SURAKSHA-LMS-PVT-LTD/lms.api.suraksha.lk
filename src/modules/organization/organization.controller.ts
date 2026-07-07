@@ -15,8 +15,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { OrganizationService } from './organization.service';
-import { 
-  CreateOrganizationDto, 
+import {
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
   AssignInstituteDto,
   OrgVerifyUserDto,
   AssignUserRoleDto,
@@ -86,6 +87,20 @@ export class OrganizationController {
       pagination,
       req.user
     );
+  }
+
+  @Put(':id')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ summary: 'Update organization settings (SUPERADMIN or Institute Admin)' })
+  @ApiResponse({ status: 200, description: 'Organization updated successfully' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  async updateOrganization(
+    @Param('id') organizationId: string,
+    @Body() updateDto: UpdateOrganizationDto,
+    @Request() req,
+  ) {
+    return this.organizationService.updateOrganization(organizationId, updateDto, req.user);
   }
 
   @Put(':id/upload-image')

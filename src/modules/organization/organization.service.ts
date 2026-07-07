@@ -1616,6 +1616,31 @@ export class OrganizationService {
    * Update organization image
    * @deprecated File parameter is deprecated - use imageUrl string instead
    */
+  async updateOrganization(
+    organizationId: string,
+    updateDto: {
+      name?: string;
+      isPublic?: boolean;
+      enrollmentKey?: string;
+      needEnrollmentVerification?: boolean;
+      enabledEnrollments?: boolean;
+      instituteId?: string;
+    },
+    currentUser: any,
+  ) {
+    const organization = await this.organizationRepository.findOne({
+      where: { organizationId },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    await this.organizationRepository.update(organizationId, updateDto);
+
+    return this.organizationRepository.findOne({ where: { organizationId } });
+  }
+
   async updateOrganizationImage(
     organizationId: string,
     imageUrl: string,

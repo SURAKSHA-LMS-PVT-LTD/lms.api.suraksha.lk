@@ -1,6 +1,7 @@
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsBoolean, IsNumber, MaxLength, MinLength, Min, Max, IsArray, ValidateNested } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class ClassLectureMaterialDto {
   @ApiProperty({ description: 'Display name for the material' })
@@ -89,6 +90,7 @@ export class CreateInstituteClassLectureDto {
   @ApiProperty({ description: 'Lecture end time (ISO 8601 format)', example: '2026-04-12T10:30:00.000Z' })
   @IsString()
   @IsNotEmpty({ message: 'End time is required' })
+    @IsAfter('startTime')
   endTime: string;
 
   @ApiPropertyOptional({ description: 'Lecture status', enum: ['scheduled', 'ongoing', 'completed', 'cancelled'], default: 'scheduled' })

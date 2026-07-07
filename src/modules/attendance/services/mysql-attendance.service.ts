@@ -20,6 +20,7 @@ import { AttendanceRecordEntity } from '../entities/attendance-record.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteEntity } from '../../institute/entities/institute.entity';
 import { InstituteClassEntity } from '../../institute_mudules/institue_class/entities/institue_class.entity';
+import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { SubjectEntity } from '../../subject/entities/subject.entity';
 import {
   MarkAttendanceDto,
@@ -43,6 +44,8 @@ export class MysqlAttendanceService {
     private readonly instituteRepo: Repository<InstituteEntity>,
     @InjectRepository(InstituteClassEntity)
     private readonly classRepo: Repository<InstituteClassEntity>,
+    @InjectRepository(InstituteClassStudentEntity)
+    private readonly classStudentRepo: Repository<InstituteClassStudentEntity>,
     @InjectRepository(SubjectEntity)
     private readonly subjectRepo: Repository<SubjectEntity>,
   ) {}
@@ -196,8 +199,12 @@ export class MysqlAttendanceService {
     latitude?: number;
     longitude?: number;
     id?: string;
+    checkIn?: { time: Date; status: string | null; markedBy: string | null } | null;
+    checkOut?: { time: Date; status: string | null; markedBy: string | null } | null;
   } {
     const id = this.generateId(entity.dynamoPk, entity.dynamoSk);
+    const checkInStatusValue = entity.checkInStatus != null ? Number(entity.checkInStatus) : null;
+    const checkOutStatusValue = entity.checkOutStatus != null ? Number(entity.checkOutStatus) : null;
     return {
       studentId: entity.studentId,
       studentName: names.students.get(entity.studentId) || null,
@@ -225,6 +232,12 @@ export class MysqlAttendanceService {
       advertisementId: entity.advertisementId || undefined,
       timestamp: entity.timestamp ? Number(entity.timestamp) : undefined,
       id,
+      checkIn: entity.checkInTime
+        ? { time: entity.checkInTime, status: checkInStatusValue != null ? this.numberToStatus(checkInStatusValue) : null, markedBy: entity.checkInMarkedBy }
+        : null,
+      checkOut: entity.checkOutTime
+        ? { time: entity.checkOutTime, status: checkOutStatusValue != null ? this.numberToStatus(checkOutStatusValue) : null, markedBy: entity.checkOutMarkedBy }
+        : null,
     } as any;
   }
 
@@ -299,6 +312,12 @@ export class MysqlAttendanceService {
     entity.syncStatus = AttendanceSyncStatus.SYNCED;
     entity.syncError = null;
     entity.syncedAt = new Date();
+
+    // Check-in fields — independent of the legacy status/timestamp pair above.
+    entity.checkInTime = new Date(timestamp);
+    entity.checkInStatus = entity.status;
+    entity.checkInMarkedBy = dto.markedBy || (dto as any).deviceUid || 'system';
+
     return entity;
   }
 
@@ -325,8 +344,9 @@ export class MysqlAttendanceService {
           'subject_id', 'calendar_day_id', 'event_id', 'class_session_id',
           'location', 'latitude', 'longitude', 'remarks', 'marking_method',
           'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
+          'check_in_time', 'check_in_status', 'check_in_marked_by',
         ],
-        ['dynamo_pk', 'dynamo_sk'],
+        ['dynamo_pk', 'dynamo_sk', 'date'],
       )
       .execute();
 
@@ -358,6 +378,7 @@ export class MysqlAttendanceService {
         address: bulkData.address,
         remarks: studentData.remarks,
         markingMethod: bulkData.markingMethod,
+        markedBy: (bulkData as any).markedBy,
       } as any;
       // Attach calendar/event from bulk DTO
       (dto as any).calendarDayId = (bulkData as any).calendarDayId;
@@ -387,8 +408,9 @@ export class MysqlAttendanceService {
               'subject_id', 'calendar_day_id', 'event_id', 'class_session_id',
               'location', 'latitude', 'longitude', 'remarks', 'marking_method',
               'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
+              'check_in_time', 'check_in_status', 'check_in_marked_by',
             ],
-            ['dynamo_pk', 'dynamo_sk'],
+            ['dynamo_pk', 'dynamo_sk', 'date'],
           )
           .execute();
       } catch (error) {
@@ -661,9 +683,14 @@ export class MysqlAttendanceService {
     startDate?: string,
     endDate?: string,
   ): Promise<(MarkAttendanceDto & { timestamp?: number; calendarDayId?: string; eventId?: string })[]> {
+    // Hard cap so a student/child with many daily sessions over a 30-day window
+    // can't force this query (and the per-row enrichment lookups after it) to
+    // scan and hydrate an unbounded number of rows just to return a summary/page.
+    const MAX_ROWS = 2000;
     const qb = this.repo.createQueryBuilder('ar')
       .where('ar.studentId = :studentId', { studentId })
-      .orderBy('ar.timestamp', 'DESC');
+      .orderBy('ar.timestamp', 'DESC')
+      .take(MAX_ROWS);
 
     if (startDate && endDate) {
       qb.andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });
@@ -673,6 +700,144 @@ export class MysqlAttendanceService {
     if (!entities.length) return [];
     const names = await this.resolveNames(entities);
     return entities.map(e => this.entityToDto(e, names));
+  }
+
+  /**
+   * Class-wise attendance overview for the admin drilldown: one row per class
+   * in the institute, always (even classes with zero students/records show up,
+   * via LEFT JOIN), with roster size AS OF THE GIVEN DATE + check-in/check-out
+   * breakdowns for that date (optionally scoped to one event).
+   *
+   * Roster size uses `createdAt <= date` (when the enrollment row was created)
+   * rather than "isActive/isVerified right now" — a student who enrolls 6
+   * months after a past date must not inflate that past date's total, or
+   * "not marked" (total − checkIns) would be wrong for historical dates even
+   * though it's correct for today. This isn't a perfect point-in-time roster
+   * (unenrollment has no timestamp, only a boolean isActive flip), but it
+   * correctly fixes the reported case: late enrollment inflating earlier days.
+   *
+   * Check-in splits into present/late/absent (checkInStatus 1/2/0); check-out
+   * splits into left/left-early/left-lately (checkOutStatus 3/4/5) — status
+   * codes per numberToStatus() above. "Still checked in" (checked in, never
+   * checked out) is also computed here rather than left for the frontend to
+   * derive, so it doesn't drift if the roster changes later — it's a snapshot
+   * of that day's actual rows, not a live roster diff.
+   *
+   * All of this is one single GROUP BY query rather than one query per class
+   * or per bucket — check-in/check-out state is never frozen anywhere (only
+   * present/absent/late/left get frozen on event close), and it doesn't change
+   * after the fact, so there is no "use the frozen summary instead" shortcut
+   * available for these columns; the query itself is already cheap (indexed,
+   * single day, GROUP BY) rather than a per-row fetch, and every extra
+   * SUM(CASE...) bucket costs nothing extra round-trip-wise.
+   */
+  async getClassesAttendanceSummary(
+    instituteId: string,
+    date: string,
+    eventId?: string,
+  ): Promise<Array<{
+    classId: string;
+    className: string;
+    grade: number | null;
+    totalStudents: number;
+    checkIn: { present: number; late: number; absent: number; total: number; rate: number };
+    checkOut: { left: number; leftEarly: number; leftLately: number; total: number; rate: number };
+    stillCheckedIn: number;
+  }>> {
+    const [classes, rosterCounts, attendanceCounts] = await Promise.all([
+      this.classRepo.find({
+        where: { instituteId, isActive: true },
+        select: ['id', 'name', 'grade'],
+        order: { name: 'ASC' },
+      }),
+      this.classStudentRepo
+        .createQueryBuilder('cs')
+        .select('cs.classId', 'classId')
+        .addSelect('COUNT(*)', 'total')
+        .where('cs.instituteId = :instituteId', { instituteId })
+        .andWhere('cs.isActive = true')
+        .andWhere('cs.isVerified = true')
+        // As-of-date roster: exclude students who enrolled AFTER this date so a
+        // late enrollment doesn't inflate an earlier day's total.
+        .andWhere('cs.createdAt <= :endOfDay', { endOfDay: `${date} 23:59:59` })
+        .groupBy('cs.classId')
+        .getRawMany<{ classId: string; total: string }>(),
+      (() => {
+        const qb = this.repo
+          .createQueryBuilder('ar')
+          .select('ar.classId', 'classId')
+          .addSelect('SUM(CASE WHEN ar.checkInStatus = 1 THEN 1 ELSE 0 END)', 'checkInPresent')
+          .addSelect('SUM(CASE WHEN ar.checkInStatus = 2 THEN 1 ELSE 0 END)', 'checkInLate')
+          .addSelect('SUM(CASE WHEN ar.checkInStatus = 0 THEN 1 ELSE 0 END)', 'checkInAbsent')
+          .addSelect('SUM(CASE WHEN ar.checkOutStatus = 3 THEN 1 ELSE 0 END)', 'checkOutLeft')
+          .addSelect('SUM(CASE WHEN ar.checkOutStatus = 4 THEN 1 ELSE 0 END)', 'checkOutLeftEarly')
+          .addSelect('SUM(CASE WHEN ar.checkOutStatus = 5 THEN 1 ELSE 0 END)', 'checkOutLeftLately')
+          .addSelect('SUM(CASE WHEN ar.checkInTime IS NOT NULL AND ar.checkOutTime IS NULL THEN 1 ELSE 0 END)', 'stillCheckedIn')
+          .where('ar.instituteId = :instituteId', { instituteId })
+          .andWhere('ar.date = :date', { date });
+        if (eventId) qb.andWhere('ar.eventId = :eventId', { eventId });
+        return qb.groupBy('ar.classId').getRawMany<{
+          classId: string;
+          checkInPresent: string;
+          checkInLate: string;
+          checkInAbsent: string;
+          checkOutLeft: string;
+          checkOutLeftEarly: string;
+          checkOutLeftLately: string;
+          stillCheckedIn: string;
+        }>();
+      })(),
+    ]);
+
+    const rosterMap = new Map(rosterCounts.map(r => [r.classId, Number(r.total)]));
+    const attendanceMap = new Map(attendanceCounts.map(a => [a.classId, {
+      checkInPresent: Number(a.checkInPresent) || 0,
+      checkInLate: Number(a.checkInLate) || 0,
+      checkInAbsent: Number(a.checkInAbsent) || 0,
+      checkOutLeft: Number(a.checkOutLeft) || 0,
+      checkOutLeftEarly: Number(a.checkOutLeftEarly) || 0,
+      checkOutLeftLately: Number(a.checkOutLeftLately) || 0,
+      stillCheckedIn: Number(a.stillCheckedIn) || 0,
+    }]));
+
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+
+    return classes.map(c => {
+      const a = attendanceMap.get(c.id);
+      const totalStudents = rosterMap.get(c.id) ?? 0;
+
+      const checkInPresent = a?.checkInPresent ?? 0;
+      const checkInLate = a?.checkInLate ?? 0;
+      const checkInAbsent = a?.checkInAbsent ?? 0;
+      const checkInTotal = checkInPresent + checkInLate;
+
+      const checkOutLeft = a?.checkOutLeft ?? 0;
+      const checkOutLeftEarly = a?.checkOutLeftEarly ?? 0;
+      const checkOutLeftLately = a?.checkOutLeftLately ?? 0;
+      const checkOutTotal = checkOutLeft + checkOutLeftEarly + checkOutLeftLately;
+
+      return {
+        classId: c.id,
+        className: c.name,
+        grade: c.grade ?? null,
+        totalStudents,
+        checkIn: {
+          present: checkInPresent,
+          late: checkInLate,
+          absent: checkInAbsent,
+          total: checkInTotal,
+          rate: totalStudents > 0 ? round1((checkInTotal / totalStudents) * 100) : 0,
+        },
+        checkOut: {
+          left: checkOutLeft,
+          leftEarly: checkOutLeftEarly,
+          leftLately: checkOutLeftLately,
+          total: checkOutTotal,
+          rate: totalStudents > 0 ? round1((checkOutTotal / totalStudents) * 100) : 0,
+        },
+        stillCheckedIn: a?.stillCheckedIn ?? 0,
+      };
+    });
   }
 
   /**
@@ -701,9 +866,10 @@ export class MysqlAttendanceService {
     } else if (classId && !subjectId) {
       qb.andWhere('ar.classId = :classId', { classId });
       qb.andWhere('(ar.subjectId IS NULL OR ar.subjectId = :defaultSubject)', { defaultSubject: 'default' });
-    } else if (!classId && !subjectId) {
-      qb.andWhere('(ar.classId IS NULL OR ar.classId = :defaultClass)', { defaultClass: 'default' });
     }
+    // Institute-wide (no classId/subjectId given): no further filter — every class's
+    // attendance rolls up into the institute view. Previously this restricted to only
+    // classless rows, which hid ~96% of real attendance (everything class/session-scoped).
 
     if (startDate && endDate) {
       qb.andWhere('ar.date >= :startDate AND ar.date <= :endDate', { startDate, endDate });
@@ -769,6 +935,12 @@ export class MysqlAttendanceService {
           'ar.markingMethod AS markingMethod',
           'ar.calendarDayId AS calendarDayId',
           'ar.eventId AS eventId',
+          'ar.checkInTime AS checkInTime',
+          'ar.checkInStatus AS checkInStatus',
+          'ar.checkInMarkedBy AS checkInMarkedBy',
+          'ar.checkOutTime AS checkOutTime',
+          'ar.checkOutStatus AS checkOutStatus',
+          'ar.checkOutMarkedBy AS checkOutMarkedBy',
         ])
         .orderBy('ar.timestamp', 'DESC')
         .take(maxItems);
@@ -797,6 +969,8 @@ export class MysqlAttendanceService {
 
       records = rawRows.map(row => {
         const statusValue = Number(row.status);
+        const checkInStatusValue = row.checkInStatus != null ? Number(row.checkInStatus) : null;
+        const checkOutStatusValue = row.checkOutStatus != null ? Number(row.checkOutStatus) : null;
         return {
           studentId: row.studentId,
           studentName: userMap.get(row.studentId) || null,
@@ -810,6 +984,12 @@ export class MysqlAttendanceService {
           markingMethod: row.markingMethod,
           calendarDayId: row.calendarDayId,
           eventId: row.eventId,
+          checkIn: row.checkInTime
+            ? { time: row.checkInTime, status: checkInStatusValue != null ? this.numberToStatus(checkInStatusValue) : null, markedBy: row.checkInMarkedBy }
+            : null,
+          checkOut: row.checkOutTime
+            ? { time: row.checkOutTime, status: checkOutStatusValue != null ? this.numberToStatus(checkOutStatusValue) : null, markedBy: row.checkOutMarkedBy }
+            : null,
         };
       });
     }

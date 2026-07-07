@@ -8,6 +8,9 @@ import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import { SilentForbiddenExceptionFilter } from './common/filters/silent-forbidden.filter';
 import { ensureTimezoneSet, logTimezoneInfo } from './common/utils/timezone.util';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { SystemConfigService } from './common/services/system-config.service';
+import { setMaskingFlags } from './common/config/masking-flags.bridge';
 
 // ⚠️ CRITICAL: Set timezone to Sri Lanka BEFORE any date operations
 ensureTimezoneSet();
@@ -156,7 +159,7 @@ async function bootstrap() {
       const now = Date.now();
       if (now - lastCacheRefresh > CACHE_TTL_MS) {
         try {
-          const dataSource = app.get('DataSource' as any) || app.get('default_DataSource' as any);
+          const dataSource = app.get(getDataSourceToken());
           if (dataSource?.isInitialized) {
             const rows = await dataSource.query(
               `SELECT custom_domain FROM institutes WHERE custom_domain IS NOT NULL AND custom_domain_verified = TRUE AND is_active = TRUE`
@@ -175,67 +178,94 @@ async function bootstrap() {
       return customDomainCache.has(origin);
     };
 
-    app.enableCors({
-      // When an origin is allowed we return the ORIGIN STRING (not boolean `true`).
-      // With `credentials: true`, the `cors` package only reliably emits
-      // `Access-Control-Allow-Credentials: true` when Allow-Origin is a specific
-      // origin. Returning `true` can reflect the origin yet drop the credentials
-      // header, which breaks cookie/credentialed requests (login, token refresh).
-      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) => {
-        // No Origin header (mobile apps, server-to-server, curl): allow — there
-        // are no browser credentials semantics, and auth guards reject
-        // unauthenticated calls downstream.
-        if (!origin) {
-          return callback(null, true);
-        }
+    // The `cors` package supports passing a FUNCTION as the whole options
+    // object — it's invoked per-request as `optionsCallback(req, cb)`, which
+    // is the only place in this library that actually receives `req`. The
+    // `origin` sub-option's own callback signature is (origin, cb) with NO
+    // req — a per-path branch inside `origin` can't see the request path.
+    // This is why the earlier `/api/external/*` bypass attempts (an `app.use`
+    // middleware before enableCors, and a `req` param added to the `origin`
+    // function) didn't work: the middleware ran but couldn't skip the global
+    // CORS middleware that ran after it, and the `origin` function's `req`
+    // parameter was always undefined since `cors` never passes it there.
+    const corsOptionsDelegate = (req: any, callback: (err: Error | null, options?: any) => void) => {
+      const baseOptions = {
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
+        exposedHeaders: ['Access-Control-Allow-Private-Network'],
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+      };
 
-        // ✅ Development: only allow local origins (never a blanket pass-all)
-        if (isDevelopment) {
-          const devAllowed = [
-            'http://localhost:5173',
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://127.0.0.1:5173',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:3001',
-          ].includes(origin);
-          if (devAllowed) return callback(null, origin);
-        }
+      // 🌐 EXTERNAL API — /api/external/* is explicitly designed for
+      // third-party institute sites (@Public() + @SkipOriginValidation(),
+      // guarded instead by InstituteApiKeyGuard via the Authorization
+      // header — no cookies, so no credentialed-CORS risk). Genuinely open
+      // to any origin: the API key is the real access control here.
+      if (req.path?.startsWith('/api/external/')) {
+        return callback(null, { ...baseOptions, origin: true, credentials: false });
+      }
 
-        // Check if origin is in static whitelist
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, origin);
-        }
-
-        // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
-        if (subdomainPattern.test(origin)) {
-          return callback(null, origin);
-        }
-
-        // 🌐 Check frontend hosting platform wildcard patterns
-        if (frontendHostingPatterns.some(pattern => pattern.test(origin))) {
-          return callback(null, origin);
-        }
-
-        // 🏢 Multi-tenant: Check custom domain origins dynamically
-        isCustomDomainAllowed(origin).then(allowed => {
-          if (allowed) {
-            return callback(null, origin);
+      callback(null, {
+        ...baseOptions,
+        // When an origin is allowed we return the ORIGIN STRING (not boolean `true`).
+        // With `credentials: true`, the `cors` package only reliably emits
+        // `Access-Control-Allow-Credentials: true` when Allow-Origin is a specific
+        // origin. Returning `true` can reflect the origin yet drop the credentials
+        // header, which breaks cookie/credentialed requests (login, token refresh).
+        origin: (origin: string | undefined, originCb: (err: Error | null, allow?: boolean | string) => void) => {
+          // No Origin header (mobile apps, server-to-server, curl): allow — there
+          // are no browser credentials semantics, and auth guards reject
+          // unauthenticated calls downstream.
+          if (!origin) {
+            return originCb(null, true);
           }
-          bootstrapLogger.warn(`CORS blocked origin: ${origin}`);
-          callback(new Error('Not allowed by CORS'));
-        }).catch(() => {
-          bootstrapLogger.warn(`CORS blocked origin (lookup error): ${origin}`);
-          callback(new Error('Not allowed by CORS'));
-        });
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
-      exposedHeaders: ['Access-Control-Allow-Private-Network'],
-      preflightContinue: false,
-      optionsSuccessStatus: 204,
-    });
+
+          // ✅ Development: only allow local origins (never a blanket pass-all)
+          if (isDevelopment) {
+            const devAllowed = [
+              'http://localhost:5173',
+              'http://localhost:3000',
+              'http://localhost:3001',
+              'http://127.0.0.1:5173',
+              'http://127.0.0.1:3000',
+              'http://127.0.0.1:3001',
+            ].includes(origin);
+            if (devAllowed) return originCb(null, origin);
+          }
+
+          // Check if origin is in static whitelist
+          if (allowedOrigins.includes(origin)) {
+            return originCb(null, origin);
+          }
+
+          // 🏢 Multi-tenant: Check wildcard *.suraksha.lk subdomains
+          if (subdomainPattern.test(origin)) {
+            return originCb(null, origin);
+          }
+
+          // 🌐 Check frontend hosting platform wildcard patterns
+          if (frontendHostingPatterns.some(pattern => pattern.test(origin))) {
+            return originCb(null, origin);
+          }
+
+          // 🏢 Multi-tenant: Check custom domain origins dynamically
+          isCustomDomainAllowed(origin).then(allowed => {
+            if (allowed) {
+              return originCb(null, origin);
+            }
+            bootstrapLogger.warn(`CORS blocked origin: ${origin}`);
+            originCb(new Error('Not allowed by CORS'));
+          }).catch(() => {
+            bootstrapLogger.warn(`CORS blocked origin (lookup error): ${origin}`);
+            originCb(new Error('Not allowed by CORS'));
+          });
+        },
+      });
+    };
+
+    app.enableCors(corsOptionsDelegate as any);
 
     // 🔒 Private Network Access (PNA) - Allow HTTPS origins to access local development server
     app.use((req, res, next) => {
@@ -321,6 +351,23 @@ async function bootstrap() {
     // Enable NestJS shutdown hooks so SIGTERM/SIGINT drain in-flight requests
     // before the process exits. Required for PM2 graceful reload.
     app.enableShutdownHooks();
+
+    // 🔒 Bridge live-editable masking flags into phone-mask.util.ts (plain
+    // functions used in DTO @Transform decorators have no DI access).
+    const systemConfigService = app.get(SystemConfigService);
+    const refreshMaskingFlags = async () => {
+      try {
+        setMaskingFlags({
+          email: await systemConfigService.getBoolean('PRIVACY', 'IS_EMAILS_MASKED', true),
+          phone: await systemConfigService.getBoolean('PRIVACY', 'IS_PHONENUMBERS_MASKED', true),
+          address: await systemConfigService.getBoolean('PRIVACY', 'IS_ADDRESS_MASKED', true),
+        });
+      } catch (error: any) {
+        bootstrapLogger.warn(`Could not refresh masking flags: ${error.message}`);
+      }
+    };
+    await refreshMaskingFlags();
+    setInterval(refreshMaskingFlags, 5 * 60 * 1000);
 
     const port = parseInt(process.env.PORT || '8080', 10);
 

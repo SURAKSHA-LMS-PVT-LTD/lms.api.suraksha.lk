@@ -1,10 +1,12 @@
 import {
   Controller, Get, Post, Body, Param, Query, Req,
-  UseGuards, HttpCode, HttpStatus, ForbiddenException,
+  UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InstituteApiKeyGuard } from '../guards/institute-api-key.guard';
+import { ApiKeyScopeGuard } from '../guards/api-key-scope.guard';
+import { RequireApiKeyScope } from '../decorators/require-api-key-scope.decorator';
 import { ApiKeyScope } from '../entities/institute-api-key.entity';
 import { ExternalClassService } from '../services/external-class.service';
 import { CreateExternalSessionDto } from '../dto/external-class.dto';
@@ -16,15 +18,9 @@ import { Public } from '../../../common/decorators/public.decorator';
 @Public()
 @SkipOriginValidation()
 @Controller('api/external/v1/classes')
-@UseGuards(InstituteApiKeyGuard)
+@UseGuards(InstituteApiKeyGuard, ApiKeyScopeGuard)
 export class ExternalClassController {
   constructor(private readonly svc: ExternalClassService) {}
-
-  private requireScope(req: any, scope: ApiKeyScope) {
-    if (!req.apiKey?.scopes?.includes(scope)) {
-      throw new ForbiddenException(`API key does not have the '${scope}' scope`);
-    }
-  }
 
   /**
    * GET /api/external/v1/classes
@@ -32,6 +28,7 @@ export class ExternalClassController {
    */
   @Get()
   @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @RequireApiKeyScope(ApiKeyScope.CLASS_READ)
   @ApiOperation({
     summary: 'List institute classes via API key',
     description: 'Returns all classes for the API key\'s institute. Requires the CLASS_READ scope.',
@@ -41,7 +38,6 @@ export class ExternalClassController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 403, description: 'API key lacks CLASS_READ scope' })
   async listClasses(@Req() req: any, @Query('search') search?: string) {
-    this.requireScope(req, ApiKeyScope.CLASS_READ);
     return this.svc.listClasses(req.instituteId, search);
   }
 
@@ -51,6 +47,7 @@ export class ExternalClassController {
    */
   @Get(':classId/sessions')
   @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @RequireApiKeyScope(ApiKeyScope.CLASS_READ)
   @ApiOperation({
     summary: 'List class attendance sessions via API key',
     description: 'Returns sessions for a class belonging to the API key\'s institute. Requires the CLASS_READ scope.',
@@ -66,7 +63,6 @@ export class ExternalClassController {
     @Req() req: any,
     @Query('search') search?: string,
   ) {
-    this.requireScope(req, ApiKeyScope.CLASS_READ);
     return this.svc.listSessions(req.instituteId, classId, search);
   }
 
@@ -77,6 +73,7 @@ export class ExternalClassController {
   @Post(':classId/sessions')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @RequireApiKeyScope(ApiKeyScope.SESSION_CREATE)
   @ApiOperation({
     summary: 'Generate a class attendance session via API key',
     description:
@@ -94,7 +91,6 @@ export class ExternalClassController {
     @Body() dto: CreateExternalSessionDto,
     @Req() req: any,
   ) {
-    this.requireScope(req, ApiKeyScope.SESSION_CREATE);
     return this.svc.createSession(req.instituteId, classId, dto);
   }
 }

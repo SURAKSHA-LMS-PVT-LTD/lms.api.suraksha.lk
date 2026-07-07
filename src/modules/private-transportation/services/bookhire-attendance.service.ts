@@ -11,6 +11,7 @@ import { BookhireEntity } from '../entities/bookhire.entity';
 import { StudentBookhireEnrollmentEntity } from '../entities/student-bookhire-enrollment.entity';
 import { MarkBookhireAttendanceDto, BulkMarkAttendanceDto } from '../dto/bookhire-attendance.dto';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
+import { SystemConfigService } from '../../../common/services/system-config.service';
 
 @Injectable()
 export class BookhireAttendanceService {
@@ -29,6 +30,7 @@ export class BookhireAttendanceService {
     @InjectRepository(StudentBookhireEnrollmentEntity)
     private readonly enrollmentRepository: Repository<StudentBookhireEnrollmentEntity>,
     private readonly cloudStorageService: CloudStorageService,
+    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   /**
@@ -92,8 +94,8 @@ export class BookhireAttendanceService {
     }
 
     // 🔍 STEP 4: Verify enrollment (if required by environment and user is a student)
-    const checkEnrollmentOnly = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS') === 'true';
-    
+    const checkEnrollmentOnly = this.systemConfigService.getSync('ATTENDANCE', 'MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS', 'false') === 'true';
+
     if (checkEnrollmentOnly && studentData.student) {
       const enrolled = await this.isStudentEnrolledInBookhire(user.id, markAttendanceDto.bookhireId);
 
@@ -257,8 +259,8 @@ export class BookhireAttendanceService {
     }
 
     // 🔍 STEP 5: Verify enrollment (if required by environment and user is a student)
-    const checkEnrollmentOnly = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS') === 'true';
-    
+    const checkEnrollmentOnly = this.systemConfigService.getSync('ATTENDANCE', 'MARKS_FOR_ONLY_ENROLLED_VEHICLE_STUDENTS', 'false') === 'true';
+
     if (checkEnrollmentOnly && studentData.student) {
       const enrolled = await this.isStudentEnrolledInBookhire(userId, markAttendanceDto.bookhireId);
 
@@ -531,8 +533,8 @@ export class BookhireAttendanceService {
     vehicleData: any
   ): Promise<void> {
     try {
-      // 🎯 ADVERTISING LOGIC: Check IS_ADS_FROM_DB environment variable
-      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
+      // 🎯 ADVERTISING LOGIC: Check IS_ADS_FROM_DB config
+      const isAdsFromDB = this.systemConfigService.getSync('ADS', 'IS_ADS_FROM_DB', 'true') === 'true';
       
       if (isAdsFromDB) {
         // Database-driven advertising
@@ -646,10 +648,10 @@ export class BookhireAttendanceService {
       // Get default advertisement from environment
       const defaultAdData = {
         id: 'default-bookhire-ad',
-        mediaUrl: process.env.DEFAULT_AD_URL || '',
-        mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-        title: process.env.DEFAULT_AD_TITLE || 'Your Transport Company',
-        content: process.env.DEFAULT_AD_CONTENT || 'Safe and reliable transportation for your child.'
+        mediaUrl: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_URL', ''),
+        mediaType: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TYPE', 'text'),
+        title: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TITLE', 'Your Transport Company'),
+        content: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_CONTENT', 'Safe and reliable transportation for your child.')
       };
 
 
@@ -761,10 +763,10 @@ export class BookhireAttendanceService {
       // Fallback to default ad if no matching ad found
       return {
         id: 'default-fallback',
-        mediaUrl: process.env.DEFAULT_AD_URL || '',
-        mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-        title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
-        content: process.env.DEFAULT_AD_CONTENT || 'Professional services.',
+        mediaUrl: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_URL', ''),
+        mediaType: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TYPE', 'text'),
+        title: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TITLE', 'Your Company Name'),
+        content: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_CONTENT', 'Professional services.'),
         matchScore: 0,
         matchReasons: ['No matching advertisement found in database'],
         cascadeToParents: false
@@ -774,10 +776,10 @@ export class BookhireAttendanceService {
       // Return default ad on error
       return {
         id: 'default-error-fallback',
-        mediaUrl: process.env.DEFAULT_AD_URL || '',
-        mediaType: process.env.DEFAULT_AD_TYPE || 'text',
-        title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
-        content: process.env.DEFAULT_AD_CONTENT || 'Professional services.',
+        mediaUrl: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_URL', ''),
+        mediaType: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TYPE', 'text'),
+        title: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TITLE', 'Your Company Name'),
+        content: this.systemConfigService.getSync('ADS', 'DEFAULT_AD_CONTENT', 'Professional services.'),
         matchScore: 0,
         matchReasons: ['Error occurred while fetching advertisement'],
         cascadeToParents: false
@@ -884,8 +886,8 @@ export class BookhireAttendanceService {
    */
   private async shouldReceiveAdvertisements(subscriptionPlan: string): Promise<boolean> {
     try {
-      // Global kill-switch: skip ads entirely unless env flag is set
-      if (this.configService.get('ENABLE_ADVERTISEMENT_DELIVERY', 'false') !== 'true') return false;
+      // Global kill-switch: skip ads entirely unless config flag is set
+      if (this.systemConfigService.getSync('ADS', 'ENABLE_ADVERTISEMENT_DELIVERY', 'false') !== 'true') return false;
       // Get package configuration from notification packages config
       const packageConfig = await this.getPackageConfiguration(subscriptionPlan);
       return packageConfig?.isAds === true;

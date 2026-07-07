@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller,
   Post,
   Get,
@@ -325,8 +325,11 @@ export class InstituteClassSubjectPaymentSubmissionController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('paymentTier') paymentTier?: string,
   ) {
-    return this.paymentService.getStudentsForPayment(paymentId, page, limit, req.user);
+    return this.paymentService.getStudentsForPayment(paymentId, page, limit, req.user, search, status, paymentTier);
   }
 
   /**
@@ -365,9 +368,12 @@ export class InstituteClassSubjectPaymentSubmissionController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('paymentTier') paymentTier?: string,
   ) {
     return this.paymentService.getStudentsByInstituteClassSubject(
-      instituteId, classId, subjectId, paymentId, page, limit, req.user,
+      instituteId, classId, subjectId, paymentId, page, limit, req.user, search, status, paymentTier
     );
   }
 

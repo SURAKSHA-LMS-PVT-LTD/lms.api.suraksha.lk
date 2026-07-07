@@ -9,6 +9,7 @@ import { UserOtpEntity, OtpType, OtpPurpose, OtpDeliveryMethod } from '../../mod
 import { StudentEntity } from '../../modules/student/entities/student.entity';
 import { ParentEntity } from '../../modules/parent/entities/parent.entity';
 import { AsyncEmailService } from '../../common/services/async-email.service';
+import { WhatsAppOtpService } from '../../common/services/whatsapp-otp.service';
 import { AuthService } from '../auth.service';
 import { now, nowTimestamp } from '../../common/utils/timezone.util';
 import { detectIdentifierType } from '../../common/utils/identifier.util';
@@ -73,6 +74,7 @@ export class PasswordResetService {
     private readonly asyncEmailService: AsyncEmailService,
     private readonly jwtService: JwtService,
     private readonly authService: AuthService,
+    private readonly whatsAppOtpService: WhatsAppOtpService,
   ) {}
 
   // ── WhatsApp reverse-OTP reset (main login: own + parent numbers) ───────────
@@ -189,9 +191,7 @@ export class PasswordResetService {
 
   /** Public: create a WhatsApp reverse-OTP for the chosen phone contact; returns the wa.me link. */
   async initiateWhatsAppReset(identifier: string, selectedContactId: string, ipAddress?: string): Promise<{ message: string; sentTo: string; waLink: string }> {
-    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
-      throw new BadRequestException('WhatsApp verification is not configured on this server.');
-    }
+    this.whatsAppOtpService.assertConfigured();
     const user = await this.resolveUserByIdentifier(identifier);
     if (!user) throw new BadRequestException('If the account exists, you can verify via WhatsApp.');
 
@@ -201,41 +201,23 @@ export class PasswordResetService {
 
     const normalized = normalizeSriLankanPhone(chosen.phone) || chosen.phone;
 
-    // Invalidate previous pending OTPs for this user+purpose.
-    await this.otpRepository.update(
-      { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: false },
-      { isVerified: true },
-    );
-
-    const otpCode = crypto.randomInt(100000, 1000000).toString();
-    const expiresAt = new Date(nowTimestamp() + 30 * 60 * 1000);
-    await this.otpRepository.save(this.otpRepository.create({
+    const { waLink } = await this.whatsAppOtpService.createPendingOtp({
       userId: user.id,
       phoneNumber: normalized,
-      otpCode,
       otpType: OtpType.PHONE,
       otpPurpose: OtpPurpose.PASSWORD_RESET,
-      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-      expiresAt,
-      createdAt: now(),
-      createdDate: new Date().toISOString().split('T')[0],
-      ipAddress: ipAddress || null,
-    }));
+      expiryMinutes: 30,
+      ipAddress,
+    });
 
-    return { message: 'Tap the WhatsApp link and send the message to verify.', sentTo: chosen.masked, waLink: this.buildWhatsAppOtpLink(otpCode) };
+    return { message: 'Tap the WhatsApp link and send the message to verify.', sentTo: chosen.masked, waLink };
   }
 
   /** Public: poll whether the WhatsApp reset OTP was confirmed by the webhook. */
   async getWhatsAppResetStatus(identifier: string): Promise<{ verified: boolean; expired: boolean; otpId?: string }> {
     const user = await this.resolveUserByIdentifier(identifier);
     if (!user) return { verified: false, expired: false };
-    const otp = await this.otpRepository.findOne({
-      where: { userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, deliveryMethod: OtpDeliveryMethod.WHATSAPP },
-      order: { createdAt: 'DESC' },
-    });
-    if (!otp) return { verified: false, expired: false };
-    const expired = !otp.isVerified && otp.expiresAt.getTime() <= Date.now();
-    return { verified: otp.isVerified, expired, otpId: otp.isVerified ? String(otp.id) : undefined };
+    return this.whatsAppOtpService.getStatus({ userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET });
   }
 
   /** Public: complete the reset after WhatsApp confirmation (no typed code). */
@@ -244,8 +226,11 @@ export class PasswordResetService {
     if (!user) throw new BadRequestException('Invalid request.');
     let confirmed: any;
     if (otpId) {
+      // Must also be scoped to this user + purpose — an id-only lookup would let an
+      // attacker verify their own OTP and reuse its id to reset a different user's
+      // password by supplying that victim's identifier instead.
       confirmed = await this.otpRepository.findOne({
-        where: { id: otpId, isVerified: true },
+        where: { id: otpId, userId: user.id, otpPurpose: OtpPurpose.PASSWORD_RESET, isVerified: true },
       });
     } else {
       confirmed = await this.otpRepository.findOne({
@@ -822,11 +807,6 @@ export class PasswordResetService {
   // by passing the same OTP to /reset/complete (unchanged).
   // ============================================================
 
-  private buildWhatsAppOtpLink(otpCode: string): string {
-    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
-    const text = encodeURIComponent(`OTP ${otpCode}`);
-    return `https://wa.me/${businessNumber}?text=${text}`;
-  }
 
   /**
    * Initiate a WhatsApp-link password reset. The user must have a phone number
@@ -909,7 +889,7 @@ export class PasswordResetService {
     return {
       success: true,
       message: 'Send the WhatsApp message to verify, then return and continue.',
-      waLink: this.buildWhatsAppOtpLink(otp),
+      waLink: this.whatsAppOtpService.buildOtpLink(otp),
       expiresInMinutes: 15,
     };
   }
@@ -1049,9 +1029,7 @@ export class PasswordResetService {
     selectedContactId: string,
     ipAddress?: string,
   ): Promise<{ waLink: string; sentTo: string; childUserId: string }> {
-    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
-      throw new BadRequestException('WhatsApp verification is not configured on this server.');
-    }
+    this.whatsAppOtpService.assertConfigured();
 
     const child = await this.resolveUserByIdentifier(childIdentifier);
     if (!child) throw new NotFoundException('Child account not found');
@@ -1070,33 +1048,18 @@ export class PasswordResetService {
     const chosen = contacts.find(c => c.id === selectedContactId);
     if (!chosen) throw new BadRequestException('Invalid contact selection');
 
-    // Invalidate any previous pending PROFILE_LINK OTPs for this parent+child pair
-    await this.otpRepository.update(
-      { userId: String(child.id), otpPurpose: OtpPurpose.PROFILE_LINK, isVerified: false },
-      { isVerified: false, attempts: 99 }, // Mark as exhausted so they can't be reused
-    );
-
-    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-    await this.otpRepository.save({
+    // Embed parentUserId in the email field (repurposed as opaque link key) so
+    // getChildLinkStatus can look this specific parent+child pair back up.
+    const { waLink } = await this.whatsAppOtpService.createPendingOtp({
       userId: String(child.id),
-      // Embed parentUserId in the email field (repurposed as opaque link key)
       email: `parent:${parentUserId}`,
       phoneNumber: chosen.phone,
-      otpCode,
       otpType: OtpType.PHONE,
       otpPurpose: OtpPurpose.PROFILE_LINK,
-      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
-      expiresAt,
-      isVerified: false,
-      attempts: 0,
-      ipAddress: ipAddress || null,
-      createdAt: now(),
-      createdDate: new Date().toISOString().split('T')[0],
+      expiryMinutes: 15,
+      ipAddress,
     });
 
-    const waLink = this.buildWhatsAppOtpLink(otpCode);
     this.logger.log(`[ChildLink] OTP initiated parent=${parentUserId} child=${child.id} contact=${selectedContactId}`);
     return { waLink, sentTo: chosen.masked, childUserId: String(child.id) };
   }

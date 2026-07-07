@@ -81,6 +81,10 @@ export interface PublicRegistrationPayload {
   extraData?: Record<string, any>;
   /** When set, this is a mock-user claim: the student is taking ownership of a hollow pre-created record. */
   mockUserIdByInstitute?: string;
+  /** Required alongside mockUserIdByInstitute: the card ID printed on the physical card
+   *  (e.g. "SC1234567890"). userIdByInstitute alone is a small, sequential value that can
+   *  be enumerated — the card ID is a large random value only the cardholder can read. */
+  mockClaimCardId?: string;
   password?: string;
   isClaiming?: boolean;
 }
@@ -387,7 +391,16 @@ export class InstituteSelfRegistrationService {
     maskedPhone?: string | null;
     maskedEmail?: string | null;
   }> {
-    await this.resolveActiveLink(token);
+    const link = await this.resolveActiveLink(token);
+
+    // Scope to users who actually have a membership at this link's institute — otherwise
+    // any registration link becomes a platform-wide user-existence oracle for arbitrary
+    // numeric IDs outside that institute.
+    const membership = await this.instituteUserRepo.findOne({
+      where: { instituteId: link.instituteId, userId: userId as any },
+    });
+    if (!membership) return { found: false };
+
     const user = await this.userRepo.findOne({ where: { id: userId as any } });
     if (!user) return { found: false };
 
@@ -580,12 +593,10 @@ export class InstituteSelfRegistrationService {
         profileCompletionPercentage: 100 
       });
       // also update the created institute user to ACTIVE
-      await this.dataSource.manager.update('institute_users', {
-        institute_id: link.instituteId,
-        user_id: result.userId,
-      }, {
-        status: InstituteUserStatus.ACTIVE
-      });
+      await this.instituteUserRepo.update(
+        { instituteId: link.instituteId, userId: String(result.userId) },
+        { status: InstituteUserStatus.ACTIVE },
+      );
     }
 
     await this.linkRepo.increment({ id: link.id }, 'registrationCount', 1);
@@ -735,10 +746,12 @@ export class InstituteSelfRegistrationService {
   /**
    * Mock-user claim: student takes ownership of an admin-created hollow record.
    * - Finds the mock user by (instituteId + userIdByInstitute)
+   * - Requires the card ID printed on the physical card as a second factor — the
+   *   institute user ID alone (e.g. "RC0001") is small and sequential and can be
+   *   enumerated, so it cannot serve as the sole identity proof.
    * - Fills in real profile data
    * - Sets isMock = false
    * - Upgrades the institute membership status to ACTIVE (already enrolled by admin)
-   * - No OTP required — possession of the card (i.e. knowing the institute user ID) is the identity proof
    */
   private async claimMockUser(
     link: InstituteRegistrationLinkEntity,
@@ -746,6 +759,10 @@ export class InstituteSelfRegistrationService {
     payload: PublicRegistrationPayload,
   ): Promise<any> {
     const userIdByInstitute = payload.mockUserIdByInstitute!.trim();
+    const claimCardId = payload.mockClaimCardId?.trim();
+    if (!claimCardId) {
+      throw new BadRequestException('The card ID printed on your physical card is required to claim this record.');
+    }
 
     // Locate the institute membership for this ID
     const membership = await this.instituteUserRepo.findOne({
@@ -761,6 +778,12 @@ export class InstituteSelfRegistrationService {
     }
     if (!(user as any).isMock) {
       throw new BadRequestException('This student ID has already been claimed.');
+    }
+    // Second factor: the card ID must match what's on file for this record — a large,
+    // random value only readable from the physical card, unlike the sequential
+    // userIdByInstitute (prevents claiming arbitrary records via ID enumeration).
+    if (!(user as any).cardId || (user as any).cardId !== claimCardId) {
+      throw new BadRequestException('The card ID does not match this student record.');
     }
 
     const queryRunner = this.dataSource.createQueryRunner();

@@ -1,6 +1,6 @@
 import {
   IsArray, IsOptional, IsString, IsNotEmpty,
-  IsObject, ValidateNested, ArrayMinSize,
+  IsObject, ValidateNested, ArrayMinSize, IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -106,6 +106,18 @@ export class ExternalStudentRecordDto {
   @IsString()
   @IsOptional()
   classId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Class-level fee/enrollment type, set on institute_class_students.student_type when ' +
+      'classId is also provided. Ignored if classId is omitted. Defaults to "normal" if not set.',
+    enum: ['normal', 'paid', 'half_paid', 'quarter_paid', 'free_card'],
+    example: 'paid',
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(['normal', 'paid', 'half_paid', 'quarter_paid', 'free_card'])
+  studentType?: 'normal' | 'paid' | 'half_paid' | 'quarter_paid' | 'free_card';
 
   @ApiPropertyOptional({
     description:

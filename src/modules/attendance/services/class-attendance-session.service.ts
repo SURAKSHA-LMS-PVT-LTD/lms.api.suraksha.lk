@@ -3,7 +3,7 @@ import {
   BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, In, DataSource, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { InstituteClassAttendanceSessionGroupEntity } from '../entities/institute-class-attendance-session-group.entity';
 import { InstituteClassAttendanceSessionEntity, CloseUnmarkAction } from '../entities/institute-class-attendance-session.entity';
@@ -45,6 +45,8 @@ function currentSLMinutes(): number {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
+// CHECK-IN status only — arrival-side (Present/Late). Never returns a departure
+// status; a fresh check-in can't be "left early".
 function resolveAutoStatus(
   session: InstituteClassAttendanceSessionEntity,
 ): number {
@@ -52,14 +54,23 @@ function resolveAutoStatus(
   const startMin = toMinutes(session.startTime);
 
   if (session.lateAfterMinutes != null && nowMin > startMin + session.lateAfterMinutes) {
-    if (session.endTime && session.leftEarlyBeforeMinutes != null) {
-      const endMin = toMinutes(session.endTime);
-      if (nowMin < endMin - session.leftEarlyBeforeMinutes) return 2; // Late
-      return 4; // LeftEarly
-    }
     return 2; // Late
   }
   return 1; // Present
+}
+
+// CHECKOUT status only — departure-side (LeftEarly/Left/LeftLately), for closing an
+// already-open check-in. Never returns an arrival-side status. Returns null when the
+// session has no end time configured (caller falls back to plain "Left").
+function resolveAutoCheckoutStatus(
+  session: InstituteClassAttendanceSessionEntity,
+): number | null {
+  if (!session.endTime) return null;
+  const nowMin = currentSLMinutes();
+  const endMin = toMinutes(session.endTime);
+  if (nowMin > endMin) return 5; // LeftLately — stayed past the session's official end
+  if (session.leftEarlyBeforeMinutes != null && nowMin < endMin - session.leftEarlyBeforeMinutes) return 4; // LeftEarly
+  return 3; // Left — on-time departure
 }
 
 
@@ -271,7 +282,8 @@ export class ClassAttendanceSessionService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.group', 'group')
       .where('s.instituteId = :instituteId', { instituteId })
-      .andWhere('s.classId = :classId', { classId });
+      .andWhere('s.classId = :classId', { classId })
+      .andWhere('s.isActive = true');
 
     if (query.date) {
       qb.andWhere('s.date = :date', { date: query.date });
@@ -296,11 +308,31 @@ export class ClassAttendanceSessionService {
 
   async getSessionById(sessionId: string, instituteId: string): Promise<InstituteClassAttendanceSessionEntity> {
     const session = await this.sessionRepo.findOne({
-      where: { id: sessionId, instituteId },
+      where: { id: sessionId, instituteId, isActive: true },
       relations: ['group'],
     });
     if (!session) throw new NotFoundException('Session not found');
     return session;
+  }
+
+  /**
+   * Soft-delete a session and remove its attendance records. Records are
+   * deleted (not just hidden) because every existing read path — self-service
+   * my-history, institute/class/subject admin views, monthly aggregates,
+   * profile/class reports — filters by student/institute/date and has no
+   * concept of sessions, so this is the only way a deleted session actually
+   * disappears everywhere without touching each of those endpoints.
+   */
+  async deleteSession(sessionId: string, instituteId: string): Promise<void> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, instituteId, isActive: true } });
+    if (!session) throw new NotFoundException('Session not found');
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(AttendanceRecordEntity, { classSessionId: sessionId });
+      session.isActive = false;
+      session.updatedAt = now();
+      await manager.save(InstituteClassAttendanceSessionEntity, session);
+    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -429,6 +461,8 @@ export class ClassAttendanceSessionService {
 
     // Session records always take precedence in the session view, so non-session records
     // from other sources (e.g. gate check-in) are allowed to co-exist.
+    // Explicit marker choice (dto.status) always wins over auto-resolution — this is
+    // the check-in-side default only, used for the fresh-insert branch below.
     const autoStatus = dto.status ?? resolveAutoStatus(session);
     const timestamp = now();
 
@@ -441,18 +475,29 @@ export class ClassAttendanceSessionService {
       if (!Number.isNaN(parsed)) checkInEpochMs = parsed;
     }
 
-    const existing = await this.recordRepo.findOne({
-      where: { classSessionId: sessionId, studentId: dto.studentId },
+    const markerId = userId || 'system';
+
+    // Most recent open (no checkout yet) instance for this student in this session —
+    // a repeat mark against it is treated as the checkout, not a new/edited check-in.
+    const openExisting = await this.recordRepo.findOne({
+      where: { classSessionId: sessionId, studentId: dto.studentId, checkOutTime: IsNull() },
+      order: { checkInTime: 'DESC' },
     });
 
-    if (existing) {
-      existing.status = autoStatus;
-      existing.remarks = dto.remarks ?? existing.remarks;
-      // check-in time (timestamp) reflects the entered/real time; createdAt stays real insert time
-      existing.timestamp = BigInt(checkInEpochMs).toString();
-      existing.createdAt = timestamp;
-      await this.recordRepo.save(existing);
-      return { success: true, record: existing };
+    if (openExisting) {
+      // This is a CHECKOUT, not a check-in — resolve a departure-side status
+      // (Left/LeftEarly) instead of reusing the check-in-oriented autoStatus above.
+      // Explicit marker choice still wins when given.
+      const checkoutStatus = dto.status ?? resolveAutoCheckoutStatus(session) ?? 3 /* Left */;
+      openExisting.checkOutTime = new Date(checkInEpochMs);
+      openExisting.checkOutStatus = checkoutStatus;
+      openExisting.checkOutMarkedBy = markerId;
+      // `status` is the source of truth read everywhere else (session grid, exports) —
+      // it must reflect this record's final state, not the check-in-time value it was
+      // created with, otherwise a student who left early keeps showing as "Present".
+      openExisting.status = checkoutStatus;
+      await this.recordRepo.save(openExisting);
+      return { success: true, record: openExisting };
     }
 
     const syntheticPk = `I#${instituteId}`;
@@ -482,6 +527,9 @@ export class ClassAttendanceSessionService {
       longitude: null,
       deviceUid: null,
       advertisementId: null,
+      checkInTime: new Date(checkInEpochMs),
+      checkInStatus: autoStatus,
+      checkInMarkedBy: markerId,
     });
     const saved = await this.recordRepo.save(record);
 
@@ -732,7 +780,7 @@ export class ClassAttendanceSessionService {
     if (!sessionIds.length) throw new BadRequestException('sessionIds is required');
 
     const sessions = await this.sessionRepo.find({
-      where: { id: In(sessionIds), instituteId, classId },
+      where: { id: In(sessionIds), instituteId, classId, isActive: true },
       relations: ['group'],
       order: { date: 'ASC', startTime: 'ASC' },
     });

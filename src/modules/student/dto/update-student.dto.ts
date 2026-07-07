@@ -2,9 +2,12 @@
 import { IsBigIntId, IsOptionalBigIntId } from '../../../common/validators/bigint-id.validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsEmail, IsEnum, IsBoolean, MaxLength, IsIn, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { UserType } from '../../user/enums/user-type.enum';
 import { Gender } from '../../user/enums/gender.enum';
+import { District } from '../../user/enums/district.enum';
+import { Province } from '../../user/enums/province.enum';
+import { Country } from '../../user/enums/country.enum';
 import { IsDateOfBirth } from '../../../common/validators/date-format.validator';
 
 class UpdateUserDto {
@@ -80,17 +83,17 @@ class UpdateUserDto {
   @MaxLength(100)
   city?: string;
 
-  @ApiPropertyOptional({ description: 'District' })
+  @ApiPropertyOptional({ description: 'District', enum: District })
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  district?: string;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase().replace(/\s+/g, '_') : value)
+  @IsEnum(District)
+  district?: District;
 
-  @ApiPropertyOptional({ description: 'Province' })
+  @ApiPropertyOptional({ description: 'Province', enum: Province })
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  province?: string;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase().replace(/\s+/g, '_') : value)
+  @IsEnum(Province)
+  province?: Province;
 
   @ApiPropertyOptional({ description: 'Postal code' })
   @IsOptional()
@@ -98,11 +101,10 @@ class UpdateUserDto {
   @MaxLength(20)
   postalCode?: string;
 
-  @ApiPropertyOptional({ description: 'Country' })
+  @ApiPropertyOptional({ description: 'Country', enum: Country })
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  country?: string;
+  @IsEnum(Country)
+  country?: Country;
 
   @ApiPropertyOptional({
     type: 'string',

@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Param, Body, Query,
   UseGuards, Request, ParseIntPipe, DefaultValuePipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 
@@ -74,8 +75,14 @@ export class ServerSideCardGenerationController {
   /**
    * DEV-ONLY: full backend generation — render all cards, build PDF, save to disk, open folder.
    * Frontend sends template + users + layout config and just waits for the response.
+   *
+   * Hard-gated to non-production environments: this endpoint fetches arbitrary
+   * caller-supplied image URLs server-side and writes files to local disk, so it
+   * must never be reachable outside a developer's own machine.
    */
   @Post('dev/card-generation/generate-local')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @ApiOperation({ summary: '[DEV] Full backend card generation — render, PDF, save, open folder' })
   async generateLocal(@Body() body: {
     template: any;
@@ -83,6 +90,9 @@ export class ServerSideCardGenerationController {
     layout: any;
     baseName: string;
   }) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('This endpoint is disabled in production.');
+    }
     return this.localGen.generate(body);
   }
 

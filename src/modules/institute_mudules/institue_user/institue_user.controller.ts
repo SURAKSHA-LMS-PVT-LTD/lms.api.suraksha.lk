@@ -1,4 +1,4 @@
-﻿import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
+import { ParseIdPipe } from '../../../common/pipes/parse-id.pipe';
 import { ImageUrlDto } from '../../../common/dto/common-body.dto';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, HttpCode, HttpStatus, BadRequestException, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -37,6 +37,7 @@ import { AdminUserDataResponseDto } from './dto/admin-user-data-response.dto';
 import { ImageVerificationStatus } from './enums/image-verification-status.enum';
 import { UpdateExtraDataDto } from './dto/update-extra-data.dto';
 import { ChangeInstituteUserRoleDto } from './dto/change-role.dto';
+import { ChangeInstituteUserTypeDto } from './dto/change-user-type.dto';
 import { BulkClassNamesRequestDto, BulkClassNameResultDto } from './dto/bulk-class-names.dto';
 
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
@@ -629,6 +630,25 @@ export class InstitueUserController {
 
   // =================== ADMIN UTILITIES ===================
 
+  @Patch('institute/:instituteId/users/:userId')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({ 
+    summary: 'Update basic fields for an institute user (ADMIN ONLY)',
+    description: 'Updates fields like userIdByInstitute on the institute_user record.'
+  })
+  @ApiResponse({ status: 200, description: 'User updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'User not found in institute' })
+  async updateInstituteUserBasic(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
+    @Body() updateData: { userIdByInstitute?: string }
+  ): Promise<any> {
+    return this.institueUserService.updateInstituteUserBasic(instituteId, userId, updateData);
+  }
+
   @Patch('institute/:instituteId/users/:userId/extra-data')
   @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
@@ -813,6 +833,55 @@ export class InstitueUserController {
   }> {
     const changedBy = req.user.s;
     return this.institueUserService.changeInstituteUserRole(instituteId, userId, body.newRole, changedBy);
+  }
+
+  @Patch('institute/:instituteId/users/:userId/user-type')
+  @UseGuards(FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
+  @ApiOperation({
+    summary: 'Change a user\'s custom institute user type (RBAC role) (ADMIN ONLY)',
+    description: 'Assigns a custom institute_user_types row (or a built-in "system-*" type) to a user\'s institute membership. Distinct from /change-role, which only sets the legacy 5-value enum — this sets primary_user_type_id, the field the RBAC permission system actually reads. Only Institute Admins and Super Admins can change this.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        userTypeId: { type: 'string', description: 'institute_user_types.id, its slug, or a "system-*" id', example: 'system-teacher' },
+      },
+      required: ['userTypeId'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User type changed successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'User type changed successfully',
+        userId: '12345',
+        instituteId: '1',
+        userTypeId: 'system-teacher',
+        userTypeName: 'Teacher',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid or unresolvable user type' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - JWT required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+  @ApiResponse({ status: 404, description: 'Institute user relationship or user type not found' })
+  async changeInstituteUserType(
+    @Param('instituteId', ParseIdPipe) instituteId: string,
+    @Param('userId', ParseIdPipe) userId: string,
+    @Body() body: ChangeInstituteUserTypeDto,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    userId: string;
+    instituteId: string;
+    userTypeId: string;
+    userTypeName: string;
+  }> {
+    return this.institueUserService.changeInstituteUserType(instituteId, userId, body.userTypeId);
   }
 
   @Patch('institute/:instituteId/users/:userId/upgrade-type')

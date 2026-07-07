@@ -11,6 +11,7 @@ import {
   INVALID_LECTURE_STATUS
 } from '../constants/institute-lecture.constants';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class LectureMaterialDto {
   @ApiProperty({ description: 'Display name for the material' })
@@ -101,6 +102,7 @@ export class CreateInstitueLectureDto {
   @IsDate({ message: INVALID_LECTURE_TIME })
   @Type(() => Date)
   @IsNotEmpty({ message: INVALID_LECTURE_TIME })
+    @IsAfter('startTime')
   endTime: Date;
 
   @ApiPropertyOptional({ description: 'Lecture status', enum: LectureStatus, default: 'SCHEDULED' })

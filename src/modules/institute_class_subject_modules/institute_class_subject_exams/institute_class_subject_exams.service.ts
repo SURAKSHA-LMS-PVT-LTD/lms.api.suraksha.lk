@@ -542,17 +542,22 @@ export class InstituteClassSubjectExamsService {
     }
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, user: any): Promise<void> {
     try {
-      
+
       const exam = await this.examRepository.findOne({ where: { id } });
-      
+
       if (!exam) {
         throw new NotFoundException(`Exam with ID ${id} not found`);
       }
 
+      // Validate user has access to this exam's institute before deleting it —
+      // without this check, any teacher/admin in ANY institute could delete
+      // another institute's exam by guessing its ID.
+      InstituteAccessValidator.validateResourceAccess(user, exam, [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN]);
+
       await this.examRepository.delete(id);
-      
+
     } catch (error) {
       this.logger.error(`Error removing exam with ID ${id}:`, error);
       throw error;
