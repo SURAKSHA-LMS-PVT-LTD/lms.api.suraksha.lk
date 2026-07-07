@@ -1708,6 +1708,12 @@ export class InstitueUserService {
       .andWhere('icss.subjectId = :subjectId', { subjectId: safeSubjectId })
       .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
       .andWhere('icss.is_active = :subjectStatus', { subjectStatus: true })
+      // Only verified subject enrollments belong on the roster — pending,
+      // pending_payment, payment_rejected, and rejected students are still awaiting
+      // action and must not appear as enrolled students here.
+      .andWhere('icss.verification_status IN (:...subjectVerificationStatuses)', {
+        subjectVerificationStatuses: ['verified', 'enrolled_free_card'],
+      })
       .setParameter('instituteIdForJoin', safeInstituteId)
       .setParameter('classIdForJoin', safeClassId)
       .setParameter('subjectIdForJoin', safeSubjectId);
@@ -1725,6 +1731,9 @@ export class InstitueUserService {
       .andWhere('icss.subjectId = :subjectId', { subjectId: safeSubjectId })
       .andWhere('iu.status = :status', { status: InstituteUserStatus.ACTIVE })
       .andWhere('icss.is_active = :subjectStatus', { subjectStatus: true })
+      .andWhere('icss.verification_status IN (:...subjectVerificationStatuses)', {
+        subjectVerificationStatuses: ['verified', 'enrolled_free_card'],
+      })
       .setParameter('instituteIdForJoin', safeInstituteId)
       .setParameter('classIdForJoin', safeClassId)
       .setParameter('subjectIdForJoin', safeSubjectId);
