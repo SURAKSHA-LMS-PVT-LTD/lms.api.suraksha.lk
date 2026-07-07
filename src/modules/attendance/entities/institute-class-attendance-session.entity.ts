@@ -50,6 +50,10 @@ export class InstituteClassAttendanceSessionEntity {
   @Column({ name: 'is_closed', type: 'boolean', default: false })
   isClosed: boolean;
 
+  @Column({ name: 'is_active', type: 'boolean', default: true,
+    comment: 'False = soft-deleted; session and its attendance records are hidden from every fetch path' })
+  isActive: boolean;
+
   @Column({ name: 'closed_at', type: 'timestamp', nullable: true })
   closedAt?: Date;
 

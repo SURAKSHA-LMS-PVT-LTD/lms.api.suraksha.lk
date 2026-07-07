@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, LessThan } from 'typeorm';
+import { Repository, DataSource, LessThan, In } from 'typeorm';
 import { UserEntity } from '../modules/user/entities/user.entity';
 import { UserType } from '../modules/user/enums/user-type.enum';
 import { InstituteEntity } from '../modules/institute/entities/institute.entity';
@@ -1442,7 +1442,34 @@ export class AuthService {
       updatedAt: currentTime
     });
 
+    // Web has no deviceId to dedupe on (unlike mobile, which revokes the prior
+    // session for the same device before inserting — see loginMobile). Without
+    // any cap, every login/token-refresh with no matching logout left a
+    // permanently-active row until its 7-30 day expiry, so a handful of users
+    // logging in repeatedly could accumulate dozens of "active" sessions.
+    // Bound it here instead: keep only the most recent MAX_WEB_SESSIONS active.
+    await this.enforceWebSessionCap(userId);
+
     return refreshToken;
+  }
+
+  private static readonly MAX_WEB_SESSIONS_PER_USER = 5;
+
+  private async enforceWebSessionCap(userId: string): Promise<void> {
+    const activeWebSessions = await this.refreshTokenRepository.find({
+      where: { userId, platform: 'web', isRevoked: false },
+      order: { createdAt: 'DESC' },
+      select: ['id'],
+    });
+    if (activeWebSessions.length <= AuthService.MAX_WEB_SESSIONS_PER_USER) return;
+
+    const staleIds = activeWebSessions
+      .slice(AuthService.MAX_WEB_SESSIONS_PER_USER)
+      .map(s => s.id);
+    await this.refreshTokenRepository.update(
+      { id: In(staleIds) },
+      { isRevoked: true, updatedAt: now() },
+    );
   }
 
   /**

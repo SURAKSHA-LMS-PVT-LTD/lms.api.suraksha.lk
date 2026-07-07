@@ -13,13 +13,16 @@ import { Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
+import { resolveAttendanceDateRange } from './utils/attendance-date-range.util';
+import { AttendanceCacheService } from './services/attendance-cache.service';
 
 @ApiTags('Attendance')
 @UseGuards(FlexibleAccessGuard)
 @Controller('api/attendance')
 export class AttendanceController {
   constructor(
-    private readonly attendanceService: AttendanceService
+    private readonly attendanceService: AttendanceService,
+    private readonly attendanceCache: AttendanceCacheService,
   ) {}
 
   @Post('mark')
@@ -184,39 +187,16 @@ export class AttendanceController {
     @Request() req: any
   ): Promise<StudentAttendanceResponseDto> {
     try {
-      // Combine path parameter with query parameters
+      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
+      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
+      const range = resolveAttendanceDateRange(queryDto, { defaultDays: 31 });
+
       const fullQueryDto: GetStudentAttendanceDto = {
         studentId,
-        ...queryDto
+        ...queryDto,
+        startDate: range.startDate,
+        endDate: range.endDate,
       };
-
-      // Validate date range
-      const startDate = new Date(fullQueryDto.startDate);
-      const endDate = new Date(fullQueryDto.endDate);
-      
-      if (startDate > endDate) {
-        throw new HttpException(
-          {
-            success: false,
-            message: 'Start date cannot be later than end date',
-          },
-          HttpStatus.BAD_REQUEST
-        );
-      }
-
-      // Check if date range is not too large (e.g., max 1 year)
-      const maxRangeDays = 365;
-      const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (daysDiff > maxRangeDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: `Date range cannot exceed ${maxRangeDays} days`,
-          },
-          HttpStatus.BAD_REQUEST
-        );
-      }
 
       const result = await this.attendanceService.getStudentAttendance(fullQueryDto, req.user);
       
@@ -493,33 +473,12 @@ export class AttendanceController {
         ...queryDto
       };
 
-      // Validate date range if provided
-      if (fullQueryDto.startDate && fullQueryDto.endDate) {
-        const startDate = new Date(fullQueryDto.startDate);
-        const endDate = new Date(fullQueryDto.endDate);
-        
-        if (startDate > endDate) {
-          throw new HttpException(
-            {
-              success: false,
-              message: 'Start date cannot be later than end date',
-            },
-            HttpStatus.BAD_REQUEST
-          );
-        }
-
-        // Check if date range is not too large (e.g., max 1 year)
-        const maxRangeDays = 365;
-        const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (daysDiff > maxRangeDays) {
-          throw new HttpException(
-            {
-              success: false,
-              message: `Date range cannot exceed ${maxRangeDays} days`,
-            },
-            HttpStatus.BAD_REQUEST
-          );
+      // Unified month/range rule (matches monthly partitioning). Range optional here.
+      if (fullQueryDto.startDate || fullQueryDto.endDate || (fullQueryDto as any).month) {
+        const range = resolveAttendanceDateRange(fullQueryDto as any);
+        if (range) {
+          fullQueryDto.startDate = range.startDate;
+          fullQueryDto.endDate = range.endDate;
         }
       }
 
@@ -629,6 +588,7 @@ export class AttendanceController {
     @Param('instituteId') instituteId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
@@ -638,47 +598,32 @@ export class AttendanceController {
     @Query('sortOrder') sortOrder?: string
   ) {
     try {
-      // Default to last 7 days if dates not provided
-      if (!startDate || !endDate) {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(now.getDate() - 7);
-        
-        startDate = startDate || sevenDaysAgo.toISOString().split('T')[0];
-        endDate = endDate || now.toISOString().split('T')[0];
-      }
+      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
+      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
+      // Defaults to the last 7 days when nothing is given (previous behavior).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 7 });
+      startDate = range.startDate;
+      endDate = range.endDate;
 
-      // Validate date range: 30 days max when filtering by studentId, 7 days otherwise
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const maxDays = studentId ? 30 : 7;
-      if (daysDiff > maxDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: studentId 
-              ? 'Date range cannot exceed 30 days when filtering by studentId'
-              : 'Date range cannot exceed 7 days for institute-wide queries. Add studentId parameter to query up to 30 days.',
-          },
-          HttpStatus.BAD_REQUEST
-        );
-      }
-
-      const result = await this.attendanceService.getInstituteAttendance({
-        instituteId,
-        startDate,
+      // Month-scoped cache: past months are immutable (long TTL), current month
+      // gets a short TTL. No-op unless ATTENDANCE_CACHE_ENABLED + CACHE_ENABLED.
+      const result = await this.attendanceCache.getOrCompute(
+        ['inst', instituteId, startDate, endDate, page, limit, status, studentId, searchTerm, sortBy, sortOrder],
         endDate,
-        page,
-        limit,
-        status,
-        studentId,
-        searchTerm,
-        sortBy,
-        sortOrder
-      });
-      
+        () => this.attendanceService.getInstituteAttendance({
+          instituteId,
+          startDate,
+          endDate,
+          page,
+          limit,
+          status,
+          studentId,
+          searchTerm,
+          sortBy,
+          sortOrder
+        }),
+      );
+
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -784,6 +729,7 @@ export class AttendanceController {
     @Param('classId') classId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
@@ -793,47 +739,39 @@ export class AttendanceController {
     @Query('sortOrder') sortOrder?: string
   ) {
     try {
-      // Validate required parameters
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
+      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
           {
             success: false,
-            message: 'startDate and endDate are required parameters',
+            message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.',
           },
           HttpStatus.BAD_REQUEST
         );
       }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
-      // Validate date range: 31 days max
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const maxDays = 31;
-      if (daysDiff > maxDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: 'Date range cannot exceed 31 days for class-wide queries.',
-          },
-          HttpStatus.BAD_REQUEST
-        );
-      }
-
-      const result = await this.attendanceService.getClassAttendance({
-        instituteId,
-        classId,
-        startDate,
+      const result = await this.attendanceCache.getOrCompute(
+        ['cls', instituteId, classId, startDate, endDate, page, limit, status, studentId, searchTerm, sortBy, sortOrder],
         endDate,
-        page,
-        limit,
-        status,
-        studentId,
-        searchTerm,
-        sortBy,
-        sortOrder
-      });
-      
+        () => this.attendanceService.getClassAttendance({
+          instituteId,
+          classId,
+          startDate,
+          endDate,
+          page,
+          limit,
+          status,
+          studentId,
+          searchTerm,
+          sortBy,
+          sortOrder
+        }),
+      );
+
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -1352,6 +1290,7 @@ export class AttendanceController {
     @Param('subjectId') subjectId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
@@ -1361,47 +1300,39 @@ export class AttendanceController {
     @Query('sortOrder') sortOrder?: string
   ) {
     try {
-      // Validate required parameters
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
+      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
           {
             success: false,
-            message: 'startDate and endDate are required parameters',
+            message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.',
           },
           HttpStatus.BAD_REQUEST
         );
       }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
-      // Validate date range: 31 days max
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const maxDays = 31;
-      if (daysDiff > maxDays) {
-        throw new HttpException(
-          {
-            success: false,
-            message: 'Date range cannot exceed 31 days for subject-wide queries.',
-          },
-          HttpStatus.BAD_REQUEST
-        );
-      }
-
-      const result = await this.attendanceService.getSubjectAttendance({
-        instituteId,
-        classId,
-        subjectId,
-        startDate,
+      const result = await this.attendanceCache.getOrCompute(
+        ['subj', instituteId, classId, subjectId, startDate, endDate, page, limit, status, studentId, searchTerm, sortBy, sortOrder],
         endDate,
-        page,
-        limit,
-        status,
-        studentId,
-        searchTerm,
-        sortBy,
-        sortOrder
-      });
+        () => this.attendanceService.getSubjectAttendance({
+          instituteId,
+          classId,
+          subjectId,
+          startDate,
+          endDate,
+          page,
+          limit,
+          status,
+          studentId,
+          searchTerm,
+          sortBy,
+          sortOrder
+        }),
+      );
       
       return result;
     } catch (error) {
@@ -1446,27 +1377,23 @@ export class AttendanceController {
     @Param('studentId') studentId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string
   ) {
     try {
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning). Replaces the old
+      // 365-day cap — fetch one month at a time (frontend uses a month picker).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
-          { success: false, message: 'startDate and endDate are required parameters' },
+          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
           HttpStatus.BAD_REQUEST
         );
       }
-
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysDiff > 365) {
-        throw new HttpException(
-          { success: false, message: 'Date range cannot exceed 365 days' },
-          HttpStatus.BAD_REQUEST
-        );
-      }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
       const result = await this.attendanceService.getClassAttendance({
         instituteId,
@@ -1512,14 +1439,19 @@ export class AttendanceController {
     @Param('studentId') studentId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
   ) {
     try {
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
-          { success: false, message: 'startDate and endDate are required parameters' },
+          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
           HttpStatus.BAD_REQUEST
         );
       }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
       return await this.attendanceService.getClassStudentCheckInOut({
         instituteId,
@@ -1566,27 +1498,23 @@ export class AttendanceController {
     @Param('studentId') studentId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
+    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string
   ) {
     try {
-      if (!startDate || !endDate) {
+      // Unified month/range rule (matches monthly partitioning). Replaces the old
+      // 365-day cap — fetch one month at a time (frontend uses a month picker).
+      const range = resolveAttendanceDateRange({ month, startDate, endDate });
+      if (!range) {
         throw new HttpException(
-          { success: false, message: 'startDate and endDate are required parameters' },
+          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
           HttpStatus.BAD_REQUEST
         );
       }
-
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysDiff > 365) {
-        throw new HttpException(
-          { success: false, message: 'Date range cannot exceed 365 days' },
-          HttpStatus.BAD_REQUEST
-        );
-      }
+      startDate = range.startDate;
+      endDate = range.endDate;
 
       const result = await this.attendanceService.getSubjectAttendance({
         instituteId,
@@ -1858,6 +1786,15 @@ pagination, status filter, and optional single-institute filter.\n\n
       if (!userId) {
         throw new HttpException({ success: false, message: 'User ID not found in token' }, HttpStatus.UNAUTHORIZED);
       }
+      // month=YYYY-MM resolves to that month's range (unified rule, matches partitioning);
+      // startDate/endDate still accepted, service defaults to last 30 days when neither given.
+      if (query.month || (query.startDate && query.endDate)) {
+        const range = resolveAttendanceDateRange(query);
+        if (range) {
+          query.startDate = range.startDate;
+          query.endDate = range.endDate;
+        }
+      }
       // Extract children IDs from JWT if present (for parent accounts)
       const childrenIds = req.user?.c || [];
       return await this.attendanceService.getMyAttendance(String(userId), query, childrenIds);
@@ -1888,6 +1825,11 @@ pagination, status filter, and optional single-institute filter.\n\n
 
   private _markedBy(req: any): string {
     return req.user?.s || req.user?.subject || req.user?.sub || req.user?.id;
+  }
+  /** Last day (YYYY-MM-DD) of a year/month pair — used as the cache-TTL anchor for count endpoints. */
+  private _monthEnd(y: number, m: number): string {
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   }
   private _err(e: any, msg?: string): never {
     if (e instanceof HttpException) throw e;
@@ -2108,7 +2050,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getInstituteMonthlyCount(instituteId, y, m, eventId);
+      return await this.attendanceCache.getOrCompute(
+        ['mcount', instituteId, y, m, eventId],
+        this._monthEnd(y, m),
+        () => this.attendanceService.getInstituteMonthlyCount(instituteId, y, m, eventId),
+      );
     } catch (e) { this._err(e, 'Failed to get institute monthly attendance count'); }
   }
 
@@ -2143,7 +2089,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m, eventId);
+      return await this.attendanceCache.getOrCompute(
+        ['mcount', instituteId, classId, y, m, eventId],
+        this._monthEnd(y, m),
+        () => this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m, eventId),
+      );
     } catch (e) { this._err(e, 'Failed to get class monthly attendance count'); }
   }
 
@@ -2178,7 +2128,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getSubjectMonthlyCount(instituteId, classId, subjectId, y, m);
+      return await this.attendanceCache.getOrCompute(
+        ['mcount', instituteId, classId, subjectId, y, m],
+        this._monthEnd(y, m),
+        () => this.attendanceService.getSubjectMonthlyCount(instituteId, classId, subjectId, y, m),
+      );
     } catch (e) { this._err(e, 'Failed to get subject monthly attendance count'); }
   }
 
@@ -2211,7 +2165,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getInstituteDailyCount(instituteId, y, m, eventId);
+      return await this.attendanceCache.getOrCompute(
+        ['dcount', instituteId, y, m, eventId],
+        this._monthEnd(y, m),
+        () => this.attendanceService.getInstituteDailyCount(instituteId, y, m, eventId),
+      );
     } catch (e) { this._err(e, 'Failed to get institute daily attendance count'); }
   }
 
@@ -2246,7 +2204,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getClassDailyCount(instituteId, classId, y, m, eventId);
+      return await this.attendanceCache.getOrCompute(
+        ['dcount', instituteId, classId, y, m, eventId],
+        this._monthEnd(y, m),
+        () => this.attendanceService.getClassDailyCount(instituteId, classId, y, m, eventId),
+      );
     } catch (e) { this._err(e, 'Failed to get class daily attendance count'); }
   }
 
@@ -2281,7 +2243,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceService.getSubjectDailyCount(instituteId, classId, subjectId, y, m);
+      return await this.attendanceCache.getOrCompute(
+        ['dcount', instituteId, classId, subjectId, y, m],
+        this._monthEnd(y, m),
+        () => this.attendanceService.getSubjectDailyCount(instituteId, classId, subjectId, y, m),
+      );
     } catch (e) { this._err(e, 'Failed to get subject daily attendance count'); }
   }
 
@@ -2369,21 +2335,22 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     @Query('classId') classId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('month') month?: string,
     @Query('limit') limit?: string,
   ) {
     if (!classId) {
       throw new HttpException({ success: false, message: 'classId query parameter is required' }, HttpStatus.BAD_REQUEST);
     }
-    const now = new Date();
-    const defaultEnd = now.toISOString().split('T')[0];
-    const defaultStart = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+    // Unified month/range rule (matches monthly partitioning) — replaces the old
+    // 1-year default, which scanned up to 12 partitions per request.
+    const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 31 });
     try {
       return await this.attendanceService.getStudentClassProfile({
         instituteId,
         classId,
         studentId,
-        startDate: startDate || defaultStart,
-        endDate: endDate || defaultEnd,
+        startDate: range.startDate,
+        endDate: range.endDate,
         limit: Math.min(parseInt(limit || '100', 10), 500),
       });
     } catch (error) {
@@ -2498,17 +2465,18 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     @Param('studentId') studentId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('month') month?: string,
     @Query('limit') limit?: string,
   ) {
-    const now = new Date();
-    const defaultEnd = now.toISOString().split('T')[0];
-    const defaultStart = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
+    // Unified month/range rule (matches monthly partitioning) — replaces the old
+    // 1-year default, which scanned up to 12 partitions per request.
+    const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 31 });
     try {
       return await this.attendanceService.getStudentInstituteProfile({
         instituteId,
         studentId,
-        startDate: startDate || defaultStart,
-        endDate: endDate || defaultEnd,
+        startDate: range.startDate,
+        endDate: range.endDate,
         limit: Math.min(parseInt(limit || '100', 10), 500),
       });
     } catch (error) {

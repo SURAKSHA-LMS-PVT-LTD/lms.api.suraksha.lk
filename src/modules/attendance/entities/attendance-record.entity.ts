@@ -87,10 +87,12 @@ export class AttendanceRecordEntity {
   })
   studentId: string;
 
-  @Column({
+  // Part of the composite primary key (id, date) — required by MySQL so the
+  // monthly RANGE partitioning on `date` can coexist with unique keys.
+  @PrimaryColumn({
     name: 'date',
     type: 'date',
-    comment: 'Attendance date (YYYY-MM-DD)',
+    comment: 'Attendance date (YYYY-MM-DD) — monthly partition key',
   })
   date: string;
 

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNotEmpty, IsEnum, IsArray, ValidateNested, IsNumber, IsDateString, IsBoolean, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsEnum, IsArray, ValidateNested, IsNumber, IsDateString, IsBoolean, IsObject, Matches } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -297,15 +297,20 @@ export class GetStudentAttendanceDto {
   @IsNotEmpty()
   instituteId: string;
 
-  @ApiProperty({ description: 'Start date for filtering (YYYY-MM-DD)' })
-  @IsDateString()
-  @IsNotEmpty()
-  startDate: string;
+  @ApiPropertyOptional({ description: 'Calendar month to fetch (YYYY-MM). Preferred over startDate/endDate — aligns with monthly partitioning.' })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'month must be in YYYY-MM format' })
+  month?: string;
 
-  @ApiProperty({ description: 'End date for filtering (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Start date for filtering (YYYY-MM-DD). Required together with endDate when month is not given; max 31 days, max 2 adjacent months.' })
+  @IsOptional()
   @IsDateString()
-  @IsNotEmpty()
-  endDate: string;
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: 'End date for filtering (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 
   @ApiPropertyOptional({ description: 'Page number (default: 1)', minimum: 1 })
   @IsOptional()
@@ -331,15 +336,20 @@ export class GetStudentAttendanceQueryDto {
   @IsNotEmpty()
   instituteId: string;
 
-  @ApiProperty({ description: 'Start date for filtering (YYYY-MM-DD)' })
-  @IsDateString()
-  @IsNotEmpty()
-  startDate: string;
+  @ApiPropertyOptional({ description: 'Calendar month to fetch (YYYY-MM). Preferred over startDate/endDate — aligns with monthly partitioning.' })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'month must be in YYYY-MM format' })
+  month?: string;
 
-  @ApiProperty({ description: 'End date for filtering (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Start date for filtering (YYYY-MM-DD). Required together with endDate when month is not given; max 31 days, max 2 adjacent months.' })
+  @IsOptional()
   @IsDateString()
-  @IsNotEmpty()
-  endDate: string;
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: 'End date for filtering (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 
   @ApiPropertyOptional({ description: 'Page number (default: 1)', minimum: 1 })
   @IsOptional()
@@ -425,6 +435,11 @@ export class StudentAttendanceResponseDto {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class MyAttendanceQueryDto {
+  @ApiPropertyOptional({ description: 'Calendar month to fetch (YYYY-MM). Preferred over startDate/endDate — aligns with monthly partitioning.' })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'month must be in YYYY-MM format' })
+  month?: string;
+
   @ApiPropertyOptional({ description: 'Start date YYYY-MM-DD (default: 30 days ago)' })
   @IsOptional()
   @IsDateString()

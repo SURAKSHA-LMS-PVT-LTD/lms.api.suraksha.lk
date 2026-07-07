@@ -102,7 +102,7 @@ export class AttendanceSyncSchedulerService {
             'sync_status', 'sync_error', 'synced_at',
             'check_in_time', 'check_in_status', 'check_in_marked_by',
           ],
-          ['dynamo_pk', 'dynamo_sk'],
+          ['dynamo_pk', 'dynamo_sk', 'date'],
         )
         .execute();
     } catch (error) {
@@ -186,7 +186,7 @@ export class AttendanceSyncSchedulerService {
             'sync_status', 'sync_error', 'synced_at',
             'check_in_time', 'check_in_status', 'check_in_marked_by',
           ],
-          ['dynamo_pk', 'dynamo_sk'],
+          ['dynamo_pk', 'dynamo_sk', 'date'],
         )
         .execute();
 
@@ -356,7 +356,7 @@ export class AttendanceSyncSchedulerService {
               'sync_status', 'sync_error', 'synced_at',
               'check_in_time', 'check_in_status', 'check_in_marked_by',
             ],
-            ['dynamo_pk', 'dynamo_sk'],
+            ['dynamo_pk', 'dynamo_sk', 'date'],
           )
           .execute();
         synced += batch.length;

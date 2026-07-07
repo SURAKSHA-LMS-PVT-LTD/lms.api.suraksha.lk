@@ -271,7 +271,8 @@ export class ClassAttendanceSessionService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.group', 'group')
       .where('s.instituteId = :instituteId', { instituteId })
-      .andWhere('s.classId = :classId', { classId });
+      .andWhere('s.classId = :classId', { classId })
+      .andWhere('s.isActive = true');
 
     if (query.date) {
       qb.andWhere('s.date = :date', { date: query.date });
@@ -296,11 +297,31 @@ export class ClassAttendanceSessionService {
 
   async getSessionById(sessionId: string, instituteId: string): Promise<InstituteClassAttendanceSessionEntity> {
     const session = await this.sessionRepo.findOne({
-      where: { id: sessionId, instituteId },
+      where: { id: sessionId, instituteId, isActive: true },
       relations: ['group'],
     });
     if (!session) throw new NotFoundException('Session not found');
     return session;
+  }
+
+  /**
+   * Soft-delete a session and remove its attendance records. Records are
+   * deleted (not just hidden) because every existing read path — self-service
+   * my-history, institute/class/subject admin views, monthly aggregates,
+   * profile/class reports — filters by student/institute/date and has no
+   * concept of sessions, so this is the only way a deleted session actually
+   * disappears everywhere without touching each of those endpoints.
+   */
+  async deleteSession(sessionId: string, instituteId: string): Promise<void> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, instituteId, isActive: true } });
+    if (!session) throw new NotFoundException('Session not found');
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(AttendanceRecordEntity, { classSessionId: sessionId });
+      session.isActive = false;
+      session.updatedAt = now();
+      await manager.save(InstituteClassAttendanceSessionEntity, session);
+    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -738,7 +759,7 @@ export class ClassAttendanceSessionService {
     if (!sessionIds.length) throw new BadRequestException('sessionIds is required');
 
     const sessions = await this.sessionRepo.find({
-      where: { id: In(sessionIds), instituteId, classId },
+      where: { id: In(sessionIds), instituteId, classId, isActive: true },
       relations: ['group'],
       order: { date: 'ASC', startTime: 'ASC' },
     });

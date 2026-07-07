@@ -340,7 +340,9 @@ export class AttendanceService {
     if (!openRow) return null; // nothing open — this is a fresh check-in
 
     const checkOutStatus = dto.status ?? AttendanceStatus.PRESENT;
-    await this.attendanceRecordRepository.update(openRow.id, {
+    // Composite PK (id, date): object criteria required — a scalar id is ambiguous,
+    // and including date lets MySQL prune to the row's monthly partition.
+    await this.attendanceRecordRepository.update({ id: openRow.id, date: openRow.date }, {
       checkOutTime: new Date(),
       checkOutStatus: this.attendanceStatusToNumber(checkOutStatus),
       checkOutMarkedBy: dto.markedBy || 'system',

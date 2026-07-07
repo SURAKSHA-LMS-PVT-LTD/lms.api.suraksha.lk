@@ -16,6 +16,8 @@ import { DynamoDBAttendanceService } from './services/dynamodb-attendance.servic
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { AttendanceSyncConfigService } from './services/attendance-sync-config.service';
 import { AttendanceSyncSchedulerService } from './services/attendance-sync-scheduler.service';
+import { AttendancePartitionScheduler } from './services/attendance-partition.scheduler';
+import { AttendanceCacheService } from './services/attendance-cache.service';
 import { MysqlAttendanceService } from './services/mysql-attendance.service';
 import { ClassAttendanceSessionService } from './services/class-attendance-session.service';
 import { InstituteClassAttendanceSessionEntity } from './entities/institute-class-attendance-session.entity';
@@ -79,6 +81,8 @@ import { InstituteClassSubjectStudent } from '../institute_class_subject_modules
     AttendanceNotificationService,
     AttendanceSyncConfigService,
     AttendanceSyncSchedulerService,
+    AttendancePartitionScheduler,
+    AttendanceCacheService,
     ClassAttendanceSessionService,
     WhatsAppWebhookService,
     WhatsAppMenuService,

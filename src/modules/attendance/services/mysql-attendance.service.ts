@@ -343,7 +343,7 @@ export class MysqlAttendanceService {
           'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
           'check_in_time', 'check_in_status', 'check_in_marked_by',
         ],
-        ['dynamo_pk', 'dynamo_sk'],
+        ['dynamo_pk', 'dynamo_sk', 'date'],
       )
       .execute();
 
@@ -407,7 +407,7 @@ export class MysqlAttendanceService {
               'user_type', 'device_uid', 'sync_status', 'sync_error', 'synced_at',
               'check_in_time', 'check_in_status', 'check_in_marked_by',
             ],
-            ['dynamo_pk', 'dynamo_sk'],
+            ['dynamo_pk', 'dynamo_sk', 'date'],
           )
           .execute();
       } catch (error) {
