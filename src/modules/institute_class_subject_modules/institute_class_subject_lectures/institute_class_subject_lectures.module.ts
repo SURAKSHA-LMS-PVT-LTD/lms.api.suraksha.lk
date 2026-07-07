@@ -12,7 +12,7 @@ import { LectureTrackingController } from './lecture_tracking.controller';
 import { LectureTrackingService } from './lecture_tracking.service';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
-import { ClassPaymentSubmission } from '../../payment/entities/class-payment-submission.entity';
+import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteClassLectureEntity } from '../../institute_mudules/institute_class_lectures/entities/institute_class_lecture.entity';
 
@@ -28,7 +28,7 @@ import { InstituteClassLectureEntity } from '../../institute_mudules/institute_c
       LectureRecordingActivity,
       InstituteClassStudentEntity,
       InstituteClassSubjectStudent,
-      ClassPaymentSubmission,
+      InstituteClassSubjectPaymentSubmission,
       UserEntity,
     ]),
   ],

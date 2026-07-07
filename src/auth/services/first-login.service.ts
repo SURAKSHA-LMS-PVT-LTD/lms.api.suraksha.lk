@@ -9,7 +9,6 @@ import { PasswordResetTokenEntity, UserFirstLoginLogEntity } from '../entities/p
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
 import { AuthService } from '../auth.service';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
-import { WhatsAppOtpService } from '../../common/services/whatsapp-otp.service';
 import { SmslenzProvider } from '../../modules/sms/providers/smslenz.provider';
 import { normalizeSriLankanPhone } from '../../common/utils/phone-normalizer.util';
 // ✅ CACHING SERVICES
@@ -37,7 +36,8 @@ import {
   CompleteFirstLoginProfileDto,
   InitiateFirstLoginDto2,
   VerifyFirstLoginOtpDto,
-  RequestPhoneOtpFirstLoginDto
+  RequestPhoneOtpFirstLoginDto,
+  VerifyPhoneOtpInFlowDto
 } from '../dto/first-login.dto';
 import { UserType } from '../../modules/user/enums/user-type.enum';
 import { ProfileCompletionStatus, calculateProfileCompletion, determineProfileStatus } from '../../modules/user/enums/profile-completion-status.enum';
@@ -67,7 +67,6 @@ export class FirstLoginService {
     private readonly userManagementService: UserManagementService,
     private readonly cacheService: CacheService,
     private readonly dataSource: DataSource,
-    private readonly whatsAppOtpService: WhatsAppOtpService,
   ) {}
 
   async initiateFirstLogin(
@@ -987,11 +986,6 @@ export class FirstLoginService {
     requiresContactInfo?: boolean;
     parentOtpUsed?: boolean;
     parentRelationship?: string;
-    /** Set when otpSentVia === 'phone': phone verification is reverse-OTP via
-     *  WhatsApp (no typed code) — the frontend renders the WhatsApp tap-link/QR
-     *  flow using accessToken + this phone number instead of an OTP input. */
-    phoneVerificationMode?: 'whatsapp';
-    phoneNumberForVerification?: string;
   }> {
     const identifierType = this.detectIdentifierType(dto.identifier);
     let user: UserEntity | null = null;
@@ -1072,20 +1066,11 @@ export class FirstLoginService {
               // Send OTP to parent's contact
               let otpSentVia: 'phone' | 'email' | null = null;
               let maskedDestination: string | null = null;
-              let normalizedParentPhone: string | undefined;
 
               if (parentUser.phoneNumber) {
-                normalizedParentPhone = normalizeSriLankanPhone(parentUser.phoneNumber) || parentUser.phoneNumber;
-                await this.whatsAppOtpService.createPendingOtp({
-                  userId: user.id,
-                  phoneNumber: normalizedParentPhone,
-                  otpType: OtpType.PHONE,
-                  otpPurpose: OtpPurpose.VERIFICATION,
-                  expiryMinutes: 15,
-                  ipAddress,
-                });
+                await this.sendFirstLoginPhoneOtp(parentUser.phoneNumber, user.id, ipAddress, userAgent);
                 otpSentVia = 'phone';
-                maskedDestination = maskPii(normalizedParentPhone);
+                maskedDestination = maskPii(parentUser.phoneNumber);
               } else if (parentUser.email) {
                 const userName = parentUser.nameWithInitials || parentUser.firstName || 'Parent';
                 await this.sendFirstLoginEmailOtp(parentUser.email, user.id, userName, ipAddress, userAgent);
@@ -1095,9 +1080,7 @@ export class FirstLoginService {
 
               return {
                 success: true,
-                message: otpSentVia === 'phone'
-                  ? `Tap the WhatsApp link (or scan the QR) and send the pre-filled message to verify your ${parent.relationship}'s phone (${maskedDestination}).`
-                  : `OTP sent to ${parent.relationship}'s email (${maskedDestination}). Valid for 15 minutes.`,
+                message: `OTP sent to ${parent.relationship}'s ${otpSentVia === 'phone' ? 'phone' : 'email'} (${maskedDestination}). Valid for 15 minutes.`,
                 otpSentVia,
                 maskedDestination,
                 expiresInMinutes: 15,
@@ -1109,7 +1092,6 @@ export class FirstLoginService {
                 requiresContactInfo: false,
                 parentOtpUsed: true,
                 parentRelationship: parent.relationship,
-                ...(otpSentVia === 'phone' ? { phoneVerificationMode: 'whatsapp' as const, phoneNumberForVerification: normalizedParentPhone } : {}),
               };
             }
           }
@@ -1183,28 +1165,16 @@ export class FirstLoginService {
     }
 
     // ── Send OTP to best available channel ──
-    // Priority: phone first (WhatsApp reverse-OTP — no SMS), email second.
-    // Phone verification has no typed code, so it needs the first-login JWT
-    // issued immediately (like systemId login) so the frontend can drive the
-    // WhatsApp tap-link/QR flow via the JWT-authenticated endpoints.
+    // Priority: phone first (instant SMS), email second
     let otpSentVia: 'phone' | 'email' | null = null;
     let maskedDestination: string | null = null;
-    let accessToken: string | undefined;
 
     if (hasPhone && !user.isPhoneVerified) {
+      // Send SMS OTP
       const normalizedPhone = user.phoneNumber!;
-      this.whatsAppOtpService.assertConfigured();
-      await this.whatsAppOtpService.createPendingOtp({
-        userId: user.id,
-        phoneNumber: normalizedPhone,
-        otpType: OtpType.PHONE,
-        otpPurpose: OtpPurpose.VERIFICATION,
-        expiryMinutes: 15,
-        ipAddress,
-      });
+      await this.sendFirstLoginPhoneOtp(normalizedPhone, user.id, ipAddress, userAgent);
       otpSentVia = 'phone';
       maskedDestination = maskPii(normalizedPhone);
-      accessToken = this.generateFirstLoginAccessToken(user.id);
     } else if (hasEmail && !user.isEmailVerified) {
       // Send Email OTP
       const userName = user.nameWithInitials || user.firstName || 'User';
@@ -1215,18 +1185,9 @@ export class FirstLoginService {
       // Both already verified (edge case — user is re-hitting initiate)
       // Resend to phone if available, else email
       if (hasPhone) {
-        this.whatsAppOtpService.assertConfigured();
-        await this.whatsAppOtpService.createPendingOtp({
-          userId: user.id,
-          phoneNumber: user.phoneNumber!,
-          otpType: OtpType.PHONE,
-          otpPurpose: OtpPurpose.VERIFICATION,
-          expiryMinutes: 15,
-          ipAddress,
-        });
+        await this.sendFirstLoginPhoneOtp(user.phoneNumber!, user.id, ipAddress, userAgent);
         otpSentVia = 'phone';
         maskedDestination = maskPii(user.phoneNumber!);
-        accessToken = this.generateFirstLoginAccessToken(user.id);
       } else {
         const userName = user.nameWithInitials || user.firstName || 'User';
         await this.sendFirstLoginEmailOtp(user.email!, user.id, userName, ipAddress, userAgent);
@@ -1237,9 +1198,7 @@ export class FirstLoginService {
 
     return {
       success: true,
-      message: otpSentVia === 'phone'
-        ? `Tap the WhatsApp link (or scan the QR) and send the pre-filled message to verify your phone (${maskedDestination}).`
-        : `OTP sent via email to ${maskedDestination}. Valid for 15 minutes.`,
+      message: `OTP sent via ${otpSentVia === 'phone' ? 'SMS' : 'email'} to ${maskedDestination}. Valid for 15 minutes.`,
       otpSentVia,
       maskedDestination,
       expiresInMinutes: 15,
@@ -1250,14 +1209,60 @@ export class FirstLoginService {
       userHasPhone: hasPhone,
       userHasEmail: hasEmail,
       userId: user.id,
-      accessToken,
-      ...(otpSentVia === 'phone' ? { phoneVerificationMode: 'whatsapp' as const, phoneNumberForVerification: user.phoneNumber ?? undefined } : {}),
     };
   }
 
   /**
    * Helper: Send OTP via SMS for first login
    */
+  private async sendFirstLoginPhoneOtp(
+    phoneNumber: string, userId: string, ipAddress?: string, userAgent?: string
+  ) {
+    // Invalidate previous OTPs
+    await this.passwordResetTokenRepository.update(
+      { email: phoneNumber, tokenType: 'FIRST_LOGIN' as any, isUsed: false },
+      { isUsed: true, updatedAt: now() }
+    );
+
+    const otp = this.generateOTP();
+    const expiresAt = new Date(nowTimestamp() + (15 * 60 * 1000));
+
+    const resetToken = this.passwordResetTokenRepository.create({
+      email: phoneNumber,
+      otp,
+      tokenType: 'FIRST_LOGIN' as any,
+      expiresAt,
+      createdAt: now(),
+      updatedAt: now(),
+      ipAddress,
+      userAgent,
+    });
+    await this.passwordResetTokenRepository.save(resetToken);
+
+    // Log
+    const loginLog = this.firstLoginLogRepository.create({
+      userId,
+      email: phoneNumber,
+      status: 'OTP_SENT',
+      createdAt: now(),
+      updatedAt: now(),
+      ipAddress,
+      userAgent,
+      notes: 'First login OTP sent via SMS'
+    });
+    await this.firstLoginLogRepository.save(loginLog);
+
+    try {
+      await this.smsProvider.sendSms({
+        contact: phoneNumber,
+        message: `Your Suraksha LMS first login code is: ${otp}. Valid for 15 minutes. Do not share this code.`,
+        senderId: 'SurakshaLMS',
+      });
+    } catch (smsError) {
+      this.logger.error(`❌ Failed to send first login SMS to ${maskPii(phoneNumber)}: ${smsError.message}`);
+    }
+  }
+
   /**
    * Helper: Send OTP via email for first login
    */
@@ -1468,7 +1473,6 @@ export class FirstLoginService {
       firstName: { value: user.firstName || null, editable: true, required: true },
       lastName: { value: user.lastName || null, editable: true, required: true },
       nameWithInitials: { value: user.nameWithInitials || null, editable: true, required: false },
-      fullName: { value: user.fullName || null, editable: true, required: false },
       email: {
         value: user.email || null,
         editable: !user.email, // Can add email if empty; can't change if admin set it
@@ -1499,7 +1503,6 @@ export class FirstLoginService {
         required: false 
       },
       gender: { value: user.gender || null, editable: true, required: false, options: ['MALE', 'FEMALE', 'OTHER'] },
-      religion: { value: user.religion || null, editable: true, required: false },
       nic: { value: user.nic || null, editable: true, required: false },
       birthCertificateNo: { value: user.birthCertificateNo || null, editable: false, required: false },
       addressLine1: { value: user.addressLine1 || null, editable: true, required: false },
@@ -1578,6 +1581,47 @@ export class FirstLoginService {
   }
 
   /**
+   * Request phone OTP during profile completion (requires JWT).
+   * Used when user initiated via email/systemId and needs to verify their phone.
+   */
+  async requestPhoneOtpInFlow(
+    dto: RequestPhoneOtpFirstLoginDto,
+    authorizationHeader: string,
+    ipAddress?: string
+  ): Promise<{ success: boolean; message: string; expiresInMinutes: number }> {
+    const userId = this.extractUserIdFromToken(authorizationHeader);
+    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format. Use Sri Lankan format: 077X, 94X, +94X');
+    }
+
+    // Check phone not taken by another user
+    const existingUser = await this.userRepository.findOne({
+      where: { phoneNumber: normalizedPhone },
+      select: ['id']
+    });
+    if (existingUser && existingUser.id !== userId) {
+      throw new BadRequestException('This phone number is already registered by another user.');
+    }
+
+    // Update user's phone if not set yet
+    const user = await this.userRepository.findOne({ where: { id: userId, isActive: true } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (!user.phoneNumber) {
+      await this.userRepository.update(userId, { phoneNumber: normalizedPhone, updatedAt: now() });
+    }
+
+    await this.sendFirstLoginPhoneOtp(normalizedPhone, userId, ipAddress);
+
+    return {
+      success: true,
+      message: `OTP sent to ${maskPii(normalizedPhone)} via SMS. Valid for 15 minutes.`,
+      expiresInMinutes: 15
+    };
+  }
+
+  /**
    * Request a WhatsApp reverse-OTP for phone verification during first login (requires JWT).
    * Returns a wa.me link; the user sends the pre-filled message to verify.
    */
@@ -1591,7 +1635,9 @@ export class FirstLoginService {
     if (!normalizedPhone) {
       throw new BadRequestException('Invalid phone number format. Use Sri Lankan format: 077X, 94X, +94X');
     }
-    this.whatsAppOtpService.assertConfigured();
+    if (!process.env.WHATSAPP_BUSINESS_NUMBER) {
+      throw new BadRequestException('WhatsApp verification is not configured on this server.');
+    }
 
     const existingUser = await this.userRepository.findOne({ where: { phoneNumber: normalizedPhone }, select: ['id'] });
     if (existingUser && existingUser.id !== userId) {
@@ -1605,14 +1651,31 @@ export class FirstLoginService {
       await this.userRepository.update(userId, { phoneNumber: normalizedPhone, updatedAt: now() });
     }
 
-    const { waLink, expiresAt } = await this.whatsAppOtpService.createPendingOtp({
+    // Expire previous in-flight WhatsApp OTPs for this number
+    await this.userOtpRepository.update(
+      { userId, phoneNumber: normalizedPhone, otpPurpose: OtpPurpose.VERIFICATION, deliveryMethod: OtpDeliveryMethod.WHATSAPP, isVerified: false, expiresAt: MoreThan(now()) },
+      { expiresAt: now() },
+    );
+
+    const otpCode = this.generateOTP();
+    const expiresAt = new Date(nowTimestamp() + 15 * 60 * 1000);
+
+    const otp = this.userOtpRepository.create({
       userId,
       phoneNumber: normalizedPhone,
+      otpCode,
       otpType: OtpType.PHONE,
       otpPurpose: OtpPurpose.VERIFICATION,
-      expiryMinutes: 15,
+      deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      expiresAt,
+      createdAt: now(),
+      createdDate: new Date().toISOString().split('T')[0],
       ipAddress,
     });
+    await this.userOtpRepository.save(otp);
+
+    const businessNumber = (process.env.WHATSAPP_BUSINESS_NUMBER || '').replace(/[^\d]/g, '');
+    const waLink = `https://wa.me/${businessNumber}?text=${encodeURIComponent(`OTP ${otpCode}`)}`;
 
     this.logger.log(`📱 WhatsApp first-login OTP link generated for user ${userId}: ${maskPii(normalizedPhone)}`);
 
@@ -1627,75 +1690,85 @@ export class FirstLoginService {
   /**
    * Status check for WhatsApp phone OTP during first login.
    * Returns verified=true once the webhook has confirmed the message.
-   *
-   * CRITICAL: also commits isPhoneVerified=true onto UserEntity the moment we
-   * observe the OTP row flip to verified — without this, completeFirstLoginProfile's
-   * `hasPhone && !user.isPhoneVerified` guard rejects the final submit forever,
-   * even though the UI already showed "Phone Verified!".
    */
   async getPhoneOtpStatusInFlow(
     phoneNumber: string,
     authorizationHeader: string,
   ): Promise<{ verified: boolean; expired: boolean }> {
-    const userId = this.extractUserIdFromToken(authorizationHeader);
+    this.extractUserIdFromToken(authorizationHeader); // just validates token
     const normalizedPhone = normalizeSriLankanPhone(phoneNumber);
     if (!normalizedPhone) throw new BadRequestException('Invalid phone number format');
 
-    const { verified, expired } = await this.whatsAppOtpService.getStatus({
-      phoneNumber: normalizedPhone,
-      otpPurpose: OtpPurpose.VERIFICATION,
+    const otp = await this.userOtpRepository.findOne({
+      where: {
+        phoneNumber: normalizedPhone,
+        otpPurpose: OtpPurpose.VERIFICATION,
+        deliveryMethod: OtpDeliveryMethod.WHATSAPP,
+      },
+      order: { createdAt: 'DESC' },
     });
 
-    if (verified) {
-      const user = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'phoneNumber', 'isPhoneVerified'] });
-      if (user && !user.isPhoneVerified) {
-        await this.userRepository.update(userId, {
-          isPhoneVerified: true,
-          ...(user.phoneNumber ? {} : { phoneNumber: normalizedPhone }),
-          updatedAt: now(),
-        });
-        this.logger.log(`✅ Phone verification committed for user ${userId} (WhatsApp reverse-OTP)`);
-      }
-    }
-
-    return { verified, expired };
-  }
-
-  /**
-   * Fetch the annotated profile (field metadata for the frontend form) using
-   * the first-login JWT. Needed because the WhatsApp reverse-OTP phone-verify
-   * path skips verifyFirstLoginOtp (which normally builds this) — the frontend
-   * must fetch it separately before rendering the "complete profile" step.
-   */
-  async getAnnotatedProfileInFlow(authorizationHeader: string): Promise<{
-    profile: Record<string, any>;
-    studentFields: Record<string, any> | null;
-    parentFields: Record<string, any> | null;
-    isPhoneVerified: boolean;
-    isEmailVerified: boolean;
-    userHasPhone: boolean;
-    userHasEmail: boolean;
-  }> {
-    const userId = this.extractUserIdFromToken(authorizationHeader);
-    const user = await this.userRepository.findOne({ where: { id: userId, isActive: true } });
-    if (!user) throw new NotFoundException('User not found');
-
-    const { profile, studentFields, parentFields } = await this.buildAnnotatedProfile(user);
-
-    return {
-      profile,
-      studentFields,
-      parentFields,
-      isPhoneVerified: user.isPhoneVerified,
-      isEmailVerified: user.isEmailVerified,
-      userHasPhone: !!user.phoneNumber,
-      userHasEmail: !!user.email,
-    };
+    if (!otp) return { verified: false, expired: false };
+    if (otp.isVerified) return { verified: true, expired: false };
+    if (now() > otp.expiresAt) return { verified: false, expired: true };
+    return { verified: false, expired: false };
   }
 
   /**
    * Verify phone OTP during profile completion (requires JWT).
    */
+  async verifyPhoneOtpInFlow(
+    dto: VerifyPhoneOtpInFlowDto,
+    authorizationHeader: string,
+    ipAddress?: string
+  ): Promise<{ success: boolean; message: string; phoneNumber: string }> {
+    const userId = this.extractUserIdFromToken(authorizationHeader);
+    const normalizedPhone = normalizeSriLankanPhone(dto.phoneNumber);
+    if (!normalizedPhone) {
+      throw new BadRequestException('Invalid phone number format');
+    }
+
+    // Find OTP token
+    const resetToken = await this.passwordResetTokenRepository.findOne({
+      where: {
+        email: normalizedPhone,
+        otp: dto.otp,
+        tokenType: 'FIRST_LOGIN' as any,
+        isUsed: false,
+      },
+      order: { createdAt: 'DESC' }
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    if (now() > resetToken.expiresAt) {
+      await this.passwordResetTokenRepository.update(resetToken.id, { isUsed: true, updatedAt: now() });
+      throw new BadRequestException('OTP has expired. Please request a new one.');
+    }
+
+    // Mark verified
+    resetToken.isUsed = true;
+    resetToken.isOtpVerified = true;
+    resetToken.updatedAt = now();
+    await this.passwordResetTokenRepository.save(resetToken);
+
+    // Update user
+    await this.userRepository.update(userId, {
+      phoneNumber: normalizedPhone,
+      isPhoneVerified: true,
+      updatedAt: now()
+    });
+
+    this.logger.log(`✅ Phone verified in-flow for user ${userId}: ${maskPii(normalizedPhone)}`);
+
+    return {
+      success: true,
+      message: 'Phone number verified successfully.',
+      phoneNumber: normalizedPhone
+    };
+  }
 
   /**
    * Request email OTP during first login (requires JWT).
@@ -1883,10 +1956,6 @@ export class FirstLoginService {
     updateData.nameWithInitials = dto.nameWithInitials ||
       `${dto.firstName.charAt(0).toUpperCase()}. ${dto.lastName}`;
 
-    // fullName is a separate column from firstName/lastName — fill it from the
-    // typed name if provided, otherwise auto-derive so it's never left blank.
-    updateData.fullName = dto.fullName?.trim() || `${dto.firstName} ${dto.lastName}`.trim();
-
     if (dto.userType) {
       const allowedTypes = [UserType.USER, UserType.USER_WITHOUT_PARENT, UserType.USER_WITHOUT_STUDENT];
       if (allowedTypes.includes(dto.userType as UserType)) {
@@ -1901,7 +1970,6 @@ export class FirstLoginService {
         updateData.gender = dto.gender as any;
       }
     }
-    if (dto.religion) updateData.religion = dto.religion;
     if (dto.nic) updateData.nic = dto.nic;
     if (dto.addressLine1) updateData.addressLine1 = dto.addressLine1;
     if (dto.addressLine2) updateData.addressLine2 = dto.addressLine2;

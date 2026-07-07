@@ -23,7 +23,6 @@ import {
 import { TenantServiceType, TenantServicePaymentStatus } from './entities/tenant-billing-payment.entity';
 
 @ApiTags('Tenant / Multi-Tenancy')
-@UseGuards(FlexibleAccessGuard)
 @Controller('v2/tenant')
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
@@ -75,6 +74,7 @@ export class TenantController {
   // ADMIN ENDPOINTS (requires JWT auth — institute or system admin)
   // ═══════════════════════════════════════════════════════════════════
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Patch('institutes/:id/subdomain')
   @ApiOperation({ summary: 'Set or update subdomain for an institute' })
@@ -90,6 +90,7 @@ export class TenantController {
     };
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Delete('institutes/:id/subdomain')
   @ApiOperation({ summary: 'Remove subdomain from an institute' })
@@ -98,6 +99,7 @@ export class TenantController {
     return { success: true, message: 'Subdomain removed' };
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Patch('institutes/:id/custom-domain')
   @ApiOperation({ summary: 'Set custom domain for an institute (ENTERPRISE+)' })
@@ -114,6 +116,7 @@ export class TenantController {
     };
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Post('institutes/:id/verify-domain')
   @HttpCode(HttpStatus.OK)
@@ -122,6 +125,7 @@ export class TenantController {
     return this.tenantService.verifyCustomDomain(id);
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Post('institutes/:id/force-verify-domain')
   @HttpCode(HttpStatus.OK)
@@ -130,6 +134,7 @@ export class TenantController {
     return this.tenantService.forceVerifyDomain(id);
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/login-branding')
   @ApiOperation({ summary: 'Get current login page branding for an institute' })
@@ -137,6 +142,7 @@ export class TenantController {
     return this.tenantService.getLoginBranding(id);
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Patch('institutes/:id/login-branding')
   @ApiOperation({ summary: 'Update login page branding for an institute' })
@@ -149,6 +155,7 @@ export class TenantController {
     return { success: true };
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Patch('institutes/:id/tier')
   @ApiOperation({ summary: 'Update institute tier (system admin only)' })
@@ -160,6 +167,7 @@ export class TenantController {
     return { success: true, tier: institute.tier };
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Patch('institutes/:id/visibility')
   @ApiOperation({ summary: 'Update institute visibility settings (system admin only)' })
@@ -179,6 +187,7 @@ export class TenantController {
   // BILLING ENDPOINTS
   // ═══════════════════════════════════════════════════════════════════
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/billing-config')
   @ApiOperation({ summary: 'Get billing configuration for an institute' })
@@ -188,6 +197,7 @@ export class TenantController {
     return config;
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Patch('institutes/:id/billing-config')
   @ApiOperation({ summary: 'Update billing configuration (system admin)' })
@@ -199,6 +209,7 @@ export class TenantController {
     return { success: true, config };
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/billing-summary')
   @ApiOperation({ summary: 'Get billing summary for a month' })
@@ -229,6 +240,7 @@ export class TenantController {
     return summary;
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/login-stats')
   @ApiOperation({ summary: 'Get login statistics for billing' })
@@ -246,6 +258,7 @@ export class TenantController {
   // SMS SETTINGS ENDPOINTS
   // ═══════════════════════════════════════════════════════════════════
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/sms-settings')
   @ApiOperation({ summary: 'Get SMS sender settings for an institute' })
@@ -253,6 +266,7 @@ export class TenantController {
     return this.tenantService.getSmsSettings(id);
   }
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Patch('institutes/:id/sms-settings')
   @ApiOperation({ summary: 'Update SMS sender settings for an institute' })
@@ -267,6 +281,7 @@ export class TenantController {
   // PLAN INFO ENDPOINT
   // ═══════════════════════════════════════════════════════════════════
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/plan-info')
   @ApiOperation({ summary: 'Get plan/tier info with feature flags and billing' })
@@ -278,6 +293,7 @@ export class TenantController {
   // GLOBAL BILLING OVERVIEW (SUPERADMIN ONLY)
   // ═══════════════════════════════════════════════════════════════════
 
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Get('billing-overview')
   @ApiOperation({ summary: 'Get global billing overview across all institutes' })
@@ -299,6 +315,7 @@ export class TenantController {
   // ═══════════════════════════════════════════════════════════════════
 
   /** Institute admin submits a payment slip for a platform service */
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Post('institutes/:id/service-payments')
   @ApiOperation({ summary: 'Submit a platform service payment (institute admin)' })
@@ -311,6 +328,7 @@ export class TenantController {
   }
 
   /** Institute admin or system admin lists service payments for one institute */
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/service-payments')
   @ApiOperation({ summary: 'List service payments for an institute' })
@@ -322,6 +340,7 @@ export class TenantController {
   }
 
   /** Institute admin or system admin gets a single service payment */
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
   @Get('institutes/:id/service-payments/:paymentId')
   @ApiOperation({ summary: 'Get a single service payment record' })
@@ -336,6 +355,7 @@ export class TenantController {
   }
 
   /** System admin view — all service payments across all institutes */
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Get('service-payments')
   @ApiOperation({ summary: 'List all service payments across all institutes (system admin)' })
@@ -347,6 +367,7 @@ export class TenantController {
   }
 
   /** System admin verifies or rejects a service payment */
+  @UseGuards(FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN] })
   @Patch('service-payments/:paymentId/verify')
   @ApiOperation({ summary: 'Verify or reject a service payment (system admin)' })

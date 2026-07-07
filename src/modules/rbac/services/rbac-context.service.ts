@@ -14,23 +14,6 @@ export class RbacContextService {
     private readonly dataSource: DataSource,
   ) {}
 
-  private async findUserType(instituteId: string, handle: string) {
-    const normalized = handle.trim();
-
-    const byId = await this.userTypeRepo.findOne({ where: { id: normalized, instituteId } });
-    if (byId) return byId;
-
-    const bySlug = await this.userTypeRepo.findOne({ where: { instituteId, slug: normalized, isActive: true } });
-    if (bySlug) return bySlug;
-
-    if (normalized.startsWith('system-')) {
-      const aliasSlug = normalized.slice('system-'.length).replace(/-/g, '_');
-      return this.userTypeRepo.findOne({ where: { instituteId, slug: aliasSlug, isActive: true } });
-    }
-
-    return null;
-  }
-
   /**
    * Resolves the RBAC context for a user within an institute.
    * Looks up primary_user_type_id first; falls back to matching by slug from the legacy enum.
@@ -102,7 +85,7 @@ export class RbacContextService {
     typeId: string,
     opts: { page: number; limit: number; search?: string },
   ): Promise<UserTypeMembersResponseDto> {
-    const userType = await this.findUserType(instituteId, typeId);
+    const userType = await this.userTypeRepo.findOne({ where: { id: typeId, instituteId, isActive: true } });
     if (!userType) throw new NotFoundException('User type not found');
 
     const skip = (opts.page - 1) * opts.limit;

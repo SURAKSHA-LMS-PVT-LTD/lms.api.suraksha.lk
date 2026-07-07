@@ -379,17 +379,6 @@ export class SecureUserQueryDto {
  * Query DTO for class-specific endpoints
  */
 export class SecureClassUserQueryDto extends SecureUserQueryDto {
-  @ApiPropertyOptional({
-    description: 'Filter by student type (e.g. normal, free_card, half_paid)',
-    example: 'free_card'
-  })
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }) => {
-    if (!value) return undefined;
-    return value.toString().trim().replace(/['"`;\\]/g, '');
-  })
-  studentType?: string;
 }
 
 /**

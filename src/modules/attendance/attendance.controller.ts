@@ -13,21 +13,17 @@ import { Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
-import { resolveAttendanceDateRange } from './utils/attendance-date-range.util';
-import { AttendanceCacheService } from './services/attendance-cache.service';
-import { getCurrentSriLankaDate } from '../../common/utils/timezone.util';
 
 @ApiTags('Attendance')
-@UseGuards(FlexibleAccessGuard)
 @Controller('api/attendance')
 export class AttendanceController {
   constructor(
-    private readonly attendanceService: AttendanceService,
-    private readonly attendanceCache: AttendanceCacheService,
+    private readonly attendanceService: AttendanceService
   ) {}
 
   @Post('mark')
-  @Throttle({ default: { limit: 30, ttl: 60000 } }) // Ã°Å¸â€â€™ 30 attendance marks per minute
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 🔒 30 attendance marks per minute
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -76,6 +72,7 @@ export class AttendanceController {
   }
 
   @Post('mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -161,6 +158,7 @@ export class AttendanceController {
   }
 
   @Get('student/:studentId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -188,16 +186,39 @@ export class AttendanceController {
     @Request() req: any
   ): Promise<StudentAttendanceResponseDto> {
     try {
-      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
-      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
-      const range = resolveAttendanceDateRange(queryDto, { defaultDays: 31 });
-
+      // Combine path parameter with query parameters
       const fullQueryDto: GetStudentAttendanceDto = {
         studentId,
-        ...queryDto,
-        startDate: range.startDate,
-        endDate: range.endDate,
+        ...queryDto
       };
+
+      // Validate date range
+      const startDate = new Date(fullQueryDto.startDate);
+      const endDate = new Date(fullQueryDto.endDate);
+      
+      if (startDate > endDate) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Start date cannot be later than end date',
+          },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      // Check if date range is not too large (e.g., max 1 year)
+      const maxRangeDays = 365;
+      const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > maxRangeDays) {
+        throw new HttpException(
+          {
+            success: false,
+            message: `Date range cannot exceed ${maxRangeDays} days`,
+          },
+          HttpStatus.BAD_REQUEST
+        );
+      }
 
       const result = await this.attendanceService.getStudentAttendance(fullQueryDto, req.user);
       
@@ -218,6 +239,7 @@ export class AttendanceController {
   }
 
   @Post('mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -283,6 +305,7 @@ export class AttendanceController {
   }
 
   @Post('mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -377,6 +400,7 @@ export class AttendanceController {
   }
 
   @Get('by-cardId/:cardId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -474,12 +498,33 @@ export class AttendanceController {
         ...queryDto
       };
 
-      // Unified month/range rule (matches monthly partitioning). Range optional here.
-      if (fullQueryDto.startDate || fullQueryDto.endDate || (fullQueryDto as any).month) {
-        const range = resolveAttendanceDateRange(fullQueryDto as any);
-        if (range) {
-          fullQueryDto.startDate = range.startDate;
-          fullQueryDto.endDate = range.endDate;
+      // Validate date range if provided
+      if (fullQueryDto.startDate && fullQueryDto.endDate) {
+        const startDate = new Date(fullQueryDto.startDate);
+        const endDate = new Date(fullQueryDto.endDate);
+        
+        if (startDate > endDate) {
+          throw new HttpException(
+            {
+              success: false,
+              message: 'Start date cannot be later than end date',
+            },
+            HttpStatus.BAD_REQUEST
+          );
+        }
+
+        // Check if date range is not too large (e.g., max 1 year)
+        const maxRangeDays = 365;
+        const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysDiff > maxRangeDays) {
+          throw new HttpException(
+            {
+              success: false,
+              message: `Date range cannot exceed ${maxRangeDays} days`,
+            },
+            HttpStatus.BAD_REQUEST
+          );
         }
       }
 
@@ -502,6 +547,7 @@ export class AttendanceController {
   }
 
   @Get('institute/:instituteId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -589,42 +635,50 @@ export class AttendanceController {
     @Param('instituteId') instituteId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
-    @Query('studentId') studentId?: string,
-    @Query('searchTerm') searchTerm?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: string
+    @Query('studentId') studentId?: string
   ) {
     try {
-      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
-      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
-      // Defaults to the last 7 days when nothing is given (previous behavior).
-      const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 7 });
-      startDate = range.startDate;
-      endDate = range.endDate;
+      // Default to last 7 days if dates not provided
+      if (!startDate || !endDate) {
+        const now = new Date();
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(now.getDate() - 7);
+        
+        startDate = startDate || sevenDaysAgo.toISOString().split('T')[0];
+        endDate = endDate || now.toISOString().split('T')[0];
+      }
 
-      // Month-scoped cache: past months are immutable (long TTL), current month
-      // gets a short TTL. No-op unless ATTENDANCE_CACHE_ENABLED + CACHE_ENABLED.
-      const result = await this.attendanceCache.getOrCompute(
-        ['inst', instituteId, startDate, endDate, page, limit, status, studentId, searchTerm, sortBy, sortOrder],
+      // Validate date range: 30 days max when filtering by studentId, 7 days otherwise
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      
+      const maxDays = studentId ? 30 : 7;
+      if (daysDiff > maxDays) {
+        throw new HttpException(
+          {
+            success: false,
+            message: studentId 
+              ? 'Date range cannot exceed 30 days when filtering by studentId'
+              : 'Date range cannot exceed 7 days for institute-wide queries. Add studentId parameter to query up to 30 days.',
+          },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const result = await this.attendanceService.getInstituteAttendance({
+        instituteId,
+        startDate,
         endDate,
-        () => this.attendanceService.getInstituteAttendance({
-          instituteId,
-          startDate,
-          endDate,
-          page,
-          limit,
-          status,
-          studentId,
-          searchTerm,
-          sortBy,
-          sortOrder
-        }),
-      );
-
+        page,
+        limit,
+        status,
+        studentId
+      });
+      
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -641,40 +695,8 @@ export class AttendanceController {
     }
   }
 
-  @Get('institute/:instituteId/classes-summary')
-  @RequireAnyOfRoles({
-    global: [UserType.SUPERADMIN],
-    instituteAdmin: true,
-    teacher: true,
-    attendanceMarker: true,
-  })
-  @ApiOperation({
-    summary: 'Class-wise check-in/check-out overview for the admin drilldown',
-    description: 'Returns one row per active class in the institute (always — classes with zero students/records still appear), with roster size and check-in/check-out counts for one date. Defaults to today; pass eventId to scope to a specific calendar event.',
-  })
-  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
-  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD, defaults to today (Sri Lanka time)' })
-  @ApiQuery({ name: 'eventId', required: false, description: 'Scope counts to one calendar event' })
-  async getClassesAttendanceSummary(
-    @Param('instituteId') instituteId: string,
-    @Query('date') date?: string,
-    @Query('eventId') eventId?: string,
-  ) {
-    try {
-      const effectiveDate = date || getCurrentSriLankaDate();
-      return await this.attendanceService.getClassesAttendanceSummary(instituteId, effectiveDate, eventId);
-    } catch (error) {
-      throw new HttpException(
-        {
-          success: false,
-          message: error.message || 'Failed to retrieve class attendance summary',
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
   @Get('institute/:instituteId/class/:classId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -683,7 +705,7 @@ export class AttendanceController {
     student: { allowSelfOnly: true }, // Students can access when filtering by their own studentId
     parent: { requireStudent: true } // Parents can access when filtering by their child's studentId
   })
-  @ApiOperation({
+  @ApiOperation({ 
     summary: 'Get all attendance records for a specific class',
     description: 'Retrieve all attendance records for a specific class within an institute. Date range limit: 5 days for all students, 30 days when filtering by specific studentId. Accessible by SUPERADMIN, Institute Admin, Teacher, Attendance Marker, Students (own data), or Parents (children data). Supports filtering by status and studentId.'
   })
@@ -763,49 +785,50 @@ export class AttendanceController {
     @Param('classId') classId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
-    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
-    @Query('studentId') studentId?: string,
-    @Query('searchTerm') searchTerm?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: string
+    @Query('studentId') studentId?: string
   ) {
     try {
-      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
-      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
-      const range = resolveAttendanceDateRange({ month, startDate, endDate });
-      if (!range) {
+      // Validate required parameters
+      if (!startDate || !endDate) {
         throw new HttpException(
           {
             success: false,
-            message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.',
+            message: 'startDate and endDate are required parameters',
           },
           HttpStatus.BAD_REQUEST
         );
       }
-      startDate = range.startDate;
-      endDate = range.endDate;
 
-      const result = await this.attendanceCache.getOrCompute(
-        ['cls', instituteId, classId, startDate, endDate, page, limit, status, studentId, searchTerm, sortBy, sortOrder],
+      // Validate date range: 31 days max
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      
+      const maxDays = 31;
+      if (daysDiff > maxDays) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Date range cannot exceed 31 days for class-wide queries.',
+          },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const result = await this.attendanceService.getClassAttendance({
+        instituteId,
+        classId,
+        startDate,
         endDate,
-        () => this.attendanceService.getClassAttendance({
-          instituteId,
-          classId,
-          startDate,
-          endDate,
-          page,
-          limit,
-          status,
-          studentId,
-          searchTerm,
-          sortBy,
-          sortOrder
-        }),
-      );
-
+        page,
+        limit,
+        status,
+        studentId
+      });
+      
       return result;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -822,11 +845,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // CLASS ATTENDANCE FROM INSTITUTE Ã¢â‚¬â€ new endpoints
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ───────────────────────────────────────────────────────────────────────────
+  // CLASS ATTENDANCE FROM INSTITUTE — new endpoints
+  // ───────────────────────────────────────────────────────────────────────────
 
   @Get('institute/:instituteId/class/:classId/students-with-institute-status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -922,6 +946,7 @@ export class AttendanceController {
   }
 
   @Post('institute/:instituteId/class/:classId/bulk-mark-from-institute')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -933,7 +958,7 @@ export class AttendanceController {
     description:
       'Automatically marks class-level attendance for all enrolled students based on '
       + 'their institute (check-in) attendance status. Students present at the institute '
-      + '(status Ã¢â€°Â  absent) are marked PRESENT in the class; students with no institute '
+      + '(status ≠ absent) are marked PRESENT in the class; students with no institute '
       + 'attendance are marked ABSENT. Students who already have class attendance are '
       + 'skipped (idempotent). Control both actions with markPresentFromInstitute and '
       + 'markAbsentForUnmarked flags (both default to true).',
@@ -1002,11 +1027,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // SINGLE STUDENT STATUS UPDATE Ã¢â‚¬â€ inline status change
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ───────────────────────────────────────────────────────────────────────────
+  // SINGLE STUDENT STATUS UPDATE — inline status change
+  // ───────────────────────────────────────────────────────────────────────────
 
   @Patch('institute/:instituteId/class/:classId/student/:studentId/status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1021,7 +1047,7 @@ export class AttendanceController {
   @ApiParam({ name: 'classId', description: 'Class ID' })
   @ApiParam({ name: 'studentId', description: 'Student user ID' })
   @ApiResponse({ status: 200, description: 'Status updated successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request Ã¢â‚¬â€ no existing record or invalid status' })
+  @ApiResponse({ status: 400, description: 'Bad request — no existing record or invalid status' })
   async updateStudentAttendanceStatus(
     @Param('instituteId') instituteId: string,
     @Param('classId') classId: string,
@@ -1048,11 +1074,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // SUBJECT ATTENDANCE FROM CLASS Ã¢â‚¬â€ new endpoints
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ───────────────────────────────────────────────────────────────────────────
+  // SUBJECT ATTENDANCE FROM CLASS — new endpoints
+  // ───────────────────────────────────────────────────────────────────────────
 
   @Get('institute/:instituteId/class/:classId/subject/:subjectId/students-with-class-status')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1151,6 +1178,7 @@ export class AttendanceController {
   }
 
   @Post('institute/:instituteId/class/:classId/subject/:subjectId/bulk-mark-from-class')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1162,7 +1190,7 @@ export class AttendanceController {
     description:
       'Automatically marks subject-level attendance for all enrolled students based on '
       + 'their class attendance status. Students present at class level '
-      + '(status Ã¢â€°Â  absent) are marked PRESENT in the subject; students with no class '
+      + '(status ≠ absent) are marked PRESENT in the subject; students with no class '
       + 'attendance are marked ABSENT. Students who already have subject attendance are '
       + 'skipped (idempotent). Control both actions with markPresentFromClass and '
       + 'markAbsentForUnmarked flags (both default to true).',
@@ -1235,6 +1263,7 @@ export class AttendanceController {
   }
 
   @Get('institute/:instituteId/class/:classId/subject/:subjectId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1324,49 +1353,50 @@ export class AttendanceController {
     @Param('subjectId') subjectId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
-    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string,
-    @Query('studentId') studentId?: string,
-    @Query('searchTerm') searchTerm?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: string
+    @Query('studentId') studentId?: string
   ) {
     try {
-      // Unified month/range rule (matches monthly partitioning): month=YYYY-MM
-      // preferred; startDate/endDate accepted up to 31 days / 2 adjacent months.
-      const range = resolveAttendanceDateRange({ month, startDate, endDate });
-      if (!range) {
+      // Validate required parameters
+      if (!startDate || !endDate) {
         throw new HttpException(
           {
             success: false,
-            message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.',
+            message: 'startDate and endDate are required parameters',
           },
           HttpStatus.BAD_REQUEST
         );
       }
-      startDate = range.startDate;
-      endDate = range.endDate;
 
-      const result = await this.attendanceCache.getOrCompute(
-        ['subj', instituteId, classId, subjectId, startDate, endDate, page, limit, status, studentId, searchTerm, sortBy, sortOrder],
+      // Validate date range: 31 days max
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      
+      const maxDays = 31;
+      if (daysDiff > maxDays) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'Date range cannot exceed 31 days for subject-wide queries.',
+          },
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const result = await this.attendanceService.getSubjectAttendance({
+        instituteId,
+        classId,
+        subjectId,
+        startDate,
         endDate,
-        () => this.attendanceService.getSubjectAttendance({
-          instituteId,
-          classId,
-          subjectId,
-          startDate,
-          endDate,
-          page,
-          limit,
-          status,
-          studentId,
-          searchTerm,
-          sortBy,
-          sortOrder
-        }),
-      );
+        page,
+        limit,
+        status,
+        studentId
+      });
       
       return result;
     } catch (error) {
@@ -1384,11 +1414,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
   //  CLASS-SCOPED STUDENT ATTENDANCE
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
 
   @Get('institute/:instituteId/class/:classId/student/:studentId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1411,23 +1442,27 @@ export class AttendanceController {
     @Param('studentId') studentId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
-    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string
   ) {
     try {
-      // Unified month/range rule (matches monthly partitioning). Replaces the old
-      // 365-day cap — fetch one month at a time (frontend uses a month picker).
-      const range = resolveAttendanceDateRange({ month, startDate, endDate });
-      if (!range) {
+      if (!startDate || !endDate) {
         throw new HttpException(
-          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
+          { success: false, message: 'startDate and endDate are required parameters' },
           HttpStatus.BAD_REQUEST
         );
       }
-      startDate = range.startDate;
-      endDate = range.endDate;
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 365) {
+        throw new HttpException(
+          { success: false, message: 'Date range cannot exceed 365 days' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
 
       const result = await this.attendanceService.getClassAttendance({
         instituteId,
@@ -1450,64 +1485,12 @@ export class AttendanceController {
     }
   }
 
-  @Get('institute/:instituteId/class/:classId/student/:studentId/checkin-checkout')
-  @RequireAnyOfRoles({
-    global: [UserType.SUPERADMIN],
-    instituteAdmin: true,
-    teacher: true,
-    attendanceMarker: true,
-    student: { allowSelfOnly: true },
-    parent: { requireStudent: true }
-  })
-  @ApiOperation({
-    summary: 'Get check-in / check-out detail for a student in a class',
-    description: 'Additive detail view showing separate check-in and check-out time/status/marked-by for each attendance day. Does not affect the existing status-only reporting endpoints.',
-  })
-  @ApiParam({ name: 'instituteId', description: 'Institute ID' })
-  @ApiParam({ name: 'classId', description: 'Class ID' })
-  @ApiParam({ name: 'studentId', description: 'Student user ID' })
-  @ApiResponse({ status: 200, description: 'Check-in/check-out detail retrieved successfully' })
-  async getClassStudentCheckInOut(
-    @Param('instituteId') instituteId: string,
-    @Param('classId') classId: string,
-    @Param('studentId') studentId: string,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
-    @Query('month') month?: string,
-  ) {
-    try {
-      // Unified month/range rule (matches monthly partitioning).
-      const range = resolveAttendanceDateRange({ month, startDate, endDate });
-      if (!range) {
-        throw new HttpException(
-          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
-          HttpStatus.BAD_REQUEST
-        );
-      }
-      startDate = range.startDate;
-      endDate = range.endDate;
-
-      return await this.attendanceService.getClassStudentCheckInOut({
-        instituteId,
-        classId,
-        studentId,
-        startDate,
-        endDate,
-      });
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        { success: false, message: error.message || 'Failed to retrieve check-in/check-out detail' },
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-  }
-
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
   //  SUBJECT-SCOPED STUDENT ATTENDANCE
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
 
   @Get('institute/:instituteId/class/:classId/subject/:subjectId/student/:studentId')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1532,23 +1515,27 @@ export class AttendanceController {
     @Param('studentId') studentId: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
-    @Query('month') month?: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('status') status?: string
   ) {
     try {
-      // Unified month/range rule (matches monthly partitioning). Replaces the old
-      // 365-day cap — fetch one month at a time (frontend uses a month picker).
-      const range = resolveAttendanceDateRange({ month, startDate, endDate });
-      if (!range) {
+      if (!startDate || !endDate) {
         throw new HttpException(
-          { success: false, message: 'Provide month=YYYY-MM (preferred) or startDate and endDate.' },
+          { success: false, message: 'startDate and endDate are required parameters' },
           HttpStatus.BAD_REQUEST
         );
       }
-      startDate = range.startDate;
-      endDate = range.endDate;
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 365) {
+        throw new HttpException(
+          { success: false, message: 'Date range cannot exceed 365 days' },
+          HttpStatus.BAD_REQUEST
+        );
+      }
 
       const result = await this.attendanceService.getSubjectAttendance({
         instituteId,
@@ -1572,11 +1559,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
   //  CLASS-SCOPED CARD USER LOOKUP
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
 
   @Get('institute/:instituteId/class/:classId/card-user')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1618,11 +1606,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
   //  SUBJECT-SCOPED CARD USER LOOKUP
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
 
   @Get('institute/:instituteId/class/:classId/subject/:subjectId/card-user')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1668,6 +1657,7 @@ export class AttendanceController {
   }
 
   @Get('institute-card-user')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1709,6 +1699,7 @@ export class AttendanceController {
   }
 
   @Post('mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -1723,8 +1714,8 @@ export class AttendanceController {
 - Looks up user via institute_user table by instituteCardId
 - Gets user name from users table JOIN (secure - from DB, not input)
 - Applies smart image URL logic:
-  * If imageVerificationStatus is VERIFIED Ã¢â€ â€™ uses instituteUserImageUrl
-  * Otherwise Ã¢â€ â€™ uses global user.imageUrl fallback
+  * If imageVerificationStatus is VERIFIED → uses instituteUserImageUrl
+  * Otherwise → uses global user.imageUrl fallback
 - Marks attendance with same notifications as main attendance
 - Returns detailed response with image verification info
 
@@ -1791,12 +1782,12 @@ export class AttendanceController {
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // MY ATTENDANCE HISTORY Ã¢â‚¬â€ returns the calling user's own attendance, enriched
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────────
+  // MY ATTENDANCE HISTORY — returns the calling user's own attendance, enriched
+  // ─────────────────────────────────────────────────────────────────────────────
 
   @Get('my-history')
-  @RequireAnyOfRoles({ anyAuthenticated: true })
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary: 'Get my attendance history (self-service)',
     description: `Returns the calling user's own attendance records from DynamoDB across 
@@ -1805,7 +1796,7 @@ all children's attendance records. Each record is enriched with live institute n
 logo URL, and class name from the database. Supports date range filtering, 
 pagination, status filter, and optional single-institute filter.\n\n
 **Default date range**: last 30 days.\n
-**Auth**: JWT only Ã¢â‚¬â€ no additional role required.\n
+**Auth**: JWT only — no additional role required.\n
 **Parent with children**: Pass \`child=true\` to include all children's attendance in one request.`,
   })
   @ApiResponse({ status: 200, description: 'Attendance history', type: MyAttendanceResponseDto })
@@ -1820,15 +1811,6 @@ pagination, status filter, and optional single-institute filter.\n\n
       if (!userId) {
         throw new HttpException({ success: false, message: 'User ID not found in token' }, HttpStatus.UNAUTHORIZED);
       }
-      // month=YYYY-MM resolves to that month's range (unified rule, matches partitioning);
-      // startDate/endDate still accepted, service defaults to last 30 days when neither given.
-      if (query.month || (query.startDate && query.endDate)) {
-        const range = resolveAttendanceDateRange(query);
-        if (range) {
-          query.startDate = range.startDate;
-          query.endDate = range.endDate;
-        }
-      }
       // Extract children IDs from JWT if present (for parent accounts)
       const childrenIds = req.user?.c || [];
       return await this.attendanceService.getMyAttendance(String(userId), query, childrenIds);
@@ -1837,17 +1819,17 @@ pagination, status filter, and optional single-institute filter.\n\n
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // Attendance Detail Ã¢â‚¬â€ opened from notification deep-link
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attendance Detail — opened from notification deep-link
+  // ─────────────────────────────────────────────────────────────────────────
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════════
   // SCOPE-EXPLICIT MARK ENDPOINTS
   // URL path params enforce the scope; they always override body values.
   //
-  //  INSTITUTE level  Ã¢â€ â€™ eventId auto-linked to default REGULAR_CLASS event
-  //  CLASS level      Ã¢â€ â€™ eventId is always null  (class belongs to institute)
-  //  SUBJECT level    Ã¢â€ â€™ eventId is always null  (subject belongs to class)
+  //  INSTITUTE level  → eventId auto-linked to default REGULAR_CLASS event
+  //  CLASS level      → eventId is always null  (class belongs to institute)
+  //  SUBJECT level    → eventId is always null  (subject belongs to class)
   //
   // Provided in three marking modes for each scope:
   //   /mark                  plain MarkAttendanceDto
@@ -1855,15 +1837,10 @@ pagination, status filter, and optional single-institute filter.\n\n
   //   /mark-by-card          MarkAttendanceByCardDto (QR / NFC global card)
   //   /mark-bulk-by-card     BulkCardAttendanceDto
   //   /mark-by-institute-card MarkAttendanceByInstituteCardDto
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════════
 
   private _markedBy(req: any): string {
     return req.user?.s || req.user?.subject || req.user?.sub || req.user?.id;
-  }
-  /** Last day (YYYY-MM-DD) of a year/month pair — used as the cache-TTL anchor for count endpoints. */
-  private _monthEnd(y: number, m: number): string {
-    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   }
   private _err(e: any, msg?: string): never {
     if (e instanceof HttpException) throw e;
@@ -1871,10 +1848,11 @@ pagination, status filter, and optional single-institute filter.\n\n
       e?.message?.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR);
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ INSTITUTE LEVEL Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── INSTITUTE LEVEL ────────────────────────────────────────────────────
 
   @Post('institute/:instituteId/mark')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Institute] Mark single attendance', description: 'Single attendance at institute scope (no class / subject). eventId auto-linked to default REGULAR_CLASS event. `instituteId` from URL overrides body.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1885,6 +1863,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Institute] Mark bulk attendance', description: 'Bulk attendance at institute scope. eventId auto-linked to default REGULAR_CLASS event.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1897,6 +1876,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Institute] Mark attendance by card', description: 'Card single attendance at institute scope.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1907,6 +1887,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Institute] Mark bulk attendance by card', description: 'Card bulk attendance at institute scope.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1917,6 +1898,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Institute] Mark attendance by institute card', description: 'Institute-card attendance at institute scope.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1926,12 +1908,13 @@ pagination, status filter, and optional single-institute filter.\n\n
     catch (e) { this._err(e); }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ CLASS LEVEL Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── CLASS LEVEL ────────────────────────────────────────────────────────
 
   @Post('institute/:instituteId/class/:classId/mark')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
-  @ApiOperation({ summary: '[Class] Mark single attendance', description: 'Single attendance locked to a class. eventId is always null Ã¢â‚¬â€ events are institute-level, not class-level.' })
+  @ApiOperation({ summary: '[Class] Mark single attendance', description: 'Single attendance locked to a class. eventId is always null — events are institute-level, not class-level.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
   async markClassAttendance(@Param('instituteId') instituteId: string, @Param('classId') classId: string, @Body() body: MarkAttendanceDto, @Req() req: any): Promise<any> {
@@ -1941,6 +1924,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Class] Mark bulk attendance', description: 'Bulk attendance locked to a class. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1954,6 +1938,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Class] Mark attendance by card', description: 'Card single attendance locked to a class. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1965,6 +1950,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Class] Mark bulk attendance by card', description: 'Card bulk attendance locked to a class. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1976,6 +1962,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Class] Mark attendance by institute card', description: 'Institute-card attendance locked to a class. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -1986,12 +1973,13 @@ pagination, status filter, and optional single-institute filter.\n\n
     catch (e) { this._err(e); }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ SUBJECT LEVEL Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ── SUBJECT LEVEL ──────────────────────────────────────────────────────
 
   @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
-  @ApiOperation({ summary: '[Subject] Mark single attendance', description: 'Single attendance locked to a class + subject. eventId is always null Ã¢â‚¬â€ events are institute-level, not subject-level.' })
+  @ApiOperation({ summary: '[Subject] Mark single attendance', description: 'Single attendance locked to a class + subject. eventId is always null — events are institute-level, not subject-level.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
   @ApiParam({ name: 'classId', description: 'Class ID' })
   @ApiParam({ name: 'subjectId', description: 'Subject ID' })
@@ -2002,6 +1990,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-bulk')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Subject] Mark bulk attendance', description: 'Bulk attendance locked to a class + subject. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -2016,6 +2005,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Subject] Mark attendance by card', description: 'Card single attendance locked to class + subject. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -2028,6 +2018,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-bulk-by-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Subject] Mark bulk attendance by card', description: 'Card bulk attendance locked to class + subject. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -2040,6 +2031,7 @@ pagination, status filter, and optional single-institute filter.\n\n
   }
 
   @Post('institute/:instituteId/class/:classId/subject/:subjectId/mark-by-institute-card')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true, attendanceMarker: true })
   @ApiOperation({ summary: '[Subject] Mark attendance by institute card', description: 'Institute-card attendance locked to class + subject. eventId is always null.' })
   @ApiParam({ name: 'instituteId', description: 'Institute ID' })
@@ -2051,11 +2043,12 @@ pagination, status filter, and optional single-institute filter.\n\n
     catch (e) { this._err(e); }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────
   // MONTHLY ATTENDANCE COUNT ENDPOINTS
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────
 
   @Get('institute/:instituteId/monthly-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2084,15 +2077,12 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceCache.getOrCompute(
-        ['mcount', instituteId, y, m, eventId],
-        this._monthEnd(y, m),
-        () => this.attendanceService.getInstituteMonthlyCount(instituteId, y, m, eventId),
-      );
+      return await this.attendanceService.getInstituteMonthlyCount(instituteId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get institute monthly attendance count'); }
   }
 
   @Get('institute/:instituteId/class/:classId/monthly-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2123,15 +2113,12 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceCache.getOrCompute(
-        ['mcount', instituteId, classId, y, m, eventId],
-        this._monthEnd(y, m),
-        () => this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m, eventId),
-      );
+      return await this.attendanceService.getClassMonthlyCount(instituteId, classId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get class monthly attendance count'); }
   }
 
   @Get('institute/:instituteId/class/:classId/subject/:subjectId/monthly-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2162,15 +2149,12 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceCache.getOrCompute(
-        ['mcount', instituteId, classId, subjectId, y, m],
-        this._monthEnd(y, m),
-        () => this.attendanceService.getSubjectMonthlyCount(instituteId, classId, subjectId, y, m),
-      );
+      return await this.attendanceService.getSubjectMonthlyCount(instituteId, classId, subjectId, y, m);
     } catch (e) { this._err(e, 'Failed to get subject monthly attendance count'); }
   }
 
   @Get('institute/:instituteId/daily-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2199,15 +2183,12 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceCache.getOrCompute(
-        ['dcount', instituteId, y, m, eventId],
-        this._monthEnd(y, m),
-        () => this.attendanceService.getInstituteDailyCount(instituteId, y, m, eventId),
-      );
+      return await this.attendanceService.getInstituteDailyCount(instituteId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get institute daily attendance count'); }
   }
 
   @Get('institute/:instituteId/class/:classId/daily-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2238,15 +2219,12 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceCache.getOrCompute(
-        ['dcount', instituteId, classId, y, m, eventId],
-        this._monthEnd(y, m),
-        () => this.attendanceService.getClassDailyCount(instituteId, classId, y, m, eventId),
-      );
+      return await this.attendanceService.getClassDailyCount(instituteId, classId, y, m, eventId);
     } catch (e) { this._err(e, 'Failed to get class daily attendance count'); }
   }
 
   @Get('institute/:instituteId/class/:classId/subject/:subjectId/daily-count')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2277,20 +2255,16 @@ pagination, status filter, and optional single-institute filter.\n\n
       );
     }
     try {
-      return await this.attendanceCache.getOrCompute(
-        ['dcount', instituteId, classId, subjectId, y, m],
-        this._monthEnd(y, m),
-        () => this.attendanceService.getSubjectDailyCount(instituteId, classId, subjectId, y, m),
-      );
+      return await this.attendanceService.getSubjectDailyCount(instituteId, classId, subjectId, y, m);
     } catch (e) { this._err(e, 'Failed to get subject daily attendance count'); }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // Attendance Detail View Ã¢â‚¬â€ opened from notification deep-link
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────
+  // Attendance Detail View — opened from notification deep-link
+  // ─────────────────────────────────────────────────────────────────────────
 
   @Get('view')
-  @RequireAnyOfRoles({ anyAuthenticated: true })
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary: 'Get attendance record detail by ID',
     description: `View detailed information about a single attendance event.
@@ -2306,10 +2280,10 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     description: 'Attendance record detail',
     schema: {
       example: {
-        id: 'SXsxMjNÃ¢â‚¬Â¦base64Ã¢â‚¬Â¦',
+        id: 'SXsxMjN…base64…',
         studentId: '456',
         studentName: 'K.A. Perera',
-        studentImageUrl: 'https://storage.googleapis.com/Ã¢â‚¬Â¦',
+        studentImageUrl: 'https://storage.googleapis.com/…',
         instituteId: '123',
         instituteName: 'Suraksha Academy',
         classId: '789',
@@ -2348,11 +2322,12 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     return detail;
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
   //  AGGREGATE PROFILE-PAGE ENDPOINTS (single-call page loaders)
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+  // ═══════════════════════════════════════════════════════════════════
 
   @Get('institute/:instituteId/student/:studentId/class-profile')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2369,22 +2344,21 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     @Query('classId') classId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('month') month?: string,
     @Query('limit') limit?: string,
   ) {
     if (!classId) {
       throw new HttpException({ success: false, message: 'classId query parameter is required' }, HttpStatus.BAD_REQUEST);
     }
-    // Unified month/range rule (matches monthly partitioning) — replaces the old
-    // 1-year default, which scanned up to 12 partitions per request.
-    const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 31 });
+    const now = new Date();
+    const defaultEnd = now.toISOString().split('T')[0];
+    const defaultStart = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
     try {
       return await this.attendanceService.getStudentClassProfile({
         instituteId,
         classId,
         studentId,
-        startDate: range.startDate,
-        endDate: range.endDate,
+        startDate: startDate || defaultStart,
+        endDate: endDate || defaultEnd,
         limit: Math.min(parseInt(limit || '100', 10), 500),
       });
     } catch (error) {
@@ -2393,11 +2367,12 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // COMPLETED LECTURES LIST  Ã¢â‚¬â€œ  lightweight picker for report dialog
+  // ─────────────────────────────────────────────────────────────────────────
+  // COMPLETED LECTURES LIST  –  lightweight picker for report dialog
   // Returns completed lectures for a class within a date range (id, title, date, subject only)
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────
   @Get('institute/:instituteId/class-lectures')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2422,13 +2397,14 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     }
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  // BATCH CLASS REPORT DATA  Ã¢â‚¬â€œ  POST so student list can be in body
-  // Access: InstituteAdmin Ã¢â€ â€™ any class; Teacher Ã¢â€ â€™ only their assigned class.
+  // ─────────────────────────────────────────────────────────────────────────
+  // BATCH CLASS REPORT DATA  –  POST so student list can be in body
+  // Access: InstituteAdmin → any class; Teacher → only their assigned class.
   // Body: { studentIds, classId, attendanceStart/End, paymentsStart/End,
   //         lectureIds (explicit list), withActivities?, attendanceLimit? }
-  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ─────────────────────────────────────────────────────────────────────────
   @Post('institute/:instituteId/class-report')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2484,6 +2460,7 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
   }
 
   @Get('institute/:instituteId/student/:studentId/institute-profile')
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({
     global: [UserType.SUPERADMIN],
     instituteAdmin: true,
@@ -2499,18 +2476,17 @@ Returns DynamoDB fields (date, status, location, timestamps) plus the student's 
     @Param('studentId') studentId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('month') month?: string,
     @Query('limit') limit?: string,
   ) {
-    // Unified month/range rule (matches monthly partitioning) — replaces the old
-    // 1-year default, which scanned up to 12 partitions per request.
-    const range = resolveAttendanceDateRange({ month, startDate, endDate }, { defaultDays: 31 });
+    const now = new Date();
+    const defaultEnd = now.toISOString().split('T')[0];
+    const defaultStart = new Date(now.setFullYear(now.getFullYear() - 1)).toISOString().split('T')[0];
     try {
       return await this.attendanceService.getStudentInstituteProfile({
         instituteId,
         studentId,
-        startDate: range.startDate,
-        endDate: range.endDate,
+        startDate: startDate || defaultStart,
+        endDate: endDate || defaultEnd,
         limit: Math.min(parseInt(limit || '100', 10), 500),
       });
     } catch (error) {

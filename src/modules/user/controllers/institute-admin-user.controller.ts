@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Institute Admin User Controller
  *
  * Provides endpoints for **institute admins** to create and manage users
@@ -36,7 +36,6 @@ import { MockUserBatchCreationService } from '../services/mock-user-batch.servic
 import {
   CreateInstituteUserDto,
   CreateInstituteUserResponseDto,
-  LinkInstituteUserDto,
 } from '../dto/create-institute-user.dto';
 
 @ApiTags('Institute Admin - User Management')
@@ -174,7 +173,7 @@ their password and complete their profile.
       'user/student/parent columns from the payload. Existing values are never overwritten. ' +
       'Creates a student record if the role is STUDENT and none exists; links empty parent slots only.',
   })
-  @ApiBody({ type: LinkInstituteUserDto })
+  @ApiBody({ type: CreateInstituteUserDto })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'User linked successfully', type: CreateInstituteUserResponseDto })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Role conflict or invalid request' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'User already assigned to this institute for this role' })
@@ -182,13 +181,12 @@ their password and complete their profile.
   async linkInstituteUser(
     @Param('instituteId', ParseIdPipe) instituteId: string,
     @Param('userId', ParseBigIntPipe) userId: string,
-    @Body() dto: LinkInstituteUserDto,
+    @Body() dto: CreateInstituteUserDto,
     @Request() req: any,
   ): Promise<CreateInstituteUserResponseDto> {
     const adminUserId: string = req.user.s ?? req.user.userId ?? req.user.sub;
-    return this.instituteAdminUserService.linkInstituteUser(instituteId, adminUserId, userId, dto as CreateInstituteUserDto);
+    return this.instituteAdminUserService.linkInstituteUser(instituteId, adminUserId, userId, dto);
   }
-
 
   /**
    * 🎭 Create a batch of mock (hollow) student records.

@@ -179,14 +179,4 @@ export class ClassAttendanceSessionController {
     const userId = req.user?.s ?? req.user?.sub;
     return this.svc.closeSession(sessionId, instituteId, dto, userId);
   }
-
-  @Delete(':sessionId')
-  @RequireAnyOfRoles(ROLES)
-  @ApiOperation({ summary: 'Soft-delete a session and remove its attendance records (admin/teacher only — not visible to students)' })
-  deleteSession(
-    @Param('instituteId') instituteId: string,
-    @Param('sessionId') sessionId: string,
-  ) {
-    return this.svc.deleteSession(sessionId, instituteId);
-  }
 }

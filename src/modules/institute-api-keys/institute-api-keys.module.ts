@@ -9,7 +9,6 @@ import { StudentEntity } from '../student/entities/student.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteClassEntity } from '../institute_mudules/institue_class/entities/institue_class.entity';
 import { InstituteApiKeyGuard } from './guards/institute-api-key.guard';
-import { ApiKeyScopeGuard } from './guards/api-key-scope.guard';
 import { InstituteApiKeyService } from './services/institute-api-key.service';
 import { ExternalAttendanceService } from './services/external-attendance.service';
 import { ExternalStudentService } from './services/external-student.service';
@@ -40,7 +39,6 @@ import { ExternalClassController } from './controllers/external-class.controller
   ],
   providers: [
     InstituteApiKeyGuard,
-    ApiKeyScopeGuard,
     InstituteApiKeyService,
     ExternalAttendanceService,
     ExternalStudentService,

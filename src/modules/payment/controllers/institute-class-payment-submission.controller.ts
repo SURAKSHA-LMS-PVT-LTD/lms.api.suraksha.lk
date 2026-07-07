@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Post, Get, Patch,
   Param, Body, Query, Request,
   UseGuards, UsePipes, ValidationPipe,
@@ -14,7 +14,7 @@ import { RequireAnyOfRoles } from '../../../auth/decorators/flexible-access.deco
 import { UserType } from '../../user/enums/user-type.enum';
 import { InstituteClassPaymentService } from '../services/institute-class-payment.service';
 import { CreateInstituteClassPaymentSubmissionDto, VerifyClassPaymentSubmissionDto, AdminVerifyStudentClassPaymentDto } from '../dto/create-institute-class-payment-submission.dto';
-import { SubmissionStatus } from '../entities/class-payment-submission.entity';
+import { SubmissionStatus } from '../entities/institute-class-payment-submission.entity';
 import { JwtRequest } from '@common/interfaces/jwt-request.interface';
 
 @ApiTags('Institute Class Payment Submissions')
@@ -250,11 +250,8 @@ export class InstituteClassPaymentSubmissionController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
-    @Query('search') search?: string,
-    @Query('status') status?: string,
-    @Query('paymentTier') paymentTier?: string,
   ) {
-    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user, search, status, paymentTier);
+    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user);
   }
 
   /**
@@ -275,11 +272,8 @@ export class InstituteClassPaymentSubmissionController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Request() req: JwtRequest,
-    @Query('search') search?: string,
-    @Query('status') status?: string,
-    @Query('paymentTier') paymentTier?: string,
   ) {
-    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user, search, status, paymentTier);
+    return this.paymentService.getStudentsByInstituteClass(instituteId, classId, paymentId, page, limit, req.user);
   }
 
   /**

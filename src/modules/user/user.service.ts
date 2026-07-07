@@ -2600,16 +2600,6 @@ export class UsersService {
         throw new ResourceNotFoundException('User', userId);
       }
 
-      // Verify institute enrollment if scope is INSTITUTE
-      if (scope === ImageScope.INSTITUTE && instituteId) {
-        const isEnrolled = await this.instituteUserRepository.findOne({
-          where: { instituteId, userId }
-        });
-        if (!isEnrolled) {
-          throw new BadRequestException('User is not enrolled in this institute.');
-        }
-      }
-
       // Insert history record — this is the source of truth for the new submission
       const imageRecord = this.userImageRepository.create({
         userId,

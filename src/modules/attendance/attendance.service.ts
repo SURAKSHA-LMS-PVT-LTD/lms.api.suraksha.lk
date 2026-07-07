@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource, IsNull, Between } from 'typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { DynamoDBAttendanceService } from './services/dynamodb-attendance.service';
 import { AttendanceNotificationService } from './services/attendance-notification.service';
 import { InstituteCalendarService } from '../institute/services/institute-calendar.service';
@@ -15,7 +15,6 @@ import { MarkAttendanceByInstituteCardDto, GetInstituteUserByCardDto, InstituteC
 import { StudentEntity } from '../student/entities/student.entity';
 import { ParentEntity } from '../parent/entities/parent.entity';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
-import { SystemConfigService } from '../../common/services/system-config.service';
 import { UserEntity } from '../user/entities/user.entity';
 import { StudentBookhireEnrollmentEntity } from '../private-transportation/entities/student-bookhire-enrollment.entity';
 import { InstituteUserEntity } from '../institute_mudules/institue_user/entities/institue_user.entity';
@@ -96,7 +95,6 @@ export class AttendanceService {
     private readonly attendanceRecordRepository: Repository<AttendanceRecordEntity>,
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepository: Repository<InstituteClassSubjectStudent>,
-    private readonly systemConfigService: SystemConfigService,
   ) {
     // âš¡ OPTIMIZATION: Cache config parsing to avoid repeated string operations
     const instituteIds = this.configService.get<string>('INSTITUTE_IDS_WITH_CUSTOM_IMAGES')?.split(',').map(id => id.trim()) || [];
@@ -260,203 +258,55 @@ export class AttendanceService {
     });
   }
 
-  /** Shared event time-rule lookup for the two auto-status resolvers below. */
-  private async getEventTimeRules(eventId: string): Promise<{ startTime: string; endTime: string | null; lateAfter: number | null; leftEarly: number | null } | undefined> {
-    const rows: any[] = await this.dataSource.query(
-      `SELECT start_time AS startTime, end_time AS endTime,
-              late_after_minutes AS lateAfter, left_early_before_minutes AS leftEarly
-       FROM institute_calendar_events WHERE id = ? LIMIT 1`,
-      [eventId],
-    );
-    const ev = rows[0];
-    if (!ev || ev.startTime == null) return undefined;
-    return ev;
-  }
-
-  private static toMin(t: string): number {
-    const [h, m] = String(t).split(':').map(Number);
-    return (h || 0) * 60 + (m || 0);
-  }
-
-  /** Current Sri Lanka minutes-of-day (UTC + 5:30). */
-  private static nowMinSriLanka(): number {
-    const slNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
-    return slNow.getUTCHours() * 60 + slNow.getUTCMinutes();
-  }
-
   /**
-   * Resolve the auto-status for a CHECK-IN (first scan) against the event's time
-   * rules. Only ever produces an arrival-side status — Present or Late — since a
-   * check-in can't be a departure. Returns undefined when the event has no late
-   * rule configured (status left as sent / defaulted by the caller).
-   *   Present — at/before start + lateAfterMinutes
-   *   Late    — after that cutoff
+   * Resolve the auto-status for a mark against a calendar event, from the event's
+   * time rules (lateAfterMinutes / leftEarlyBeforeMinutes) vs the current Sri Lanka
+   * time. Returns undefined when the event has no time rules (status left as sent).
+   *   Present   — at/before start + lateAfterMinutes
+   *   Late      — after that cutoff, but not yet in the left-early window
+   *   LeftEarly — after the late cutoff AND within leftEarlyBeforeMinutes of end_time
    */
   private async resolveEventAutoStatus(eventId: string): Promise<AttendanceStatus | undefined> {
     try {
-      const ev = await this.getEventTimeRules(eventId);
-      if (!ev || ev.lateAfter == null) return undefined;
+      const rows: any[] = await this.dataSource.query(
+        `SELECT start_time AS startTime, end_time AS endTime,
+                late_after_minutes AS lateAfter, left_early_before_minutes AS leftEarly
+         FROM institute_calendar_events WHERE id = ? LIMIT 1`,
+        [eventId],
+      );
+      const ev = rows[0];
+      if (!ev || ev.startTime == null) return undefined;
+      // No late rule → nothing to auto-resolve (keep whatever was sent / default).
+      if (ev.lateAfter == null) return undefined;
 
-      const nowMin = AttendanceService.nowMinSriLanka();
-      const startMin = AttendanceService.toMin(ev.startTime);
+      const toMin = (t: string) => {
+        const [h, m] = String(t).split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      // Current Sri Lanka minutes-of-day (UTC + 5:30).
+      const slNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
+      const nowMin = slNow.getUTCHours() * 60 + slNow.getUTCMinutes();
+      const startMin = toMin(ev.startTime);
 
-      return nowMin > startMin + Number(ev.lateAfter)
-        ? AttendanceStatus.LATE
-        : AttendanceStatus.PRESENT;
+      if (nowMin > startMin + Number(ev.lateAfter)) {
+        if (ev.endTime && ev.leftEarly != null) {
+          const endMin = toMin(ev.endTime);
+          if (nowMin >= endMin - Number(ev.leftEarly)) {
+            return AttendanceStatus.LEFT_EARLY;
+          }
+        }
+        return AttendanceStatus.LATE;
+      }
+      return AttendanceStatus.PRESENT;
     } catch (e: any) {
       this.logger.warn(`resolveEventAutoStatus failed for event ${eventId}: ${e.message}`);
       return undefined;
     }
   }
 
-  /**
-   * Resolve the auto-status for a CHECKOUT (closing an already-open check-in)
-   * against the event's time rules. Only ever produces a departure-side status —
-   * LeftEarly, Left, or LeftLately — since this is closing a row that was already
-   * checked in; it must never resolve to an arrival-side status (Present/Late).
-   *   LeftEarly  — before end_time, within leftEarlyBeforeMinutes of it
-   *   Left       — on-time departure (at/after that early-window cutoff, at/before end_time)
-   *   LeftLately — after end_time (stayed past the event's official end)
-   * Returns undefined when the event has no end_time configured (caller falls
-   * back to whatever the marker explicitly sent, or plain "Left").
-   */
-  private async resolveEventAutoCheckoutStatus(eventId: string | undefined): Promise<AttendanceStatus | undefined> {
-    if (!eventId) return undefined;
-    try {
-      const ev = await this.getEventTimeRules(eventId);
-      if (!ev || !ev.endTime) return undefined;
-
-      const nowMin = AttendanceService.nowMinSriLanka();
-      const endMin = AttendanceService.toMin(ev.endTime);
-
-      if (nowMin > endMin) return AttendanceStatus.LEFT_LATELY;
-      if (ev.leftEarly != null && nowMin < endMin - Number(ev.leftEarly)) return AttendanceStatus.LEFT_EARLY;
-      return AttendanceStatus.LEFT;
-    } catch (e: any) {
-      this.logger.warn(`resolveEventAutoCheckoutStatus failed for event ${eventId}: ${e.message}`);
-      return undefined;
-    }
-  }
-
-  /**
-   * Check-out detection: if the student already has an open (no checkout yet)
-   * attendance instance matching this same session/event today, this mark is
-   * the checkout for that instance — update it in place instead of inserting
-   * a new row. Returns null when no open instance is found (caller proceeds
-   * with a normal check-in insert).
-   *
-   * Pairing key (matches the two real marking modes in this codebase — see
-   * conversation record for why a single key can't cover both):
-   *   - class_session_id present  → pair by (class_session_id, student_id)
-   *   - otherwise (institute-level) → pair by (institute_id, student_id, date, event_id)
-   *
-   * No DB-level UNIQUE constraint backs this (real historical data already
-   * has legitimate duplicate rows on both keys), so this is an
-   * application-level "most recent open row wins" match, not a hard guarantee.
-   */
-  private async tryRecordCheckout(dto: MarkAttendanceDto, explicitStatus?: AttendanceStatus): Promise<any | null> {
-    const classSessionId = (dto as any).classSessionId as string | undefined;
-    const eventId = (dto as any).eventId as string | undefined;
-
-    const where = classSessionId
-      ? { classSessionId, studentId: dto.studentId }
-      : (eventId ? { instituteId: dto.instituteId, studentId: dto.studentId, date: dto.date, eventId } : null);
-
-    if (!where) return null; // no stable pairing key resolved — treat as a normal check-in
-
-    // Find the candidate row first (to know its date, needed for the composite
-    // PK below), then perform the actual state transition as a single
-    // conditional UPDATE guarded by checkOutTime IS NULL. This collapses the
-    // earlier find-then-update pattern's check-then-act race: two near-
-    // simultaneous requests can both still see the row as "open" via findOne,
-    // but only one of the two subsequent UPDATEs can match `check_out_time IS
-    // NULL` (whichever commits first flips it non-null) — the second's
-    // affected-row count is exactly 0, so it correctly falls through to a
-    // fresh check-in insert instead of silently double-checking-out.
-    const openRow = await this.attendanceRecordRepository.findOne({
-      where: { ...where, checkOutTime: IsNull() },
-      order: { checkInTime: 'DESC' },
-    });
-
-    if (!openRow) return null; // nothing open — this is a fresh check-in
-
-    // Explicit marker choice always wins (e.g. a teacher manually picking "Absent").
-    // Otherwise resolve a departure-side status (Left/LeftEarly) from the event's
-    // end-time rules — this is a checkout, so it must never resolve to an
-    // arrival-side status like Present/Late.
-    const autoCheckoutStatus = explicitStatus ? undefined : await this.resolveEventAutoCheckoutStatus(eventId);
-    const checkOutStatus = explicitStatus ?? autoCheckoutStatus ?? AttendanceStatus.LEFT;
-    // The `status` column is the documented source of truth for reporting/exports
-    // (see entity comment) — it must reflect this record's FINAL state, not the
-    // check-in-time value it was created with. Without this, a student marked
-    // "Present" at check-in and then "Left"/"LeftEarly" at checkout keeps showing
-    // "Present" everywhere that reads `status`, even though checkOutStatus/checkOutTime
-    // correctly recorded the departure.
-    const checkOutStatusNum = this.attendanceStatusToNumber(checkOutStatus);
-    // Composite PK (id, date): object criteria required — a scalar id is ambiguous,
-    // and including date lets MySQL prune to the row's monthly partition.
-    // checkOutTime: IsNull() re-asserted here (not just in the findOne above) is
-    // what actually closes the race — it's the atomic compare-and-set.
-    const updateResult = await this.attendanceRecordRepository.update(
-      { id: openRow.id, date: openRow.date, checkOutTime: IsNull() },
-      {
-        checkOutTime: new Date(),
-        checkOutStatus: checkOutStatusNum,
-        checkOutMarkedBy: dto.markedBy || 'system',
-        status: checkOutStatusNum,
-      },
-    );
-
-    if (!updateResult.affected) {
-      // Lost the race — another concurrent request already checked this row
-      // out between our findOne and this update. Treat this call as a fresh
-      // check-in rather than silently no-op'ing.
-      return null;
-    }
-
-    return {
-      success: true,
-      action: 'CHECK_OUT',
-      imageUrl: dto.studentImageUrl || null,
-      status: checkOutStatus,
-      date: dto.date,
-      eventId: eventId || null,
-      calendarDayId: (dto as any).calendarDayId || null,
-    };
-  }
-
-  private attendanceStatusToNumber(status: AttendanceStatus | string | number): number {
-    if (typeof status === 'number') return status;
-    const map: Record<string, number> = {
-      ABSENT: 0, PRESENT: 1, LATE: 2, LEFT: 3, LEFT_EARLY: 4, LEFT_LATELY: 5,
-    };
-    // Unrecognized input defaults to Absent (never silently mark someone present)
-    // — matches mysqlAttendanceService.statusToNumber's fallback for consistency.
-    return map[String(status).toUpperCase()] ?? 0;
-  }
-
-  /**
-   * Rejects marking with a card that's been revoked/lost/expired. The card-based
-   * marking paths (markAttendanceByCard, markBulkAttendanceByCard) fetch
-   * rfidCardStatus/cardStatus/*ExpiryDate but never checked them before this fix —
-   * a card marked LOST or past its expiry date still successfully marked attendance.
-   */
-  private assertCardIsUsable(cardType: 'rfid' | 'normal', user: UserEntity, cardId: string): void {
-    const status = cardType === 'rfid' ? user.rfidCardStatus : user.cardStatus;
-    const expiryDate = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
-
-    if (status && status !== CardStatus.ACTIVE) {
-      throw new Error(`Card "${cardId}" is ${status.toLowerCase()} and cannot be used to mark attendance.`);
-    }
-    if (expiryDate && new Date(expiryDate) < new Date()) {
-      throw new Error(`Card "${cardId}" expired on ${new Date(expiryDate).toISOString().split('T')[0]} and cannot be used to mark attendance.`);
-    }
-  }
-
   async markAttendance(markAttendanceDto: MarkAttendanceDto, markedBy: string): Promise<any> {
     const requestId = `ATT_${nowTimestamp()}`;
     const startTime = nowTimestamp();
-    markAttendanceDto.markedBy = markedBy;
 
     try {
       // âœ… STEP 1: Auto-detect user type from institute_user table
@@ -465,14 +315,11 @@ export class AttendanceService {
         markAttendanceDto.instituteId
       );
 
-      // âœ… STEP 2: Validate enrollment if configured (applies to all user types).
-      // Reuses the institute_user row already fetched above — avoids a second,
-      // near-identical (userId, instituteId) lookup on every single scan.
+      // âœ… STEP 2: Validate enrollment if configured (applies to all user types)
       await this.validateUserEnrollment(
         markAttendanceDto.studentId,
         markAttendanceDto.instituteId,
-        userType,
-        instituteUser
+        userType
       );
 
       // âœ… STEP 3: Fetch user data based on user type
@@ -608,21 +455,12 @@ export class AttendanceService {
         }
       }
 
-      // Capture whether the marker explicitly chose a status BEFORE STEP 3.55 can
-      // overwrite it with the check-in auto-status — an explicit choice (e.g. a
-      // teacher picking "Absent"/"Left" by hand) must never be silently clobbered
-      // by the event's time-rule computation. Used below by both the check-in
-      // auto-resolve step and the checkout branch.
-      const explicitStatus = markAttendanceDto.status;
-
-      // STEP 3.55: Auto-resolve CHECK-IN status from the event's time rules.
+      // STEP 3.55: Auto-resolve status from the event's time rules.
       // When attendance is marked against a calendar event that defines time rules
-      // (lateAfterMinutes), the status is computed from the current time vs the
-      // event start — but only as a default for a fresh check-in, and only when
-      // the marker didn't already pick one. This produces Present/Late automatically;
-      // the checkout branch below (STEP 3.9) resolves its own Left/LeftEarly status
-      // independently once we know this mark is actually closing an open check-in.
-      if (!explicitStatus) {
+      // (lateAfterMinutes / leftEarlyBeforeMinutes), the status is computed from the
+      // current time vs the event window — the marker never chooses it. This produces
+      // Present / Late / LeftEarly automatically.
+      {
         const resolvedEventId = (markAttendanceDto as any).eventId;
         if (resolvedEventId) {
           const autoStatus = await this.resolveEventAutoStatus(resolvedEventId);
@@ -669,17 +507,6 @@ export class AttendanceService {
       // âœ… STEP 4: Resolve image once and persist it in DynamoDB for faster later reads
       const imageUrl = this.resolveImageUrl(instituteUser, globalImageUrl, markAttendanceDto.instituteId);
       markAttendanceDto.studentImageUrl = imageUrl || undefined;
-
-      // âœ… STEP 3.9: Check-out detection — if this student already has an open
-      // check-in today for this same attendance instance (session, or institute+event),
-      // this mark is treated as the checkout: update that row instead of inserting a new one.
-      // Pass explicitStatus separately so the checkout branch can tell "marker picked
-      // this" apart from "STEP 3.55's check-in auto-resolve picked this" — only the
-      // former should skip the checkout's own Left/LeftEarly auto-resolution.
-      const checkoutResult = await this.tryRecordCheckout(markAttendanceDto, explicitStatus);
-      if (checkoutResult) {
-        return checkoutResult;
-      }
 
       // âœ… STEP 4.1: Mark attendance based on database mode
       const isMysqlOnly = this.syncConfigService.isMysqlOnly();
@@ -756,7 +583,6 @@ export class AttendanceService {
 
     try {
       bulkAttendanceDto.date = getCurrentSriLankaDate();
-      bulkAttendanceDto.markedBy = markedBy;
 
       const userIds = bulkAttendanceDto.students.map(s => s.studentId);
 
@@ -772,16 +598,14 @@ export class AttendanceService {
         instituteUsers.map(iu => [iu.userId, iu])
       );
 
-      // âœ… STEP 2: Validate enrollment (if configured) - batch operation.
-      // Reuses the batch-fetched institute_user rows above — avoids re-querying
-      // (userId, instituteId) once per student on top of the batch already done.
+      // âœ… STEP 2: Validate enrollment (if configured) - batch operation
       await Promise.all(
         userIds.map(userId => {
           const iu = instituteUserMap.get(userId);
           const detectedType = iu
             ? (AttendanceUserType[iu.instituteUserType as keyof typeof AttendanceUserType] || AttendanceUserType.STUDENT)
             : AttendanceUserType.NOT_ENROLLED;
-          return this.validateUserEnrollment(userId, bulkAttendanceDto.instituteId, detectedType, iu ?? null);
+          return this.validateUserEnrollment(userId, bulkAttendanceDto.instituteId, detectedType);
         })
       );
 
@@ -972,71 +796,11 @@ export class AttendanceService {
         }
       }
 
-      // Capture each student's explicitly-sent status BEFORE the batch auto-resolve
-      // below can overwrite it — an explicit per-student choice must survive into
-      // the checkout branch instead of being mistaken for the bulk auto-status.
-      const explicitStatusByStudent = new Map(
-        bulkAttendanceDto.students.map(s => [s.studentId, s.status] as const),
-      );
-
-      // âœ… STEP 8.4: Resolve time-based CHECK-IN status from the event's rules once
-      // for the whole batch (same event for every student in one bulk call), same as
-      // the single-mark path — otherwise bulk-marked status is always exactly whatever
-      // the client sent, while single-marking the same class at the same real time
-      // auto-overrides to present/late, giving inconsistent results depending on
-      // which marking path was used. Only applied to students who didn't explicitly
-      // choose a status.
-      const bulkEventId = (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId;
-      let bulkAutoStatus: AttendanceStatus | undefined;
-      if (bulkEventId) {
-        bulkAutoStatus = await this.resolveEventAutoStatus(bulkEventId);
-        if (bulkAutoStatus) {
-          for (const student of bulkAttendanceDto.students) {
-            if (!explicitStatusByStudent.get(student.studentId)) {
-              student.status = bulkAutoStatus;
-            }
-          }
-        }
-      }
-
-      // âœ… STEP 8.5: Check-out detection, per student. A student who already has an
-      // open (no checkout yet) attendance instance matching this bulk mark's
-      // session/event is checked out individually; only students without an open
-      // instance go through the batch check-in write below. Mirrors the single-mark
-      // path's tryRecordCheckout() — bulk marking bypassed it entirely before this fix,
-      // meaning a second bulk mark of the same class always created duplicate
-      // check-in-only rows instead of recording checkouts.
-      const checkoutResults: any[] = [];
-      const studentsNeedingCheckIn: typeof bulkAttendanceDto.students = [];
-      for (const student of bulkAttendanceDto.students) {
-        const perStudentDto: MarkAttendanceDto = {
-          studentId: student.studentId,
-          instituteId: bulkAttendanceDto.instituteId,
-          instituteName: bulkAttendanceDto.instituteName,
-          date: bulkAttendanceDto.date,
-          status: student.status,
-          markedBy: bulkAttendanceDto.markedBy,
-          classSessionId: (bulkAttendanceDto as any).classSessionId,
-          eventId: bulkEventId,
-          calendarDayId: (bulkAttendanceDto as any).calendarDayId,
-        } as any;
-
-        const checkoutResult = await this.tryRecordCheckout(perStudentDto, explicitStatusByStudent.get(student.studentId));
-        if (checkoutResult) {
-          checkoutResults.push({ studentId: student.studentId, ...checkoutResult });
-        } else {
-          studentsNeedingCheckIn.push(student);
-        }
-      }
-      bulkAttendanceDto.students = studentsNeedingCheckIn;
-
       // âœ… STEP 9: Mark attendance based on database mode
       const isMysqlOnly = this.syncConfigService.isMysqlOnly();
-      let results: MarkAttendanceDto[] = [];
+      let results: MarkAttendanceDto[];
 
-      if (studentsNeedingCheckIn.length === 0) {
-        // Every student in this bulk call was a checkout — nothing left to insert.
-      } else if (isMysqlOnly) {
+      if (isMysqlOnly) {
         // MySQL-only mode: write directly to MySQL, no DynamoDB
         results = await this.mysqlAttendanceService.markBulkAttendance(bulkAttendanceDto);
       } else {
@@ -1123,16 +887,14 @@ export class AttendanceService {
 
       return {
         success: true,
-        message: `Bulk attendance processed for ${results.length + checkoutResults.length} users `
-          + `(${results.length} checked in, ${checkoutResults.length} checked out)`,
-        totalProcessed: results.length + checkoutResults.length,
-        action: checkoutResults.length > 0 ? 'bulk_mixed' : 'bulk_created',
+        message: `Bulk attendance marked successfully for ${results.length} users`,
+        totalProcessed: results.length,
+        action: 'bulk_created',
         date: bulkAttendanceDto.date,
         eventId: (bulkAttendanceDto as any).defaultEventId || (bulkAttendanceDto as any).eventId || null,
         calendarDayId: (bulkAttendanceDto as any).calendarDayId || null,
         availableEvents,  // âœ… All events for this date â€” frontend can use for event picker
-        records: results,
-        checkouts: checkoutResults,
+        records: results
       };
     } catch (error) {
       this.logger.error(`[${requestId}] âŒ ERROR: Bulk attendance failed - ${error.message}`, error.stack);
@@ -1362,8 +1124,6 @@ export class AttendanceService {
       throw new Error(errorDetails.message);
     }
 
-    this.assertCardIsUsable(cardType, user, studentCardId);
-
     const markAttendanceDto: MarkAttendanceDto = {
       studentId: user.id.toString(),
       studentName: user.nameWithInitials || `${user.firstName} ${user.lastName || ''}`.trim(),
@@ -1448,18 +1208,11 @@ export class AttendanceService {
 
     // Map students, skip invalid cards & not-found
     const notFound: string[] = [];
-    const resolvedCardType = isNfc || cardType === 'rfid' ? 'rfid' : 'normal';
     const students = bulkCardAttendanceDto.students
       .filter(student => {
         const user = userMap.get(student.studentCardId);
         if (!user) {
           notFound.push(student.studentCardId);
-          return false;
-        }
-        try {
-          this.assertCardIsUsable(resolvedCardType, user, student.studentCardId);
-        } catch (e: any) {
-          invalidCards.push({ cardId: student.studentCardId, reason: e.message });
           return false;
         }
         return true;
@@ -1648,27 +1401,6 @@ export class AttendanceService {
     };
   }
 
-  /**
-   * Class-wise check-in/check-out overview for the admin drilldown tab —
-   * always lists every active class in the institute (LEFT JOIN semantics),
-   * with roster size + check-in/check-out counts for one date/event.
-   * MySQL-only aggregation (GROUP BY across all classes in one query) — no
-   * DynamoDB equivalent, matching how this attendance system already runs
-   * (ATTENDANCE_DB_MODE=only_mysql in production).
-   */
-  async getClassesAttendanceSummary(
-    instituteId: string,
-    date: string,
-    eventId?: string,
-  ): Promise<any> {
-    const rows = await this.mysqlAttendanceService.getClassesAttendanceSummary(instituteId, date, eventId);
-    return {
-      success: true,
-      message: 'Class attendance summary retrieved successfully',
-      data: rows,
-    };
-  }
-
   async getAttendanceByDate(instituteId: string, date: string): Promise<any> {
     const records = this.syncConfigService.isMysqlOnly()
       ? await this.mysqlAttendanceService.getAttendanceByDate(instituteId, date)
@@ -1810,11 +1542,8 @@ export class AttendanceService {
     limit?: number;
     status?: string;
     studentId?: string;
-    searchTerm?: string;
-    sortBy?: string;
-    sortOrder?: string;
   }): Promise<any> {
-    const { instituteId, startDate, endDate, page = 1, limit = 50, status, studentId, searchTerm, sortBy, sortOrder } = params;
+    const { instituteId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
 
     // Use the attendance summary method for institute-wide data
     const dbService = this.syncConfigService.isMysqlOnly()
@@ -1841,26 +1570,6 @@ export class AttendanceService {
       filteredRecords = filteredRecords.filter(record =>
         record.studentId === studentId
       );
-    }
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filteredRecords = filteredRecords.filter(record =>
-        (record.studentName || '').toLowerCase().includes(term) ||
-        (record.studentId || '').toLowerCase().includes(term)
-      );
-    }
-
-    if (sortBy) {
-      filteredRecords.sort((a, b) => {
-        let valA = a[sortBy];
-        let valB = b[sortBy];
-        if (typeof valA === 'string') valA = valA.toLowerCase();
-        if (typeof valB === 'string') valB = valB.toLowerCase();
-        
-        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
-        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
-        return 0;
-      });
     }
 
     // Apply pagination
@@ -1894,48 +1603,6 @@ export class AttendanceService {
     };
   }
 
-  /**
-   * Check-in / check-out detail for one student in one class over a date range.
-   * Additive, read-only view of the new check-in / check-out columns —
-   * deliberately separate from getClassAttendance()/getAttendanceSummary() so the
-   * existing reporting/export paths (which key off the legacy status/timestamp
-   * pair) are completely untouched.
-   */
-  async getClassStudentCheckInOut(params: {
-    instituteId: string;
-    classId: string;
-    studentId: string;
-    startDate: string;
-    endDate: string;
-  }): Promise<any> {
-    const { instituteId, classId, studentId, startDate, endDate } = params;
-
-    const rows = await this.attendanceRecordRepository.find({
-      where: {
-        instituteId,
-        classId,
-        studentId,
-        date: Between(startDate, endDate) as any,
-      },
-      order: { date: 'ASC', checkInTime: 'ASC' },
-    });
-
-    return {
-      success: true,
-      studentId,
-      classId,
-      records: rows.map(r => ({
-        date: r.date,
-        checkIn: r.checkInTime
-          ? { time: r.checkInTime, status: r.checkInStatus, markedBy: r.checkInMarkedBy }
-          : null,
-        checkOut: r.checkOutTime
-          ? { time: r.checkOutTime, status: r.checkOutStatus, markedBy: r.checkOutMarkedBy }
-          : null,
-      })),
-    };
-  }
-
   async getClassAttendance(params: {
     instituteId: string;
     classId: string;
@@ -1945,11 +1612,8 @@ export class AttendanceService {
     limit?: number;
     status?: string;
     studentId?: string;
-    searchTerm?: string;
-    sortBy?: string;
-    sortOrder?: string;
   }): Promise<any> {
-    const { instituteId, classId, startDate, endDate, page = 1, limit = 50, status, studentId, searchTerm, sortBy, sortOrder } = params;
+    const { instituteId, classId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
 
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
@@ -1975,26 +1639,6 @@ export class AttendanceService {
       filteredRecords = filteredRecords.filter(record =>
         record.studentId === studentId
       );
-    }
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filteredRecords = filteredRecords.filter(record =>
-        (record.studentName || '').toLowerCase().includes(term) ||
-        (record.studentId || '').toLowerCase().includes(term)
-      );
-    }
-
-    if (sortBy) {
-      filteredRecords.sort((a, b) => {
-        let valA = a[sortBy];
-        let valB = b[sortBy];
-        if (typeof valA === 'string') valA = valA.toLowerCase();
-        if (typeof valB === 'string') valB = valB.toLowerCase();
-        
-        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
-        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
-        return 0;
-      });
     }
 
     // Apply pagination
@@ -2038,11 +1682,8 @@ export class AttendanceService {
     limit?: number;
     status?: string;
     studentId?: string;
-    searchTerm?: string;
-    sortBy?: string;
-    sortOrder?: string;
   }): Promise<any> {
-    const { instituteId, classId, subjectId, startDate, endDate, page = 1, limit = 50, status, studentId, searchTerm, sortBy, sortOrder } = params;
+    const { instituteId, classId, subjectId, startDate, endDate, page = 1, limit = 50, status, studentId } = params;
 
     const dbService = this.syncConfigService.isMysqlOnly()
       ? this.mysqlAttendanceService
@@ -2067,26 +1708,6 @@ export class AttendanceService {
     if (studentId) {
       filteredRecords = filteredRecords.filter(record => {
         return record.studentId === studentId || record.studentId == studentId;
-      });
-    }
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filteredRecords = filteredRecords.filter(record =>
-        (record.studentName || '').toLowerCase().includes(term) ||
-        (record.studentId || '').toLowerCase().includes(term)
-      );
-    }
-
-    if (sortBy) {
-      filteredRecords.sort((a, b) => {
-        let valA = a[sortBy];
-        let valB = b[sortBy];
-        if (typeof valA === 'string') valA = valA.toLowerCase();
-        if (typeof valB === 'string') valB = valB.toLowerCase();
-        
-        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
-        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
-        return 0;
       });
     }
 
@@ -2263,7 +1884,7 @@ export class AttendanceService {
       const packageConfig = NOTIFICATION_PACKAGES_CONFIG.packages[normalizedPlan] || NOTIFICATION_PACKAGES_CONFIG.packages.FREE;
       const channels = packageConfig?.channels || ['sms'];
       const isAdsEnabled = this.adsDeliveryEnabled && packageConfig?.isAds === true;
-      const isAdsFromDB = await this.systemConfigService.getBoolean('ADS', 'IS_ADS_FROM_DB', true);
+      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
       this.logger.debug(
         `[Notification] student=${sid} plan=${normalizedPlan} channels=${channels.join(',')} ` +
@@ -2282,11 +1903,11 @@ export class AttendanceService {
         } else {
           advertisementData = {
             id: 'default-company-ad',
-            mediaUrl: await this.systemConfigService.get('ADS', 'DEFAULT_AD_URL', ''),
-            mediaType: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TYPE', 'text'),
-            title: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TITLE', 'Your Company Name'),
-            content: await this.systemConfigService.get('ADS', 'DEFAULT_AD_CONTENT', 'Professional education services.'),
-            sendingUrl: (await this.systemConfigService.get('ADS', 'DEFAULT_AD_SENDING_URL', '')) || undefined,
+            mediaUrl: process.env.DEFAULT_AD_URL || '',
+            mediaType: process.env.DEFAULT_AD_TYPE || 'text',
+            title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
+            content: process.env.DEFAULT_AD_CONTENT || 'Professional education services.',
+            sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
             supportivePlatforms: [],
             modeOfSending: []
           };
@@ -2432,11 +2053,11 @@ export class AttendanceService {
           // ðŸ¢ Use default company branding from environment
           advertisementData = {
             id: 'default-company-ad',
-            mediaUrl: await this.systemConfigService.get('ADS', 'DEFAULT_AD_URL', ''),
-            mediaType: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TYPE', 'text'),
-            title: await this.systemConfigService.get('ADS', 'DEFAULT_AD_TITLE', 'Your Company Name'),
-            content: await this.systemConfigService.get('ADS', 'DEFAULT_AD_CONTENT', 'Professional education services for your child\'s bright future.'),
-            sendingUrl: (await this.systemConfigService.get('ADS', 'DEFAULT_AD_SENDING_URL', '')) || undefined,
+            mediaUrl: process.env.DEFAULT_AD_URL || '',
+            mediaType: process.env.DEFAULT_AD_TYPE || 'text',
+            title: process.env.DEFAULT_AD_TITLE || 'Your Company Name',
+            content: process.env.DEFAULT_AD_CONTENT || 'Professional education services for your child\'s bright future.',
+            sendingUrl: process.env.DEFAULT_AD_SENDING_URL || undefined,
             supportivePlatforms: [],  // Default ads support all platforms
             modeOfSending: [],  // Default ads use all available channels
             cascadeToParents: false  // Default ads don't cascade
@@ -3071,19 +2692,13 @@ export class AttendanceService {
     markAttendanceDto: MarkAttendanceByInstituteCardDto,
     markedBy: string
   ): Promise<any> {
-    const { instituteCardId, userIdByInstitute, instituteId } = markAttendanceDto;
+    const { instituteCardId, instituteId } = markAttendanceDto;
 
-    if (!instituteCardId && !userIdByInstitute) {
-      throw new Error('Either instituteCardId or userIdByInstitute is required.');
-    }
-
-    // âœ… STEP 1: Query institute_user with user data (works for ALL user types).
-    // Looks up by whichever identifier was provided — a physical card scan
-    // (instituteCardId) or a typed-in institute user ID (userIdByInstitute),
-    // e.g. when the card is lost/unavailable but the admin knows the ID.
-    const lookupQb = this.instituteUserRepository
+    // âœ… STEP 1: Query institute_user with user data (works for ALL user types)
+    const instituteUser = await this.instituteUserRepository
       .createQueryBuilder('institute_user')
       .leftJoinAndSelect('institute_user.user', 'user')
+      .where('institute_user.instituteCardId = :instituteCardId', { instituteCardId })
       .andWhere('institute_user.instituteId = :instituteId', { instituteId })
       .select([
         'institute_user.instituteId',
@@ -3100,21 +2715,13 @@ export class AttendanceService {
         'user.nameWithInitials',
         'user.imageUrl',
         'user.userType'
-      ]);
-    if (instituteCardId) {
-      lookupQb.andWhere('institute_user.instituteCardId = :instituteCardId', { instituteCardId });
-    } else {
-      lookupQb.andWhere('institute_user.userIdByInstitute = :userIdByInstitute', { userIdByInstitute });
-    }
-    const instituteUser = await lookupQb.getOne();
+      ])
+      .getOne();
 
     if (!instituteUser) {
-      const identifierLabel = instituteCardId
-        ? `institute card ID: ${instituteCardId}`
-        : `institute user ID: ${userIdByInstitute}`;
       throw new Error(
-        `No user found with ${identifierLabel} in institute: ${instituteId}. ` +
-        `Please check: 1) The ID is registered, 2) The ID is correct, 3) User is assigned to this institute.`
+        `No user found with institute card ID: ${instituteCardId} in institute: ${instituteId}. ` +
+        `Please check: 1) Card ID is registered, 2) Card ID is correct, 3) User is assigned to this institute.`
       );
     }
 
@@ -3214,23 +2821,7 @@ export class AttendanceService {
       ? instituteUser.instituteUserImageUrl
       : globalImageUrl;
 
-    // Capture the explicitly-sent status before the check-in auto-resolve below can
-    // overwrite it — needed so the checkout branch (STEP 5.2) can tell an explicit
-    // marker choice apart from this step's own auto-resolution.
-    const explicitCardStatus = markAttendanceDto.status;
-
-    // âœ… STEP 5: Resolve time-based CHECK-IN status from the event's rules, same as
-    // the main markAttendance() path — otherwise this card-marking path always uses
-    // whatever status the client sent, regardless of actual arrival time. Only
-    // applied when the marker didn't already choose a status.
-    if (!explicitCardStatus && markAttendanceDto.eventId) {
-      const autoStatus = await this.resolveEventAutoStatus(markAttendanceDto.eventId);
-      if (autoStatus) {
-        markAttendanceDto.status = autoStatus;
-      }
-    }
-
-    // âœ… STEP 5.1: Build attendance DTO with auto-detected userType
+    // âœ… STEP 5: Build attendance DTO with auto-detected userType
     const attendanceDto: MarkAttendanceDto = {
       studentId: studentId,
       studentName: userName,
@@ -3245,26 +2836,12 @@ export class AttendanceService {
       markingMethod: markAttendanceDto.markingMethod,
       userType: detectedUserType,  // âœ… Auto-detected user type
       date: getCurrentSriLankaDate(),
-      markedBy,
       location: markAttendanceDto.location || this.generateAddress(
         markAttendanceDto.instituteName,
         markAttendanceDto.className,
         markAttendanceDto.subjectName
-      ),
-      eventId: markAttendanceDto.eventId,
-      classSessionId: markAttendanceDto.classSessionId,
-      calendarDayId: markAttendanceDto.calendarDayId,
-    } as any;
-
-    // âœ… STEP 5.2: Check-out detection — if this card scan matches an already
-    // open check-in (same session, or same institute+event today), treat it as
-    // the checkout instead of inserting a duplicate check-in row. Only resolves
-    // when eventId/classSessionId is provided (same pairing-key requirement as
-    // the main markAttendance() path — see tryRecordCheckout's doc comment).
-    const checkoutResult = await this.tryRecordCheckout(attendanceDto, explicitCardStatus);
-    if (checkoutResult) {
-      return checkoutResult;
-    }
+      )
+    };
 
     // âœ… STEP 6: Mark attendance based on database mode
     const isMysqlOnlyMode = this.syncConfigService.isMysqlOnly();
@@ -3292,9 +2869,7 @@ export class AttendanceService {
 
     // âœ… STEP 7: Send notifications ONLY for students (non-blocking)
     if (isStudent && (parentContact || parentEmail || parentTelegramId)) {
-      // getSync — this sits on the hot attendance-mark path; avoid adding an await
-      // here before the fire-and-forget notification kicks off.
-      const isAdsFromDB = this.systemConfigService.getSync('ADS', 'IS_ADS_FROM_DB', 'true') === 'true';
+      const isAdsFromDB = this.configService.get<string>('IS_ADS_FROM_DB') === 'true';
 
       this.sendImmediateNotification({
         studentId,
@@ -3326,10 +2901,8 @@ export class AttendanceService {
       name: userName,
       nameWithInitials: (isStudent ? studentData?.user?.nameWithInitials : instituteUser.user?.nameWithInitials) || null,
       userType: detectedUserType,  // âœ… NEW: Return user type
-      instituteCardId: instituteUser.instituteCardId || null,
+      instituteCardId: instituteCardId,
       userIdByInstitute: instituteUser.userIdByInstitute,
-      eventId: markAttendanceDto.eventId || null,
-      calendarDayId: markAttendanceDto.calendarDayId || null,
       data: {
         studentId: studentId,
         studentName: userName,
@@ -3354,13 +2927,11 @@ export class AttendanceService {
   private async validateUserEnrollment(
     userId: string,
     instituteId: string,
-    detectedUserType: AttendanceUserType,
-    prefetchedInstituteUser?: InstituteUserEntity | null
+    detectedUserType: AttendanceUserType
   ): Promise<void> {
-    // Check if enrollment validation is enabled — live-editable via system_config
-    const shouldValidate = await this.systemConfigService.getBoolean(
-      'ATTENDANCE', 'MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS', false,
-    );
+    // Check if enrollment validation is enabled via environment variable
+    const envValue = this.configService.get<string>('ATTENDANCE_MARKS_FOR_ONLY_ENROLLED_INSTITUTE_STUDENTS');
+    const shouldValidate = envValue === 'true';
 
     if (!shouldValidate) {
       return;
@@ -3375,18 +2946,14 @@ export class AttendanceService {
     }
 
     try {
-      // Reuse the caller's already-fetched (userId, instituteId) row when available
-      // (detectInstituteUserType's select already includes 'status') — otherwise
-      // fall back to querying it directly, same as before.
-      const enrollment = prefetchedInstituteUser !== undefined
-        ? prefetchedInstituteUser
-        : await this.instituteUserRepository.findOne({
-            where: {
-              userId: userId,
-              instituteId: instituteId
-            },
-            select: ['userId', 'status'],
-          });
+      // Check if user is enrolled in the institute
+      const enrollment = await this.instituteUserRepository.findOne({
+        where: {
+          userId: userId,
+          instituteId: instituteId
+        },
+        select: ['userId', 'status'],
+      });
 
       if (!enrollment) {
         this.logger.warn(`User ${userId} is not enrolled in institute ${instituteId}`);
@@ -3482,18 +3049,10 @@ export class AttendanceService {
     // Sort newest first (DynamoDB GSI returns newest first already, but re-sort after filter)
     rawRecords.sort((a, b) => ((b as any).timestamp || 0) - ((a as any).timestamp || 0));
 
-    // Only the page actually being returned needs enrichment (class name, student
-    // image, institute logo) — the summary/byInstitute/byStudent counters below only
-    // need status + IDs, which are already on rawRecords. Restricting the enrichment
-    // lookups (2/3 below) to the current page keeps their cost proportional to
-    // `limit` instead of to the whole 30-day window, which matters once a student/
-    // parent has many sessions across many institutes.
-    const pageSlice = rawRecords.slice((page - 1) * limit, page * limit);
-
-    // 2. Collect unique IDs for enrichment (page only)
-    const uniqueClassIds = [...new Set(pageSlice.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
-    const uniqueStudentIds = [...new Set(pageSlice.map(r => String(r.studentId)))];
-    const uniqueInstituteIds = [...new Set(pageSlice.map(r => String(r.instituteId)))];
+    // 2. Collect unique IDs for enrichment
+    const uniqueClassIds = [...new Set(rawRecords.map(r => r.classId && String(r.classId)).filter(Boolean) as string[])];
+    const uniqueStudentIds = [...new Set(rawRecords.map(r => String(r.studentId)))];
+    const uniqueInstituteIds = [...new Set(rawRecords.map(r => String(r.instituteId)))];
 
     // 3. Bulk-fetch from DB: classes, user profiles (for images), institutes (for logos)
     const [classes, users, institutes] = await Promise.all([
@@ -3536,49 +3095,7 @@ export class AttendanceService {
       [AttendanceStatus.LEFT_LATELY]: 'Left Lately',
     };
 
-    // Summary counters run over the FULL window (rawRecords) since they must
-    // reflect the whole 30-day range, not just the current page — but this pass
-    // only touches IDs/status already in-memory, no per-row enrichment lookups.
-    for (const r of rawRecords) {
-      const iid = String(r.instituteId);
-      const sid = String(r.studentId);
-      const instituteName = r.instituteName || iid;
-
-      if (!byInstitute[iid]) {
-        byInstitute[iid] = { instituteName, instituteLogoUrl: undefined, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
-      }
-
-      if (child && childrenIds.includes(sid)) {
-        if (!byStudent[sid]) {
-          byStudent[sid] = { studentName: r.studentName, studentImageUrl: undefined, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
-        }
-        byStudent[sid].totalRecords++;
-      }
-
-      if (r.status === AttendanceStatus.PRESENT) { totalPresent++; byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
-      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++; byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
-      else if (r.status === AttendanceStatus.LATE) { totalLate++; byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
-      else if (r.status === AttendanceStatus.LEFT) { totalLeft++; byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
-      else if (r.status === AttendanceStatus.LEFT_EARLY) { totalLeftEarly++; byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
-      else if (r.status === AttendanceStatus.LEFT_LATELY) { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
-    }
-
-    // Fill in institute logo / student image on the summary maps using the
-    // page-scoped lookup maps where available (best-effort — a window's
-    // institute/student may not appear on the current page, in which case it
-    // simply stays undefined rather than triggering another DB round-trip).
-    for (const iid of Object.keys(byInstitute)) {
-      const rawLogo = instituteLogoMap.get(iid);
-      if (rawLogo) byInstitute[iid].instituteLogoUrl = this.CloudStorageService.getFullUrl(rawLogo);
-    }
-    for (const sid of Object.keys(byStudent)) {
-      const rawImg = userImageMap.get(sid);
-      if (rawImg) byStudent[sid].studentImageUrl = this.CloudStorageService.getFullUrl(rawImg);
-    }
-
-    // Enrichment (class name, student image, institute logo) only runs for the
-    // page actually being returned to the client.
-    const enriched: MyAttendanceRecordDto[] = pageSlice.map(r => {
+    const enriched: MyAttendanceRecordDto[] = rawRecords.map(r => {
       const iid = String(r.instituteId);
       const cid = r.classId ? String(r.classId) : undefined;
       const sid = String(r.studentId);
@@ -3588,12 +3105,35 @@ export class AttendanceService {
       const className = dbClass?.name || r.className || undefined;
       const studentName = r.studentName;
 
+      // Resolve student image: prefer record-level (stored at marking), fall back to user profile
       const rawStudentImg = (r as any).studentImageUrl || (r as any).imageUrl;
       const studentImageRaw = rawStudentImg || userImageMap.get(sid);
       const studentImageUrl = studentImageRaw ? this.CloudStorageService.getFullUrl(studentImageRaw) : undefined;
 
+      // Resolve institute logo from MySQL institute table
       const rawLogo = instituteLogoMap.get(iid);
       const instituteLogoUrl = rawLogo ? this.CloudStorageService.getFullUrl(rawLogo) : undefined;
+
+      // Summary counters - by institute
+      if (!byInstitute[iid]) {
+        byInstitute[iid] = { instituteName, instituteLogoUrl, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+      }
+
+      // Summary counters - by student (when children included)
+      if (child && childrenIds.includes(sid)) {
+        if (!byStudent[sid]) {
+          byStudent[sid] = { studentName, studentImageUrl, totalRecords: 0, totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, attendanceRate: 0 };
+        }
+        byStudent[sid].totalRecords++;
+      }
+
+      // Status counters
+      if (r.status === AttendanceStatus.PRESENT) { totalPresent++; byInstitute[iid].totalPresent++; if (byStudent[sid]) byStudent[sid].totalPresent++; }
+      else if (r.status === AttendanceStatus.ABSENT) { totalAbsent++; byInstitute[iid].totalAbsent++; if (byStudent[sid]) byStudent[sid].totalAbsent++; }
+      else if (r.status === AttendanceStatus.LATE) { totalLate++; byInstitute[iid].totalLate++; if (byStudent[sid]) byStudent[sid].totalLate++; }
+      else if (r.status === AttendanceStatus.LEFT) { totalLeft++; byInstitute[iid].totalLeft++; if (byStudent[sid]) byStudent[sid].totalLeft++; }
+      else if (r.status === AttendanceStatus.LEFT_EARLY) { totalLeftEarly++; byInstitute[iid].totalLeftEarly++; if (byStudent[sid]) byStudent[sid].totalLeftEarly++; }
+      else if (r.status === AttendanceStatus.LEFT_LATELY) { totalLeftLately++; byInstitute[iid].totalLeftLately++; if (byStudent[sid]) byStudent[sid].totalLeftLately++; }
 
       return {
         date: r.date,
@@ -3635,10 +3175,10 @@ export class AttendanceService {
       s.attendanceRate = denom > 0 ? parseFloat(((s.totalPresent / denom) * 100).toFixed(2)) : 0;
     }
 
-    // 6. Paginate — `enriched` is already just the requested page (see pageSlice above)
-    const totalRecords = rawRecords.length;
+    // 6. Paginate
+    const totalRecords = enriched.length;
     const totalPages = Math.ceil(totalRecords / limit);
-    const paginated = enriched;
+    const paginated = enriched.slice((page - 1) * limit, page * limit);
     const presentAbsent = totalPresent + totalAbsent;
     const attendanceRate = presentAbsent > 0
       ? parseFloat(((totalPresent / presentAbsent) * 100).toFixed(2))

@@ -73,7 +73,6 @@ import { DriveFileQueryDto, DriveFileResponseDto, DriveFileListResponseDto } fro
  * DELETE /drive-access/files/:id         - Delete file
  */
 @ApiTags('Google Drive Access Management')
-@UseGuards(JwtAuthGuard)
 @Controller('drive-access')
 export class UserDriveAccessController {
   constructor(private readonly driveService: UserDriveAccessService) {}
@@ -83,6 +82,7 @@ export class UserDriveAccessController {
   // ============================================================
 
   @Get('status')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Check Google Drive connection status',
@@ -95,6 +95,7 @@ export class UserDriveAccessController {
   }
 
   @Get('connect')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Initiate Google Drive connection (one-time)',
@@ -230,6 +231,7 @@ export class UserDriveAccessController {
   }
 
   @Post('disconnect')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Disconnect Google Drive',
@@ -246,6 +248,7 @@ export class UserDriveAccessController {
   // ============================================================
 
   @Get('token')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get short-lived access token for direct Drive upload',
@@ -277,6 +280,7 @@ export class UserDriveAccessController {
   // ============================================================
 
   @Get('folder')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get organized upload folder ID',
@@ -299,6 +303,7 @@ export class UserDriveAccessController {
   }
 
   @Post('folder')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Create a custom folder in Google Drive',
@@ -321,6 +326,7 @@ export class UserDriveAccessController {
   // ============================================================
 
   @Post('files/register')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Register a file after direct upload to Google Drive',
@@ -359,6 +365,7 @@ export class UserDriveAccessController {
   }
 
   @Get('files')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'List registered files',
@@ -391,6 +398,7 @@ export class UserDriveAccessController {
   }
 
   @Get('files/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get file details' })
   @ApiParam({ name: 'id', description: 'File record ID' })
@@ -405,6 +413,7 @@ export class UserDriveAccessController {
   }
 
   @Get('files/:id/download')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Download file through backend (proxy)',
@@ -431,6 +440,7 @@ export class UserDriveAccessController {
   }
 
   @Delete('files/:id')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Delete file from Google Drive',

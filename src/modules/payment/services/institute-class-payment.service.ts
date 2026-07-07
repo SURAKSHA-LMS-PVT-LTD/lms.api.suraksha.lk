@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { ClassPayment, PaymentScope, PaymentStatus, PaymentTargetType } from '../entities/class-payment.entity';
-import { ClassPaymentSubmission, SubmissionStatus } from '../entities/class-payment-submission.entity';
+import { InstituteClassPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-payment.entity';
+import { InstituteClassPaymentSubmission, SubmissionStatus } from '../entities/institute-class-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
@@ -23,10 +23,10 @@ export class InstituteClassPaymentService {
   private readonly logger = new Logger(InstituteClassPaymentService.name);
 
   constructor(
-    @InjectRepository(ClassPayment)
-    private readonly paymentRepository: Repository<ClassPayment>,
-    @InjectRepository(ClassPaymentSubmission)
-    private readonly submissionRepository: Repository<ClassPaymentSubmission>,
+    @InjectRepository(InstituteClassPayment)
+    private readonly paymentRepository: Repository<InstituteClassPayment>,
+    @InjectRepository(InstituteClassPaymentSubmission)
+    private readonly submissionRepository: Repository<InstituteClassPaymentSubmission>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(InstituteUserEntity)
@@ -76,7 +76,6 @@ export class InstituteClassPaymentService {
     }
     const timestamp = new Date();
     const payment = this.paymentRepository.create({
-      scope: PaymentScope.CLASS,
       instituteId, classId,
       createdBy: user.s,
       title: dto.title,
@@ -107,7 +106,7 @@ export class InstituteClassPaymentService {
     user: JwtPayload,
   ): Promise<PaginatedClassPaymentsResponseDto> {
     const [payments, total] = await this.paymentRepository.findAndCount({
-      where: { instituteId, classId, isActive: true, scope: PaymentScope.CLASS },
+      where: { instituteId, classId, isActive: true },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
@@ -144,13 +143,13 @@ export class InstituteClassPaymentService {
 
     const whereConditions: any[] = [];
     if (instituteRole === InstituteUserType.STUDENT || instituteRole === 'SUPERADMIN') {
-      whereConditions.push({ instituteId, classId, status: PaymentStatus.ACTIVE, targetType: PaymentTargetType.STUDENTS, scope: PaymentScope.CLASS });
+      whereConditions.push({ instituteId, classId, status: PaymentStatus.ACTIVE, targetType: PaymentTargetType.STUDENTS });
     }
     if (instituteRole === InstituteUserType.PARENT || instituteRole === 'SUPERADMIN') {
-      whereConditions.push({ instituteId, classId, status: PaymentStatus.ACTIVE, targetType: PaymentTargetType.PARENTS, scope: PaymentScope.CLASS });
+      whereConditions.push({ instituteId, classId, status: PaymentStatus.ACTIVE, targetType: PaymentTargetType.PARENTS });
     }
     // BOTH target type
-    whereConditions.push({ instituteId, classId, status: PaymentStatus.ACTIVE, targetType: PaymentTargetType.BOTH, scope: PaymentScope.CLASS });
+    whereConditions.push({ instituteId, classId, status: PaymentStatus.ACTIVE, targetType: PaymentTargetType.BOTH });
 
     const [payments, total] = await this.paymentRepository.findAndCount({
       where: whereConditions,
@@ -470,8 +469,7 @@ export class InstituteClassPaymentService {
       const qb = this.submissionRepository.createQueryBuilder('submission')
         .innerJoinAndSelect('submission.payment', 'payment')
         .where('payment.instituteId = :instituteId', { instituteId })
-        .andWhere('payment.classId = :classId', { classId })
-        .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS });
+        .andWhere('payment.classId = :classId', { classId });
 
       if (status && Object.values(SubmissionStatus).includes(status as SubmissionStatus)) {
         qb.andWhere('submission.status = :status', { status });
@@ -522,8 +520,7 @@ export class InstituteClassPaymentService {
       .innerJoinAndSelect('submission.payment', 'payment')
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId IN (:...classIds)', { classIds })
-      .andWhere('submission.userId = :studentId', { studentId })
-      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS });
+      .andWhere('submission.userId = :studentId', { studentId });
 
     qb.orderBy('submission.uploadedAt', 'DESC').take(limit);
     const submissions = await qb.getMany();
@@ -558,8 +555,7 @@ export class InstituteClassPaymentService {
       .innerJoinAndSelect('submission.payment', 'payment')
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
-      .andWhere('submission.userId = :studentId', { studentId })
-      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS });
+      .andWhere('submission.userId = :studentId', { studentId });
 
     qb.orderBy('submission.uploadedAt', 'DESC').skip((page - 1) * limit).take(limit);
     const [submissions, total] = await qb.getManyAndCount();
@@ -584,7 +580,6 @@ export class InstituteClassPaymentService {
       .addSelect(`SUM(CASE WHEN submission.status = '${SubmissionStatus.REJECTED}' THEN 1 ELSE 0 END)`, 'rejectedSubmissions')
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
-      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS })
       .getRawOne();
 
     const total = parseInt(stats.totalSubmissions) || 0;
@@ -601,9 +596,6 @@ export class InstituteClassPaymentService {
     page: number = 1,
     limit: number = 20,
     user: JwtPayload,
-    search?: string,
-    status?: string,
-    paymentTier?: string,
   ) {
     try {
       // Validate inputs
@@ -642,10 +634,15 @@ export class InstituteClassPaymentService {
         this.logger.log(`[studentsDetails] raw count for class=${classId} institute=${instituteId}: ${rawCount}`);
         totalStudents = rawCount;
 
-        // Load ALL class students for filtering
+        const pageSize = Math.max(1, Math.min(limit, 100));
+        const offset  = Math.max(0, (page - 1) * pageSize);
+
+        // Load class students
         classStudents = await this.classStudentRepository.find({
           where: { instituteId, classId },
           order: { createdAt: 'DESC' },
+          skip: offset,
+          take: pageSize,
         });
 
         this.logger.log(`[studentsDetails] classStudents=${classStudents.length} totalStudents=${totalStudents}`);
@@ -803,45 +800,15 @@ export class InstituteClassPaymentService {
         }
       }).filter(s => s !== null);
 
-      // --- Apply Filters ---
-      let filteredStudents = enrichedStudents as any[];
-
-      if (search) {
-        const lowerSearch = search.toLowerCase();
-        filteredStudents = filteredStudents.filter(s =>
-          (s.studentName || '').toLowerCase().includes(lowerSearch) ||
-          (s.instituteUserId || '').toLowerCase().includes(lowerSearch) ||
-          (s.studentId || '').toLowerCase().includes(lowerSearch)
-        );
-      }
-
-      if (status && status !== 'ALL' && status !== 'all') {
-        filteredStudents = filteredStudents.filter(s => {
-          if (status === 'NOT_SUBMITTED') return s.submissionStatus === 'NOT_SUBMITTED';
-          return s.submissionStatus === status;
-        });
-      }
-
-      // (Optional) paymentTier filtering if applicable in the future
-      if (paymentTier && paymentTier !== 'all') {
-        // Implementation for paymentTier filtering if needed
-      }
-
-      // --- Apply Pagination on Filtered Array ---
-      const totalFiltered = filteredStudents.length;
-      const pageSize = Math.max(1, Math.min(limit, 100));
-      const offset = Math.max(0, (page - 1) * pageSize);
-      const paginatedStudents = filteredStudents.slice(offset, offset + pageSize);
-
-      this.logger.log(`[studentsDetails] enrichedStudents=${enrichedStudents.length}, filtered=${totalFiltered}, paginated=${paginatedStudents.length}`);
+      this.logger.log(`[studentsDetails] enrichedStudents=${enrichedStudents.length}`);
 
       return {
         success: true,
-        data: paginatedStudents,
-        total: totalFiltered,
+        data: enrichedStudents,
+        total: totalStudents,
         page,
         limit,
-        totalPages: Math.ceil(totalFiltered / limit),
+        totalPages: Math.ceil(totalStudents / limit),
         summary: {
           totalStudents,
           verified: verifiedCount,
@@ -968,7 +935,7 @@ export class InstituteClassPaymentService {
     }
   }
 
-  private mapPaymentToResponse(payment: ClassPayment): InstituteClassPaymentResponseDto {
+  private mapPaymentToResponse(payment: InstituteClassPayment): InstituteClassPaymentResponseDto {
     return {
       id: payment.id,
       instituteId: payment.instituteId,
@@ -994,7 +961,7 @@ export class InstituteClassPaymentService {
     };
   }
 
-  private mapSubmissionToResponse(submission: ClassPaymentSubmission): InstituteClassPaymentSubmissionResponseDto {
+  private mapSubmissionToResponse(submission: InstituteClassPaymentSubmission): InstituteClassPaymentSubmissionResponseDto {
     return {
       id: submission.id,
       paymentId: submission.paymentId,
@@ -1038,12 +1005,11 @@ export class InstituteClassPaymentService {
 
       // Get all active payments for this class (must be both active and ACTIVE status)
       const payments = await this.paymentRepository.find({
-        where: {
-          instituteId,
-          classId,
+        where: { 
+          instituteId, 
+          classId, 
           isActive: true,
-          status: PaymentStatus.ACTIVE,
-          scope: PaymentScope.CLASS,
+          status: PaymentStatus.ACTIVE 
         },
         relations: ['submissions'],
         order: { createdAt: 'DESC' },

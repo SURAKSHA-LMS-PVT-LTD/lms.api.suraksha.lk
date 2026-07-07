@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exclude, Expose, Type } from 'class-transformer';
-import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class InstituteClassSubjectExamResponseDto {
   @ApiProperty({
@@ -96,7 +95,6 @@ export class InstituteClassSubjectExamResponseDto {
   })
   @Type(() => Date)
   @Expose()
-    @IsAfter('startTime')
   endTime: Date;
 
   @ApiPropertyOptional({

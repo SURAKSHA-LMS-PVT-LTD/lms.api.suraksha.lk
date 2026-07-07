@@ -1,6 +1,6 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsNumber, MaxLength, Min, Max, IsDecimal } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentTargetType, PaymentPriority } from '../entities/class-payment.entity';
+import { PaymentTargetType, PaymentPriority } from '../entities/institute-class-subject-payment.entity';
 import { Transform } from 'class-transformer';
 
 export class CreateInstituteClassPaymentDto {

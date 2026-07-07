@@ -21,23 +21,6 @@ export class FeaturePermissionsService {
     private readonly dataSource: DataSource,
   ) {}
 
-  private async findUserType(instituteId: string, handle: string) {
-    const normalized = handle.trim();
-
-    const byId = await this.userTypeRepo.findOne({ where: { id: normalized, instituteId } });
-    if (byId) return byId;
-
-    const bySlug = await this.userTypeRepo.findOne({ where: { instituteId, slug: normalized } });
-    if (bySlug) return bySlug;
-
-    if (normalized.startsWith('system-')) {
-      const aliasSlug = normalized.slice('system-'.length).replace(/-/g, '_');
-      return this.userTypeRepo.findOne({ where: { instituteId, slug: aliasSlug } });
-    }
-
-    return null;
-  }
-
   private cacheKey(instituteId: string, userTypeId: string) {
     return `rbac:perm:${instituteId}:${userTypeId}`;
   }
@@ -75,7 +58,7 @@ export class FeaturePermissionsService {
   }
 
   async listForUserType(instituteId: string, userTypeId: string): Promise<FeaturePermissionDto[]> {
-    const userType = await this.findUserType(instituteId, userTypeId);
+    const userType = await this.userTypeRepo.findOne({ where: { id: userTypeId, instituteId } });
     if (!userType) throw new NotFoundException('User type not found');
 
     const rows = await this.repo.find({ where: { instituteId, userTypeId } });
@@ -95,7 +78,7 @@ export class FeaturePermissionsService {
     userTypeId: string,
     dto: BulkUpdatePermissionsDto,
   ): Promise<void> {
-    const userType = await this.findUserType(instituteId, userTypeId);
+    const userType = await this.userTypeRepo.findOne({ where: { id: userTypeId, instituteId } });
     if (!userType) throw new NotFoundException('User type not found');
 
     if (!dto.permissions.length) {

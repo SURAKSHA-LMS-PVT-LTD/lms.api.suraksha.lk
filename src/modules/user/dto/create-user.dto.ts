@@ -56,17 +56,6 @@ export class CreateUserDto {
   nameWithInitials: string;
 
   @ApiPropertyOptional({ 
-    description: 'Full name of the user', 
-    example: 'John Doe',
-    maxLength: 150
-  })
-  @IsOptional()
-  @IsString()
-  @Length(1, 150)
-  @Transform(({ value }) => value?.trim())
-  fullName?: string;
-
-  @ApiPropertyOptional({ 
     description: 'Email address (optional, automatically converted to lowercase)', 
     example: 'john.doe@example.com',
     maxLength: 60

@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
-import { ClassPaymentSubmission } from '../../payment/entities/class-payment-submission.entity';
+import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 
 @Injectable()
 export class TrackingAccessService {
@@ -12,8 +12,8 @@ export class TrackingAccessService {
     private readonly classStudentRepo: Repository<InstituteClassStudentEntity>,
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepo: Repository<InstituteClassSubjectStudent>,
-    @InjectRepository(ClassPaymentSubmission)
-    private readonly paymentSubmissionRepo: Repository<ClassPaymentSubmission>,
+    @InjectRepository(InstituteClassSubjectPaymentSubmission)
+    private readonly paymentSubmissionRepo: Repository<InstituteClassSubjectPaymentSubmission>,
   ) {}
 
   async checkEnrollment(

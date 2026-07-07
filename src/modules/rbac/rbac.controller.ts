@@ -176,7 +176,7 @@ export class RbacController {
   @ApiResponse({ status: 200, type: [FeaturePermissionDto] })
   async getPermissions(
     @Param('instituteId', ParseIdPipe) instituteId: string,
-    @Param('typeId') typeId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
   ): Promise<FeaturePermissionDto[]> {
     return this.permissionsService.listForUserType(instituteId, typeId);
   }
@@ -187,7 +187,7 @@ export class RbacController {
   @ApiOperation({ summary: 'Bulk-update the permission matrix for a user type' })
   async updatePermissions(
     @Param('instituteId', ParseIdPipe) instituteId: string,
-    @Param('typeId') typeId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
     @Body() dto: BulkUpdatePermissionsDto,
   ): Promise<{ success: boolean }> {
     await this.permissionsService.bulkUpdate(instituteId, typeId, dto);
@@ -203,7 +203,7 @@ export class RbacController {
   @ApiResponse({ status: 200, type: UserTypeMembersResponseDto })
   async getMembers(
     @Param('instituteId', ParseIdPipe) instituteId: string,
-    @Param('typeId') typeId: string,
+    @Param('typeId', ParseIdPipe) typeId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('search') search?: string,

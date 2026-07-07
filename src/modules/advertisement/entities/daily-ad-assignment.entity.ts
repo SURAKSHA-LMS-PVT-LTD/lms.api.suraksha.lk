@@ -28,7 +28,7 @@ export class DailyAdAssignmentEntity {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @Column({ name: 'user_id', type: 'bigint' })
+  @Column({ name: 'user_id', type: 'varchar', length: 36 })
   userId: string;
 
   @Column({ name: 'ad_id', type: 'varchar', length: 36 })

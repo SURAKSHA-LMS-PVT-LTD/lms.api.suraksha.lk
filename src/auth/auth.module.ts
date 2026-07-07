@@ -30,7 +30,6 @@ import { InstituteLoginSessionEntity } from './entities/institute-login-session.
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 // ✅ NEW: Flexible access guard (simplified - one guard for all)
 import { FlexibleAccessGuard } from './guards/flexible-access.guard';
-import { InstituteLoginThrottlerGuard } from './guards/institute-login-throttler.guard';
 // ✅ JWT v2: Children access guard for parent access validation
 import { ChildrenAccessGuard } from './guards/children-access.guard';
 import { InstituteSelectionController } from './institute-selection.controller';
@@ -115,12 +114,11 @@ import { TenantModule } from '../modules/tenant/tenant.module';
   ],
   controllers: [AuthController, AuthV2Controller, AuthMobileController, InstituteSelectionController, FirstLoginController, InstituteAuthController, PasswordResetController],
   providers: [
-    AuthService,
-    JwtStrategy,
-    PasswordMigrationService,
-    DatabaseResetService,
+    AuthService, 
+    JwtStrategy, 
+    PasswordMigrationService, 
+    DatabaseResetService, 
     FirstLoginService,
-    InstituteLoginThrottlerGuard,
     EmailService,
     AwsSesEmailService,
     EnhancedEmailService, // Lambda email service (AWS)

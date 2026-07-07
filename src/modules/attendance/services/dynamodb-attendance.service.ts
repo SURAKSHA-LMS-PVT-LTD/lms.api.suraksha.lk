@@ -6,7 +6,6 @@ import { QueryCommandInput, PutItemCommandInput, UpdateItemCommandInput, DeleteI
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { MarkAttendanceDto, BulkAttendanceDto, AttendanceStatus, MarkingMethod } from '../dto/attendance.dto';
 import { MarkAttendanceByCardDto, BulkCardAttendanceDto } from '../dto/card-attendance.dto';
-import { SystemConfigService } from '../../../common/services/system-config.service';
 
 export interface AttendanceRecord {
   id: string;        // Base64url-encoded PK~SK — used for deep-link lookup (no GSI needed)
@@ -44,10 +43,7 @@ export class DynamoDBAttendanceService {
   private readonly tableName: string;
   private readonly gsiName: string;
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly systemConfigService: SystemConfigService,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     // Initialize DynamoDB client
     this.dynamoClient = new DynamoDBClient({
       region: this.configService.get('AWS_REGION', 'us-east-1'),
@@ -142,7 +138,7 @@ export class DynamoDBAttendanceService {
 
   // Calculate TTL timestamp
   private calculateTTL(): number {
-    const ttlYears = this.systemConfigService.getSync('ATTENDANCE', 'TTL_YEARS', '7');
+    const ttlYears = this.configService.get('ATTENDANCE_TTL_YEARS', '7');
     const ttlSeconds = parseInt(ttlYears) * 365 * 24 * 60 * 60;
     return Math.floor(Date.now() / 1000) + ttlSeconds;
   }
@@ -290,9 +286,6 @@ export class DynamoDBAttendanceService {
     }
     if (attendance.markingMethod) {
       record.markingMethod = attendance.markingMethod;
-    }
-    if (attendance.markedBy) {
-      record.markedBy = attendance.markedBy;
     }
 
     // Add user type if provided (STUDENT, TEACHER, INSTITUTE_ADMIN, etc.)
@@ -516,7 +509,6 @@ export class DynamoDBAttendanceService {
       calendarDayId: (bulkData as any).calendarDayId,  // ✅ BUG-001 FIX: calendar linkage
       eventId: (bulkData as any).defaultEventId || (bulkData as any).eventId,  // ✅ BUG-001 FIX: event linkage
       userType: (bulkData as any).userTypeMap?.get(studentData.studentId) || undefined, // user type from service
-      markedBy: (bulkData as any).markedBy,
     }));
 
     // Use true batch operations for maximum performance
@@ -1040,10 +1032,11 @@ export class DynamoDBAttendanceService {
       attributeNames['#subjectId'] = 'subjectId';
       attributeValues[':classId'] = classId;
       attributeValues[':defaultSubject'] = 'default';
+    } else if (!classId && !subjectId) {
+      filterConditions.push('(attribute_not_exists(#classId) OR #classId = :defaultClass)');
+      attributeNames['#classId'] = 'classId';
+      attributeValues[':defaultClass'] = 'default';
     }
-    // Institute-wide (no classId/subjectId given): no further filter — every class's
-    // attendance rolls up into the institute view. Previously this restricted to only
-    // classless rows, which hid ~96% of real attendance (everything class/session-scoped).
 
     if (startDate && endDate) {
       filterConditions.push('#date >= :startDate AND #date <= :endDate');

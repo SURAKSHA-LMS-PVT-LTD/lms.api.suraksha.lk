@@ -11,7 +11,6 @@ import { StudentEntity } from '../../student/entities/student.entity';
 import { ParentEntity } from '../../parent/entities/parent.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { NOTIFICATION_PACKAGES_CONFIG } from './notification-packages.config';
-import { SystemConfigService } from '../../../common/services/system-config.service';
 
 export interface AdvertisementDeliveryResult {
   success: boolean;
@@ -61,26 +60,11 @@ export interface AttendanceWithAdvertisement {
 @Injectable()
 export class AdvertisementDeliveryService {
   private readonly logger = new Logger(AdvertisementDeliveryService.name);
-
-  private get adsDeliveryEnabled(): boolean {
-    return this.systemConfigService.getSync('ADS', 'ENABLE_ADVERTISEMENT_DELIVERY', 'false') === 'true';
-  }
-
-  private get isAdsFromDatabase(): boolean {
-    return this.systemConfigService.getSync('ADS', 'IS_ADS_FROM_DB', 'true') === 'true';
-  }
-
-  private get defaultAdTitle(): string {
-    return this.systemConfigService.getSync('ADS', 'DEFAULT_AD_TITLE', 'LaaS Platform');
-  }
-
-  private get defaultAdContent(): string {
-    return this.systemConfigService.getSync('ADS', 'DEFAULT_AD_CONTENT', 'Quality Education Management System');
-  }
-
-  private get defaultAdMediaUrl(): string {
-    return this.systemConfigService.getSync('ADS', 'DEFAULT_AD_MEDIA_URL', 'https://example.com/ad.jpg');
-  }
+  private readonly adsDeliveryEnabled: boolean;
+  private readonly isAdsFromDatabase: boolean;
+  private readonly defaultAdTitle: string;
+  private readonly defaultAdContent: string;
+  private readonly defaultAdMediaUrl: string;
 
   constructor(
     @InjectRepository(AdvertisementEntity)
@@ -97,8 +81,15 @@ export class AdvertisementDeliveryService {
     private readonly advertisementCacheService: AdvertisementCacheService,
     private readonly attendanceNotificationService: AttendanceNotificationService,
     private readonly dataSource: DataSource,
-    private readonly systemConfigService: SystemConfigService,
-  ) {}
+  ) {
+    // Load configuration from environment
+    this.adsDeliveryEnabled = process.env.ENABLE_ADVERTISEMENT_DELIVERY === 'true';
+    this.isAdsFromDatabase = process.env.IS_ADS_FROM_DB === 'true';
+    this.defaultAdTitle = process.env.DEFAULT_AD_TITLE || 'LaaS Platform';
+    this.defaultAdContent = process.env.DEFAULT_AD_CONTENT || 'Quality Education Management System';
+    this.defaultAdMediaUrl = process.env.DEFAULT_AD_MEDIA_URL || 'https://example.com/ad.jpg';
+
+  }
 
   /**
    * Send attendance notification with matched advertisement

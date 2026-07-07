@@ -11,7 +11,7 @@ import { LectureRecordingSession } from './entities/lecture_recording_session.en
 import { LectureRecordingActivity } from './entities/lecture_recording_activity.entity';
 import { InstituteClassStudentEntity } from '../../institute_class_modules/institute_class_student/entities/institute_class_student.entity';
 import { InstituteClassSubjectStudent } from '../institute_class_subject_students/entities/institute_class_subject_student.entity';
-import { ClassPaymentSubmission } from '../../payment/entities/class-payment-submission.entity';
+import { InstituteClassSubjectPaymentSubmission } from '../../payment/entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { formatSriLankaDateTime, formatSriLankaTime, now } from '../../../common/utils/timezone.util';
 import {
@@ -55,8 +55,8 @@ export class LectureTrackingService {
     private readonly classStudentRepo: Repository<InstituteClassStudentEntity>,
     @InjectRepository(InstituteClassSubjectStudent)
     private readonly subjectStudentRepo: Repository<InstituteClassSubjectStudent>,
-    @InjectRepository(ClassPaymentSubmission)
-    private readonly paymentSubmissionRepo: Repository<ClassPaymentSubmission>,
+    @InjectRepository(InstituteClassSubjectPaymentSubmission)
+    private readonly paymentSubmissionRepo: Repository<InstituteClassSubjectPaymentSubmission>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
   ) {}

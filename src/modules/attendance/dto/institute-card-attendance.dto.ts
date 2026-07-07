@@ -3,21 +3,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AttendanceStatus, MarkingMethod } from './attendance.dto';
 
 export class MarkAttendanceByInstituteCardDto {
-  @ApiPropertyOptional({
-    description: 'Institute Card ID (from institute_user table). Exactly one of instituteCardId / userIdByInstitute is required.',
-    example: 'CARD001'
+  @ApiProperty({ 
+    description: 'Institute Card ID (from institute_user table)', 
+    example: 'CARD001' 
   })
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  instituteCardId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Institute-assigned user ID (from institute_user table) — alternative to instituteCardId, e.g. for marking by typed-in ID instead of a physical card.',
-    example: 'STU2024001'
-  })
-  @IsOptional()
-  @IsString()
-  userIdByInstitute?: string;
+  instituteCardId: string;
 
   @ApiProperty({ 
     description: 'Institute ID', 
@@ -91,29 +83,12 @@ export class MarkAttendanceByInstituteCardDto {
   @IsEnum(AttendanceStatus)
   status: AttendanceStatus;
 
-  @ApiPropertyOptional({
-    description: 'Location/Address (auto-generated if not provided)'
+  @ApiPropertyOptional({ 
+    description: 'Location/Address (auto-generated if not provided)' 
   })
   @IsOptional()
   @IsString()
   location?: string;
-
-  @ApiPropertyOptional({
-    description: 'Calendar event ID — enables checkout detection (a second scan today becomes the checkout instead of a duplicate check-in) and time-based status auto-resolution (present/late/left-early from the event\'s time rules). If omitted, attendance auto-links to the default Regular Classes event for today.',
-  })
-  @IsOptional()
-  @IsString()
-  eventId?: string;
-
-  @ApiPropertyOptional({ description: 'Class session ID — links this attendance record to a specific session and enables checkout detection for it' })
-  @IsOptional()
-  @IsString()
-  classSessionId?: string;
-
-  @ApiPropertyOptional({ description: 'Calendar day ID — links this attendance record to a specific calendar day' })
-  @IsOptional()
-  @IsString()
-  calendarDayId?: string;
 }
 
 export class GetInstituteUserByCardDto {

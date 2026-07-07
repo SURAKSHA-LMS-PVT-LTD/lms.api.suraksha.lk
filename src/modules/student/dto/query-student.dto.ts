@@ -29,11 +29,6 @@ export class QueryStudentDto extends PaginationDto {
   @IsString()
   instituteId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by class ID' })
-  @IsOptional()
-  @IsString()
-  classId?: string;
-
   @ApiPropertyOptional({
     description: 'Field to sort by',
     enum: ['userId', 'studentId', 'class', 'admissionDate', 'createdAt', 'updatedAt'],

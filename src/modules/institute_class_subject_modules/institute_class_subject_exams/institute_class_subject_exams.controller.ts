@@ -398,8 +398,8 @@ export class InstituteClassSubjectExamsController {
   })
   @ApiParam({ name: 'id', description: 'Exam ID' })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseIdPipe) id: string, @Request() req: any): Promise<void> {
-    return this.instituteClassSubjectExamsService.remove(id, req.user);
+  async remove(@Param('id', ParseIdPipe) id: string): Promise<void> {
+    return this.instituteClassSubjectExamsService.remove(id);
   }
 
   @Delete(':id/soft')

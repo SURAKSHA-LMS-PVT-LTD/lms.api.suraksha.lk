@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { getCurrentSriLankaTime } from '../../../common/utils/timezone.util';
-import { SystemConfigService } from '../../../common/services/system-config.service';
 
 // Entities
 import { InstituteSmsCredentialsEntity, SmsVerificationStage } from '../entities/institute-sms-credentials.entity';
@@ -57,7 +56,6 @@ export class SmsEnhancedService {
     private readonly studentRepo: Repository<StudentEntity>,
     private readonly configService: ConfigService,
     private readonly smsProviderService: SmsProviderService,
-    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   /**
@@ -101,7 +99,7 @@ export class SmsEnhancedService {
       // STEP 4: CALCULATE COST
       // ============================================================================
       const costPerMessage = parseFloat(
-        await this.systemConfigService.get('SMS', 'CREDIT_PER_SMS', '1.0')
+        this.configService.get('CREDIT_PER_SMS', '1.0')
       );
       const totalCost = totalRecipients * costPerMessage;
 
@@ -121,7 +119,9 @@ export class SmsEnhancedService {
       // ============================================================================
       // STEP 6: DETERMINE APPROVAL REQUIRED
       // ============================================================================
-      const maxBulkCount = await this.systemConfigService.getNumber('SMS', 'MAX_BULK_COUNT_DEFAULT', 1000);
+      const maxBulkCount = parseInt(
+        this.configService.get('SMS_MAX_BULK_COUNT_DEFAULT', '1000')
+      );
       
       const requiresApproval = this.determineApprovalRequired(
         credentials.verificationStage,
@@ -568,7 +568,7 @@ export class SmsEnhancedService {
     }
 
     // Deduct credits now (wasn't deducted when campaign was created)
-    const costPerMessage = parseFloat(await this.systemConfigService.get('SMS', 'CREDIT_PER_SMS', '1.0'));
+    const costPerMessage = parseFloat(this.configService.get('CREDIT_PER_SMS', '1.0'));
     const totalCost = phoneNumbers.size * costPerMessage;
 
 

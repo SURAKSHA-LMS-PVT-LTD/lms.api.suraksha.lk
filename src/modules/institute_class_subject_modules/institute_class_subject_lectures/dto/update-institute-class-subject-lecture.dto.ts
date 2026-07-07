@@ -5,7 +5,6 @@ import { IsEnum, IsOptional, IsString, IsBoolean, IsUrl, IsNumber, IsInt, IsDate
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { InstituteClassSubjectLectureResponseDto } from './Institute-class-subject-lecture-response.dto';
-import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class UpdateInstituteClassSubjectLectureDto {
   @ApiProperty({ description: 'Lecture title' })
@@ -31,7 +30,6 @@ export class UpdateInstituteClassSubjectLectureDto {
   @ApiProperty({ description: 'Lecture end time (ISO string)' })
   @IsOptional()
   @IsDateString()
-    @IsAfter('startTime')
   endTime?: string;
 
   @ApiProperty({ enum: LectureStatus, description: 'Lecture status' })

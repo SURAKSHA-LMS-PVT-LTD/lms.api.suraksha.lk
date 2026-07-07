@@ -1,5 +1,4 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class InstituteClassSubjectLectureResponseDto {
   @ApiProperty({ description: 'Lecture ID' })
@@ -33,7 +32,6 @@ export class InstituteClassSubjectLectureResponseDto {
   startTime: Date;
 
   @ApiProperty({ description: 'End time' })
-    @IsAfter('startTime')
   endTime: Date;
 
   @ApiProperty({ description: 'Lecture status' })

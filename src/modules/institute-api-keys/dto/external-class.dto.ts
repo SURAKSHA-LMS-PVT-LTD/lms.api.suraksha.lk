@@ -1,6 +1,5 @@
 import { IsString, IsNotEmpty, IsOptional, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsAfter } from "../../../common/validators/is-after.validator";
 
 /**
  * Body for creating (generating) a class attendance session via API key.
@@ -27,7 +26,6 @@ export class CreateExternalSessionDto {
   @ApiPropertyOptional({ description: 'Session end time (HH:MM, 24h)', example: '10:00' })
   @IsOptional()
   @Matches(/^([01]?\d|2[0-3]):[0-5]\d$/, { message: 'endTime must be HH:MM' })
-    @IsAfter('startTime')
   endTime?: string;
 }
 

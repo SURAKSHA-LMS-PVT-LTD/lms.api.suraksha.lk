@@ -6,7 +6,6 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ApiKeyOrJwtGuard } from '../../auth/guards/api-key-or-jwt.guard';
 import { Public } from '../decorators/public.decorator';
 import { ConfigService } from '@nestjs/config';
-import { SystemConfigService } from '../services/system-config.service';
 import { Response } from 'express';
 import * as https from 'https';
 import * as http from 'http';
@@ -60,8 +59,7 @@ export class UploadController {
 
   constructor(
     private readonly cloudStorageService: CloudStorageService,
-    private readonly configService: ConfigService,
-    private readonly systemConfigService: SystemConfigService,
+    private readonly configService: ConfigService
   ) {}
 
   @Get('get-signed-url')
@@ -735,46 +733,44 @@ export class UploadController {
    * Reads max file size from environment variables
    */
   private validateFileSize(fileSize: number, folder: string): void {
-    // Max file sizes (in MB) — live-editable via system_config (group UPLOAD_LIMITS),
-    // cache pre-warmed at startup; getSync() falls back to the default below on a
-    // cache miss and triggers an async refill for next time.
-    const mb = (key: string, def: number) => this.systemConfigService.getSync('UPLOAD_LIMITS', key, String(def));
+    // Get max file sizes from environment variables (in MB), with defaults
+    // S3 uploads: 5MB max for all user uploads, 10MB for system admin (advertisements)
     const maxSizes: Record<string, number> = {
-      'profile-images': Number(mb('MAX_PROFILE_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'student-images': Number(mb('MAX_STUDENT_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-images': Number(mb('MAX_INSTITUTE_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-user-images': Number(mb('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'subject-images': Number(mb('MAX_SUBJECT_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'homework-files': Number(mb('MAX_HOMEWORK_FILE_SIZE_MB', 5)) * 1024 * 1024,
-      'correction-files': Number(mb('MAX_CORRECTION_FILE_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-payment-receipts': Number(mb('MAX_PAYMENT_RECEIPT_SIZE_MB', 5)) * 1024 * 1024,
-      'subject-payment-receipts': Number(mb('MAX_PAYMENT_RECEIPT_SIZE_MB', 5)) * 1024 * 1024,
-      'enrollment-payment-receipts': Number(mb('MAX_PAYMENT_RECEIPT_SIZE_MB', 5)) * 1024 * 1024,
-      'id-documents': Number(mb('MAX_ID_DOCUMENT_SIZE_MB', 5)) * 1024 * 1024,
-      'bookhire-vehicle-images': Number(mb('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'bookhire-owner-images': Number(mb('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'lecture-thumbnails': Number(mb('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-branding': Number(mb('MAX_INSTITUTE_BRANDING_SIZE_MB', 5)) * 1024 * 1024,
-      'class-lesson-groups': Number(mb('MAX_CLASS_LESSON_GROUP_SIZE_MB', 5)) * 1024 * 1024,
+      'profile-images': this.configService.get<number>('MAX_PROFILE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'student-images': this.configService.get<number>('MAX_STUDENT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-user-images': this.configService.get<number>('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'subject-images': this.configService.get<number>('MAX_SUBJECT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
+      'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
+      'institute-branding': this.configService.get<number>('MAX_INSTITUTE_BRANDING_SIZE_MB', 5) * 1024 * 1024,
+      'class-lesson-groups': this.configService.get<number>('MAX_CLASS_LESSON_GROUP_SIZE_MB', 5) * 1024 * 1024,
     };
 
     const maxSize = maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB
-
+    
     if (fileSize > maxSize) {
       const maxSizeMB = (maxSize / 1024 / 1024).toFixed(2);
       const currentSizeMB = (fileSize / 1024 / 1024).toFixed(2);
-
+      
       throw new BadRequestException(
         `File size too large. Maximum allowed size for ${folder}: ${maxSizeMB} MB. Your file: ${currentSizeMB} MB`
       );
     }
 
     // Also check absolute maximum to prevent abuse (default 100MB)
-    const absoluteMax = Number(this.systemConfigService.getSync('UPLOAD_LIMITS', 'MAX_FILE_SIZE_MB', '100')) * 1024 * 1024;
+    const absoluteMax = this.configService.get<number>('MAX_FILE_SIZE_MB', 100) * 1024 * 1024;
     if (fileSize > absoluteMax) {
       const absoluteMaxMB = (absoluteMax / 1024 / 1024).toFixed(2);
       const currentSizeMB = (fileSize / 1024 / 1024).toFixed(2);
-
+      
       throw new BadRequestException(
         `File size exceeds absolute maximum limit of ${absoluteMaxMB} MB. Your file: ${currentSizeMB} MB`
       );
@@ -895,25 +891,24 @@ export class UploadController {
    * This is used to enforce Content-Length restrictions in signed URLs
    */
   private getMaxFileSizeForFolder(folder: string): number {
-    // Live-editable via system_config (group UPLOAD_LIMITS) — see validateFileSize().
-    const mb = (key: string, def: number) => this.systemConfigService.getSync('UPLOAD_LIMITS', key, String(def));
+    // S3 uploads: 5MB max for all user uploads, 10MB for system admin (advertisements)
     const maxSizes: Record<string, number> = {
-      'profile-images': Number(mb('MAX_PROFILE_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'student-images': Number(mb('MAX_STUDENT_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-images': Number(mb('MAX_INSTITUTE_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-user-images': Number(mb('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'subject-images': Number(mb('MAX_SUBJECT_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'homework-files': Number(mb('MAX_HOMEWORK_FILE_SIZE_MB', 5)) * 1024 * 1024,
-      'correction-files': Number(mb('MAX_CORRECTION_FILE_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-payment-receipts': Number(mb('MAX_PAYMENT_RECEIPT_SIZE_MB', 5)) * 1024 * 1024,
-      'subject-payment-receipts': Number(mb('MAX_PAYMENT_RECEIPT_SIZE_MB', 5)) * 1024 * 1024,
-      'enrollment-payment-receipts': Number(mb('MAX_PAYMENT_RECEIPT_SIZE_MB', 5)) * 1024 * 1024,
-      'id-documents': Number(mb('MAX_ID_DOCUMENT_SIZE_MB', 5)) * 1024 * 1024,
-      'bookhire-vehicle-images': Number(mb('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'bookhire-owner-images': Number(mb('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5)) * 1024 * 1024,
-      'lecture-thumbnails': Number(mb('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5)) * 1024 * 1024,
-      'institute-branding': Number(mb('MAX_INSTITUTE_BRANDING_SIZE_MB', 5)) * 1024 * 1024,
-      'class-lesson-groups': Number(mb('MAX_CLASS_LESSON_GROUP_SIZE_MB', 5)) * 1024 * 1024,
+      'profile-images': this.configService.get<number>('MAX_PROFILE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'student-images': this.configService.get<number>('MAX_STUDENT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-images': this.configService.get<number>('MAX_INSTITUTE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-user-images': this.configService.get<number>('MAX_INSTITUTE_USER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'subject-images': this.configService.get<number>('MAX_SUBJECT_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'homework-files': this.configService.get<number>('MAX_HOMEWORK_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'correction-files': this.configService.get<number>('MAX_CORRECTION_FILE_SIZE_MB', 5) * 1024 * 1024,
+      'institute-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'subject-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'enrollment-payment-receipts': this.configService.get<number>('MAX_PAYMENT_RECEIPT_SIZE_MB', 5) * 1024 * 1024,
+      'id-documents': this.configService.get<number>('MAX_ID_DOCUMENT_SIZE_MB', 5) * 1024 * 1024,
+      'bookhire-vehicle-images': this.configService.get<number>('MAX_BOOKHIRE_VEHICLE_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'bookhire-owner-images': this.configService.get<number>('MAX_BOOKHIRE_OWNER_IMAGE_SIZE_MB', 5) * 1024 * 1024,
+      'lecture-thumbnails': this.configService.get<number>('MAX_LECTURE_THUMBNAIL_SIZE_MB', 5) * 1024 * 1024,
+      'institute-branding': this.configService.get<number>('MAX_INSTITUTE_BRANDING_SIZE_MB', 5) * 1024 * 1024,
+      'class-lesson-groups': this.configService.get<number>('MAX_CLASS_LESSON_GROUP_SIZE_MB', 5) * 1024 * 1024,
     };
 
     return maxSizes[folder] || (5 * 1024 * 1024); // Default 5MB

@@ -135,16 +135,8 @@ export class ExternalStudentService {
     });
     if (existing) {
       // Re-activate a former enrollment rather than creating a duplicate / failing.
-      let changed = false;
       if (!existing.isActive) {
         existing.isActive = true;
-        changed = true;
-      }
-      if (record.studentType && existing.studentType !== record.studentType) {
-        existing.studentType = record.studentType;
-        changed = true;
-      }
-      if (changed) {
         existing.updatedAt = now();
         await manager.save(existing);
       }
@@ -158,7 +150,6 @@ export class ExternalStudentService {
       isActive: true,
       isVerified: true,
       enrollmentMethod: 'manual',
-      studentType: record.studentType ?? 'normal',
       createdAt: now(),
       updatedAt: now(),
     } as any);

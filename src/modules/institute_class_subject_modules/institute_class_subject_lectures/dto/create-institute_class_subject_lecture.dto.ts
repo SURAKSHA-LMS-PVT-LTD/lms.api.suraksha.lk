@@ -2,7 +2,6 @@ import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bi
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber, IsInt, IsUrl, ValidateNested, IsArray, ValidateIf, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export enum LectureType {
   ONLINE = 'online',
@@ -92,7 +91,6 @@ export class CreateInstituteClassSubjectLectureDto {
 
   @ApiProperty({ description: 'Lecture end time (ISO string)' })
   @IsDateString()
-    @IsAfter('startTime')
   endTime: string;
 
   @ApiProperty({ enum: LectureStatus, description: 'Lecture status', default: LectureStatus.SCHEDULED })
@@ -276,7 +274,6 @@ export class LectureDataDto {
 
   @ApiProperty({ description: 'Lecture end time (ISO string)' })
   @IsDateString()
-    @IsAfter('startTime')
   endTime: string;
 
   @ApiProperty({ description: 'Meeting link (for online/hybrid lectures)', required: false })

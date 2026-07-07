@@ -15,7 +15,6 @@ import { CommonModule } from '../../../common/common.module';
 import { CacheModule } from '../../../common/modules/cache.module';
 import { UsersModule } from '../../user/user.module';
 import { SmartCardsModule } from '../../smart-cards/smart-cards.module';
-import { RbacModule } from '../../rbac/rbac.module';
 
 @Module({
   imports: [
@@ -33,7 +32,6 @@ import { RbacModule } from '../../rbac/rbac.module';
     CacheModule,
     forwardRef(() => UsersModule),
     SmartCardsModule,
-    RbacModule,
   ],
   controllers: [InstitueUserController],
   providers: [

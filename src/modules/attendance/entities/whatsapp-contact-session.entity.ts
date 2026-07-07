@@ -27,7 +27,7 @@ export class WhatsAppContactSessionEntity {
    * System user ID — NULL when this phone has never logged into the app.
    * Resolved once on first inbound and cached here.
    */
-  @Column({ name: 'user_id', type: 'bigint', nullable: true })
+  @Column({ name: 'user_id', type: 'varchar', length: 64, nullable: true })
   @Index('idx_wcs_user_id')
   userId: string | null;
 

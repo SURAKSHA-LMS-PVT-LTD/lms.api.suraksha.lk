@@ -39,7 +39,6 @@ import { SmsProviderService, BulkSmsResult } from './sms-provider.service';
 import { EnhancedEmailService } from '../../../common/services/enhanced-email.service';
 import { AsyncEmailService } from '../../../common/services/async-email.service';
 import { CloudStorageService } from '../../../common/services/cloud-storage.service';
-import { SystemConfigService } from '../../../common/services/system-config.service';
 import { InstituteCreditsService } from '../../notification-credits/services/institute-credits.service';
 import { CreditTransactionType } from '../../notification-credits/entities/institute-credit-transaction.entity';
 
@@ -120,7 +119,6 @@ export class SmsService implements OnModuleDestroy {
     private readonly asyncEmailService: AsyncEmailService,
     private readonly cloudStorageService: CloudStorageService,
     private readonly instituteCreditsService: InstituteCreditsService,
-    private readonly systemConfigService: SystemConfigService,
   ) {
     this.initializeCacheCleanup();
   }
@@ -184,7 +182,7 @@ export class SmsService implements OnModuleDestroy {
       this.validateMaskAuthorization(credentials, dto.maskId);
       
       // 2b. Validate bulk send limit
-      const maxBulkLimit = await this.systemConfigService.getNumber('SMS', 'MAX_BULK_COUNT_DEFAULT', 1000);
+      const maxBulkLimit = this.configService.get<number>('SMS_MAX_BULK_COUNT_DEFAULT', 1000);
       this.validateBulkLimit(dto.customRecipients.length, maxBulkLimit);
       
       // 2c. Validate sufficient credits (ONLY control mechanism - no daily/monthly tracking)
@@ -313,7 +311,7 @@ export class SmsService implements OnModuleDestroy {
       this.validateMaskAuthorization(credentials, dto.maskId);
       
       // 3b. Validate bulk send limit (max 1000 per request by default)
-      const maxBulkLimit = await this.systemConfigService.getNumber('SMS', 'MAX_BULK_COUNT_DEFAULT', 1000);
+      const maxBulkLimit = this.configService.get<number>('SMS_MAX_BULK_COUNT_DEFAULT', 1000);
       this.validateBulkLimit(recipients.length, maxBulkLimit);
       
       // 3c. Validate sufficient credits (ONLY control mechanism - no daily/monthly tracking)
@@ -447,7 +445,7 @@ export class SmsService implements OnModuleDestroy {
 
       const credentials = await this.getCachedCredentials(instituteId, userType);
       this.validateMaskAuthorization(credentials, dto.maskId);
-      const maxBulkLimit = await this.systemConfigService.getNumber('SMS', 'MAX_BULK_COUNT_DEFAULT', 1000);
+      const maxBulkLimit = this.configService.get<number>('SMS_MAX_BULK_COUNT_DEFAULT', 1000);
       this.validateBulkLimit(recipients.length, maxBulkLimit);
       await this.validateSufficientCredits(credentials, recipients.length);
 

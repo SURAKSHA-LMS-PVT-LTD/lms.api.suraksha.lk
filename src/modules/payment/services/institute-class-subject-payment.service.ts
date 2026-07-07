@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
-import { ClassPayment, PaymentScope, PaymentStatus, PaymentTargetType } from '../entities/class-payment.entity';
-import { ClassPaymentSubmission, SubmissionStatus } from '../entities/class-payment-submission.entity';
+import { InstituteClassSubjectPayment, PaymentStatus, PaymentTargetType } from '../entities/institute-class-subject-payment.entity';
+import { InstituteClassSubjectPaymentSubmission, SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { InstituteUserEntity } from '../../institute_mudules/institue_user/entities/institue_user.entity';
 import { InstituteClassSubjectStudent } from '../../institute_class_subject_modules/institute_class_subject_students/entities/institute_class_subject_student.entity';
@@ -23,10 +23,10 @@ export class InstituteClassSubjectPaymentService {
   private readonly logger = new Logger(InstituteClassSubjectPaymentService.name);
 
   constructor(
-    @InjectRepository(ClassPayment)
-    private readonly paymentRepository: Repository<ClassPayment>,
-    @InjectRepository(ClassPaymentSubmission)
-    private readonly submissionRepository: Repository<ClassPaymentSubmission>,
+    @InjectRepository(InstituteClassSubjectPayment)
+    private readonly paymentRepository: Repository<InstituteClassSubjectPayment>,
+    @InjectRepository(InstituteClassSubjectPaymentSubmission)
+    private readonly submissionRepository: Repository<InstituteClassSubjectPaymentSubmission>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(InstituteUserEntity)
@@ -100,7 +100,6 @@ export class InstituteClassSubjectPaymentService {
     // Create payment
     const timestamp = new Date(); // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
     const payment = this.paymentRepository.create({
-      scope: PaymentScope.CLASS_SUBJECT,
       instituteId,
       classId,
       subjectId,
@@ -150,7 +149,6 @@ export class InstituteClassSubjectPaymentService {
         classId,
         subjectId,
         isActive: true, // Only show active payments
-        scope: PaymentScope.CLASS_SUBJECT,
       },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
@@ -502,7 +500,7 @@ export class InstituteClassSubjectPaymentService {
     return;
   }
 
-  private mapPaymentToResponse(payment: ClassPayment): InstituteClassSubjectPaymentResponseDto {
+  private mapPaymentToResponse(payment: InstituteClassSubjectPayment): InstituteClassSubjectPaymentResponseDto {
     return {
       id: payment.id,
       instituteId: payment.instituteId,
@@ -530,7 +528,7 @@ export class InstituteClassSubjectPaymentService {
     };
   }
 
-  private mapSubmissionToResponse(submission: ClassPaymentSubmission): InstituteClassSubjectPaymentSubmissionResponseDto {
+  private mapSubmissionToResponse(submission: InstituteClassSubjectPaymentSubmission): InstituteClassSubjectPaymentSubmissionResponseDto {
     return {
       id: submission.id,
       paymentId: submission.paymentId,
@@ -591,7 +589,6 @@ export class InstituteClassSubjectPaymentService {
         instituteId, classId, subjectId,
         status: PaymentStatus.ACTIVE,
         targetType: PaymentTargetType.STUDENTS,
-        scope: PaymentScope.CLASS_SUBJECT,
       });
     }
     if (instituteRole === InstituteUserType.PARENT || instituteRole === 'SUPERADMIN') {
@@ -599,7 +596,6 @@ export class InstituteClassSubjectPaymentService {
         instituteId, classId, subjectId,
         status: PaymentStatus.ACTIVE,
         targetType: PaymentTargetType.PARENTS,
-        scope: PaymentScope.CLASS_SUBJECT,
       });
     }
 
@@ -720,7 +716,6 @@ export class InstituteClassSubjectPaymentService {
         instituteId,
         classId,
         isActive: true, // Only show active payments
-        scope: PaymentScope.CLASS_SUBJECT,
       },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
@@ -753,7 +748,6 @@ export class InstituteClassSubjectPaymentService {
       where: {
         instituteId,
         isActive: true, // Only show active payments
-        scope: PaymentScope.CLASS_SUBJECT,
       },
       relations: ['creator', 'submissions'],
       order: { createdAt: 'DESC' },
@@ -885,7 +879,6 @@ export class InstituteClassSubjectPaymentService {
       .andWhere('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
       .andWhere('payment.subjectId = :subjectId', { subjectId })
-      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS_SUBJECT })
       .orderBy('submission.uploadedAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -1200,8 +1193,7 @@ export class InstituteClassSubjectPaymentService {
       .innerJoinAndSelect('submission.payment', 'payment')
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
-      .andWhere('payment.subjectId = :subjectId', { subjectId })
-      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS_SUBJECT });
+      .andWhere('payment.subjectId = :subjectId', { subjectId });
 
     if (status && Object.values(SubmissionStatus).includes(status as SubmissionStatus)) {
       qb.andWhere('submission.status = :status', { status });
@@ -1243,7 +1235,6 @@ export class InstituteClassSubjectPaymentService {
       .where('payment.instituteId = :instituteId', { instituteId })
       .andWhere('payment.classId = :classId', { classId })
       .andWhere('payment.subjectId = :subjectId', { subjectId })
-      .andWhere('payment.scope = :scope', { scope: PaymentScope.CLASS_SUBJECT })
       .getRawOne();
 
     const total = parseInt(stats.totalSubmissions) || 0;
@@ -1270,9 +1261,6 @@ export class InstituteClassSubjectPaymentService {
     page: number = 1,
     limit: number = 20,
     user: JwtPayload,
-    search?: string,
-    status?: string,
-    paymentTier?: string,
   ) {
     // Load the payment to resolve institute/class/subject context
     const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
@@ -1308,11 +1296,13 @@ export class InstituteClassSubjectPaymentService {
       });
     }
 
-    // Find ALL students enrolled in this class/subject (using institute-level enrollment)
+    // Find all students enrolled in this class/subject (using institute-level enrollment)
     const [memberships, totalStudents] = await this.instituteUserRepository.findAndCount({
       where: { instituteId: payment.instituteId, status: InstituteUserStatus.ACTIVE },
       relations: ['user'],
       order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     // Get all existing submissions for this payment
@@ -1344,31 +1334,6 @@ export class InstituteClassSubjectPaymentService {
       };
     });
 
-    // --- Apply Filters ---
-    let filteredStudents = studentList as any[];
-
-    if (search) {
-      const lowerSearch = search.toLowerCase();
-      filteredStudents = filteredStudents.filter(s =>
-        (s.name || '').toLowerCase().includes(lowerSearch) ||
-        (s.instituteStudentId || '').toLowerCase().includes(lowerSearch) ||
-        (s.userId || '').toLowerCase().includes(lowerSearch)
-      );
-    }
-
-    if (status && status !== 'ALL' && status !== 'all') {
-      filteredStudents = filteredStudents.filter(s => {
-        if (status === 'NOT_SUBMITTED') return s.paymentStatus === 'NOT_SUBMITTED';
-        return s.paymentStatus === status;
-      });
-    }
-
-    // --- Apply Pagination on Filtered Array ---
-    const totalFiltered = filteredStudents.length;
-    const pageSize = Math.max(1, Math.min(limit, 100));
-    const offset = Math.max(0, (page - 1) * pageSize);
-    const paginatedStudents = filteredStudents.slice(offset, offset + pageSize);
-
     return {
       success: true,
       message: 'Student payment list retrieved successfully',
@@ -1376,9 +1341,9 @@ export class InstituteClassSubjectPaymentService {
         paymentId,
         paymentTitle: payment.title,
         paymentAmount: parseFloat(String(payment.amount)),
-        students: paginatedStudents,
+        students: studentList,
         summary: {
-          total: totalFiltered,
+          total: totalStudents,
           verified: submissions.filter(s => s.status === SubmissionStatus.VERIFIED).length,
           pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
           rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
@@ -1386,10 +1351,10 @@ export class InstituteClassSubjectPaymentService {
         },
         pagination: {
           currentPage: page,
-          totalPages: Math.ceil(totalFiltered / limit),
-          totalItems: totalFiltered,
+          totalPages: Math.ceil(totalStudents / limit),
+          totalItems: totalStudents,
           itemsPerPage: limit,
-          hasNextPage: page < Math.ceil(totalFiltered / limit),
+          hasNextPage: page < Math.ceil(totalStudents / limit),
           hasPreviousPage: page > 1,
         },
       },
@@ -1410,9 +1375,6 @@ export class InstituteClassSubjectPaymentService {
     page: number = 1,
     limit: number = 20,
     user: JwtPayload,
-    search?: string,
-    status?: string,
-    paymentTier?: string,
   ) {
     // Validate caller has admin/teacher access
     const { hasAccess, instituteRole } = await this.getUserInstituteRole(user, instituteId);
@@ -1463,6 +1425,8 @@ export class InstituteClassSubjectPaymentService {
       },
       relations: ['student'],
       order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     // Batch-load institute membership info for institute-scoped fields
@@ -1507,40 +1471,15 @@ export class InstituteClassSubjectPaymentService {
       };
     });
 
-    // --- Apply Filters ---
-    let filteredStudents = students as any[];
-
-    if (search) {
-      const lowerSearch = search.toLowerCase();
-      filteredStudents = filteredStudents.filter(s =>
-        (s.nameWithInitials || '').toLowerCase().includes(lowerSearch) ||
-        (s.instituteStudentId || '').toLowerCase().includes(lowerSearch) ||
-        (s.userId || '').toLowerCase().includes(lowerSearch)
-      );
-    }
-
-    if (status && status !== 'ALL' && status !== 'all') {
-      filteredStudents = filteredStudents.filter(s => {
-        if (status === 'NOT_SUBMITTED') return s.paymentStatus === 'NOT_SUBMITTED';
-        return s.paymentStatus === status;
-      });
-    }
-
-    // --- Apply Pagination on Filtered Array ---
-    const totalFiltered = filteredStudents.length;
-    const pageSize = Math.max(1, Math.min(limit, 100));
-    const offset = Math.max(0, (page - 1) * pageSize);
-    const paginatedStudents = filteredStudents.slice(offset, offset + pageSize);
-
     return {
       success: true,
       data: {
         paymentId,
         paymentTitle: payment.title,
         paymentAmount: parseFloat(String(payment.amount)),
-        students: paginatedStudents,
+        students,
         summary: {
-          total: totalFiltered,
+          total: totalStudents,
           verified: submissions.filter(s => s.status === SubmissionStatus.VERIFIED).length,
           pending: submissions.filter(s => s.status === SubmissionStatus.PENDING).length,
           rejected: submissions.filter(s => s.status === SubmissionStatus.REJECTED).length,
@@ -1548,10 +1487,10 @@ export class InstituteClassSubjectPaymentService {
         },
         pagination: {
           currentPage: page,
-          totalPages: Math.ceil(totalFiltered / limit),
-          totalItems: totalFiltered,
+          totalPages: Math.ceil(totalStudents / limit),
+          totalItems: totalStudents,
           itemsPerPage: limit,
-          hasNextPage: page < Math.ceil(totalFiltered / limit),
+          hasNextPage: page < Math.ceil(totalStudents / limit),
           hasPreviousPage: page > 1,
         },
       },

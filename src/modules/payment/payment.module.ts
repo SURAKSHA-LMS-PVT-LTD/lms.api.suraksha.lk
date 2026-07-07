@@ -3,8 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PaymentEntity } from './entities/payment.entity';
-import { ClassPayment } from './entities/class-payment.entity';
-import { ClassPaymentSubmission } from './entities/class-payment-submission.entity';
+import { InstituteClassSubjectPayment } from './entities/institute-class-subject-payment.entity';
+import { InstituteClassSubjectPaymentSubmission } from './entities/institute-class-subject-payment-submission.entity';
+import { InstituteClassPayment } from './entities/institute-class-payment.entity';
+import { InstituteClassPaymentSubmission } from './entities/institute-class-payment-submission.entity';
 import { InstitutePayment } from './entities/institute-payment.entity';
 import { InstitutePaymentSubmission } from './entities/institute-payment-submission.entity';
 import { UserEntity } from '../user/entities/user.entity';
@@ -39,8 +41,10 @@ import { FinanceModule } from '../finance/finance.module';
     TypeOrmModule.forFeature([
       PackageDefinitionEntity,
       PaymentEntity,
-      ClassPayment,
-      ClassPaymentSubmission,
+      InstituteClassSubjectPayment,
+      InstituteClassSubjectPaymentSubmission,
+      InstituteClassPayment,
+      InstituteClassPaymentSubmission,
       InstitutePayment,
       InstitutePaymentSubmission,
       UserEntity,

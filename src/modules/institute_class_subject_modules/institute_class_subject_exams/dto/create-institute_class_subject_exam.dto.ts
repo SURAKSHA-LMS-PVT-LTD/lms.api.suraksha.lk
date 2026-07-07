@@ -2,7 +2,6 @@ import { IsBigIntId, IsOptionalBigIntId } from '../../../../common/validators/bi
 import { IsNotEmpty, IsOptional, IsString, IsEnum, IsDateString, IsNumber, IsBoolean, Min, Max, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsAfter } from "../../../../common/validators/is-after.validator";
 
 export class CreateInstituteClassSubjectExamDto {
   @ApiProperty({
@@ -104,7 +103,6 @@ export class CreateInstituteClassSubjectExamDto {
   })
   @IsNotEmpty()
   @IsString()
-    @IsAfter('startTime')
   endTime: string;
 
   @ApiPropertyOptional({

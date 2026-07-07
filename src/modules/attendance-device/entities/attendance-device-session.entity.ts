@@ -22,7 +22,7 @@ export class AttendanceDeviceSessionEntity {
   sessionToken: string;
 
   /** User who started the session (e.g. institute admin logged in on device) */
-  @Column({ name: 'user_id', type: 'bigint', nullable: true })
+  @Column({ name: 'user_id', type: 'varchar', length: 36, nullable: true })
   userId: string | null;
 
   @Column({ name: 'is_active', type: 'tinyint', width: 1, default: 1 })

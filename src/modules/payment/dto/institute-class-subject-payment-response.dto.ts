@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentTargetType, PaymentPriority, PaymentStatus } from '../entities/class-payment.entity';
-import { SubmissionStatus } from '../entities/class-payment-submission.entity';
+import { PaymentTargetType, PaymentPriority, PaymentStatus } from '../entities/institute-class-subject-payment.entity';
+import { SubmissionStatus } from '../entities/institute-class-subject-payment-submission.entity';
 import { UserType } from '../../user/enums/user-type.enum';
 
 export class InstituteClassSubjectPaymentResponseDto {

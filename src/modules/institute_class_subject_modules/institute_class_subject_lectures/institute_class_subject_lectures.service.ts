@@ -29,8 +29,6 @@ export interface QueryLectureDto {
   isActive?: boolean;
   search?: string;
   userId?: string; // For parent access validation
-  recAttendanceEnabled?: boolean;
-  liveAttendanceEnabled?: boolean;
 }
 
 @Injectable()
@@ -862,18 +860,6 @@ export class InstituteClassSubjectLecturesService {
 
     if (filters.search) {
       queryBuilder.andWhere('(lecture.title LIKE :search OR lecture.description LIKE :search)', { search: `%${filters.search}%` });
-    }
-
-    if (filters.recAttendanceEnabled !== undefined) {
-      queryBuilder.andWhere('lecture.recAttendanceEnabled = :recAttendanceEnabled', {
-        recAttendanceEnabled: filters.recAttendanceEnabled,
-      });
-    }
-
-    if (filters.liveAttendanceEnabled !== undefined) {
-      queryBuilder.andWhere('lecture.liveAttendanceEnabled = :liveAttendanceEnabled', {
-        liveAttendanceEnabled: filters.liveAttendanceEnabled,
-      });
     }
   }
 }
