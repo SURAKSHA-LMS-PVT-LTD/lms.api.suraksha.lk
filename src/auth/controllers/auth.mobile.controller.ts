@@ -14,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from '../auth.service';
 import { Request as ExpressRequest } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
+import { SkipOriginValidation } from '../../common/decorators/skip-origin-validation.decorator';
 import { getClientIp } from '../../common/utils/ip-extractor.util';
 import { 
   MobileLoginDto, 
@@ -37,6 +38,15 @@ import {
  * - Device-specific session revocation
  */
 @ApiTags('Authentication - Mobile')
+// Native mobile HTTP clients (Dalvik/OkHttp, iOS URLSession) never send an Origin
+// or Referer header — that's normal, correct behavior for a non-browser client,
+// not a spoofing attempt. OriginValidationGuard's "no origin/referer = blocked"
+// strict-mode rule was written for browser-facing routes and was silently
+// blocking every native mobile login/refresh/logout in production (403, logged
+// as "SECURITY BLOCK - No origin/referer headers"). These endpoints are already
+// protected by their own credential checks (password, refresh token, device ID),
+// so skipping origin validation here doesn't weaken security.
+@SkipOriginValidation()
 @Controller()
 export class AuthMobileController {
   constructor(private readonly authService: AuthService) {}
