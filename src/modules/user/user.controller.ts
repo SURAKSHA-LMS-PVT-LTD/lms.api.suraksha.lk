@@ -906,11 +906,11 @@ export class UsersController {
     userType: UserType;
   }> {
     const user = await this.usersService.getUserBasicInfoByRfid(rfid);
-    
+
     if (!user) {
       throw new NotFoundException('User not found or inactive');
     }
-    
+
     return user;
   }
 
