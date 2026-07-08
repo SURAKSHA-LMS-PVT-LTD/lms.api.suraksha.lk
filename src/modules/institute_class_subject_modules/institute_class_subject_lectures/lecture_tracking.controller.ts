@@ -303,6 +303,21 @@ export class LectureTrackingController {
     return this.trackingService.getRecordingActivityReport(lectureId, studentId, req.user);
   }
 
+  @Get('reports/:lectureId/recording/me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Recording session + activity report for one lecture, self-scoped to the authenticated student' })
+  async getMyRecordingReport(
+    @Param('lectureId') lectureId: string,
+    @Req() req: any,
+  ) {
+    if (!req.user?.id) {
+      throw new BadRequestException('Authenticated user is required');
+    }
+    // selfAccess = true: pinned to the caller's own id, no staff check needed.
+    return this.trackingService.getRecordingActivityReport(lectureId, req.user.id, req.user, true);
+  }
+
   @Get('student/:studentId/activities')
   @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
   @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })

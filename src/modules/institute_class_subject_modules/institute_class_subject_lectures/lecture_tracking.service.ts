@@ -1228,12 +1228,21 @@ export class LectureTrackingService {
     }));
   }
 
-  async getRecordingActivityReport(lectureId: string, studentId?: string, requestUser?: EnhancedJwtPayload) {
-    // Exposes viewers' recording sessions — staff-only, scoped to the lecture's institute.
+  async getRecordingActivityReport(
+    lectureId: string,
+    studentId?: string,
+    requestUser?: EnhancedJwtPayload,
+    selfAccess = false,
+  ) {
+    // Exposes viewers' recording sessions — staff-only UNLESS selfAccess=true
+    // (a student fetching only their own session, pinned to req.user.id by
+    // the caller — see getMyRecordingReport in the controller).
     const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } })
       ?? await this.classLectureRepo.findOne({ where: { id: lectureId } });
     if (!lecture) throw new NotFoundException('Lecture not found');
-    this.assertStaffAccess(requestUser, (lecture as any).instituteId);
+    if (!selfAccess) {
+      this.assertStaffAccess(requestUser, (lecture as any).instituteId);
+    }
 
     const where: any = { lectureId };
     if (studentId) where.userId = studentId;
