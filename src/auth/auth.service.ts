@@ -31,6 +31,7 @@ import { EnhancedLoginResponse } from './interfaces/enhanced-jwt-payload.interfa
 import { EnhancedJwtService } from './services/enhanced-jwt.service';
 import { TenantService } from '../modules/tenant/tenant.service';
 import { LoginMethod } from '../modules/institute/enums/institute.enums';
+import { InstituteSessionService } from './services/institute-session.service';
 
 @Injectable()
 export class AuthService {
@@ -64,6 +65,7 @@ export class AuthService {
     private readonly cloudStorageService: CloudStorageService,
     private readonly enhancedJwtService: EnhancedJwtService,
     private readonly tenantService: TenantService,
+    private readonly instituteSessionService: InstituteSessionService,
   ) {
     // Get salt rounds from environment variable
     this.saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS', '12'), 10);
@@ -1479,8 +1481,9 @@ export class AuthService {
   async refreshAccessToken(
     refreshToken: string,
     ipAddress?: string,
-    userAgent?: string
-  ): Promise<{ 
+    userAgent?: string,
+    requestHost?: string | null
+  ): Promise<{
     access_token: string; 
     refresh_token: string;
     expires_in: number;
@@ -1569,6 +1572,31 @@ export class AuthService {
         userAgent,
         isRememberMe
       );
+
+      // 🔐 SECURITY: If this refresh token belonged to an institute-scoped
+      // session (subdomain/custom-domain login), reject if the request isn't
+      // coming from the domain it was scoped to — otherwise a token issued
+      // for one tenant's custom domain could be replayed from anywhere. On
+      // success, re-points the session at the newly rotated token hash so it
+      // keeps tracking correctly on the NEXT refresh too (previously it went
+      // stale after the very first refresh). No-ops for a plain MAIN session.
+      // The old refresh token is already revoked above regardless of outcome
+      // here, so a rejection can't be bypassed by retrying with the same token.
+      const scopeOk = await this.instituteSessionService.syncSessionOnRefresh(
+        this.hashToken(refreshToken),
+        this.hashToken(new_refresh_token),
+        requestHost ?? null,
+      ).catch(() => true); // never let session-tracking errors block a legitimate refresh
+
+      if (!scopeOk) {
+        // The new token was already minted/persisted above — revoke it too so
+        // nothing usable is left behind even though it was never returned.
+        await this.refreshTokenRepository.update(
+          { token: this.hashToken(new_refresh_token) },
+          { isRevoked: true, updatedAt: now() },
+        ).catch(() => {});
+        throw new UnauthorizedException('Refresh token is not valid for this domain');
+      }
 
       // Calculate expiry info for frontend
       const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '1h';

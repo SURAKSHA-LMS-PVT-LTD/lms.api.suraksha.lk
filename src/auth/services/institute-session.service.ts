@@ -279,6 +279,51 @@ export class InstituteSessionService {
     await this.sessionRepo.update({ tokenHash }, { lastActiveAt: new Date() });
   }
 
+  /**
+   * Keep an institute-scoped session in sync across refresh-token rotation.
+   *
+   * AuthService.refreshAccessToken() is shared by main-site AND institute
+   * logins — it only knows about the plain refresh_tokens table, so an
+   * institute_login_sessions row previously went stale after the very first
+   * refresh (still pointing at the now-revoked old token hash) and its
+   * scopeHost was never actually enforced on refresh, just at login. This
+   * finds the session by the OLD hash, validates the request's origin still
+   * matches the scope it was issued for (rejecting cross-tenant token reuse),
+   * and re-points it at the newly rotated token hash so it keeps working —
+   * or bumps lastActiveAt if it's a MAIN-scoped session (no restriction).
+   *
+   * Returns false if a scoped session exists but the request host doesn't
+   * match — callers should treat this as a hard refresh failure, since it
+   * means a token issued for one tenant domain is being replayed from another.
+   * Returns true for a plain MAIN-site refresh (no institute session at all).
+   */
+  async syncSessionOnRefresh(
+    oldTokenHash: string,
+    newTokenHash: string,
+    requestHost: string | null,
+  ): Promise<boolean> {
+    const session = await this.sessionRepo.findOne({
+      where: { tokenHash: oldTokenHash, isActive: true },
+    });
+
+    // No institute session tracked for this token — it's a main-site login,
+    // nothing to sync, refresh proceeds normally.
+    if (!session) return true;
+
+    if (session.scopeHost && session.scopeHost !== requestHost) {
+      this.logger.warn(
+        `SECURITY: institute session scope mismatch on refresh — session scoped to "${session.scopeHost}", request from "${requestHost ?? 'unknown'}". Rejecting.`,
+      );
+      return false;
+    }
+
+    await this.sessionRepo.update(
+      { id: session.id },
+      { tokenHash: newTokenHash, lastActiveAt: new Date() },
+    );
+    return true;
+  }
+
   // ── Admin / listing ─────────────────────────────────────────────────────────
 
   /**

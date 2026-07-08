@@ -49,7 +49,7 @@ import {
 } from './dto/session-management.dto';
 import { getClientIp } from '../common/utils/ip-extractor.util';
 import { NoDataMasking } from '../common/decorators/no-data-masking.decorator';
-import { buildRefreshCookieOptions, clearRefreshCookieOptions } from '../common/utils/refresh-cookie.util';
+import { buildRefreshCookieOptions, clearRefreshCookieOptions, isCustomDomainOrigin } from '../common/utils/refresh-cookie.util';
 
 // =================== DTOs FOR PASSWORD RESET ===================
 
@@ -549,7 +549,8 @@ export class AuthController {
       const result = await this.authService.refreshAccessToken(
         refreshToken,
         clientInfo.ipAddress,
-        clientInfo.userAgent
+        clientInfo.userAgent,
+        isCustomDomainOrigin(req).host
       );
 
       // Set new refresh token in httpOnly cookie (scoping derived from Origin —

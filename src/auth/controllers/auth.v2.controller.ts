@@ -13,7 +13,7 @@ import { LoginMethod } from '../../modules/institute/enums/institute.enums';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InstituteEntity } from '../../modules/institute/entities/institute.entity';
-import { buildRefreshCookieOptions, clearRefreshCookieOptions } from '../../common/utils/refresh-cookie.util';
+import { buildRefreshCookieOptions, clearRefreshCookieOptions, isCustomDomainOrigin } from '../../common/utils/refresh-cookie.util';
 
 @ApiTags('Authentication V2')
 @Controller('v2/auth')
@@ -193,7 +193,8 @@ export class AuthV2Controller {
     const result = await this.authService.refreshAccessToken(
       refreshToken,
       clientInfo.ipAddress,
-      clientInfo.userAgent
+      clientInfo.userAgent,
+      isCustomDomainOrigin(req).host
     );
 
     // 🔐 SECURITY: Set new refresh token in httpOnly cookie (for browsers)
