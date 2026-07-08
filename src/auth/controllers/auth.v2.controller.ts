@@ -13,6 +13,7 @@ import { LoginMethod } from '../../modules/institute/enums/institute.enums';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InstituteEntity } from '../../modules/institute/entities/institute.entity';
+import { buildRefreshCookieOptions, clearRefreshCookieOptions } from '../../common/utils/refresh-cookie.util';
 
 @ApiTags('Authentication V2')
 @Controller('v2/auth')
@@ -122,27 +123,17 @@ export class AuthV2Controller {
     );
 
     // 🔐 SECURITY: Set refresh token in httpOnly cookie (for browsers)
-    // Cookie maxAge matches refresh token expiry (30d if rememberMe, 7d otherwise)
+    // Cookie maxAge matches refresh token expiry (30d if rememberMe, 7d otherwise).
+    // Scoping (Domain/SameSite) is derived from the request's Origin — this
+    // endpoint is also reachable from a tenant custom-domain's "Suraksha
+    // account" login redirect (see LiveLecturePage), which is a different
+    // registrable domain than lmsapi.suraksha.lk — see buildRefreshCookieOptions.
     const isProduction = process.env.NODE_ENV === 'production';
-    const cookieMaxAge = rememberMe 
+    const cookieMaxAge = rememberMe
       ? 30 * 24 * 60 * 60 * 1000  // 30 days
       : 7 * 24 * 60 * 60 * 1000;  // 7 days
 
-    // 🏢 Multi-tenant cookie strategy:
-    // Use .suraksha.lk so the cookie is available to all subdomains
-    // (academy.suraksha.lk, lms.suraksha.lk, lmsapi.suraksha.lk, etc.).
-    // The leading dot allows the browser to send the cookie from any subdomain
-    // frontend to the API at lmsapi.suraksha.lk.
-    const cookieDomain = isProduction ? '.suraksha.lk' : 'localhost';
-
-    res.cookie('refresh_token', result.refresh_token, {
-      httpOnly: true,        // Cannot be accessed by JavaScript
-      secure: isProduction,  // HTTPS only in production
-      sameSite: 'lax',       // 'lax' allows same-site cross-origin (lms→lmsapi) and top-level navigations
-      maxAge: cookieMaxAge,
-      path: '/',
-      domain: cookieDomain,
-    });
+    res.cookie('refresh_token', result.refresh_token, buildRefreshCookieOptions(req, isProduction, cookieMaxAge));
 
     // 🌐 SSO SUPPORT: Return complete response including refresh_token
     // Available in both cookie (browsers) and response body (all clients: web/mobile/SSO)
@@ -206,18 +197,14 @@ export class AuthV2Controller {
     );
 
     // 🔐 SECURITY: Set new refresh token in httpOnly cookie (for browsers)
-    // Cookie maxAge matches the refresh token's actual expiry
+    // Cookie maxAge matches the refresh token's actual expiry. Scoping (Domain/
+    // SameSite) is derived from the request's Origin so custom-domain tenants
+    // (a different registrable domain than lmsapi.suraksha.lk) get a cookie
+    // that's actually deliverable — see buildRefreshCookieOptions.
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieMaxAge = result.refresh_expires_in * 1000; // Convert seconds to ms
 
-    res.cookie('refresh_token', result.refresh_token, {
-      httpOnly: true,        // Cannot be accessed by JavaScript
-      secure: isProduction,  // HTTPS only in production
-      sameSite: 'lax',       // 'lax' allows same-site cross-origin (lms→lmsapi) and top-level navigations
-      maxAge: cookieMaxAge,
-      path: '/',
-      domain: isProduction ? '.suraksha.lk' : 'localhost'
-    });
+    res.cookie('refresh_token', result.refresh_token, buildRefreshCookieOptions(req, isProduction, cookieMaxAge));
 
     // 🌐 SSO SUPPORT: Return complete response including refresh_token
     // Available for all clients: web browsers, mobile apps, and SSO integrations
@@ -256,13 +243,7 @@ export class AuthV2Controller {
 
       // Clear the refresh token cookie
       const isProduction = process.env.NODE_ENV === 'production';
-      res.clearCookie('refresh_token', {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'lax',
-        path: '/',
-        domain: isProduction ? '.suraksha.lk' : 'localhost'
-      });
+      res.clearCookie('refresh_token', clearRefreshCookieOptions(req, isProduction));
       
       return {
         success: true,

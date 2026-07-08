@@ -49,6 +49,7 @@ import {
 } from './dto/session-management.dto';
 import { getClientIp } from '../common/utils/ip-extractor.util';
 import { NoDataMasking } from '../common/decorators/no-data-masking.decorator';
+import { buildRefreshCookieOptions, clearRefreshCookieOptions } from '../common/utils/refresh-cookie.util';
 
 // =================== DTOs FOR PASSWORD RESET ===================
 
@@ -551,18 +552,12 @@ export class AuthController {
         clientInfo.userAgent
       );
 
-      // Set new refresh token in httpOnly cookie
+      // Set new refresh token in httpOnly cookie (scoping derived from Origin —
+      // see buildRefreshCookieOptions for why custom-domain tenants need this)
       const isProduction = process.env.NODE_ENV === 'production';
       const cookieMaxAge = result.refresh_expires_in * 1000; // Convert seconds to ms
 
-      res.cookie('refresh_token', result.refresh_token, {
-        httpOnly: true,
-        secure: isProduction, // HTTPS only in production
-        sameSite: 'lax', // Allows same-site cross-origin (lms→lmsapi) and navigations
-        maxAge: cookieMaxAge,
-        path: '/',
-        domain: isProduction ? '.suraksha.lk' : 'localhost'
-      });
+      res.cookie('refresh_token', result.refresh_token, buildRefreshCookieOptions(req, isProduction, cookieMaxAge));
 
       // Return only access token and user info (not refresh token)
       return {
@@ -610,13 +605,7 @@ export class AuthController {
       }
 
       // Clear the refresh token cookie
-      res.clearCookie('refresh_token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        domain: process.env.NODE_ENV === 'production' ? '.suraksha.lk' : 'localhost'
-      });
+      res.clearCookie('refresh_token', clearRefreshCookieOptions(req, process.env.NODE_ENV === 'production'));
       
       return {
         success: true,

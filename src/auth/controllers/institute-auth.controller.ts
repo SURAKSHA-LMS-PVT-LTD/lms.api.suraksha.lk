@@ -29,6 +29,7 @@ import {
 } from '../dto/institute-login.dto';
 import { LogoutDto } from '../dto/logout.dto';
 import { SetDeviceLimitDto, BulkSetDeviceLimitDto } from '../dto/device-limit.dto';
+import { buildRefreshCookieOptions } from '../../common/utils/refresh-cookie.util';
 
 /** Resolve which login method and scope host to use based on request origin header. */
 function resolveLoginContext(req: ExpressRequest): { loginMethod: InstituteSessionLoginMethod; scopeHost: string | null } {
@@ -97,14 +98,7 @@ export class InstituteAuthController {
       ? 30 * 24 * 60 * 60 * 1000
       : 7 * 24 * 60 * 60 * 1000;
 
-    res.cookie('refresh_token', result.refresh_token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: cookieMaxAge,
-      path: '/',
-      domain: isProduction ? '.suraksha.lk' : 'localhost',
-    });
+    res.cookie('refresh_token', result.refresh_token, buildRefreshCookieOptions(req, isProduction, cookieMaxAge));
 
     return result;
   }
