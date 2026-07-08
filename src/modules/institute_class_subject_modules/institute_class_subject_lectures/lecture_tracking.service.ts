@@ -145,7 +145,18 @@ export class LectureTrackingService {
           verificationStatus: 'enrolled_free_card' as any,
         },
       });
-      return !!freeRow;
+      if (freeRow) return true;
+
+      // Fall back to class-level enrollment when this SUBJECT has no
+      // institute_class_subject_students rows at all — many institutes only
+      // track enrollment at the class level and never populate the subject-level
+      // join table, so a verified class-enrolled student would otherwise always
+      // be denied here even though they're genuinely enrolled. Mirrors the same
+      // fallback loadStudentRoster() already uses below for the admin roster.
+      const anySubjectEnrollment = await this.subjectStudentRepo.count({
+        where: { instituteId, classId, subjectId, isActive: true },
+      });
+      if (anySubjectEnrollment > 0) return false;
     }
 
     // Class-level only
