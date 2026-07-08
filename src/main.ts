@@ -124,7 +124,9 @@ async function bootstrap() {
         'http://localhost:3001', // Alternative frontend port
         'http://127.0.0.1:5173', // Alternative localhost
         'http://127.0.0.1:3000',  // Alternative localhost port
-        'http://127.0.0.1:3001'   // Alternative localhost port
+        'http://127.0.0.1:3001',  // Alternative localhost port
+        'https://localhost', // Capacitor Android WebView (androidScheme: "https") — the mobile app's actual Origin header
+        'capacitor://localhost', // Capacitor iOS WebView
       ];
 
     // 🏢 Multi-tenant: Wildcard pattern for *.suraksha.lk subdomains
