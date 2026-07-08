@@ -794,10 +794,11 @@ export class InstitueClassController {
 
   @Post(':id/assign-students-bulk')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ 
-    global: [UserType.SUPERADMIN], 
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
     instituteAdmin: true,
-    teacher: { requireClass: true }
+    teacher: { requireClass: true },
+    attendanceMarker: { requireClass: true }
   })
   //   userType: [UserType.INSTITUTE_ADMIN, UserType.TEACHER],
   //   classId: true,

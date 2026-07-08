@@ -140,6 +140,16 @@ export class UsersService {
     }
   }
 
+  private generateNameWithInitials(firstName: string, lastName: string): string {
+    const firstWords = firstName.split(/\s+/).filter(Boolean);
+    const lastWords = lastName.split(/\s+/).filter(Boolean);
+    const firstInitials = firstWords.map(w => w.charAt(0).toUpperCase() + '.').join('');
+    const midInitials = lastWords.slice(0, -1).map(w => w.charAt(0).toUpperCase() + '.').join('');
+    const lastWord = lastWords[lastWords.length - 1] ?? '';
+    const capitalLast = lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
+    return `${firstInitials}${midInitials} ${capitalLast}`.trim();
+  }
+
   async create(createUserDto: CreateUserDto, queryRunner?: QueryRunner, studentData?: StudentData): Promise<UserResponseDto> {
     const shouldManageTransaction = !queryRunner;
     let transactionQueryRunner = queryRunner;
@@ -177,7 +187,16 @@ export class UsersService {
 
       // Convert dateOfBirth string to Date object if provided
       const userData: UserData = { ...createUserDto };
-      
+
+      // 🛡️ SAFETY NET: nameWithInitials is required by CreateUserDto, but derive
+      // it as a fallback if a caller ever bypasses DTO validation (e.g. a bulk
+      // import) and it comes through empty — this is exactly how 562 existing
+      // users ended up with NULL name_with_initials and showed as the generic
+      // "User" fallback everywhere on the frontend after login.
+      if (!userData.nameWithInitials && userData.firstName) {
+        userData.nameWithInitials = this.generateNameWithInitials(userData.firstName, userData.lastName || '');
+      }
+
       // 🔒 ENFORCE: Always set password to NULL for new users
       userData.password = null;
       

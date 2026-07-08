@@ -2400,9 +2400,10 @@ export class UsersController {
    */
   @Patch(':id')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ 
-    global: [UserType.SUPERADMIN], 
-    instituteAdmin: true 
+  @RequireAnyOfRoles({
+    global: [UserType.SUPERADMIN],
+    instituteAdmin: true,
+    attendanceMarker: true
   })
   @HttpCode(HttpStatus.OK)
   @NoDataMasking()

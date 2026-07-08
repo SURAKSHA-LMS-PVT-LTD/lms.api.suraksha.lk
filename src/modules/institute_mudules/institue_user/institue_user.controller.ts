@@ -632,8 +632,8 @@ export class InstitueUserController {
 
   @Patch('institute/:instituteId/users/:userId')
   @UseGuards(FlexibleAccessGuard)
-  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true })
-  @ApiOperation({ 
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, attendanceMarker: true })
+  @ApiOperation({
     summary: 'Update basic fields for an institute user (ADMIN ONLY)',
     description: 'Updates fields like userIdByInstitute on the institute_user record.'
   })
