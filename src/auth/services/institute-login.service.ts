@@ -13,6 +13,7 @@ import { UserOtpEntity, OtpType, OtpPurpose, OtpDeliveryMethod } from '../../mod
 import { InstituteUserStatus } from '../../modules/institute_mudules/institue_user/enums/institute-user-status.enum';
 import { InstituteUserType } from '../../modules/institute_mudules/institue_user/enums/institute-user-type.enum';
 import { AuthService } from '../auth.service';
+import { EnhancedJwtService } from './enhanced-jwt.service';
 import { EnhancedEmailService } from '../../common/services/enhanced-email.service';
 import { SmslenzProvider } from '../../modules/sms/providers/smslenz.provider';
 import { CloudStorageService } from '../../common/services/cloud-storage.service';
@@ -58,6 +59,7 @@ export class InstituteLoginService {
     @InjectRepository(UserOtpEntity)
     private readonly otpRepository: Repository<UserOtpEntity>,
     private readonly authService: AuthService,
+    private readonly enhancedJwtService: EnhancedJwtService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly enhancedEmailService: EnhancedEmailService,
@@ -162,7 +164,30 @@ export class InstituteLoginService {
     // ── End pre-check ──────────────────────────────────────────────────────
 
     // 5. Build JWT payload (institute-context aware)
+    // 🔒 CRITICAL: this used to be a hand-built payload with only `sub` (a
+    // legacy claim name) and no `s`/`u`/`i` — JwtStrategy.validate() requires
+    // `s` on EVERY authenticated request (throws "Invalid token payload" /
+    // 401 without it), and FlexibleAccessGuard requires `i` (institute access
+    // array) for almost every institute-scoped endpoint. So an institute-login
+    // access token failed basic validation on its very first use, and even
+    // once past that, was treated as having NO institute access anywhere
+    // until it was replaced by a refresh cycle (refreshAccessToken() mints its
+    // NEXT token via this same EnhancedJwtService.buildPayload(), which is why
+    // the symptom always resolved itself after one refresh).
+    //
+    // Now built the same way main-site login builds its token — buildPayload()
+    // derives institute access from the DB (institute_user / class / subject
+    // tables), which correctly includes the institute this user just
+    // authenticated into. The institute-context fields below (instituteId,
+    // scopeHost, etc.) are additional claims specific to institute-login
+    // sessions — kept alongside for session-tracking/cookie-scoping code that
+    // already reads them; `sub` is kept for anything still reading the legacy name.
+    if (!user) {
+      throw new UnauthorizedException('User account not found');
+    }
+    const enhancedPayload = await this.enhancedJwtService.buildPayload(user);
     const payload = {
+      ...enhancedPayload,
       sub: instituteUser.userId,
       instituteId: instituteUser.instituteId,
       instituteUserType: instituteUser.instituteUserType,
