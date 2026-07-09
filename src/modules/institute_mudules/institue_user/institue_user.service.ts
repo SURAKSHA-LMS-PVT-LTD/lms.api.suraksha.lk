@@ -283,7 +283,82 @@ export class InstitueUserService {
   }
 
   async findOne(instituteId: string, userId: string): Promise<SecureUserResponseDto> {
-    throw new BadRequestException('SECURITY: This method is deprecated. Use secure endpoints instead.');
+    const safeInstituteId = SecurityUtils.validateBigIntId(instituteId, 'instituteId');
+    const safeUserId = SecurityUtils.validateBigIntId(userId, 'userId');
+
+    // Look up the membership row first — cheap, and gives us the user type so we
+    // know which secure DTO shape (student vs. base) and which optional joins to run,
+    // matching the same query built for list results in getSecureUsersByInstituteAndType.
+    const membership = await this.instituteUserRepository.findOne({
+      where: { instituteId: safeInstituteId, userId: safeUserId },
+    });
+
+    if (!membership) {
+      throw new NotFoundException(`User ${userId} not found in institute ${instituteId}`);
+    }
+
+    const userType = membership.instituteUserType;
+
+    const baseFields = [
+      'u.id as user_id',
+      'u.first_name',
+      'u.last_name',
+      'u.name_with_initials as nameWithInitials',
+      'u.email as email',
+      'u.phone_number',
+      'u.image_url as user_image_url',
+      'u.gender',
+      'u.date_of_birth',
+      'u.address_line1',
+      'u.address_line2',
+      'u.is_active',
+      'iu.user_id_institue as userIdByInstitute',
+      'iu.house_id as house_id',
+      'iu.extra_data as extra_data',
+      'iu.status',
+      'iu.verified_at',
+      'iu.created_at',
+      'iu.institute_user_image_url',
+      'iu.image_verification_status',
+      'ih.name as house_name',
+      'CONCAT(v.first_name, " ", COALESCE(v.last_name, "")) as verifier_name',
+      'iu.max_devices_per_user as max_devices_per_user',
+    ];
+
+    if (userType === InstituteUserType.STUDENT) {
+      baseFields.push(
+        's.father_id as father_id',
+        's.mother_id as mother_id',
+        's.guardian_id as guardian_id',
+        's.emergency_contact as emergency_contact',
+        's.medical_conditions as medical_conditions',
+        's.allergies as allergies',
+        's.student_id as student_id',
+      );
+    }
+
+    let queryBuilder = this.instituteUserRepository
+      .createQueryBuilder('iu')
+      .leftJoin('iu.user', 'u')
+      .leftJoin('institute_house', 'ih', 'ih.id = iu.house_id AND ih.institute_id = iu.institute_id')
+      .leftJoin('iu.verifier', 'v');
+
+    if (userType === InstituteUserType.STUDENT) {
+      queryBuilder = queryBuilder.leftJoin('students', 's', 's.user_id = u.id');
+    }
+
+    const raw = await queryBuilder
+      .select(baseFields)
+      .where('iu.instituteId = :instituteId', { instituteId: safeInstituteId })
+      .andWhere('iu.userId = :userId', { userId: safeUserId })
+      .getRawOne();
+
+    if (!raw) {
+      throw new NotFoundException(`User ${userId} not found in institute ${instituteId}`);
+    }
+
+    const [dto] = await this.transformRawToSecureDtos([raw], userType, false, this.shouldMaskSensitiveData);
+    return dto;
   }
 
   async update(instituteId: string, userId: string, updateDto: UpdateInstitueUserDto): Promise<SecureUserResponseDto> {

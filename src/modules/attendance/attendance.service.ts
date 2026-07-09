@@ -3024,7 +3024,7 @@ export class AttendanceService {
         timestamp: getCurrentSriLankaISO()
       };
       this.logger.error(`Institute Card Not Found: ${JSON.stringify(errorDetails)}`);
-      throw new Error(errorDetails.message);
+      throw new NotFoundException(errorDetails.message);
     }
 
     // Image URL logic:
@@ -3112,7 +3112,7 @@ export class AttendanceService {
       const identifierLabel = instituteCardId
         ? `institute card ID: ${instituteCardId}`
         : `institute user ID: ${userIdByInstitute}`;
-      throw new Error(
+      throw new NotFoundException(
         `No user found with ${identifierLabel} in institute: ${instituteId}. ` +
         `Please check: 1) The ID is registered, 2) The ID is correct, 3) User is assigned to this institute.`
       );
