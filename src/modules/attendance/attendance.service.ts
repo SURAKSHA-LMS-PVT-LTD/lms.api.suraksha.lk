@@ -446,10 +446,10 @@ export class AttendanceService {
     const expiryDate = cardType === 'rfid' ? user.rfidExpiryDate : user.cardExpiryDate;
 
     if (status && status !== CardStatus.ACTIVE) {
-      throw new Error(`Card "${cardId}" is ${status.toLowerCase()} and cannot be used to mark attendance.`);
+      throw new BadRequestException(`Card "${cardId}" is ${status.toLowerCase()} and cannot be used to mark attendance.`);
     }
     if (expiryDate && new Date(expiryDate) < new Date()) {
-      throw new Error(`Card "${cardId}" expired on ${new Date(expiryDate).toISOString().split('T')[0]} and cannot be used to mark attendance.`);
+      throw new BadRequestException(`Card "${cardId}" expired on ${new Date(expiryDate).toISOString().split('T')[0]} and cannot be used to mark attendance.`);
     }
   }
 
@@ -486,7 +486,7 @@ export class AttendanceService {
         studentData = await this.fetchStudentWithParentData(markAttendanceDto.studentId);
 
         if (!studentData.student?.user) {
-          throw new Error(`Student not found: ${markAttendanceDto.studentId}`);
+          throw new NotFoundException(`Student not found: ${markAttendanceDto.studentId}`);
         }
 
         nameWithInitialsValue = studentData.student.user.nameWithInitials || null;
@@ -500,7 +500,7 @@ export class AttendanceService {
         });
 
         if (!user) {
-          throw new Error(`User not found: ${markAttendanceDto.studentId}`);
+          throw new NotFoundException(`User not found: ${markAttendanceDto.studentId}`);
         }
 
         nameWithInitialsValue = user.nameWithInitials || null;
@@ -1359,7 +1359,7 @@ export class AttendanceService {
         timestamp: getCurrentSriLankaISO()
       };
       this.logger.error(`Card Not Found: ${JSON.stringify(errorDetails)}`);
-      throw new Error(errorDetails.message);
+      throw new NotFoundException(errorDetails.message);
     }
 
     this.assertCardIsUsable(cardType, user, studentCardId);
@@ -1429,23 +1429,6 @@ export class AttendanceService {
 
     const invalidCards: any[] = [];
 
-    // Check institute_user for verified images for all users
-    const userIds = users.map(u => u.id.toString());
-    const instituteUsers = await this.instituteUserRepository.find({
-      where: {
-        userId: In(userIds),
-        instituteId: bulkCardAttendanceDto.instituteId
-      },
-      select: ['userId', 'instituteUserImageUrl', 'imageVerificationStatus']
-    });
-
-    // Create a map of userId to institute image
-    const instituteImageMap = new Map(
-      instituteUsers
-        .filter(iu => iu.instituteUserImageUrl && iu.imageVerificationStatus === ImageVerificationStatus.VERIFIED)
-        .map(iu => [iu.userId, iu.instituteUserImageUrl])
-    );
-
     // Map students, skip invalid cards & not-found
     const notFound: string[] = [];
     const resolvedCardType = isNfc || cardType === 'rfid' ? 'rfid' : 'normal';
@@ -1491,25 +1474,12 @@ export class AttendanceService {
       result = await this.markBulkAttendance(bulkAttendanceDto, markedBy);
     }
 
-    // Override imageUrls in the response for institute card-based attendance
-    if (result && result.results && Array.isArray(result.results)) {
-      result.results = result.results.map(record => {
-        const user = userMap.get(bulkCardAttendanceDto.students.find(s => {
-          const u = userMap.get(s.studentCardId);
-          return u && u.id.toString() === record.studentId;
-        })?.studentCardId);
-
-        if (user) {
-          const instituteImage = instituteImageMap.get(user.id.toString());
-          try {
-            record.imageUrl = this.CloudStorageService.getFullUrl(instituteImage || user.imageUrl);
-          } catch (storageError) {
-            record.imageUrl = instituteImage || user.imageUrl || null;
-          }
-        }
-        return record;
-      });
-    }
+    // NOTE: institute-verified-image resolution already happens inside
+    // markBulkAttendance() itself (see resolveImageUrl calls there) — there used to
+    // be a redundant override pass here, but it read `result.results`, a key that
+    // markBulkAttendance never returns (it returns `records`/`checkouts`), so it was
+    // dead code that silently never ran. Removed rather than fixed: fixing it would
+    // just duplicate logic markBulkAttendance already applies correctly.
 
     // âœ… Include card validation info in response
     return {
@@ -1543,7 +1513,7 @@ export class AttendanceService {
       }
 
       if (!user) {
-        throw new Error(`Student not found with card ID: ${studentCardId}`);
+        throw new NotFoundException(`Student not found with card ID: ${studentCardId}`);
       }
 
       // Get attendance for the actual student ID
@@ -2254,6 +2224,15 @@ export class AttendanceService {
         return;
       }
 
+      // Mock users are hollow placeholder records (pre-created by an institute admin,
+      // not yet claimed by a real student) — attendance marking works identically for
+      // them in every other respect, but real notifications would be wasted cost/noise
+      // (and could leak message content to whatever placeholder contact info exists).
+      if (data.student.user?.isMock) {
+        this.logger.debug(`[Notification] Skipped — mock user, student=${sid}`);
+        return;
+      }
+
       if (!data.parentContact && !data.parentEmail && !data.parentTelegramId) {
         this.logger.warn(`[Notification] No parent contact for student=${sid} (phone/email/telegram all null)`);
         return;
@@ -2815,7 +2794,7 @@ export class AttendanceService {
       id: true, firstName: true, lastName: true, nameWithInitials: true,
       email: true, phoneNumber: true, subscriptionPlan: true, telegramId: true,
       imageUrl: true, userType: true, dateOfBirth: true, gender: true,
-      city: true, district: true, province: true,
+      city: true, district: true, province: true, isMock: true,
     },
     father: {
       userId: true,
@@ -3074,7 +3053,7 @@ export class AttendanceService {
     const { instituteCardId, userIdByInstitute, instituteId } = markAttendanceDto;
 
     if (!instituteCardId && !userIdByInstitute) {
-      throw new Error('Either instituteCardId or userIdByInstitute is required.');
+      throw new BadRequestException('Either instituteCardId or userIdByInstitute is required.');
     }
 
     // âœ… STEP 1: Query institute_user with user data (works for ALL user types).
@@ -3099,7 +3078,8 @@ export class AttendanceService {
         'user.lastName',
         'user.nameWithInitials',
         'user.imageUrl',
-        'user.userType'
+        'user.userType',
+        'user.isMock'
       ]);
     if (instituteCardId) {
       lookupQb.andWhere('institute_user.instituteCardId = :instituteCardId', { instituteCardId });
@@ -3157,7 +3137,7 @@ export class AttendanceService {
           'student.userId', 'student.fatherId', 'student.motherId', 'student.guardianId',
           'student.studentId', 'student.isActive',
           'user.id', 'user.firstName', 'user.lastName', 'user.nameWithInitials', 'user.email', 'user.phoneNumber',
-          'user.subscriptionPlan', 'user.telegramId', 'user.imageUrl',
+          'user.subscriptionPlan', 'user.telegramId', 'user.imageUrl', 'user.isMock',
           'father.userId', 'fatherUser.firstName', 'fatherUser.lastName',
           'fatherUser.email', 'fatherUser.phoneNumber', 'fatherUser.telegramId', 'fatherUser.firstLoginCompleted',
           'mother.userId', 'motherUser.firstName', 'motherUser.lastName',
@@ -3168,7 +3148,7 @@ export class AttendanceService {
         .getOne();
 
       if (!studentData?.user) {
-        throw new Error(`Student not found with ID: ${instituteUser.userId}`);
+        throw new NotFoundException(`Student not found with ID: ${instituteUser.userId}`);
       }
 
       userName = studentData.user.nameWithInitials || `${studentData.user.firstName} ${studentData.user.lastName}`.trim();
@@ -3200,7 +3180,7 @@ export class AttendanceService {
     } else {
       // NON-STUDENT path: Use user data already loaded from institute_user query
       if (!instituteUser.user) {
-        throw new Error(`User not found with ID: ${instituteUser.userId}`);
+        throw new NotFoundException(`User not found with ID: ${instituteUser.userId}`);
       }
       userName = instituteUser.user.nameWithInitials || `${instituteUser.user.firstName} ${instituteUser.user.lastName || ''}`.trim();
       globalImageUrl = instituteUser.user.imageUrl || null;
@@ -3291,7 +3271,10 @@ export class AttendanceService {
     }
 
     // âœ… STEP 7: Send notifications ONLY for students (non-blocking)
-    if (isStudent && (parentContact || parentEmail || parentTelegramId)) {
+    // Mock users are hollow placeholder records (pre-created by an institute admin,
+    // not yet claimed by a real student) — attendance marking works identically for
+    // them in every other respect, but real notifications would be wasted cost/noise.
+    if (isStudent && !instituteUser.user?.isMock && (parentContact || parentEmail || parentTelegramId)) {
       // getSync — this sits on the hot attendance-mark path; avoid adding an await
       // here before the fire-and-forget notification kicks off.
       const isAdsFromDB = this.systemConfigService.getSync('ADS', 'IS_ADS_FROM_DB', 'true') === 'true';
@@ -4044,15 +4027,20 @@ export class AttendanceService {
       try {
         const bulkResult = await this.markBulkAttendance(bulkDto, markedBy);
         const action = `marked_${status}`;
+        // markBulkAttendance returns { records, checkouts, ... } — not a top-level
+        // `results` key, and each record's name field is `studentName`, not `name`.
+        // (Previously read bulkResult.results, which never exists, so this map was
+        // always empty and every row silently fell back to studentId/success=true.)
         const bulkResultsMap = new Map(
-          (bulkResult?.results ?? []).map((r: any) => [String(r.studentId ?? r.userId), r]),
+          ([...(bulkResult?.records ?? []), ...(bulkResult?.checkouts ?? [])] as any[])
+            .map((r: any) => [String(r.studentId ?? r.userId), r]),
         );
 
         for (const studentId of ids) {
           const r = bulkResultsMap.get(studentId) as any;
           allResults.push({
             studentId,
-            studentName: r?.name ?? studentId,
+            studentName: r?.studentName ?? studentId,
             action,
             classStatus: status,
             success: r?.success !== false,
@@ -4183,11 +4171,12 @@ export class AttendanceService {
         students: [{ studentId, status }],
       };
 
-      const bulkResult = await this.markBulkAttendance(bulkDto, 'system');
-      const anyFailed = bulkResult?.results?.some((r: any) => r.success === false);
-      if (anyFailed) {
-        throw new BadRequestException(`Failed to create attendance record for student ${studentId}`);
-      }
+      // markBulkAttendance() throws on failure (it never returns a per-row
+      // success flag — its records/checkouts entries have no `success` field —
+      // so if this line is reached, marking succeeded. A previous "any failed?"
+      // check here read a `results` key that markBulkAttendance never returns,
+      // making it permanently a no-op; removed rather than faked.
+      await this.markBulkAttendance(bulkDto, 'system');
 
       const scope = subjectId ? 'subject' : 'class';
       return {
@@ -4648,15 +4637,20 @@ export class AttendanceService {
       try {
         const bulkResult = await this.markBulkAttendance(bulkDto, markedBy);
         const action = `marked_${status}`;
+        // markBulkAttendance returns { records, checkouts, ... } — not a top-level
+        // `results` key, and each record's name field is `studentName`, not `name`.
+        // (Previously read bulkResult.results, which never exists, so this map was
+        // always empty and every row silently fell back to studentId/success=true.)
         const bulkResultsMap = new Map(
-          (bulkResult?.results ?? []).map((r: any) => [String(r.studentId ?? r.userId), r]),
+          ([...(bulkResult?.records ?? []), ...(bulkResult?.checkouts ?? [])] as any[])
+            .map((r: any) => [String(r.studentId ?? r.userId), r]),
         );
 
         for (const studentId of ids) {
           const r = bulkResultsMap.get(studentId) as any;
           allResults.push({
             studentId,
-            studentName: r?.name ?? studentId,
+            studentName: r?.studentName ?? studentId,
             action,
             subjectStatus: status,
             success: r?.success !== false,

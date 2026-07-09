@@ -97,9 +97,10 @@ export class LectureTrackingController {
   }
 
   @Get('live-attendance/session-grid')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Attendance grid for live attendance link sessions' })
+  @ApiOperation({ summary: 'Attendance grid for live attendance link sessions — staff only' })
   @ApiQuery({ name: 'lectureId', type: String })
   @ApiQuery({ name: 'classId', type: String })
   @ApiQuery({ name: 'instituteId', type: String })
@@ -107,11 +108,14 @@ export class LectureTrackingController {
     @Query('lectureId') lectureId: string,
     @Query('classId') classId: string,
     @Query('instituteId') instituteId: string,
+    @Req() req: any,
   ) {
     if (!lectureId || !classId || !instituteId) {
       throw new BadRequestException('lectureId, classId, and instituteId are required');
     }
-    return this.trackingService.getLiveAttendanceSessionGrid(lectureId, classId, instituteId);
+    // instituteId is a query param the guard can't bind to — service confirms the
+    // caller is admin/teacher of THIS institute before returning the grid.
+    return this.trackingService.getLiveAttendanceSessionGrid(lectureId, classId, instituteId, req.user);
   }
 
   @Get('live-attendance/access/:urlId')
@@ -234,10 +238,11 @@ export class LectureTrackingController {
   // ─── Attendance grid (multi-lecture × students) ─────────────────────────
 
   @Get('attendance-grid')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Attendance grid: students (rows) × selected lectures (columns). Supports both subject and class lectures.',
+    summary: 'Attendance grid: students (rows) × selected lectures (columns). Supports both subject and class lectures. Staff only.',
   })
   @ApiQuery({ name: 'lectureIds', type: String, description: 'Comma-separated lecture IDs' })
   @ApiQuery({ name: 'classId', type: String })
@@ -246,6 +251,7 @@ export class LectureTrackingController {
     @Query('lectureIds') lectureIdsStr: string,
     @Query('classId') classId: string,
     @Query('instituteId') instituteId: string,
+    @Req() req: any,
   ) {
     // Validate required parameters
     if (!lectureIdsStr || !classId || !instituteId) {
@@ -253,10 +259,17 @@ export class LectureTrackingController {
     }
 
     const ids = (lectureIdsStr ?? '').split(',').map(s => s.trim()).filter(Boolean);
-    
+
     if (ids.length === 0) {
       throw new BadRequestException('lectureIds cannot be empty');
     }
+
+    // instituteId is a query param the guard can't bind to — verify the caller is
+    // admin/teacher of THIS institute before touching the grid. Deliberately outside
+    // the try/catch below: that block's "always return valid data" fallback would
+    // otherwise swallow a ForbiddenException and silently return an empty grid
+    // instead of denying access (cross-tenant IDOR).
+    this.trackingService.assertStaffAccess(req.user, instituteId);
 
     try {
       const result = await this.trackingService.getAttendanceGrid(
@@ -282,11 +295,14 @@ export class LectureTrackingController {
   // ─── Reports ────────────────────────────────────────────────────────────
 
   @Get('reports/:lectureId/live')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Live attendance report for one lecture' })
-  async getLiveReport(@Param('lectureId') lectureId: string) {
-    return this.trackingService.getLiveAttendanceReport(lectureId);
+  @ApiOperation({ summary: 'Live attendance report for one lecture (staff only) — exposes guest email/phone/IP' })
+  async getLiveReport(@Param('lectureId') lectureId: string, @Req() req: any) {
+    // Service re-verifies staff access against the lecture's own institute (IDOR guard),
+    // same pattern as getRecordingActivityReport/getRecordingWatchHistory.
+    return this.trackingService.getLiveAttendanceReport(lectureId, req.user);
   }
 
   @Get('reports/:lectureId/recording')
@@ -372,18 +388,22 @@ export class LectureTrackingController {
   }
 
   @Get('recording/:lectureId/watch-history')
-  @Public()
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FlexibleAccessGuard)
+  @RequireAnyOfRoles({ global: [UserType.SUPERADMIN], instituteAdmin: true, teacher: true })
+  @ApiBearerAuth()
   @ApiQuery({ name: 'userType', required: false, enum: ['enrolled', 'suraksha_user', 'guest', 'all'] })
   @ApiOperation({
     summary:
-      'Get recording watch history grouped by user type (enrolled students, Suraksha users, guests)',
+      'Get recording watch history grouped by user type (enrolled students, Suraksha users, guests) — staff only',
   })
   async getRecordingWatchHistory(
     @Param('lectureId') lectureId: string,
+    @Req() req: any,
     @Query('userType') userType?: 'enrolled' | 'suraksha_user' | 'guest' | 'all',
   ) {
-    return this.trackingService.getRecordingWatchHistory(lectureId, userType ?? 'all');
+    // Service re-verifies staff access against the lecture's own institute (IDOR guard),
+    // same pattern as getRecordingActivityReport.
+    return this.trackingService.getRecordingWatchHistory(lectureId, userType ?? 'all', req.user);
   }
 
   @Post('recording/session/:sessionId/sync')

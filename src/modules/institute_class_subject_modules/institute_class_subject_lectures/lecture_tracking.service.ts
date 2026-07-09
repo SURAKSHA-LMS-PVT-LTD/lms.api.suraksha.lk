@@ -88,7 +88,9 @@ export class LectureTrackingService {
    * This is the security boundary against IDOR — the route's instituteId arrives as a
    * query param, which FlexibleAccessGuard cannot bind to, so the check lives here.
    */
-  private assertStaffAccess(user: EnhancedJwtPayload | undefined, instituteId: string): void {
+  // Public: the controller calls this directly for endpoints where instituteId is a
+  // query param it can't bind a route guard to (e.g. getAttendanceGrid).
+  assertStaffAccess(user: EnhancedJwtPayload | undefined, instituteId: string): void {
     if (!user) throw new ForbiddenException('Authentication required');
 
     const userTypeValue = COMPACT_TO_USER_TYPE[user.u as keyof typeof COMPACT_TO_USER_TYPE] as string;
@@ -595,7 +597,13 @@ export class LectureTrackingService {
     lectureId: string,
     classId: string,
     instituteId: string,
+    requestUser?: EnhancedJwtPayload,
   ) {
+    // instituteId/classId are caller-supplied query params — without this check,
+    // any logged-in staff member (of ANY institute) could pass another institute's
+    // IDs and read its attendance grid (cross-tenant IDOR).
+    this.assertStaffAccess(requestUser, instituteId);
+
     const lecture = await this.resolveLecture(lectureId, true);
     if (lecture.instituteId !== instituteId) {
       throw new ForbiddenException('Lecture does not belong to this institute');
@@ -977,7 +985,19 @@ export class LectureTrackingService {
     if (rangeActs.length) {
       const maxRangeTo = Math.max(...rangeActs.map(a => Number(a.metadata!.rangeTo)));
       sessionUpdate.lastPositionSeconds = Math.floor(maxRangeTo);
-      const totalWatched = rangeActs.reduce((sum, a) => sum + (Number(a.metadata?.watchedSeconds) || 0), 0);
+      // watchedSeconds is client-reported and otherwise trivially spoofable (a single
+      // crafted request could claim e.g. 999999 seconds watched). Server-side sanity
+      // check: a range can't have watched more seconds than the range itself spans —
+      // clamp to [0, rangeTo - rangeFrom] per activity before summing.
+      const totalWatched = rangeActs.reduce((sum, a) => {
+        const rangeFrom = Number(a.metadata?.rangeFrom);
+        const rangeTo = Number(a.metadata!.rangeTo);
+        const spanSeconds = Number.isFinite(rangeFrom) && Number.isFinite(rangeTo)
+          ? Math.max(0, rangeTo - rangeFrom)
+          : 0;
+        const claimed = Number(a.metadata?.watchedSeconds) || 0;
+        return sum + Math.min(Math.max(0, claimed), spanSeconds);
+      }, 0);
       if (totalWatched > 0) {
         sessionUpdate.totalWatchedSeconds = () => `total_watched_seconds + ${totalWatched}`;
       }
@@ -1139,7 +1159,14 @@ export class LectureTrackingService {
   // Reports
   // ─────────────────────────────────────────────────────────────
 
-  async getLiveAttendanceReport(lectureId: string) {
+  async getLiveAttendanceReport(lectureId: string, requestUser?: EnhancedJwtPayload) {
+    // Exposes guest email/phone/IP/userAgent — staff-only, and re-verify against the
+    // lecture's own institute (IDOR guard), same pattern as the recording reports.
+    const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } })
+      ?? await this.classLectureRepo.findOne({ where: { id: lectureId } });
+    if (!lecture) throw new NotFoundException('Lecture not found');
+    this.assertStaffAccess(requestUser, (lecture as any).instituteId);
+
     const rows = await this.liveAttRepo.find({
       where: { lectureId },
       relations: ['user'],
@@ -1276,6 +1303,10 @@ export class LectureTrackingService {
           `${(s as any).user?.firstName ?? ''} ${(s as any).user?.lastName ?? ''}`.trim()
         : s.guestName ?? 'Guest',
       isGuest: !s.userId,
+      // Distinguishes enrolled students from Suraksha-account users who watched
+      // without being enrolled in this class (both have userId set, isGuest=false,
+      // so isGuest alone can't tell staff which one they're looking at).
+      userType: s.userType,
       startTime: s.startTime,
       endTime: s.endTime,
       totalWatchedSeconds: s.totalWatchedSeconds,
@@ -1445,10 +1476,15 @@ export class LectureTrackingService {
   async getRecordingWatchHistory(
     lectureId: string,
     userTypeFilter?: 'enrolled' | 'suraksha_user' | 'guest' | 'all',
+    requestUser?: EnhancedJwtPayload,
   ) {
+    // Exposes viewers' PII (guest name/email/phone/IP) — staff-only, and the
+    // service re-verifies against the lecture's own institute (IDOR guard),
+    // same pattern as getRecordingActivityReport.
     const lecture = await this.lectureRepo.findOne({ where: { id: lectureId } })
       ?? await this.classLectureRepo.findOne({ where: { id: lectureId } });
     if (!lecture) throw new NotFoundException('Lecture not found');
+    this.assertStaffAccess(requestUser, (lecture as any).instituteId);
 
     let query = this.recSessionRepo.createQueryBuilder('session')
       .where('session.lectureId = :lectureId', { lectureId })
