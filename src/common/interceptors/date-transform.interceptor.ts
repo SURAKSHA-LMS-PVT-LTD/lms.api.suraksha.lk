@@ -3,17 +3,22 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 /**
- * Global interceptor to ensure dates are properly serialized to ISO strings
- * with Sri Lanka timezone (+05:30) instead of UTC (Z)
+ * Global interceptor to ensure Date objects are properly serialized to real-UTC
+ * ISO strings (with a 'Z' suffix) instead of being left as empty objects by
+ * TypeORM's bigNumberStrings option, or serialized inconsistently.
  * Fixes issues with TypeORM bigNumberStrings causing dates to be empty objects
  *
- * The mysql2 driver (with timezone:'+05:30') returns proper UTC Date objects.
- * This interceptor converts them to Sri Lanka local time ISO strings.
+ * IMPORTANT: the mysql2 driver (timezone:'+05:30' in data-source.ts/app.module.ts)
+ * already converts stored Sri-Lanka-local values to correct UTC Date objects when
+ * TypeORM reads them — so this interceptor must NOT add another +05:30 on top.
+ * Doing so previously double-offset every timestamp in every API response by
+ * 5.5 hours (confirmed live: attendance marked ~3:00 PM Sri Lanka time was
+ * displayed as "recorded at 9:27 AM"). Frontend formatters are responsible for
+ * converting this true-UTC ISO string to Sri Lanka local time for display
+ * (see lms user frotend/src/utils/timezone.ts and dateFormat.ts).
  */
 @Injectable()
 export class DateTransformInterceptor implements NestInterceptor {
-  private static readonly SRI_LANKA_OFFSET_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30
-
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     return next.handle().pipe(
       map(data => this.transformDates(data))
@@ -21,13 +26,10 @@ export class DateTransformInterceptor implements NestInterceptor {
   }
 
   /**
-   * Convert a UTC Date to an ISO string in Sri Lanka timezone (+05:30).
-   * Adds the +05:30 offset to the UTC epoch to get Sri Lanka wall-clock time,
-   * then formats as ISO with the +05:30 suffix.
+   * Serialize an already-correct UTC Date as a standard ISO string.
    */
   private dateToSriLankaISO(date: Date): string {
-    const sriLankaDate = new Date(date.getTime() + DateTransformInterceptor.SRI_LANKA_OFFSET_MS);
-    return sriLankaDate.toISOString().replace('Z', '+05:30');
+    return date.toISOString();
   }
 
   /**
