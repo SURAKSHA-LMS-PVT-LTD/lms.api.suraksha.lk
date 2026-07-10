@@ -780,6 +780,14 @@ export class LectureTrackingService {
       sessionId: session.id,
       lectureId: lecture.id,
       studentId: user.id,
+      // Explicit app-side timestamp — do NOT rely on @CreateDateColumn's DB
+      // default (CURRENT_TIMESTAMP runs on the MySQL server's clock, which is
+      // UTC, while the mysql2 client reads values as +05:30 — that mismatch
+      // made every markedAt come back 5.5 hours early, e.g. attendance marked
+      // at 3:00 PM Sri Lanka time displayed as "recorded at 09:27 AM").
+      // new Date() here goes through mysql2's timezone conversion on write, so
+      // write and read agree. Same convention as payment.service.ts et al.
+      markedAt: new Date(), // real UTC — MySQL2 timezone:'+05:30' stores as Sri Lanka time
       ipAddress,
       userAgent,
     });
