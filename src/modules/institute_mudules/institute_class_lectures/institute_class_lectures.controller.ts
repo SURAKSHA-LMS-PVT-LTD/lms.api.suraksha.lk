@@ -29,14 +29,17 @@ export class InstituteClassLecturesController {
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   @ApiOperation({ summary: 'Create a class lecture visible to all class members' })
   @ApiResponse({ status: 201, description: 'Lecture created successfully' })
-  async create(@Body() createDto: CreateInstituteClassLectureDto): Promise<InstituteClassLectureEntity> {
+  async create(
+    @Body() createDto: CreateInstituteClassLectureDto,
+    @Request() req: any
+  ): Promise<InstituteClassLectureEntity> {
     // Handle recodingUrl typo
     const dto = { ...createDto } as any;
     if ('recodingUrl' in dto && !dto.recordingUrl) {
       dto.recordingUrl = dto.recodingUrl;
       delete dto.recodingUrl;
     }
-    return await this.lecturesService.create(dto);
+    return await this.lecturesService.create(dto, req.user);
   }
 
   @Get()

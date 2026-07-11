@@ -36,7 +36,22 @@ export class InstituteClassLecturesService {
     }
   }
 
-  async create(createDto: CreateInstituteClassLectureDto): Promise<InstituteClassLectureEntity> {
+  async create(createDto: CreateInstituteClassLectureDto, user?: any): Promise<InstituteClassLectureEntity> {
+    // Unlike update()/toggleHidden()/removePermanent(), this never verified the
+    // submitter actually has Teacher/Admin access to createDto.instituteId — the
+    // controller-level role guard only checks the user has that role SOMEWHERE,
+    // not specifically for this institute. A lecture could be (and evidently was)
+    // created with an instituteId the submitter didn't actually belong to, which
+    // then permanently 403s on every subsequent update() — that endpoint DOES do
+    // this check, comparing the lecture's stored instituteId against the JWT.
+    if (user) {
+      InstituteAccessValidator.validateResourceAccess(
+        user,
+        { instituteId: createDto.instituteId },
+        [ROLE_BITMASKS.TEACHER, ROLE_BITMASKS.INSTITUTE_ADMIN],
+      );
+    }
+
     const startTime = new Date(createDto.startTime);
     const endTime = new Date(createDto.endTime);
 
