@@ -400,11 +400,32 @@ export class InstituteClassStudentService implements IInstituteClassStudentServi
       }
 
       if (!studentMap.has(studentUserId)) {
-        results.failed.push({
-          studentUserId,
-          reason: 'Student record not found. Student must be created through the official student registration process before class assignment.',
-        });
-        continue;
+        const user = userMap.get(studentUserId);
+        if (user && (user.userType === UserType.USER || user.userType === UserType.USER_WITHOUT_PARENT)) {
+          const timestamp = getCurrentSriLankaISO();
+          try {
+            const newStudent = this.studentRepository.create({
+              userId: studentUserId,
+              isActive: true,
+              createdAt: new Date(timestamp),
+              updatedAt: new Date(timestamp),
+            });
+            await this.studentRepository.save(newStudent);
+            studentMap.set(studentUserId, newStudent);
+          } catch (e: any) {
+            results.failed.push({
+              studentUserId,
+              reason: `Failed to auto-create student record: ${e.message}`,
+            });
+            continue;
+          }
+        } else {
+          results.failed.push({
+            studentUserId,
+            reason: 'Student record not found. Student must be created through the official student registration process before class assignment.',
+          });
+          continue;
+        }
       }
 
       const timestamp = getCurrentSriLankaISO();
