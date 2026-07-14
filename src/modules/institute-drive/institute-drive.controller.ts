@@ -23,6 +23,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
+import { SkipOriginValidation } from '../../common/decorators/skip-origin-validation.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
@@ -137,6 +138,7 @@ export class InstituteDriveController {
 
   @Get('callback')
   @Public()
+  @SkipOriginValidation()
   @ApiOperation({
     summary: 'OAuth callback for institute Drive (internal — do not call directly)',
     description: 'Google redirects here after the admin grants consent. Do not call this endpoint directly.',

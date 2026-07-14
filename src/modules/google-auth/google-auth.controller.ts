@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GoogleTokenResponseDto } from './dto/google-token-response.dto';
 import { JwtRequest, JwtRequestHelper } from '@common/interfaces/jwt-request.interface';
 import { Public } from '../../common/decorators/public.decorator';
+import { SkipOriginValidation } from '../../common/decorators/skip-origin-validation.decorator';
 
 @ApiTags('Google OAuth 2.0')
 @Controller('auth/google')
@@ -69,6 +70,7 @@ export class GoogleAuthController {
 
   @Get('callback')
   @Public()
+  @SkipOriginValidation()
   @ApiOperation({ 
     summary: 'Google OAuth 2.0 callback handler',
     description: `

@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
+import { SkipOriginValidation } from '../../common/decorators/skip-origin-validation.decorator';
 import * as crypto from 'crypto';
 import {
   ApiTags,
@@ -146,7 +147,8 @@ export class UserDriveAccessController {
   }
 
   @Get('callback')
-  @Public() // OAuth callback must be public - Google redirects here without JWT token
+  @Public()
+  @SkipOriginValidation()
   @ApiOperation({
     summary: 'Google OAuth2 callback (internal — do not call directly)',
     description: 'Google redirects here after consent. Exchanges code for tokens, stores securely, redirects to frontend or mobile app.',
