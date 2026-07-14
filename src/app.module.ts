@@ -87,7 +87,14 @@ import { AppService } from './app.service';
     ApiFrontendModule,
     CommonModule, // Add audit logging module
     SecurityModule, // Add security module for interceptors and guards
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // In production (Cloud Run), environment variables are injected by Cloud Run.
+      // The .env file is baked into the Docker image at build time and must NOT
+      // override Cloud Run env vars — otherwise old http:// values win over the
+      // correct https:// values set in the Cloud Run console.
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
+    }),
     
     // 🔒 RATE LIMITING: Protect against brute force and DoS attacks
     ThrottlerModule.forRoot([{
