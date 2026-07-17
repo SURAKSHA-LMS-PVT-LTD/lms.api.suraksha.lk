@@ -9,6 +9,7 @@ import {
   IsNotEmpty,
   IsObject,
   MaxLength,
+  MinLength,
   ValidateNested,
   ValidateIf,
 } from 'class-validator';
@@ -367,12 +368,27 @@ export class CreateInstituteUserDto {
   language?: Language;
 
   @ApiPropertyOptional({
-    description: 'Password (optional — if omitted the user must set a password via the first-login flow)',
+    description: 'Password (optional — if omitted the user must set a password via the first-login flow). ' +
+      'Saved to users.password (global Suraksha platform login). ' +
+      'Use institutePassword instead when the institute has custom login (portal login) enabled.',
     minLength: 8,
   })
   @IsOptional()
   @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
   password?: string;
+
+  @ApiPropertyOptional({
+    description: 'Institute-level password (optional — only valid when the institute has customLoginEnabled=true). ' +
+      'Saved to institute_users.institute_password and used exclusively for institute portal / custom domain login. ' +
+      'Does not affect the user\'s global Suraksha account password.',
+    minLength: 8,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8, { message: 'Institute password must be at least 8 characters' })
+  institutePassword?: string;
+
 
   // ─── Role within the institute ──────────────────────────────────────────
 

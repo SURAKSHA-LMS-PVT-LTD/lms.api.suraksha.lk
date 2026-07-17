@@ -319,6 +319,24 @@ export class InstituteAdminUserService {
         where: { instituteId, userId: savedUser.id },
       });
 
+      // ── Institute-level password (optional) ─────────────────────────────────
+      // When `dto.institutePassword` is supplied the admin explicitly wants to set a
+      // portal/custom-domain login password for this membership.  We validate that
+      // the institute actually has `customLoginEnabled` before writing it so that
+      // rogue clients cannot silently set an institute password on institutes that
+      // haven't enabled the feature.
+      let hashedInstitutePassword: string | undefined;
+      if (dto.institutePassword) {
+        if (!institute.customLoginEnabled) {
+          throw new BadRequestException(
+            'This institute does not have custom login (institute portal login) enabled. ' +
+            'Enable "Custom Login" in Institute Settings before setting an institute-level password.',
+          );
+        }
+        const pepper = process.env.BCRYPT_PEPPER || '';
+        hashedInstitutePassword = await bcrypt.hash(dto.institutePassword + pepper, 12);
+      }
+
       if (!existingLink) {
         await queryRunner.manager.save(
           queryRunner.manager.create(InstituteUserEntity, {
@@ -339,15 +357,28 @@ export class InstituteAdminUserService {
             updatedAt: now(),
             houseId: dto.houseId ?? null,
             extraData: dto.extraData ?? null,
+            // Institute-level portal password (only when customLoginEnabled and password supplied)
+            ...(hashedInstitutePassword ? {
+              institutePassword: hashedInstitutePassword,
+              institutePasswordSetAt: now(),
+            } : {}),
           }),
         );
-      } else if (dto.houseId) {
-        // User already in institute — update house assignment
-        await queryRunner.manager.update(
-          InstituteUserEntity,
-          { instituteId, userId: savedUser.id },
-          { houseId: dto.houseId, updatedAt: now() },
-        );
+      } else {
+        // User already enrolled — update house assignment and/or institute password
+        const updatePayload: Record<string, any> = { updatedAt: now() };
+        if (dto.houseId) updatePayload.houseId = dto.houseId;
+        if (hashedInstitutePassword) {
+          updatePayload.institutePassword = hashedInstitutePassword;
+          updatePayload.institutePasswordSetAt = now();
+        }
+        if (Object.keys(updatePayload).length > 1) {
+          await queryRunner.manager.update(
+            InstituteUserEntity,
+            { instituteId, userId: savedUser.id },
+            updatePayload,
+          );
+        }
       }
 
       // ── 5b. Smart-card assignment (institute + suraksha), same transaction ──
@@ -690,6 +721,18 @@ export class InstituteAdminUserService {
       }
 
       // ── 7. Institute assignment ──────────────────────────────────────────
+      let hashedInstitutePassword: string | undefined;
+      if (dto.institutePassword) {
+        if (!institute.customLoginEnabled) {
+          throw new BadRequestException(
+            'This institute does not have custom login (institute portal login) enabled. ' +
+            'Enable "Custom Login" in Institute Settings before setting an institute-level password.',
+          );
+        }
+        const pepper = process.env.BCRYPT_PEPPER || '';
+        hashedInstitutePassword = await bcrypt.hash(dto.institutePassword + pepper, 12);
+      }
+
       await queryRunner.manager.save(
         queryRunner.manager.create(InstituteUserEntity, {
           instituteId,
@@ -709,6 +752,10 @@ export class InstituteAdminUserService {
           updatedAt: now(),
           houseId: dto.houseId ?? null,
           extraData: dto.extraData ?? null,
+          ...(hashedInstitutePassword ? {
+            institutePassword: hashedInstitutePassword,
+            institutePasswordSetAt: now(),
+          } : {}),
         }),
       );
 
@@ -1012,7 +1059,8 @@ export class InstituteAdminUserService {
 
     let hashedPassword: string | undefined;
     if (dto.password) {
-      hashedPassword = await bcrypt.hash(dto.password, 12);
+      const pepper = process.env.BCRYPT_PEPPER || '';
+      hashedPassword = await bcrypt.hash(dto.password + pepper, 12);
     }
 
     const completion = determineProfileStatus({
