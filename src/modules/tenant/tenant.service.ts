@@ -71,12 +71,13 @@ export class TenantService {
    */
   async resolveBySubdomain(subdomain: string): Promise<InstituteBrandingResponse | null> {
     const institute = await this.instituteRepository.findOne({
-      where: { subdomain, isActive: true, customLoginEnabled: true },
+      where: { subdomain, isActive: true },
       select: [
         'id', 'name', 'code', 'tier', 'logoUrl', 'primaryColorCode', 'secondaryColorCode',
         'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl', 'loginVideoPosterUrl',
         'loginIllustrationUrl', 'loginWelcomeTitle', 'loginWelcomeSubtitle', 'loginFooterText',
         'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible', 'subdomain', 'customDomain',
+        'customLoginEnabled',
       ],
     });
 
@@ -90,12 +91,13 @@ export class TenantService {
    */
   async resolveByCustomDomain(domain: string): Promise<InstituteBrandingResponse | null> {
     const institute = await this.instituteRepository.findOne({
-      where: { customDomain: domain, isActive: true, customDomainVerified: true, customLoginEnabled: true },
+      where: { customDomain: domain, isActive: true, customDomainVerified: true },
       select: [
         'id', 'name', 'code', 'tier', 'logoUrl', 'primaryColorCode', 'secondaryColorCode',
         'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl', 'loginVideoPosterUrl',
         'loginIllustrationUrl', 'loginWelcomeTitle', 'loginWelcomeSubtitle', 'loginFooterText',
         'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible', 'subdomain', 'customDomain',
+        'customLoginEnabled',
       ],
     });
 
@@ -640,6 +642,7 @@ export class TenantService {
       poweredByVisible: institute.poweredByVisible ?? true,
       subdomain: institute.subdomain ?? null,
       customDomain: institute.customDomain ?? null,
+      customLoginEnabled: institute.customLoginEnabled ?? false,
     };
   }
 
