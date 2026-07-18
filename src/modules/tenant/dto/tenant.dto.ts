@@ -103,6 +103,31 @@ export class UpdateLoginBrandingDto {
   @IsOptional()
   @IsBoolean()
   poweredByVisible?: boolean;
+
+  // ── SEO / Link-Preview fields ─────────────────────────────────────────────
+  @ApiPropertyOptional({ description: 'Custom page title for og:title and <title> on the custom domain' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  seoTitle?: string;
+
+  @ApiPropertyOptional({ description: 'Meta description and og:description for the custom domain' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  seoDescription?: string;
+
+  @ApiPropertyOptional({ description: 'Comma-separated meta keywords for the custom domain' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  seoKeywords?: string;
+
+  @ApiPropertyOptional({ description: 'og:image URL — shown in WhatsApp/social link previews' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  seoOgImageUrl?: string;
 }
 
 export class UpdateTierDto {
@@ -165,6 +190,12 @@ export class InstituteBrandingResponse {
   poweredByVisible: boolean;
   subdomain?: string | null;
   customDomain?: string | null;
+  customLoginEnabled?: boolean;
+  // SEO / Link-Preview fields
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
+  seoOgImageUrl?: string | null;
 }
 
 export class UpdateVisibilityDto {

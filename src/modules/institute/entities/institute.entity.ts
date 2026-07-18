@@ -231,8 +231,22 @@ export class InstituteEntity {
   @Column({ name: 'custom_app_name', type: 'varchar', length: 100, nullable: true, comment: 'Browser tab title override' })
   customAppName?: string;
 
+  // ── SEO / Link-Preview Metadata (used on custom domain HTML responses) ──────
+  @Column({ name: 'seo_title', type: 'varchar', length: 200, nullable: true, comment: 'Custom <title> / og:title shown on the custom domain' })
+  seoTitle?: string;
+
+  @Column({ name: 'seo_description', type: 'text', nullable: true, comment: 'Meta description and og:description for the custom domain' })
+  seoDescription?: string;
+
+  @Column({ name: 'seo_keywords', type: 'varchar', length: 500, nullable: true, comment: 'Meta keywords for the custom domain' })
+  seoKeywords?: string;
+
+  @Column({ name: 'seo_og_image_url', type: 'varchar', length: 500, nullable: true, comment: 'og:image URL for WhatsApp/social media link previews' })
+  seoOgImageUrl?: string;
+
   @Column({ name: 'powered_by_visible', type: 'boolean', default: true, comment: 'Show "Powered by Suraksha LMS"' })
   poweredByVisible: boolean = true;
+
 
   // Visibility Controls
   @Column({ name: 'is_visible_in_app', type: 'boolean', default: true, comment: 'Show in Suraksha mobile app institute selector' })

@@ -77,7 +77,7 @@ export class TenantService {
         'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl', 'loginVideoPosterUrl',
         'loginIllustrationUrl', 'loginWelcomeTitle', 'loginWelcomeSubtitle', 'loginFooterText',
         'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible', 'subdomain', 'customDomain',
-        'customLoginEnabled',
+        'customLoginEnabled', 'seoTitle', 'seoDescription', 'seoKeywords', 'seoOgImageUrl',
       ],
     });
 
@@ -97,7 +97,7 @@ export class TenantService {
         'loginLogoUrl', 'loginBackgroundType', 'loginBackgroundUrl', 'loginVideoPosterUrl',
         'loginIllustrationUrl', 'loginWelcomeTitle', 'loginWelcomeSubtitle', 'loginFooterText',
         'loginCustomCss', 'faviconUrl', 'customAppName', 'poweredByVisible', 'subdomain', 'customDomain',
-        'customLoginEnabled',
+        'customLoginEnabled', 'seoTitle', 'seoDescription', 'seoKeywords', 'seoOgImageUrl',
       ],
     });
 
@@ -643,6 +643,10 @@ export class TenantService {
       subdomain: institute.subdomain ?? null,
       customDomain: institute.customDomain ?? null,
       customLoginEnabled: institute.customLoginEnabled ?? false,
+      seoTitle: institute.seoTitle ?? null,
+      seoDescription: institute.seoDescription ?? null,
+      seoKeywords: institute.seoKeywords ?? null,
+      seoOgImageUrl: institute.seoOgImageUrl ?? null,
     };
   }
 
