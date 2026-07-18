@@ -457,6 +457,7 @@ export class InstitutesService {
       userIdAutoGenerate: institute.userIdAutoGenerate,
       userIdPrefix: institute.userIdPrefix ?? null,
       userIdLastCounter: (institute as any).userIdLastCounter ?? null,
+      customLoginEnabled: institute.customLoginEnabled ?? false,
     });
   }
 
