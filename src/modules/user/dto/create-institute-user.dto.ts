@@ -117,6 +117,11 @@ export class InstAdminStudentDataDto {
 // ---------------------------------------------------------------------------
 
 export class InstAdminParentDto {
+  @ApiPropertyOptional({ description: 'Existing user ID (if linking specific account)' })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @ApiPropertyOptional({ description: 'First name', maxLength: 50 })
   @IsOptional()
   @IsString()
@@ -137,6 +142,20 @@ export class InstAdminParentDto {
   @MaxLength(100)
   @Transform(({ value }) => value?.trim() || null)
   nameWithInitials?: string;
+
+  @ApiPropertyOptional({ description: 'Full name', maxLength: 150 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  @Transform(({ value }) => value?.trim() || null)
+  fullName?: string;
+
+  @ApiPropertyOptional({ description: 'Religion', maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @Transform(({ value }) => value?.trim() || null)
+  religion?: string;
 
   @ApiPropertyOptional({ description: 'Email address' })
   @IsOptional()

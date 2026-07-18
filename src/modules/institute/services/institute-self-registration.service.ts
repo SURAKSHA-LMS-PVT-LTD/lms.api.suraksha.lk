@@ -568,7 +568,8 @@ export class InstituteSelfRegistrationService {
     }
 
     // 4. New user → reuse the admin creation pipeline in self-registration mode.
-    const dto = this.buildCreateDto(link, payload, userType);
+    const institute = await this.instituteRepo.findOne({ where: { id: link.instituteId } });
+    const dto = this.buildCreateDto(link, payload, userType, institute || undefined);
     const result = await this.adminUserService.createInstituteUser(
       link.instituteId,
       null,
@@ -580,11 +581,6 @@ export class InstituteSelfRegistrationService {
         cardEmptyPoolBehavior: link.cardEmptyPoolBehavior,
       },
     );
-
-    if (payload.password) {
-      const hashed = await bcrypt.hash(payload.password, 10);
-      await this.userRepo.update({ id: BigInt(result.userId) as any }, { password: hashed, passwordSetAt: now() });
-    }
 
     // Auto-verify status update for new users
     if (link.autoVerify) {
@@ -1056,6 +1052,7 @@ export class InstituteSelfRegistrationService {
     link: InstituteRegistrationLinkEntity,
     payload: PublicRegistrationPayload,
     userType: InstituteUserType,
+    institute?: InstituteEntity,
   ): CreateInstituteUserDto {
     const dto: any = {
       instituteUserType: userType,
@@ -1080,6 +1077,8 @@ export class InstituteSelfRegistrationService {
       mother: payload.mother,
       guardian: payload.guardian,
       extraData: payload.extraData,
+      password: payload.password || undefined,
+      institutePassword: (payload.password && institute?.customLoginEnabled) ? payload.password : undefined,
       // No welcome notification spend on self-registration (pending approval).
       sendWelcomeNotifications: false,
     };

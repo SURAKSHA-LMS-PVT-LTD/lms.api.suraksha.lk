@@ -1174,7 +1174,12 @@ export class InstituteAdminUserService {
     adminUserId: string,
   ): Promise<string> {
     let existing: UserEntity | null = null;
-    if (data.email) {
+    if (data.id) {
+      existing = await queryRunner.manager.findOne(UserEntity, {
+        where: { id: data.id },
+      });
+    }
+    if (!existing && data.email) {
       existing = await queryRunner.manager.findOne(UserEntity, {
         where: { email: data.email.toLowerCase() },
       });
@@ -1186,6 +1191,16 @@ export class InstituteAdminUserService {
     }
 
     if (existing) {
+      // Backfill missing fields on user if provided
+      let userUpdated = false;
+      if (!existing.fullName && data.fullName) { existing.fullName = data.fullName; userUpdated = true; }
+      if (!existing.religion && data.religion) { existing.religion = data.religion; userUpdated = true; }
+      if (!existing.nic && data.nic) { existing.nic = data.nic; userUpdated = true; }
+      if (!existing.birthCertificateNo && data.birthCertificateNo) { existing.birthCertificateNo = data.birthCertificateNo; userUpdated = true; }
+      if (userUpdated) {
+        await queryRunner.manager.save(existing);
+      }
+
       // Ensure parent record exists
       const parentRecord = await queryRunner.manager.findOne(ParentEntity, {
         where: { userId: existing.id },
@@ -1196,11 +1211,21 @@ export class InstituteAdminUserService {
             userId: existing.id,
             occupation: data.occupation,
             workplace: data.workplace,
+            educationLevel: data.educationLevel,
             isActive: true,
             createdAt: now(),
             updatedAt: now(),
           }),
         );
+      } else {
+        let parentUpdated = false;
+        if (!parentRecord.occupation && data.occupation) { parentRecord.occupation = data.occupation; parentUpdated = true; }
+        if (!parentRecord.workplace && data.workplace) { parentRecord.workplace = data.workplace; parentUpdated = true; }
+        if (!parentRecord.educationLevel && data.educationLevel) { parentRecord.educationLevel = data.educationLevel; parentUpdated = true; }
+        if (parentUpdated) {
+          parentRecord.updatedAt = now();
+          await queryRunner.manager.save(parentRecord);
+        }
       }
       return existing.id;
     }
@@ -1213,13 +1238,15 @@ export class InstituteAdminUserService {
         ? this.generateNameWithInitials(data.firstName, data.lastName)
         : null);
     const fullName =
-      data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : null;
+      data.fullName ||
+      (data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : null);
 
     const userEntity = queryRunner.manager.create(UserEntity, {
       firstName: data.firstName ?? null,
       lastName: data.lastName ?? null,
       nameWithInitials,
       fullName,
+      religion: data.religion ?? null,
       birthCertificateNo: data.birthCertificateNo ?? null,
       email: data.email?.toLowerCase() ?? null,
       phoneNumber: data.phoneNumber ?? null,
