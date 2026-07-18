@@ -1205,8 +1205,8 @@ export class InstituteAdminUserService {
       return existing.id;
     }
 
-    // Create new USER_WITHOUT_STUDENT user
-    const hashedPassword = data.password ? await bcrypt.hash(data.password, 12) : undefined;
+    const pepper = process.env.BCRYPT_PEPPER || '';
+    const hashedPassword = data.password ? await bcrypt.hash(data.password + pepper, 12) : undefined;
     const nameWithInitials =
       data.nameWithInitials ||
       (data.firstName && data.lastName

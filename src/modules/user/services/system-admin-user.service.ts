@@ -1,4 +1,4 @@
-﻿/**
+/**
  * System Admin User Service
  * 
  * Provides APIs for system administrators to:
@@ -391,7 +391,8 @@ export class SystemAdminUserService {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const pepper = process.env.BCRYPT_PEPPER || '';
+    const hashedPassword = await bcrypt.hash(password + pepper, 12);
 
     // Update user
     const updates: Partial<UserEntity> = {
@@ -545,7 +546,8 @@ export class SystemAdminUserService {
     // Hash password if provided
     let hashedPassword: string | undefined;
     if (data.password) {
-      hashedPassword = await bcrypt.hash(data.password, 12);
+      const pepper = process.env.BCRYPT_PEPPER || '';
+      hashedPassword = await bcrypt.hash(data.password + pepper, 12);
     }
 
     const completionStatus = determineProfileStatus({
@@ -674,7 +676,8 @@ export class SystemAdminUserService {
     // Hash password if provided
     let hashedPassword: string | undefined;
     if (data.password) {
-      hashedPassword = await bcrypt.hash(data.password, 12);
+      const pepper = process.env.BCRYPT_PEPPER || '';
+      hashedPassword = await bcrypt.hash(data.password + pepper, 12);
     }
 
     const completionStatus = determineProfileStatus({
