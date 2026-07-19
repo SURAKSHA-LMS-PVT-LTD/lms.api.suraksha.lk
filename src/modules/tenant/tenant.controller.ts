@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Post, Delete, Body, Query, UseGuards, HttpCode, HttpStatus, NotFoundException, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Post, Delete, Body, Query, UseGuards, HttpCode, HttpStatus, NotFoundException, ParseUUIDPipe, Header } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { TenantService } from './tenant.service';
@@ -58,6 +58,31 @@ export class TenantController {
     const branding = await this.tenantService.resolveByCustomDomain(domain);
     if (!branding) throw new NotFoundException('Institute not found for this domain');
     return branding;
+  }
+
+  @Public()
+  @Get('og-preview/:domain')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @ApiOperation({ summary: 'Serve OpenGraph meta HTML preview for social media crawlers (WhatsApp, Telegram, Facebook)' })
+  async getOgPreviewHtml(@Param('domain') domain: string): Promise<string> {
+    return this.tenantService.renderSeoMetaHtml(domain);
+  }
+
+  @Public()
+  @Get('robots/:domain')
+  @Header('Content-Type', 'text/plain; charset=utf-8')
+  @ApiOperation({ summary: 'Serve dynamic robots.txt per domain (public for search engine indexing)' })
+  async getRobotsTxt(@Param('domain') domain: string): Promise<string> {
+    return this.tenantService.renderRobotsTxt(domain);
+  }
+
+  @Public()
+  @Get('sitemap/:domain')
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  @ApiOperation({ summary: 'Serve dynamic sitemap.xml per domain (public for search engine indexing)' })
+  async getSitemapXml(@Param('domain') domain: string): Promise<string> {
+    return this.tenantService.renderSitemapXml(domain);
   }
 
   @Public()

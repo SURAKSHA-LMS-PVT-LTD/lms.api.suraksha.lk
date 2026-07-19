@@ -659,6 +659,121 @@ export class TenantService {
     };
   }
 
+  /**
+   * Generates SSR OpenGraph HTML meta tags for social media link crawlers (WhatsApp, Telegram, Facebook, Twitter, iMessage).
+   */
+  async renderSeoMetaHtml(identifier: string): Promise<string> {
+    const cleanIdentifier = (identifier || '')
+      .replace(/^https?:\/\//i, '')
+      .split(':')[0]
+      .split('/')[0]
+      .trim();
+
+    let branding = await this.resolveByCustomDomain(cleanIdentifier);
+    if (!branding && cleanIdentifier.includes('.suraksha.lk')) {
+      const sub = cleanIdentifier.replace('.suraksha.lk', '');
+      branding = await this.resolveBySubdomain(sub);
+    }
+    if (!branding) {
+      branding = await this.resolveBySubdomain(cleanIdentifier);
+    }
+
+    const host = `https://${cleanIdentifier || 'lms.suraksha.lk'}`;
+
+    const title = (branding?.seoTitle && branding.seoTitle.trim())
+      ? branding.seoTitle.trim()
+      : (branding?.customAppName || branding?.name || 'Suraksha LMS');
+
+    const desc = (branding?.seoDescription && branding.seoDescription.trim())
+      ? branding.seoDescription.trim()
+      : `${title} - Online Learning Management System`;
+
+    const rawImg = branding?.seoOgImageUrl || branding?.loginLogoUrl || branding?.logoUrl || null;
+    const image = rawImg ? this.cloudStorageService.getFullUrl(rawImg) : 'https://lms.suraksha.lk/surakshalms-main-logo.png';
+
+    const escapeHtml = (str: string) =>
+      str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
+    const safeTitle = escapeHtml(title);
+    const safeDesc = escapeHtml(desc);
+    const safeImage = escapeHtml(image);
+    const safeUrl = escapeHtml(host);
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${safeTitle}</title>
+  <meta name="description" content="${safeDesc}">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <link rel="canonical" href="${safeUrl}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="${safeTitle}">
+  <meta property="og:title" content="${safeTitle}">
+  <meta property="og:description" content="${safeDesc}">
+  <meta property="og:image" content="${safeImage}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="${safeUrl}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${safeTitle}">
+  <meta name="twitter:description" content="${safeDesc}">
+  <meta name="twitter:image" content="${safeImage}">
+</head>
+<body>
+  <h1>${safeTitle}</h1>
+  <p>${safeDesc}</p>
+</body>
+</html>`;
+  }
+
+  /**
+   * Generates dynamic robots.txt per tenant domain.
+   */
+  async renderRobotsTxt(identifier: string): Promise<string> {
+    const cleanIdentifier = (identifier || '')
+      .replace(/^https?:\/\//i, '')
+      .split(':')[0]
+      .split('/')[0]
+      .trim();
+
+    return `User-agent: *
+Allow: /
+Disallow: /institute/
+Disallow: /class/
+Disallow: /subject/
+Disallow: /student/
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: https://${cleanIdentifier || 'lms.suraksha.lk'}/sitemap.xml
+`;
+  }
+
+  /**
+   * Generates dynamic sitemap.xml per tenant domain for Google / Bing indexing.
+   */
+  async renderSitemapXml(identifier: string): Promise<string> {
+    const cleanIdentifier = (identifier || '')
+      .replace(/^https?:\/\//i, '')
+      .split(':')[0]
+      .split('/')[0]
+      .trim();
+
+    const domain = cleanIdentifier || 'lms.suraksha.lk';
+    const lastMod = new Date().toISOString().split('T')[0];
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://${domain}/</loc>
+    <lastmod>${lastMod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`;
+  }
+
   private async ensureBillingConfig(instituteId: string, tier: InstituteTier): Promise<InstituteBillingConfigEntity> {
     let config = await this.billingConfigRepository.findOne({ where: { instituteId } });
     if (config) {
