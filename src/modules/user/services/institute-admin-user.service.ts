@@ -334,7 +334,8 @@ export class InstituteAdminUserService {
           );
         }
         const pepper = process.env.BCRYPT_PEPPER || '';
-        hashedInstitutePassword = await bcrypt.hash(dto.institutePassword + pepper, 12);
+        const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+        hashedInstitutePassword = await bcrypt.hash(dto.institutePassword + pepper, saltRounds);
       }
 
       if (!existingLink) {
@@ -730,7 +731,8 @@ export class InstituteAdminUserService {
           );
         }
         const pepper = process.env.BCRYPT_PEPPER || '';
-        hashedInstitutePassword = await bcrypt.hash(dto.institutePassword + pepper, 12);
+        const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+        hashedInstitutePassword = await bcrypt.hash(dto.institutePassword + pepper, saltRounds);
       }
 
       await queryRunner.manager.save(
@@ -1060,7 +1062,8 @@ export class InstituteAdminUserService {
     let hashedPassword: string | undefined;
     if (dto.password) {
       const pepper = process.env.BCRYPT_PEPPER || '';
-      hashedPassword = await bcrypt.hash(dto.password + pepper, 12);
+      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+      hashedPassword = await bcrypt.hash(dto.password + pepper, saltRounds);
     }
 
     const completion = determineProfileStatus({
@@ -1231,7 +1234,8 @@ export class InstituteAdminUserService {
     }
 
     const pepper = process.env.BCRYPT_PEPPER || '';
-    const hashedPassword = data.password ? await bcrypt.hash(data.password + pepper, 12) : undefined;
+    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+    const hashedPassword = data.password ? await bcrypt.hash(data.password + pepper, saltRounds) : undefined;
     const nameWithInitials =
       data.nameWithInitials ||
       (data.firstName && data.lastName

@@ -392,7 +392,8 @@ export class SystemAdminUserService {
 
     // Hash password
     const pepper = process.env.BCRYPT_PEPPER || '';
-    const hashedPassword = await bcrypt.hash(password + pepper, 12);
+    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+    const hashedPassword = await bcrypt.hash(password + pepper, saltRounds);
 
     // Update user
     const updates: Partial<UserEntity> = {
@@ -547,7 +548,8 @@ export class SystemAdminUserService {
     let hashedPassword: string | undefined;
     if (data.password) {
       const pepper = process.env.BCRYPT_PEPPER || '';
-      hashedPassword = await bcrypt.hash(data.password + pepper, 12);
+      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+      hashedPassword = await bcrypt.hash(data.password + pepper, saltRounds);
     }
 
     const completionStatus = determineProfileStatus({
@@ -677,7 +679,8 @@ export class SystemAdminUserService {
     let hashedPassword: string | undefined;
     if (data.password) {
       const pepper = process.env.BCRYPT_PEPPER || '';
-      hashedPassword = await bcrypt.hash(data.password + pepper, 12);
+      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
+      hashedPassword = await bcrypt.hash(data.password + pepper, saltRounds);
     }
 
     const completionStatus = determineProfileStatus({

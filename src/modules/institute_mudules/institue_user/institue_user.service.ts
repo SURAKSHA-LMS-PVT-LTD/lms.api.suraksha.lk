@@ -215,7 +215,7 @@ export class InstitueUserService {
       let hashedInstitutePassword: string | undefined;
       if (createInstitueUserDto.institutePassword) {
         const pepper = this.configService.get<string>('BCRYPT_PEPPER') || '';
-        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '12', 10);
+        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '10', 10);
         hashedInstitutePassword = await bcrypt.hash(createInstitueUserDto.institutePassword + pepper, saltRounds);
       }
 
