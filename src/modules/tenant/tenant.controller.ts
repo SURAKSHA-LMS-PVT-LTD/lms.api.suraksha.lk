@@ -3,6 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { TenantService } from './tenant.service';
 import { Public } from '../../common/decorators/public.decorator';
+import { SkipOriginValidation } from '../../common/decorators/skip-origin-validation.decorator';
 import { FlexibleAccessGuard } from '../../auth/guards/flexible-access.guard';
 import { RequireAnyOfRoles } from '../../auth/decorators/flexible-access.decorator';
 import { GetUser } from '../../auth/decorators/get-user.decorator';
@@ -33,6 +34,7 @@ export class TenantController {
   // ═══════════════════════════════════════════════════════════════════
 
   @Public()
+  @SkipOriginValidation()
   @Get('branding/subdomain/:subdomain')
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 🔒 SECURITY: 20 req/min to prevent enumeration
   @ApiOperation({ summary: 'Get login branding for a subdomain (public)' })
@@ -47,6 +49,7 @@ export class TenantController {
   }
 
   @Public()
+  @SkipOriginValidation()
   @Get('branding/domain/:domain')
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 🔒 SECURITY: 20 req/min to prevent enumeration
   @ApiOperation({ summary: 'Get login branding for a custom domain (public)' })
@@ -61,6 +64,7 @@ export class TenantController {
   }
 
   @Public()
+  @SkipOriginValidation()
   @Get('og-preview/:domain')
   @Header('Content-Type', 'text/html; charset=utf-8')
   @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
@@ -70,6 +74,7 @@ export class TenantController {
   }
 
   @Public()
+  @SkipOriginValidation()
   @Get('robots/:domain')
   @Header('Content-Type', 'text/plain; charset=utf-8')
   @ApiOperation({ summary: 'Serve dynamic robots.txt per domain (public for search engine indexing)' })
@@ -78,6 +83,7 @@ export class TenantController {
   }
 
   @Public()
+  @SkipOriginValidation()
   @Get('sitemap/:domain')
   @Header('Content-Type', 'application/xml; charset=utf-8')
   @ApiOperation({ summary: 'Serve dynamic sitemap.xml per domain (public for search engine indexing)' })
