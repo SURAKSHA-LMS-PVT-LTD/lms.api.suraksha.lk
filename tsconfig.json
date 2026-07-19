@@ -27,15 +27,17 @@
       ]
     }
   },
+  "include": [
+    "src/**/*"
+  ],
   "exclude": [
     "node_modules",
     "dist",
+    "scripts",
     "test",
     "**/*spec.ts",
     "test-*.ts",
     "*-test.ts",
-    "jest.config.ts",
-    "run-calendar-migration.ts",
-    "view-dynamodb-attendance.ts"
+    "jest.config.ts"
   ]
 }

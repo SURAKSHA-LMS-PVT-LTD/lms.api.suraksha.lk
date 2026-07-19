@@ -1078,7 +1078,7 @@ export class InstituteSelfRegistrationService {
       guardian: payload.guardian,
       extraData: payload.extraData,
       password: payload.password || undefined,
-      institutePassword: (payload.password && institute?.customLoginEnabled) ? payload.password : undefined,
+      institutePassword: (payload.password && (institute?.customLoginEnabled || !!(institute?.subdomain || institute?.customDomain))) ? payload.password : undefined,
       // No welcome notification spend on self-registration (pending approval).
       sendWelcomeNotifications: false,
     };

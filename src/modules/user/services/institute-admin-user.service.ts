@@ -327,7 +327,8 @@ export class InstituteAdminUserService {
       // haven't enabled the feature.
       let hashedInstitutePassword: string | undefined;
       if (dto.institutePassword) {
-        if (!institute.customLoginEnabled) {
+        const isCustomLoginAllowed = (institute as any).customLoginEnabled || !!((institute as any).subdomain || (institute as any).customDomain);
+        if (!isCustomLoginAllowed) {
           throw new BadRequestException(
             'This institute does not have custom login (institute portal login) enabled. ' +
             'Enable "Custom Login" in Institute Settings before setting an institute-level password.',
@@ -724,7 +725,8 @@ export class InstituteAdminUserService {
       // ── 7. Institute assignment ──────────────────────────────────────────
       let hashedInstitutePassword: string | undefined;
       if (dto.institutePassword) {
-        if (!institute.customLoginEnabled) {
+        const isCustomLoginAllowed = (institute as any).customLoginEnabled || !!((institute as any).subdomain || (institute as any).customDomain);
+        if (!isCustomLoginAllowed) {
           throw new BadRequestException(
             'This institute does not have custom login (institute portal login) enabled. ' +
             'Enable "Custom Login" in Institute Settings before setting an institute-level password.',

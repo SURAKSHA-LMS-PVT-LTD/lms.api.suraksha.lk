@@ -204,6 +204,10 @@ export class InstituteSettingsResponseDto {
   @Expose()
   userIdLastCounter?: number | null;
 
+  @ApiPropertyOptional({ description: 'Whether custom login (institute portal login) is enabled' })
+  @Expose()
+  customLoginEnabled?: boolean;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
     Object.assign(this, partial);
   }

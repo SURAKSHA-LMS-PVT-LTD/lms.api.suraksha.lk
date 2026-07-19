@@ -318,4 +318,9 @@ export class UpdateInstituteSettingsDto {
   @IsOptional()
   @IsBoolean()
   pwdResetEmailEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether custom login (institute portal login) is enabled for this institute.' })
+  @IsOptional()
+  @IsBoolean()
+  customLoginEnabled?: boolean;
 }
