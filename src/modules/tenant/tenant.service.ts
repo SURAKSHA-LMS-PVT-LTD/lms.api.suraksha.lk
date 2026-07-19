@@ -688,16 +688,23 @@ export class TenantService {
       ? branding.seoDescription.trim()
       : `${title} - Online Learning Management System`;
 
-    const rawImg = branding?.seoOgImageUrl || branding?.loginLogoUrl || branding?.logoUrl || null;
-    const image = rawImg ? this.cloudStorageService.getFullUrl(rawImg) : 'https://lms.suraksha.lk/surakshalms-main-logo.png';
+    const rawImg = (branding?.seoOgImageUrl && branding.seoOgImageUrl.trim()) ? branding.seoOgImageUrl.trim() : null;
+    const image = rawImg ? this.cloudStorageService.getFullUrl(rawImg) : null;
 
     const escapeHtml = (str: string) =>
       str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
     const safeTitle = escapeHtml(title);
     const safeDesc = escapeHtml(desc);
-    const safeImage = escapeHtml(image);
     const safeUrl = escapeHtml(host);
+
+    const imageMetaTags = image ? `
+  <meta property="og:image" content="${escapeHtml(image)}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="${escapeHtml(image)}">` : `
+  <meta name="twitter:card" content="summary">`;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -711,14 +718,9 @@ export class TenantService {
   <meta property="og:site_name" content="${safeTitle}">
   <meta property="og:title" content="${safeTitle}">
   <meta property="og:description" content="${safeDesc}">
-  <meta property="og:image" content="${safeImage}">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:url" content="${safeUrl}">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta property="og:url" content="${safeUrl}">${imageMetaTags}
   <meta name="twitter:title" content="${safeTitle}">
   <meta name="twitter:description" content="${safeDesc}">
-  <meta name="twitter:image" content="${safeImage}">
 </head>
 <body>
   <h1>${safeTitle}</h1>
