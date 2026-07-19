@@ -283,6 +283,10 @@ export class TenantService {
     faviconUrl?: string | null;
     customAppName?: string | null;
     poweredByVisible?: boolean;
+    seoTitle?: string | null;
+    seoDescription?: string | null;
+    seoKeywords?: string | null;
+    seoOgImageUrl?: string | null;
   }> {
     const institute = await this.instituteRepository.findOne({
       where: { id: instituteId },
@@ -291,6 +295,7 @@ export class TenantService {
         'loginVideoPosterUrl', 'loginIllustrationUrl', 'loginWelcomeTitle',
         'loginWelcomeSubtitle', 'loginFooterText', 'faviconUrl',
         'customAppName', 'poweredByVisible',
+        'seoTitle', 'seoDescription', 'seoKeywords', 'seoOgImageUrl',
       ],
     });
     if (!institute) throw new NotFoundException('Institute not found');
@@ -306,6 +311,10 @@ export class TenantService {
       faviconUrl: institute.faviconUrl,
       customAppName: institute.customAppName,
       poweredByVisible: institute.poweredByVisible ?? true,
+      seoTitle: institute.seoTitle ?? null,
+      seoDescription: institute.seoDescription ?? null,
+      seoKeywords: institute.seoKeywords ?? null,
+      seoOgImageUrl: institute.seoOgImageUrl ?? null,
     };
   }
 
@@ -366,7 +375,7 @@ export class TenantService {
     // Track image fields that are being replaced so old S3 objects can be deleted
     const IMAGE_FIELDS = [
       'loginLogoUrl', 'loginBackgroundUrl', 'loginVideoPosterUrl',
-      'loginIllustrationUrl', 'faviconUrl',
+      'loginIllustrationUrl', 'faviconUrl', 'seoOgImageUrl',
     ] as const;
     const filesToDelete: string[] = [];
     for (const field of IMAGE_FIELDS) {

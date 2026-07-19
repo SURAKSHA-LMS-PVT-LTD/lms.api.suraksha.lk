@@ -458,6 +458,10 @@ export class InstitutesService {
       userIdPrefix: institute.userIdPrefix ?? null,
       userIdLastCounter: (institute as any).userIdLastCounter ?? null,
       customLoginEnabled: (institute.customLoginEnabled ?? false) || !!(institute.subdomain || institute.customDomain),
+      seoTitle: institute.seoTitle ?? null,
+      seoDescription: institute.seoDescription ?? null,
+      seoKeywords: institute.seoKeywords ?? null,
+      seoOgImageUrl: institute.seoOgImageUrl ? this.cloudStorageService.getFullUrl(institute.seoOgImageUrl) : null,
     });
   }
 

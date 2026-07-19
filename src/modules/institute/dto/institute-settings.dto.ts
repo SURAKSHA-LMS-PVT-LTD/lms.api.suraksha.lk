@@ -208,6 +208,23 @@ export class InstituteSettingsResponseDto {
   @Expose()
   customLoginEnabled?: boolean;
 
+  // SEO / Link-Preview fields
+  @ApiPropertyOptional({ description: 'Custom page title for og:title and <title> on the custom domain' })
+  @Expose()
+  seoTitle?: string | null;
+
+  @ApiPropertyOptional({ description: 'Meta description and og:description for the custom domain' })
+  @Expose()
+  seoDescription?: string | null;
+
+  @ApiPropertyOptional({ description: 'Comma-separated meta keywords for the custom domain' })
+  @Expose()
+  seoKeywords?: string | null;
+
+  @ApiPropertyOptional({ description: 'og:image URL — shown in WhatsApp/social link previews' })
+  @Expose()
+  seoOgImageUrl?: string | null;
+
   constructor(partial: Partial<InstituteSettingsResponseDto>) {
     Object.assign(this, partial);
   }
