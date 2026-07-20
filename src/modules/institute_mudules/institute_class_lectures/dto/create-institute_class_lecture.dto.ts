@@ -82,16 +82,15 @@ export class CreateInstituteClassLectureDto {
   @Transform(({ value }) => value?.trim())
   subject?: string;
 
-  @ApiProperty({ description: 'Lecture start time (ISO 8601 format)', example: '2026-04-12T09:00:00.000Z' })
+  @ApiPropertyOptional({ description: 'Lecture start time (ISO 8601 format)', example: '2026-04-12T09:00:00.000Z' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Start time is required' })
-  startTime: string;
+  startTime?: string;
 
-  @ApiProperty({ description: 'Lecture end time (ISO 8601 format)', example: '2026-04-12T10:30:00.000Z' })
+  @ApiPropertyOptional({ description: 'Lecture end time (ISO 8601 format)', example: '2026-04-12T10:30:00.000Z' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'End time is required' })
-    @IsAfter('startTime')
-  endTime: string;
+  endTime?: string;
 
   @ApiPropertyOptional({ description: 'Lecture status', enum: ['scheduled', 'ongoing', 'completed', 'cancelled'], default: 'scheduled' })
   @IsOptional()
